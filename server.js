@@ -13,6 +13,12 @@
  * GoDaddy's app settings after deployment. Never hard-code real values here.
  */
 
+// Some hosting platforms have broken/unreliable outbound IPv6 routing while still
+// resolving external hostnames to IPv6 addresses by default, causing Node's fetch()
+// to fail with a generic "fetch failed" error. Forcing IPv4-first DNS resolution
+// works around this in most cases.
+require('dns').setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
@@ -149,16 +155,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {
   console.log(`Avani & Co. server running on port ${port}`);
+
+  // Test 1: can this app reach the general internet at all?
+  try {
+    const r = await fetch('https://api.github.com');
+    console.log('[startup] General internet test: PASSED (status ' + r.status + ')');
+  } catch (e) {
+    console.log('[startup] General internet test: FAILED - ' + (e && e.message));
+  }
+
   if (supabase) {
     try {
-      const { error } = await supabase.from(KV_TABLE).select('key').limit(1);
+      const { data, error } = await supabase.from(KV_TABLE).select('key').limit(1);
       if (error) {
-        console.error('[startup] Supabase connectivity test FAILED (query error):', error.message);
+        console.log('[startup] Supabase connectivity test FAILED (query error). Full detail: ' + JSON.stringify(error));
       } else {
         console.log('[startup] Supabase connectivity test PASSED — able to reach and query kv_store.');
       }
     } catch (e) {
-      console.error('[startup] Supabase connectivity test FAILED (network error):', e.message, 'cause:', e.cause ? String(e.cause) : 'none');
+      console.log('[startup] Supabase connectivity test FAILED (thrown error). Full detail: ' + JSON.stringify({
+        message: e && e.message,
+        cause: e && e.cause ? { code: e.cause.code, message: e.cause.message, errno: e.cause.errno } : null,
+      }));
     }
   }
 });
