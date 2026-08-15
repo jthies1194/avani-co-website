@@ -153,16 +153,10 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <p>Contact Baldwin REALTORS® (BCMLS) and/or Gulf Coast Mobile Assn MLS and request RESO Web API (or IDX) credentials for your account. Once issued, replace the <code>fetchListings()</code> function in this file's code with a fetch call to your MLS's RESO endpoint — the listing card fields (price, beds, baths, sqft, city, status, MLS#) are already named to match standard RESO fields, so it's mostly a data-mapping job, not a redesign.</p>
 <p>If you'd rather not edit code yourself, this is a well-defined task to hand to a developer or to Claude Code — the mock data structure at the top of the file (<code>MOCK_LISTINGS</code>) shows exactly what shape real data should arrive in.</p>
 
-<h4>2. Get leads emailed or texted to you</h4>
-<p>This page can't send email on its own — browsers can't send mail directly. The free way to bridge that: create a free account at <code>emailjs.com</code> (200 emails/month free), then paste your keys below. Every new lead will trigger a real email to you automatically.</p>
-<div class="setup-grid">
-<div class="field"><label>EmailJS Service ID</label><input id="cfg-service" placeholder="service_xxxxxxx"></div>
-<div class="field"><label>EmailJS Template ID</label><input id="cfg-template" placeholder="template_xxxxxxx"></div>
-<div class="field"><label>EmailJS Public Key</label><input id="cfg-publickey" placeholder="public key"></div>
-<div class="field"><label>Your notification email</label><input id="cfg-notifyemail" placeholder="you@example.com"></div>
-</div>
-<button class="btn-sm primary" style="margin-top:6px;" onclick="saveEmailConfig()">Save notification settings</button>
-<p style="margin-top:10px;">Until this is set up, every lead is still saved and visible in this CRM the moment it comes in — you just won't get a push email/text yet.</p>
+<h4>2. Get leads emailed to you</h4>
+<p id="email-status-text">Checking email notification status…</p>
+<p style="margin-top:10px;">This is configured directly on the server (not here in the browser) using your own Gmail account — set the <code>GMAIL_USER</code>, <code>GMAIL_APP_PASSWORD</code>, and <code>NOTIFY_EMAIL</code> values in your hosting provider's environment variables / secrets. No third-party email service needed.</p>
+<p style="margin-top:10px;">Until this is set up, every lead is still saved and visible in this CRM the moment it comes in — you just won't get an email yet.</p>
 </div>
 </div>
 </div>
@@ -339,24 +333,18 @@ setTimeout(()=>t.classList.remove('show'), 3200);
 }
 
 async function sendLeadNotification(lead){
-const cfg = await storeGet('config:emailjs');
-if(!cfg || !cfg.serviceId || !cfg.templateId || !cfg.publicKey) return; // not configured yet
-try{
-if(!window.emailjs){
-await new Promise((resolve,reject)=>{
-const s = document.createElement('script');
-s.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js";
-s.onload = resolve; s.onerror = reject;
-document.head.appendChild(s);
-});
-window.emailjs.init(cfg.publicKey);
-}
-await window.emailjs.send(cfg.serviceId, cfg.templateId, {
-to_email: cfg.notifyEmail || "",
-lead_name: lead.name, lead_email: lead.email, lead_phone: lead.phone,
-lead_message: lead.message, lead_source: lead.source, lead_listing: lead.listingLabel,
-});
-}catch(err){ console.error("EmailJS send failed", err); }
+  try{
+    await fetch('/api/notify-lead', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name: lead.name, email: lead.email, phone: lead.phone,
+        message: lead.message, source: lead.source, listingLabel: lead.listingLabel,
+      }),
+    });
+    // Silently ignore failures/503 here — the lead is already safely saved either way,
+    // this is just the "also email me" convenience layer.
+  }catch(err){ console.error("Lead email notification failed", err); }
 }
 
 async function initCRM(){
@@ -473,22 +461,17 @@ body.classList.toggle('open');
 caret.textContent = body.classList.contains('open') ? '▴' : '▾';
 }
 async function loadEmailConfigIntoForm(){
-const cfg = await storeGet('config:emailjs');
-if(!cfg) return;
-document.getElementById('cfg-service').value = cfg.serviceId||'';
-document.getElementById('cfg-template').value = cfg.templateId||'';
-document.getElementById('cfg-publickey').value = cfg.publicKey||'';
-document.getElementById('cfg-notifyemail').value = cfg.notifyEmail||'';
-}
-async function saveEmailConfig(){
-const cfg = {
-serviceId: document.getElementById('cfg-service').value.trim(),
-templateId: document.getElementById('cfg-template').value.trim(),
-publicKey: document.getElementById('cfg-publickey').value.trim(),
-notifyEmail: document.getElementById('cfg-notifyemail').value.trim(),
-};
-await storeSet('config:emailjs', cfg);
-showToast("Notification settings saved.");
+  const statusEl = document.getElementById('email-status-text');
+  if(!statusEl) return;
+  try{
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    statusEl.textContent = data.emailConfigured
+      ? "✓ Email notifications are configured and active."
+      : "Email notifications are not set up yet.";
+  }catch(e){
+    statusEl.textContent = "Couldn't check email notification status right now.";
+  }
 }
 
 renderListings();
