@@ -42,51 +42,71 @@ function requireSupabase(res) {
 // GET a single key -> { key, value } or 404
 app.get('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const { data, error } = await supabase
-    .from(KV_TABLE)
-    .select('value')
-    .eq('key', req.params.key)
-    .maybeSingle();
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: 'not found' });
-  res.json({ key: req.params.key, value: data.value });
+  try {
+    const { data, error } = await supabase
+      .from(KV_TABLE)
+      .select('value')
+      .eq('key', req.params.key)
+      .maybeSingle();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'not found' });
+    res.json({ key: req.params.key, value: data.value });
+  } catch (e) {
+    console.error('[GET /api/kv/:key] failed:', e, 'cause:', e.cause);
+    res.status(500).json({ error: e.message, cause: e.cause ? String(e.cause) : null });
+  }
 });
 
 // LIST keys by prefix -> { keys: [...] }
 app.get('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const prefix = (req.query.prefix || '').toString();
-  // escape % and _ so a prefix like "lead:" doesn't accidentally wildcard-match
-  const escaped = prefix.replace(/[%_]/g, c => '\\' + c);
-  const { data, error } = await supabase
-    .from(KV_TABLE)
-    .select('key')
-    .ilike('key', `${escaped}%`);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ keys: (data || []).map(r => r.key) });
+  try {
+    const prefix = (req.query.prefix || '').toString();
+    // escape % and _ so a prefix like "lead:" doesn't accidentally wildcard-match
+    const escaped = prefix.replace(/[%_]/g, c => '\\' + c);
+    const { data, error } = await supabase
+      .from(KV_TABLE)
+      .select('key')
+      .ilike('key', `${escaped}%`);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ keys: (data || []).map(r => r.key) });
+  } catch (e) {
+    console.error('[GET /api/kv] failed:', e, 'cause:', e.cause);
+    res.status(500).json({ error: e.message, cause: e.cause ? String(e.cause) : null });
+  }
 });
 
 // SET (upsert) a key -> { ok: true }
 app.post('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const { key, value } = req.body || {};
-  if (!key) return res.status(400).json({ error: 'key is required' });
-  const { error } = await supabase
-    .from(KV_TABLE)
-    .upsert({ key, value, updated_at: new Date().toISOString() });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
+  try {
+    const { key, value } = req.body || {};
+    if (!key) return res.status(400).json({ error: 'key is required' });
+    const { error } = await supabase
+      .from(KV_TABLE)
+      .upsert({ key, value, updated_at: new Date().toISOString() });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[POST /api/kv] failed:', e, 'cause:', e.cause);
+    res.status(500).json({ error: e.message, cause: e.cause ? String(e.cause) : null });
+  }
 });
 
 // DELETE a key -> { ok: true }
 app.delete('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const { error } = await supabase
-    .from(KV_TABLE)
-    .delete()
-    .eq('key', req.params.key);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true });
+  try {
+    const { error } = await supabase
+      .from(KV_TABLE)
+      .delete()
+      .eq('key', req.params.key);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[DELETE /api/kv/:key] failed:', e, 'cause:', e.cause);
+    res.status(500).json({ error: e.message, cause: e.cause ? String(e.cause) : null });
+  }
 });
 
 // ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
@@ -127,6 +147,18 @@ app.get('/api/health', (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`Avani & Co. server running on port ${port}`);
+  if (supabase) {
+    try {
+      const { error } = await supabase.from(KV_TABLE).select('key').limit(1);
+      if (error) {
+        console.error('[startup] Supabase connectivity test FAILED (query error):', error.message);
+      } else {
+        console.log('[startup] Supabase connectivity test PASSED — able to reach and query kv_store.');
+      }
+    } catch (e) {
+      console.error('[startup] Supabase connectivity test FAILED (network error):', e.message, 'cause:', e.cause ? String(e.cause) : 'none');
+    }
+  }
 });
