@@ -1,0 +1,17 @@
+{
+  "name": "bamacoast-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Avani & Co. Real Estate (bamacoast.com) - backend for CRM data and MLS listings proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}
