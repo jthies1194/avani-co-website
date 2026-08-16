@@ -183,12 +183,82 @@ app.post('/api/notify-lead', async (req, res) => {
   }
 });
 
+// ---------- AI features (chat widget + reply drafting), via your own Anthropic API key ----------
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+if (!ANTHROPIC_API_KEY) {
+  console.warn('[startup] ANTHROPIC_API_KEY not set — AI chat and reply drafting are disabled until configured.');
+}
+
+async function callClaude(system, messages, maxTokens = 500) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-5',
+      max_tokens: maxTokens,
+      system,
+      messages,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Anthropic API error ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const json = await res.json();
+  return (json.content || []).map(b => b.text || '').join('');
+}
+
+const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for Avani & Co. Real Estate, a boutique brokerage serving Mobile & Baldwin County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne, Mobile). Broker: Jimmy Thies, phone 251-229-3216.
+
+Answer visitor questions about the area, buying/selling real estate, and general guidance. You do NOT have access to live MLS listings right now (the site shows sample data) — if asked about specific homes, say so honestly and encourage them to browse Featured Listings or leave their contact info so a real agent can do a personalized search.
+
+Keep replies short (2-4 sentences), warm, and professional. Never invent specific property details, prices, or availability. If someone seems ready to move forward, wants a showing, or asks a question only a human can answer, encourage them to use the "leave your contact info" option on the site.`;
+
+app.post('/api/chat', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'AI chat is not configured yet. Set ANTHROPIC_API_KEY in the hosting environment variables.' });
+  }
+  const { message, history } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'message is required' });
+  try {
+    const messages = [
+      ...(Array.isArray(history) ? history.slice(-10) : []),
+      { role: 'user', content: message },
+    ];
+    const reply = await callClaude(CHAT_SYSTEM_PROMPT, messages, 400);
+    res.json({ reply });
+  } catch (e) {
+    console.error('[POST /api/chat] failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/draft-reply', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'AI drafting is not configured yet. Set ANTHROPIC_API_KEY in the hosting environment variables.' });
+  }
+  const { name, message, source, listingLabel } = req.body || {};
+  try {
+    const prompt = `Draft a warm, professional, concise reply (as Jimmy Thies, Broker/Owner of Avani & Co. Real Estate) to a lead named "${name || 'there'}" who submitted this via the website (source: ${source || 'website'}${listingLabel ? ', re: ' + listingLabel : ''}):\n\n"${message || '(no message provided)'}"\n\nKeep it to 3-5 sentences. Sign off as Jimmy. Do not include a subject line, just the message body.`;
+    const draft = await callClaude('You draft real estate lead follow-up emails. Be warm, concise, and professional.', [{ role: 'user', content: prompt }], 350);
+    res.json({ draft });
+  } catch (e) {
+    console.error('[POST /api/draft-reply] failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     database: !!supabase,
     mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
     emailConfigured: !!mailer,
+    aiConfigured: !!ANTHROPIC_API_KEY,
   });
 });
 
