@@ -434,7 +434,10 @@ ${HOUSE_ICON}
 </div>
 </div>
 `;
-}).join('');
+}).join('') || `<div style="grid-column:1/-1; text-align:center; padding:48px 20px; color:var(--driftwood);">
+<p style="margin-bottom:6px;">No sample listings match "${document.getElementById('f-city').value.trim() || 'your search'}" right now.</p>
+<p style="font-size:13px;">This site is currently showing placeholder listings from just a handful of cities while we finish connecting the real MLS feed — once that's live, this search will cover every active property in the area.</p>
+</div>`;
 maybeAutoOpenListingFromURL(filtered);
 }
 
