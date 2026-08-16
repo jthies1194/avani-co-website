@@ -29,7 +29,18 @@
 .agent-role-tag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--driftwood);margin-left:8px;}
 .agent-role-tag.broker{color:var(--marsh);border-color:rgba(21,65,196,0.3);background:rgba(21,65,196,0.06);}
 .crm-gate select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:12px;font-family:'Public Sans',sans-serif;font-size:14px;background:var(--sand-light);text-align:center;}
-.crm-gate .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}</style>
+.crm-gate .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}
+.detail-modal{max-width:520px;}
+.detail-photo{height:220px;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:18px;overflow:hidden;}
+.detail-photo svg{width:70px;height:70px;opacity:0.5;}
+.detail-price{font-family:'Fraunces',serif;font-size:26px;color:var(--marsh);margin-bottom:2px;}
+.detail-address{font-size:15px;color:var(--ink);margin-bottom:2px;}
+.detail-loc{font-size:13px;color:var(--driftwood);margin-bottom:14px;}
+.detail-stats{display:flex;gap:16px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--marsh);margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line);}
+.share-row{display:flex;gap:8px;margin:16px 0;}
+.share-btn{flex:1;border:1px solid var(--line);background:var(--sand-light);color:var(--marsh);padding:9px;border-radius:4px;font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;}
+.share-btn:hover{background:var(--marsh);color:var(--sand-light);border-color:var(--marsh);}
+.view-limit-note{font-size:11.5px;color:var(--driftwood);text-align:center;margin-top:10px;}</style>
 </head>
 <body>
 
@@ -51,15 +62,15 @@
 <p>Search homes and condos across Mobile &amp; Baldwin County, straight from a real local agent — no middleman, no third-party portal.</p>
 
 <div class="search-bar" role="search">
-<select id="f-city">
-<option value="">All cities</option>
-<option>Gulf Shores</option>
-<option>Orange Beach</option>
-<option>Fairhope</option>
-<option>Foley</option>
-<option>Daphne</option>
-<option>Mobile</option>
-</select>
+<input type="text" id="f-city" list="city-options" placeholder="City or neighborhood" onkeydown="if(event.key==='Enter') renderListings()">
+<datalist id="city-options">
+<option value="Gulf Shores">
+<option value="Orange Beach">
+<option value="Fairhope">
+<option value="Foley">
+<option value="Daphne">
+<option value="Mobile">
+</datalist>
 <select id="f-beds">
 <option value="">Any beds</option>
 <option value="1">1+ bed</option>
@@ -174,6 +185,13 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <p id="email-status-text">Checking email notification status…</p>
 <p style="margin-top:10px;">This is configured directly on the server (not here in the browser) using your own Gmail account — set the <code>GMAIL_USER</code>, <code>GMAIL_APP_PASSWORD</code>, and <code>NOTIFY_EMAIL</code> values in your hosting provider's environment variables / secrets. No third-party email service needed.</p>
 <p style="margin-top:10px;">Until this is set up, every lead is still saved and visible in this CRM the moment it comes in — you just won't get an email yet.</p>
+
+<h4>3. Free listing views before sign-up</h4>
+<p>Visitors can view this many listings free before we ask them to create a free account (which becomes a lead automatically). Once they create an account, browsing is unlimited on that device.</p>
+<div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+<input type="number" id="view-limit-input" min="1" max="50" style="width:80px; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-family:'Public Sans',sans-serif; font-size:14px;">
+<button class="btn-sm primary" onclick="saveViewLimitSetting()">Save</button>
+</div>
 </div>
 </div>
 
@@ -226,6 +244,40 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <div class="field"><label>Role</label><select id="af-role"><option value="agent">Agent (sees only their own leads)</option><option value="broker">Broker (sees everything, can manage agents)</option></select></div>
 <button class="submit-btn" type="submit">Add agent</button>
 </form>
+</div>
+</div>
+
+<!-- ============ LISTING DETAIL MODAL ============ -->
+<div class="modal-overlay" id="detail-modal-overlay">
+<div class="modal detail-modal">
+<button class="modal-close" onclick="closeDetailModal()">&times;</button>
+<div class="detail-photo" id="detail-photo"></div>
+<div class="detail-price" id="detail-price"></div>
+<div class="detail-address" id="detail-address"></div>
+<div class="detail-loc" id="detail-loc"></div>
+<div class="detail-stats" id="detail-stats"></div>
+<p style="font-size:13.5px; color:var(--driftwood); line-height:1.6; margin-bottom:4px;" id="detail-mls"></p>
+<div class="share-row">
+<button class="share-btn" onclick="shareListing('facebook')">Facebook</button>
+<button class="share-btn" onclick="shareListing('twitter')">X / Twitter</button>
+<button class="share-btn" onclick="shareListing('copy')">Copy link</button>
+</div>
+<button class="submit-btn" id="detail-contact-btn">Contact agent about this home</button>
+</div>
+</div>
+
+<!-- ============ ACCOUNT GATE MODAL ============ -->
+<div class="modal-overlay" id="account-gate-overlay">
+<div class="modal">
+<button class="modal-close" onclick="closeAccountGate()">&times;</button>
+<h3>Keep browsing free</h3>
+<div class="sub" id="account-gate-sub">You've viewed your free listings. Create a free account to keep browsing homes.</div>
+<form id="account-gate-form" onsubmit="submitAccountGate(event)">
+<div class="field"><label>Name</label><input required id="ag-name"></div>
+<div class="field"><label>Email</label><input type="email" required id="ag-email"></div>
+<button class="submit-btn" type="submit">Create free account</button>
+</form>
+<div class="view-limit-note">No spam — just unlocks unlimited browsing on this device.</div>
 </div>
 </div>
 
@@ -299,11 +351,11 @@ if(v==='crm') initCRM();
 let ALL_LISTINGS = [];
 async function renderListings(){
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
-const city = document.getElementById('f-city').value;
+const city = document.getElementById('f-city').value.trim().toLowerCase();
 const beds = parseInt(document.getElementById('f-beds').value)||0;
 const price = parseInt(document.getElementById('f-price').value)||Infinity;
 const filtered = ALL_LISTINGS.filter(l =>
-(!city || l.City===city) && l.BedroomsTotal>=beds && l.ListPrice<=price
+(!city || l.City.toLowerCase().includes(city) || l.UnparsedAddress.toLowerCase().includes(city)) && l.BedroomsTotal>=beds && l.ListPrice<=price
 );
 document.getElementById('listing-count').textContent = filtered.length + (filtered.length===1?" home":" homes");
 const grid = document.getElementById('listing-grid');
@@ -312,14 +364,14 @@ const qrTarget = location.origin + location.pathname + '?listing=' + encodeURICo
 const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=90x90&margin=0&color=1541C4&data=' + encodeURIComponent(qrTarget);
 return `
 <div class="card">
-<div class="card-photo" style="background:${PHOTO_TONES[i%PHOTO_TONES.length]}">
+<div class="card-photo" style="background:${PHOTO_TONES[i%PHOTO_TONES.length]}; cursor:pointer;" onclick="openListingDetail('${l.ListingKey}')">
 ${HOUSE_ICON}
 <div class="status-badge ${l.StandardStatus==='Pending'?'pending':''}">${l.StandardStatus}</div>
 <div class="card-qr" title="Scan for this listing"><img src="${qrImg}" alt="QR code for MLS ${l.ListingKey}" loading="lazy"></div>
 <div class="price-tag">$${l.ListPrice.toLocaleString()}</div>
 </div>
 <div class="card-body">
-<h3>${l.UnparsedAddress}</h3>
+<h3 style="cursor:pointer;" onclick="openListingDetail('${l.ListingKey}')">${l.UnparsedAddress}</h3>
 <div class="card-loc">${l.City}, AL</div>
 <div class="card-stats">
 <span>${l.BedroomsTotal} bd</span><span>${l.BathroomsTotalInteger} ba</span><span>${l.LivingArea.toLocaleString()} sqft</span>
@@ -341,8 +393,92 @@ if(!key) return;
 const match = listings.find(l => l.ListingKey === key);
 if(match){
 window.__autoOpenedListing = true;
-openLeadModal('listing', match.ListingKey, match.UnparsedAddress.replace(/'/g,"") + ", " + match.City);
+openListingDetail(match.ListingKey);
 }
+}
+
+// ---------- Free browsing with a broker-configurable view limit ----------
+let cachedViewLimit = null;
+async function getViewLimit(){
+if(cachedViewLimit !== null) return cachedViewLimit;
+const val = await storeGet('settings:viewLimit');
+cachedViewLimit = (val && Number.isFinite(val.limit)) ? val.limit : 5;
+return cachedViewLimit;
+}
+function getViewedListings(){
+try{ return JSON.parse(localStorage.getItem('viewedListings') || '[]'); }catch(e){ return []; }
+}
+function markListingViewed(key){
+const viewed = getViewedListings();
+if(!viewed.includes(key)){ viewed.push(key); localStorage.setItem('viewedListings', JSON.stringify(viewed)); }
+}
+function isAccountUnlocked(){
+return localStorage.getItem('accountUnlocked') === 'true';
+}
+
+let currentDetailListing = null;
+
+async function openListingDetail(key){
+const listing = ALL_LISTINGS.find(l => l.ListingKey === key);
+if(!listing) return;
+
+if(!isAccountUnlocked()){
+const viewed = getViewedListings();
+const limit = await getViewLimit();
+if(!viewed.includes(key) && viewed.length >= limit){
+document.getElementById('account-gate-sub').textContent =
+`You've viewed your ${limit} free listings. Create a free account to keep browsing homes on our site.`;
+document.getElementById('account-gate-overlay').classList.add('active');
+return;
+}
+}
+
+markListingViewed(key);
+currentDetailListing = listing;
+document.getElementById('detail-photo').style.background = PHOTO_TONES[Math.abs(key.length)%PHOTO_TONES.length];
+document.getElementById('detail-photo').innerHTML = HOUSE_ICON;
+document.getElementById('detail-price').textContent = '$' + listing.ListPrice.toLocaleString();
+document.getElementById('detail-address').textContent = listing.UnparsedAddress;
+document.getElementById('detail-loc').textContent = listing.City + ', AL · ' + listing.StandardStatus;
+document.getElementById('detail-stats').innerHTML = `<span>${listing.BedroomsTotal} bd</span><span>${listing.BathroomsTotalInteger} ba</span><span>${listing.LivingArea.toLocaleString()} sqft</span>`;
+document.getElementById('detail-mls').textContent = 'MLS# ' + listing.ListingKey;
+document.getElementById('detail-contact-btn').onclick = function(){
+closeDetailModal();
+openLeadModal('listing', listing.ListingKey, listing.UnparsedAddress.replace(/'/g,"") + ", " + listing.City);
+};
+document.getElementById('detail-modal-overlay').classList.add('active');
+}
+function closeDetailModal(){ document.getElementById('detail-modal-overlay').classList.remove('active'); }
+
+function shareListing(platform){
+if(!currentDetailListing) return;
+const url = location.origin + location.pathname + '?listing=' + encodeURIComponent(currentDetailListing.ListingKey);
+const text = `${currentDetailListing.UnparsedAddress}, ${currentDetailListing.City} — $${currentDetailListing.ListPrice.toLocaleString()}`;
+if(platform === 'facebook'){
+window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url), '_blank', 'width=600,height=500');
+} else if(platform === 'twitter'){
+window.open('https://twitter.com/intent/tweet?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text), '_blank', 'width=600,height=500');
+} else if(platform === 'copy'){
+navigator.clipboard.writeText(url).then(()=> showToast("Link copied!")).catch(()=> showToast("Couldn't copy — copy from the address bar instead."));
+}
+}
+
+function closeAccountGate(){ document.getElementById('account-gate-overlay').classList.remove('active'); }
+async function submitAccountGate(e){
+e.preventDefault();
+const name = document.getElementById('ag-name').value.trim();
+const email = document.getElementById('ag-email').value.trim();
+const lead = {
+id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+name, email, phone: '', message: 'Created a free account to browse listings.',
+source: 'account-signup', mlsKey: '', listingLabel: '', stage: 'New', notes: '', assignedAgentId: '',
+createdAt: new Date().toISOString(),
+};
+await storeSet('lead:'+lead.id, lead);
+sendLeadNotification(lead);
+localStorage.setItem('accountUnlocked', 'true');
+closeAccountGate();
+showToast(`Welcome, ${name.split(' ')[0]}! Browse as many homes as you'd like.`);
 }
 
 const MODAL_COPY = {
@@ -500,6 +636,7 @@ document.getElementById('crm-main').style.display='block';
 document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
 loadLeads();
 loadEmailConfigIntoForm();
+loadViewLimitSetting();
 if(currentAgent.role === 'broker') loadAgents();
 }
 
@@ -675,6 +812,19 @@ const caret = document.getElementById('setup-caret');
 body.classList.toggle('open');
 caret.textContent = body.classList.contains('open') ? '▴' : '▾';
 }
+async function loadViewLimitSetting(){
+const input = document.getElementById('view-limit-input');
+if(!input) return;
+input.value = await getViewLimit();
+}
+async function saveViewLimitSetting(){
+const val = parseInt(document.getElementById('view-limit-input').value);
+if(!val || val < 1){ showToast("Enter a number of 1 or more."); return; }
+await storeSet('settings:viewLimit', { limit: val });
+cachedViewLimit = val;
+showToast(`Saved — visitors now get ${val} free listing views.`);
+}
+
 async function loadEmailConfigIntoForm(){
   const statusEl = document.getElementById('email-status-text');
   if(!statusEl) return;
