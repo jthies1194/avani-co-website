@@ -19,7 +19,17 @@
 .hero{background-size:200% 200%;animation:slowDrift 18s ease-in-out infinite}
 .card-qr{position:absolute;top:10px;right:10px;background:var(--white);padding:4px;border-radius:2px;box-shadow:0 4px 10px rgba(21,65,196,0.18);width:44px;height:44px}
 .card-qr img{display:block;width:100%;height:100%}
-@media(prefers-reduced-motion:reduce){.card-photo svg,.hero{animation:none}}</style>
+@media(prefers-reduced-motion:reduce){.card-photo svg,.hero{animation:none}}
+.agent-list{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:14px}
+.agent-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--white)}
+.agent-row:last-child{border-bottom:none}
+.agent-row .info{display:flex; flex-direction:column;}
+.agent-row .name{font-weight:700;color:var(--marsh);font-size:13.5px;}
+.agent-row .meta{font-size:11.5px;color:var(--driftwood);}
+.agent-role-tag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:0.06em;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--driftwood);margin-left:8px;}
+.agent-role-tag.broker{color:var(--marsh);border-color:rgba(21,65,196,0.3);background:rgba(21,65,196,0.06);}
+.crm-gate select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:12px;font-family:'Public Sans',sans-serif;font-size:14px;background:var(--sand-light);text-align:center;}
+.crm-gate .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}</style>
 </head>
 <body>
 
@@ -121,10 +131,7 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <div id="view-crm" class="view">
 
 <div id="crm-gate" class="crm-gate">
-<h2>Agent sign-in</h2>
-<p id="gate-text">Set a passcode to protect your CRM. This is stored only in your browser's account storage — not shared publicly.</p>
-<input type="password" id="gate-input" placeholder="••••" maxlength="12">
-<button onclick="handleGate()" id="gate-btn">Set passcode</button>
+<div id="gate-content"></div>
 </div>
 
 <div id="crm-main" class="crm-wrap" style="display:none;">
@@ -143,7 +150,7 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <div class="lead-table-wrap">
 <table id="lead-table">
 <thead>
-<tr><th>Name</th><th>Contact</th><th>Source</th><th>Message</th><th>Stage</th><th>Notes</th><th></th></tr>
+<tr><th>Name</th><th>Contact</th><th>Source</th><th>Message</th><th>Agent</th><th>Stage</th><th>Notes</th><th></th></tr>
 </thead>
 <tbody id="lead-tbody"></tbody>
 </table>
@@ -169,6 +176,19 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <p style="margin-top:10px;">Until this is set up, every lead is still saved and visible in this CRM the moment it comes in — you just won't get an email yet.</p>
 </div>
 </div>
+
+<div class="setup-panel" id="agents-panel" style="display:none;">
+<div class="setup-head" onclick="toggleAgentsPanel()">
+<h3>👥 Manage agents</h3>
+<span id="agents-caret">▾</span>
+</div>
+<div class="setup-body" id="agents-body">
+<p>Add agents at your brokerage so they can log in and manage their own leads. Each agent only sees leads assigned to them — you (as broker) see everything and can assign leads to whoever should follow up.</p>
+<div class="agent-list" id="agent-list"></div>
+<button class="btn-sm primary" style="margin-top:14px;" onclick="openAgentModal()">+ Add agent</button>
+</div>
+</div>
+
 <div style="text-align:center; padding:32px 0 0;">
 <button onclick="switchView('site')" style="background:none; border:none; color:var(--driftwood); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; text-decoration:underline; text-underline-offset:3px; padding:0;">← Back to Website</button>
 </div>
@@ -186,7 +206,25 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <div class="field"><label>Email</label><input type="email" required id="lf-email"></div>
 <div class="field"><label>Phone</label><input id="lf-phone"></div>
 <div class="field" id="lf-message-field"><label>Message</label><textarea id="lf-message"></textarea></div>
+<div class="field" id="lf-agent-field" style="display:none;"><label>Assign to</label><select id="lf-agent"></select></div>
 <button class="submit-btn" type="submit">Send</button>
+</form>
+</div>
+</div>
+
+<!-- ============ AGENT MODAL ============ -->
+<div class="modal-overlay" id="agent-modal-overlay">
+<div class="modal">
+<button class="modal-close" onclick="closeAgentModal()">&times;</button>
+<h3>Add an agent</h3>
+<div class="sub">They'll sign in using just the passcode you set here.</div>
+<form id="agent-form" onsubmit="submitAgent(event)">
+<div class="field"><label>Name</label><input required id="af-name"></div>
+<div class="field"><label>Email</label><input type="email" id="af-email"></div>
+<div class="field"><label>Phone</label><input id="af-phone"></div>
+<div class="field"><label>Passcode</label><input required id="af-passcode" maxlength="12" placeholder="Choose a passcode for them"></div>
+<div class="field"><label>Role</label><select id="af-role"><option value="agent">Agent (sees only their own leads)</option><option value="broker">Broker (sees everything, can manage agents)</option></select></div>
+<button class="submit-btn" type="submit">Add agent</button>
 </form>
 </div>
 </div>
@@ -324,12 +362,21 @@ document.getElementById('lf-name').value='';
 document.getElementById('lf-email').value='';
 document.getElementById('lf-phone').value='';
 document.getElementById('lf-message').value = source==='listing' ? `I'm interested in ${listingLabel} (MLS# ${mlsKey}).` : '';
+const showAgentField = source==='manual' && currentAgent && currentAgent.role==='broker';
+document.getElementById('lf-agent-field').style.display = showAgentField ? 'block' : 'none';
+if(showAgentField) loadAgents();
 document.getElementById('modal-overlay').classList.add('active');
 }
 function closeLeadModal(){ document.getElementById('modal-overlay').classList.remove('active'); }
 
 async function submitLead(e){
 e.preventDefault();
+let assignedAgentId = '';
+if(currentLeadContext.source === 'manual' && currentAgent){
+assignedAgentId = currentAgent.role === 'broker'
+? (document.getElementById('lf-agent').value || '')
+: currentAgent.id;
+}
 const lead = {
 id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
 name: document.getElementById('lf-name').value.trim(),
@@ -341,6 +388,7 @@ mlsKey: currentLeadContext.mlsKey || "",
 listingLabel: currentLeadContext.listingLabel || "",
 stage: "New",
 notes: "",
+assignedAgentId,
 createdAt: new Date().toISOString(),
 };
 const ok = await storeSet('lead:'+lead.id, lead);
@@ -376,34 +424,145 @@ async function sendLeadNotification(lead){
   }catch(err){ console.error("Lead email notification failed", err); }
 }
 
+let currentAgent = null;
+
 async function initCRM(){
-const pass = await storeGet('crm:passcode');
 const gate = document.getElementById('crm-gate');
 const main = document.getElementById('crm-main');
-if(pass){
-document.getElementById('gate-text').textContent = "Enter your passcode to view leads.";
-document.getElementById('gate-btn').textContent = "Unlock";
-}
 gate.style.display='block'; main.style.display='none';
+await renderGateContent();
 }
-async function handleGate(){
+
+async function renderGateContent(){
+const agentIds = await storeListKeys('agent:');
+const content = document.getElementById('gate-content');
+
+if(agentIds.length === 0){
+// Check for a legacy single-passcode setup from before multi-agent support existed.
+const legacyPass = await storeGet('crm:passcode');
+if(legacyPass){
+const brokerId = 'agent_' + Date.now();
+await storeSet('agent:'+brokerId, {
+id: brokerId, name: 'Broker', email: '', phone: '',
+passcode: legacyPass, role: 'broker', createdAt: new Date().toISOString(),
+});
+return renderGateContent();
+}
+// True first run — set up the broker account.
+content.innerHTML = `
+<h2>Set up your broker account</h2>
+<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">This is your main login. Once set up, you can add agents at your brokerage from inside the CRM.</p>
+<div class="field-label">Your name</div>
+<input id="setup-name" placeholder="Your name" style="margin-bottom:12px;">
+<div class="field-label">Choose a passcode</div>
+<input type="password" id="setup-passcode" placeholder="••••" maxlength="12">
+<button onclick="handleBrokerSetup()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:6px;">Create broker account</button>
+`;
+} else {
+content.innerHTML = `
+<h2>Agent sign-in</h2>
+<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">Enter your passcode to view your leads.</p>
+<input type="password" id="gate-input" placeholder="••••" maxlength="12">
+<button onclick="handlePasscodeLogin()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700;">Sign in</button>
+`;
+}
+}
+
+async function handleBrokerSetup(){
+const name = document.getElementById('setup-name').value.trim();
+const passcode = document.getElementById('setup-passcode').value.trim();
+if(!name || !passcode){ showToast("Enter your name and a passcode."); return; }
+const id = 'agent_' + Date.now();
+const broker = { id, name, email:'', phone:'', passcode, role:'broker', createdAt: new Date().toISOString() };
+await storeSet('agent:'+id, broker);
+currentAgent = broker;
+unlockCRM();
+}
+
+async function handlePasscodeLogin(){
 const val = document.getElementById('gate-input').value.trim();
 if(!val) return;
-const pass = await storeGet('crm:passcode');
-if(!pass){
-await storeSet('crm:passcode', val);
+const agentIds = await storeListKeys('agent:');
+for(const key of agentIds){
+const agent = await storeGet(key);
+if(agent && agent.passcode === val){
+currentAgent = agent;
 unlockCRM();
-} else if(val===pass){
-unlockCRM();
-} else {
+return;
+}
+}
 showToast("Incorrect passcode.");
 }
-}
+
 function unlockCRM(){
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
+document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
 loadLeads();
 loadEmailConfigIntoForm();
+if(currentAgent.role === 'broker') loadAgents();
+}
+
+async function loadAgents(){
+const keys = await storeListKeys('agent:');
+let agents = [];
+for(const k of keys){ const a = await storeGet(k); if(a) agents.push(a); }
+agents.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+
+const list = document.getElementById('agent-list');
+list.innerHTML = agents.map(a => `
+<div class="agent-row">
+<div class="info">
+<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span></div>
+<div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}</div>
+</div>
+${a.id===currentAgent.id ? '' : `<button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+</div>
+`).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
+
+// Also refresh the assign-to dropdown used in the manual add-lead modal.
+const sel = document.getElementById('lf-agent');
+if(sel){
+sel.innerHTML = '<option value="">Unassigned</option>' + agents.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+}
+}
+
+function toggleAgentsPanel(){
+const body = document.getElementById('agents-body');
+const caret = document.getElementById('agents-caret');
+body.classList.toggle('open');
+caret.textContent = body.classList.contains('open') ? '▴' : '▾';
+}
+
+function openAgentModal(){
+document.getElementById('agent-form').reset();
+document.getElementById('agent-modal-overlay').classList.add('active');
+}
+function closeAgentModal(){
+document.getElementById('agent-modal-overlay').classList.remove('active');
+}
+async function submitAgent(e){
+e.preventDefault();
+const id = 'agent_' + Date.now();
+const agent = {
+id,
+name: document.getElementById('af-name').value.trim(),
+email: document.getElementById('af-email').value.trim(),
+phone: document.getElementById('af-phone').value.trim(),
+passcode: document.getElementById('af-passcode').value.trim(),
+role: document.getElementById('af-role').value,
+createdAt: new Date().toISOString(),
+};
+await storeSet('agent:'+id, agent);
+closeAgentModal();
+showToast(`${agent.name} added — share their passcode with them directly.`);
+loadAgents();
+}
+async function deleteAgent(id){
+await storeDelete('agent:'+id);
+showToast("Agent removed.");
+loadAgents();
+loadLeads();
 }
 
 const STAGES = ["New","Contacted","Qualified","Showing","Offer","Closed"];
@@ -421,6 +580,23 @@ const l = await storeGet(k);
 if(l) leads.push(l);
 }
 leads.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+
+// Agents only see leads assigned to them; brokers see everything.
+if(currentAgent.role !== 'broker'){
+leads = leads.filter(l => l.assignedAgentId === currentAgent.id);
+}
+
+let agents = [];
+if(currentAgent.role === 'broker'){
+const agentKeys = await storeListKeys('agent:');
+for(const k of agentKeys){ const a = await storeGet(k); if(a) agents.push(a); }
+}
+const agentName = (id) => {
+if(!id) return 'Unassigned';
+if(currentAgent.role !== 'broker') return currentAgent.name;
+const a = agents.find(a=>a.id===id);
+return a ? a.name : 'Unassigned';
+};
 
 const stats = {total:leads.length};
 STAGES.forEach(s=> stats[s] = leads.filter(l=>l.stage===s).length);
@@ -441,6 +617,9 @@ tbody.innerHTML = shown.map(l=>`
 <td class="lead-contact">${escapeHtml(l.email||'')}<br>${escapeHtml(l.phone||'')}</td>
 <td><span class="lead-source">${l.source}${l.mlsKey?(' · '+l.mlsKey):''}</span></td>
 <td class="lead-msg">${escapeHtml(l.message||'')}</td>
+<td>${currentAgent.role==='broker'
+  ? `<select class="stage-select" onchange="updateLeadAgent('${l.id}',this.value)"><option value="">Unassigned</option>${agents.map(a=>`<option value="${a.id}" ${a.id===l.assignedAgentId?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}</select>`
+  : escapeHtml(agentName(l.assignedAgentId))}</td>
 <td><select class="stage-select" onchange="updateStage('${l.id}',this.value)">${STAGES.map(s=>`<option ${s===l.stage?'selected':''}>${s}</option>`).join('')}</select></td>
 <td><input class="notes-input" value="${escapeHtml(l.notes||'')}" onchange="updateNotes('${l.id}',this.value)" placeholder="Add note..."></td>
 <td><button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
@@ -450,6 +629,13 @@ tbody.innerHTML = shown.map(l=>`
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(iso){ const d=new Date(iso); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 
+async function updateLeadAgent(id, agentId){
+const lead = await storeGet('lead:'+id);
+if(!lead) return;
+lead.assignedAgentId = agentId || '';
+await storeSet('lead:'+id, lead);
+loadLeads();
+}
 async function updateStage(id, stage){
 const lead = await storeGet('lead:'+id);
 if(!lead) return;
