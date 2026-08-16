@@ -40,7 +40,22 @@
 .share-row{display:flex;gap:8px;margin:16px 0;}
 .share-btn{flex:1;border:1px solid var(--line);background:var(--sand-light);color:var(--marsh);padding:9px;border-radius:4px;font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;}
 .share-btn:hover{background:var(--marsh);color:var(--sand-light);border-color:var(--marsh);}
-.view-limit-note{font-size:11.5px;color:var(--driftwood);text-align:center;margin-top:10px;}</style>
+.view-limit-note{font-size:11.5px;color:var(--driftwood);text-align:center;margin-top:10px;}
+.chat-fab{position:fixed;bottom:22px;right:22px;width:58px;height:58px;border-radius:50%;background:var(--marsh);color:var(--sand-light);border:none;box-shadow:0 8px 24px rgba(21,65,196,0.35);z-index:150;display:flex;align-items:center;justify-content:center;}
+.chat-fab svg{width:26px;height:26px;}
+.chat-panel{position:fixed;bottom:90px;right:22px;width:340px;max-width:calc(100vw - 32px);height:440px;max-height:calc(100vh - 140px);background:var(--white);border-radius:8px;box-shadow:0 20px 50px rgba(21,65,196,0.25);z-index:150;display:none;flex-direction:column;overflow:hidden;border:1px solid var(--line);}
+.chat-panel.open{display:flex;}
+.chat-head{background:var(--marsh);color:var(--sand-light);padding:14px 16px;font-family:'Fraunces',serif;font-size:15px;display:flex;justify-content:space-between;align-items:center;}
+.chat-head button{background:none;border:none;color:var(--sand-light);font-size:18px;}
+.chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+.chat-msg{max-width:82%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;}
+.chat-msg.user{align-self:flex-end;background:var(--marsh);color:var(--sand-light);border-bottom-right-radius:2px;}
+.chat-msg.ai{align-self:flex-start;background:var(--sand);color:var(--ink);border-bottom-left-radius:2px;}
+.chat-input-row{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line);}
+.chat-input-row input{flex:1;border:1px solid var(--line);border-radius:20px;padding:9px 14px;font-family:'Public Sans',sans-serif;font-size:13px;}
+.chat-input-row button{background:var(--marsh);color:var(--sand-light);border:none;border-radius:20px;padding:9px 16px;font-size:12px;font-weight:600;}
+.chat-cta{margin:0 12px 12px; text-align:center;}
+.chat-cta button{background:none;border:1px solid var(--coral);color:var(--coral);border-radius:20px;padding:7px 14px;font-size:11.5px;font-weight:600;}</style>
 </head>
 <body>
 
@@ -281,7 +296,44 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 </div>
 </div>
 
+<!-- ============ AI DRAFT REPLY MODAL ============ -->
+<div class="modal-overlay" id="draft-modal-overlay">
+<div class="modal">
+<button class="modal-close" onclick="closeDraftModal()">&times;</button>
+<h3>AI-drafted reply</h3>
+<div class="sub" id="draft-sub">Generating a suggested reply…</div>
+<div class="field">
+<textarea id="draft-textarea" style="min-height:160px;"></textarea>
+</div>
+<div style="display:flex; gap:8px;">
+<button class="btn-sm" onclick="copyDraft()" style="flex:1;">Copy</button>
+<a id="draft-mailto" class="btn-sm primary" style="flex:1; text-align:center; text-decoration:none; display:inline-block; padding-top:9px;">Open in Email</a>
+</div>
+</div>
+</div>
+
 <div class="toast" id="toast"></div>
+
+<!-- ============ AI CHAT WIDGET ============ -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()" title="Chat with us">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+</button>
+<div class="chat-panel" id="chat-panel">
+<div class="chat-head">
+<span>Chat with Avani &amp; Co.</span>
+<button onclick="toggleChat()">&times;</button>
+</div>
+<div class="chat-messages" id="chat-messages">
+<div class="chat-msg ai">Hi! Ask me anything about buying, selling, or the Gulf Coast area — I'm happy to help.</div>
+</div>
+<div class="chat-cta">
+<button onclick="closeChatOpenLead()">Leave your contact info for a real agent →</button>
+</div>
+<div class="chat-input-row">
+<input type="text" id="chat-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+<button onclick="sendChatMessage()">Send</button>
+</div>
+</div>
 
 <script>
 /* ============================================================
@@ -345,7 +397,8 @@ return json.keys || [];
 function switchView(v){
 document.getElementById('view-site').classList.toggle('active', v==='site');
 document.getElementById('view-crm').classList.toggle('active', v==='crm');
-if(v==='crm') initCRM();
+document.getElementById('chat-fab').style.display = v==='site' ? 'flex' : 'none';
+if(v==='crm'){ document.getElementById('chat-panel').classList.remove('open'); initCRM(); }
 }
 
 let ALL_LISTINGS = [];
@@ -479,6 +532,55 @@ sendLeadNotification(lead);
 localStorage.setItem('accountUnlocked', 'true');
 closeAccountGate();
 showToast(`Welcome, ${name.split(' ')[0]}! Browse as many homes as you'd like.`);
+}
+
+// ---------- AI chat widget ----------
+let chatHistory = [];
+function toggleChat(){
+document.getElementById('chat-panel').classList.toggle('open');
+}
+function closeChatOpenLead(){
+document.getElementById('chat-panel').classList.remove('open');
+openLeadModal('contact');
+}
+async function sendChatMessage(){
+const input = document.getElementById('chat-input');
+const text = input.value.trim();
+if(!text) return;
+input.value = '';
+appendChatMessage('user', text);
+chatHistory.push({role:'user', content:text});
+const messagesEl = document.getElementById('chat-messages');
+const loadingEl = document.createElement('div');
+loadingEl.className = 'chat-msg ai';
+loadingEl.textContent = '…';
+messagesEl.appendChild(loadingEl);
+messagesEl.scrollTop = messagesEl.scrollHeight;
+try{
+const res = await fetch('/api/chat', {
+method:'POST', headers:{'Content-Type':'application/json'},
+body: JSON.stringify({ message: text, history: chatHistory }),
+});
+const data = await res.json();
+loadingEl.remove();
+if(res.ok && data.reply){
+appendChatMessage('ai', data.reply);
+chatHistory.push({role:'assistant', content:data.reply});
+} else {
+appendChatMessage('ai', "Sorry, I'm not able to chat right now — please leave your contact info below and a real agent will follow up.");
+}
+}catch(e){
+loadingEl.remove();
+appendChatMessage('ai', "Sorry, something went wrong — please leave your contact info below and we'll follow up.");
+}
+}
+function appendChatMessage(role, text){
+const messagesEl = document.getElementById('chat-messages');
+const el = document.createElement('div');
+el.className = 'chat-msg ' + (role==='user' ? 'user' : 'ai');
+el.textContent = text;
+messagesEl.appendChild(el);
+messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 const MODAL_COPY = {
@@ -759,7 +861,7 @@ tbody.innerHTML = shown.map(l=>`
   : escapeHtml(agentName(l.assignedAgentId))}</td>
 <td><select class="stage-select" onchange="updateStage('${l.id}',this.value)">${STAGES.map(s=>`<option ${s===l.stage?'selected':''}>${s}</option>`).join('')}</select></td>
 <td><input class="notes-input" value="${escapeHtml(l.notes||'')}" onchange="updateNotes('${l.id}',this.value)" placeholder="Add note..."></td>
-<td><button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
+<td><button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button><button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
 </tr>
 `).join('');
 }
@@ -789,6 +891,36 @@ await storeSet('lead:'+id, lead);
 async function deleteLead(id){
 await storeDelete('lead:'+id);
 loadLeads();
+}
+
+async function openDraftModal(leadId){
+const lead = await storeGet('lead:'+leadId);
+if(!lead) return;
+document.getElementById('draft-modal-overlay').classList.add('active');
+document.getElementById('draft-sub').textContent = 'Generating a suggested reply…';
+document.getElementById('draft-textarea').value = '';
+try{
+const res = await fetch('/api/draft-reply', {
+method:'POST', headers:{'Content-Type':'application/json'},
+body: JSON.stringify({ name: lead.name, message: lead.message, source: lead.source, listingLabel: lead.listingLabel }),
+});
+const data = await res.json();
+if(res.ok && data.draft){
+document.getElementById('draft-sub').textContent = `Suggested reply to ${lead.name} — review and edit before sending.`;
+document.getElementById('draft-textarea').value = data.draft;
+const mailto = document.getElementById('draft-mailto');
+mailto.href = lead.email ? `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent('Re: your inquiry with Avani & Co.')}&body=${encodeURIComponent(data.draft)}` : '#';
+} else {
+document.getElementById('draft-sub').textContent = data.error || "AI drafting isn't set up yet.";
+}
+}catch(e){
+document.getElementById('draft-sub').textContent = "Something went wrong generating a draft.";
+}
+}
+function closeDraftModal(){ document.getElementById('draft-modal-overlay').classList.remove('active'); }
+function copyDraft(){
+const text = document.getElementById('draft-textarea').value;
+navigator.clipboard.writeText(text).then(()=> showToast("Draft copied!")).catch(()=>{});
 }
 
 async function exportCSV(){
