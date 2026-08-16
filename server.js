@@ -192,6 +192,53 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ---------- Social preview cards for shared listing links ----------
+// Mirrors the frontend's MOCK_LISTINGS — swap for real MLS data at the same
+// time the frontend's fetchListings() is swapped, so both stay in sync.
+const MOCK_LISTINGS = [
+  {ListingKey:"AL10234561", StandardStatus:"Active", ListPrice:459900, City:"Gulf Shores", UnparsedAddress:"412 Sandpiper Ln", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1820},
+  {ListingKey:"AL10234498", StandardStatus:"Active", ListPrice:875000, City:"Orange Beach", UnparsedAddress:"29 Perdido Cove Dr", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2650},
+  {ListingKey:"AL10234511", StandardStatus:"Pending", ListPrice:329000, City:"Foley", UnparsedAddress:"108 Magnolia Grove Ct", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1540},
+  {ListingKey:"AL10234477", StandardStatus:"Active", ListPrice:612500, City:"Fairhope", UnparsedAddress:"75 Bayview Terrace", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2380},
+  {ListingKey:"AL10234550", StandardStatus:"Active", ListPrice:245000, City:"Daphne", UnparsedAddress:"1601 Chateau Dr", BedroomsTotal:2, BathroomsTotalInteger:2, LivingArea:1180},
+  {ListingKey:"AL10234502", StandardStatus:"Active", ListPrice:1295000, City:"Orange Beach", UnparsedAddress:"27500 Perdido Beach Blvd #1104", BedroomsTotal:3, BathroomsTotalInteger:3, LivingArea:1980},
+  {ListingKey:"AL10234533", StandardStatus:"Active", ListPrice:389000, City:"Mobile", UnparsedAddress:"22 Dauphin Landing Way", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1710},
+  {ListingKey:"AL10234519", StandardStatus:"Pending", ListPrice:525000, City:"Gulf Shores", UnparsedAddress:"88 Waterway Village Blvd", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1960},
+  {ListingKey:"AL10234544", StandardStatus:"Active", ListPrice:719000, City:"Fairhope", UnparsedAddress:"14 Volanta Ave", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2510},
+];
+
+const CRAWLER_UA_PATTERN = /facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|WhatsApp|Discordbot|TelegramBot|Pinterest|redditbot|Googlebot/i;
+
+app.get('/', (req, res, next) => {
+  const ua = req.headers['user-agent'] || '';
+  const listingKey = req.query.listing;
+  if (!listingKey || !CRAWLER_UA_PATTERN.test(ua)) return next(); // normal visitors -> fall through to the SPA
+
+  const listing = MOCK_LISTINGS.find(l => l.ListingKey === listingKey);
+  if (!listing) return next();
+
+  const title = `${listing.UnparsedAddress}, ${listing.City} — $${listing.ListPrice.toLocaleString()}`;
+  const desc = `${listing.BedroomsTotal} bd · ${listing.BathroomsTotalInteger} ba · ${listing.LivingArea.toLocaleString()} sqft — Avani & Co. Real Estate, Southern Sands`;
+  const pageUrl = `${req.protocol}://${req.get('host')}/?listing=${encodeURIComponent(listingKey)}`;
+  const imageUrl = `${req.protocol}://${req.get('host')}/assets/logo.png`;
+
+  res.send(`<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${desc}">
+<meta property="og:image" content="${imageUrl}">
+<meta property="og:url" content="${pageUrl}">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta http-equiv="refresh" content="0; url=${pageUrl}">
+</head><body>Redirecting to ${title}...</body></html>`);
+});
+
+app.get('/api/mock-listings', (req, res) => {
+  res.json({ value: MOCK_LISTINGS });
+});
+
 // ---------- static site ----------
 app.use(express.static(path.join(__dirname, 'public')));
 
