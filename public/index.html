@@ -256,8 +256,6 @@ return json.keys || [];
 function switchView(v){
 document.getElementById('view-site').classList.toggle('active', v==='site');
 document.getElementById('view-crm').classList.toggle('active', v==='crm');
-document.getElementById('tab-site').classList.toggle('active', v==='site');
-document.getElementById('tab-crm').classList.toggle('active', v==='crm');
 if(v==='crm') initCRM();
 }
 
