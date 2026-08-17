@@ -1215,7 +1215,9 @@ const res = await fetch('/api/agent/create', {method:'POST', headers:{'Content-T
 const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't add agent."); return; }
 closeAgentModal();
-showToast(`${name} added — a welcome email with their login was sent to ${email}.`);
+if(data.emailStatus === 'sent') showToast(`${name} added — welcome email sent successfully to ${email}.`);
+else if(data.emailStatus && data.emailStatus.startsWith('failed')) showToast(`${name} added, but the email failed: ${data.emailStatus.replace('failed: ','')}`);
+else showToast(`${name} added, but email isn't configured yet.`);
 loadAgents();
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
@@ -1231,7 +1233,9 @@ try{
 const res = await fetch(`/api/agent/${id}/reset-password`, {method:'POST'});
 const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't reset password."); return; }
-showToast(`${name}'s password was reset — they've been emailed a new temporary one.`);
+if(data.emailStatus === 'sent') showToast(`${name}'s password was reset — email sent successfully.`);
+else if(data.emailStatus && data.emailStatus.startsWith('failed')) showToast(`Password reset, but the email failed: ${data.emailStatus.replace('failed: ','')}`);
+else showToast(`${name}'s password was reset, but email isn't configured yet.`);
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function deleteAgent(id){
