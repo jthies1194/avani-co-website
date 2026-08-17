@@ -79,6 +79,10 @@
 .testimonial-card .author{font-size:12.5px;font-weight:600;color:var(--marsh);}
 .testimonial-item-admin{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:4px;margin-bottom:10px;}
 .testimonial-item-admin .txt{font-size:12.5px;flex:1;}
+.pending-review-item{border:1px solid var(--line);border-radius:4px;padding:14px;margin-bottom:10px;background:var(--sand-light);}
+.pending-review-item .txt{font-size:13px;font-style:italic;margin-bottom:8px;line-height:1.5;}
+.pending-review-item .meta{font-size:11px;color:var(--driftwood);margin-bottom:10px;}
+.pending-review-item .actions{display:flex;gap:8px;}
 .welcome-banner{display:none;max-width:1180px;margin:0 auto 28px;background:linear-gradient(135deg, var(--marsh) 0%, var(--marsh-deep) 100%);border-radius:6px;padding:18px 24px;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:0 10px 28px rgba(21,65,196,0.18);}
 .welcome-banner.show{display:flex;}
 .welcome-banner .msg{color:var(--sand-light);font-size:14px;}
@@ -292,12 +296,35 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 <button class="btn-sm primary" onclick="addTestimonial()">Add testimonial</button>
 </div>
 
-<h4>5. Google review link</h4>
-<p>Paste your Google Business review link here — used by the "Request review" button on each lead.</p>
+<h4>5. Your Google review link</h4>
+<p>Each agent (and broker) has their own link here — used by the "Request review" button on leads assigned to you.</p>
 <div style="display:flex; gap:10px; margin-top:10px; align-items:center; flex-wrap:wrap;">
-<input id="google-review-link-input" placeholder="https://g.page/r/..." style="flex:1; min-width:200px; border:1px solid var(--line); border-radius:4px; padding:8px 10px;">
-<button class="btn-sm primary" onclick="saveGoogleReviewLink()">Save</button>
+<input id="my-review-link-input" placeholder="https://g.page/r/..." style="flex:1; min-width:200px; border:1px solid var(--line); border-radius:4px; padding:8px 10px;">
+<button class="btn-sm primary" onclick="saveMyReviewLink()">Save</button>
 </div>
+</div>
+</div>
+
+<div class="setup-panel" id="change-password-panel">
+<div class="setup-head" onclick="toggleChangePasswordPanel()">
+<h3>🔑 Change my password</h3>
+<span id="change-password-caret">▾</span>
+</div>
+<div class="setup-body" id="change-password-body">
+<div class="field"><label>Current password</label><input type="password" id="cp-current"></div>
+<div class="field"><label>New password</label><input type="password" id="cp-new" minlength="6" placeholder="At least 6 characters"></div>
+<button class="btn-sm primary" onclick="submitChangePassword()">Update password</button>
+</div>
+</div>
+
+<div class="setup-panel" id="pending-reviews-panel">
+<div class="setup-head" onclick="togglePendingReviewsPanel()">
+<h3>⭐ Pending reviews to approve</h3>
+<span id="pending-reviews-caret">▾</span>
+</div>
+<div class="setup-body" id="pending-reviews-body">
+<p>Clients can leave a review directly on the site. Nothing shows publicly until you approve it here.</p>
+<div id="pending-reviews-list" style="margin-top:10px;"></div>
 </div>
 </div>
 
@@ -345,12 +372,11 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 <div class="modal">
 <button class="modal-close" onclick="closeAgentModal()">&times;</button>
 <h3>Add an agent</h3>
-<div class="sub">They'll sign in with the email and password you set here.</div>
+<div class="sub">They'll get a welcome email with a temporary password and login instructions.</div>
 <form id="agent-form" onsubmit="submitAgent(event)">
 <div class="field"><label>Name</label><input required id="af-name"></div>
 <div class="field"><label>Email</label><input type="email" required id="af-email"></div>
 <div class="field"><label>Phone</label><input id="af-phone"></div>
-<div class="field"><label>Password</label><input type="password" required id="af-password" minlength="6" placeholder="At least 6 characters"></div>
 <div class="field"><label>Role</label><select id="af-role"><option value="agent">Agent (sees only their own leads)</option><option value="broker">Broker (sees everything, can manage agents)</option></select></div>
 <button class="submit-btn" type="submit">Add agent</button>
 </form>
@@ -425,6 +451,21 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 <div id="activity-searches"></div>
 <div class="account-section-title">Favorites</div>
 <div id="activity-favorites"></div>
+</div>
+</div>
+
+<!-- ============ LEAVE A REVIEW MODAL ============ -->
+<div class="modal-overlay" id="leave-review-overlay">
+<div class="modal">
+<button class="modal-close" onclick="closeLeaveReview()">&times;</button>
+<h3>Leave a review</h3>
+<div class="sub" id="leave-review-sub">We'd love to hear about your experience.</div>
+<form id="leave-review-form" onsubmit="submitLeaveReview(event)">
+<div class="field"><label>Your name</label><input required id="rv-name"></div>
+<div class="field"><label>Your review</label><textarea required id="rv-text" placeholder="Tell us about your experience..."></textarea></div>
+<button class="submit-btn" type="submit">Submit review</button>
+</form>
+<div class="view-limit-note">Reviews are checked before they're shown publicly.</div>
 </div>
 </div>
 
@@ -1079,7 +1120,8 @@ loadLeads();
 loadEmailConfigIntoForm();
 loadViewLimitSetting();
 loadTestimonialAdmin();
-loadGoogleReviewLinkSetting();
+loadMyReviewLink();
+loadPendingReviews();
 if(currentAgent.role === 'broker') loadAgents();
 }
 function logoutAgent(){
@@ -1104,7 +1146,7 @@ list.innerHTML = agents.map(a => `
 <div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span></div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}</div>
 </div>
-${a.id===currentAgent.id ? '' : `<button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
 </div>
 `).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
 
@@ -1134,15 +1176,22 @@ e.preventDefault();
 const name = document.getElementById('af-name').value.trim();
 const email = document.getElementById('af-email').value.trim();
 const phone = document.getElementById('af-phone').value.trim();
-const password = document.getElementById('af-password').value;
 const role = document.getElementById('af-role').value;
 try{
-const res = await fetch('/api/agent/create', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email,phone,password,role})});
+const res = await fetch('/api/agent/create', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email,phone,role})});
 const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't add agent."); return; }
 closeAgentModal();
-showToast(`${name} added — share their email and password with them directly.`);
+showToast(`${name} added — a welcome email with their login was sent to ${email}.`);
 loadAgents();
+}catch(e){ showToast("Something went wrong — please try again."); }
+}
+async function resetAgentPassword(id, name){
+try{
+const res = await fetch(`/api/agent/${id}/reset-password`, {method:'POST'});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't reset password."); return; }
+showToast(`${name}'s password was reset — they've been emailed a new temporary one.`);
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function deleteAgent(id){
@@ -1352,7 +1401,7 @@ const text = document.getElementById('testimonial-text').value.trim();
 const author = document.getElementById('testimonial-author').value.trim();
 if(!text || !author){ showToast("Enter both the testimonial text and a name."); return; }
 const list = await storeGet('settings:testimonials') || [];
-list.push({text, author});
+list.push({id: 'rv_'+Date.now(), text, author, status: 'approved', submittedAt: new Date().toISOString()});
 await storeSet('settings:testimonials', list);
 document.getElementById('testimonial-text').value = '';
 document.getElementById('testimonial-author').value = '';
@@ -1368,27 +1417,120 @@ loadTestimonialAdmin();
 loadTestimonials();
 }
 
-async function loadGoogleReviewLinkSetting(){
-const val = await storeGet('settings:googleReviewLink');
-const input = document.getElementById('google-review-link-input');
-if(input) input.value = val || '';
+function loadMyReviewLink(){
+const input = document.getElementById('my-review-link-input');
+if(input) input.value = currentAgent.reviewLink || '';
 }
-async function saveGoogleReviewLink(){
-const val = document.getElementById('google-review-link-input').value.trim();
-await storeSet('settings:googleReviewLink', val);
-showToast("Google review link saved.");
+async function saveMyReviewLink(){
+const val = document.getElementById('my-review-link-input').value.trim();
+try{
+await fetch(`/api/agent/${currentAgent.id}/review-link`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reviewLink: val})});
+currentAgent.reviewLink = val;
+showToast("Your review link is saved.");
+}catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function requestReview(leadId){
 const lead = await storeGet('lead:'+leadId);
 if(!lead || !lead.email){ showToast("This lead doesn't have an email on file."); return; }
-const reviewLink = await storeGet('settings:googleReviewLink');
-if(!reviewLink){ showToast("Add your Google review link in the setup panel first."); return; }
+let reviewAgentId = currentAgent.id;
+let reviewAgentName = currentAgent.name;
+let reviewLink = currentAgent.reviewLink || '';
+if(lead.assignedAgentId){
 try{
-const res = await fetch('/api/request-review', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({toEmail: lead.email, toName: lead.name, reviewLink})});
+const res = await fetch('/api/agent/list');
+const data = await res.json();
+const assigned = (data.agents||[]).find(a=>a.id===lead.assignedAgentId);
+if(assigned){ reviewAgentId = assigned.id; reviewAgentName = assigned.name; reviewLink = assigned.reviewLink || ''; }
+}catch(e){}
+}
+try{
+const res = await fetch('/api/request-review', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({toEmail: lead.email, toName: lead.name, reviewLink, agentId: reviewAgentId, agentName: reviewAgentName})});
 const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't send the review request."); return; }
 showToast(`Review request sent to ${lead.name}.`);
 }catch(e){ showToast("Something went wrong — please try again."); }
+}
+
+// ---------- Public "Leave a review" collection (goes into an approval queue) ----------
+let leaveReviewAgentId = '';
+function maybeOpenLeaveReviewFromURL(){
+const params = new URLSearchParams(location.search);
+if(params.get('leaveReview') === '1'){
+leaveReviewAgentId = params.get('agent') || '';
+document.getElementById('leave-review-overlay').classList.add('active');
+}
+}
+function closeLeaveReview(){ document.getElementById('leave-review-overlay').classList.remove('active'); }
+async function submitLeaveReview(e){
+e.preventDefault();
+const author = document.getElementById('rv-name').value.trim();
+const text = document.getElementById('rv-text').value.trim();
+if(!author || !text) return;
+const list = await storeGet('settings:testimonials') || [];
+list.push({ id: 'rv_'+Date.now(), text, author, agentId: leaveReviewAgentId, status: 'pending', submittedAt: new Date().toISOString() });
+await storeSet('settings:testimonials', list);
+closeLeaveReview();
+showToast("Thank you! Your review has been submitted.");
+}
+
+async function loadPendingReviews(){
+const list = await storeGet('settings:testimonials') || [];
+const mine = currentAgent.role === 'broker'
+? list.filter(r => r.status === 'pending')
+: list.filter(r => r.status === 'pending' && r.agentId === currentAgent.id);
+const el = document.getElementById('pending-reviews-list');
+el.innerHTML = mine.map(r => `
+<div class="pending-review-item">
+<div class="txt">"${escapeHtml(r.text)}"</div>
+<div class="meta">— ${escapeHtml(r.author)} · ${fmtDate(r.submittedAt)}</div>
+<div class="actions">
+<button class="btn-sm primary" onclick="approveReview('${r.id}')">Approve</button>
+<button class="btn-sm" onclick="rejectReview('${r.id}')">Reject</button>
+</div>
+</div>
+`).join('') || '<p style="font-size:12.5px; color:var(--driftwood);">No pending reviews right now.</p>';
+}
+async function approveReview(id){
+const list = await storeGet('settings:testimonials') || [];
+const item = list.find(r => r.id === id);
+if(item) item.status = 'approved';
+await storeSet('settings:testimonials', list);
+showToast("Review approved — now visible on the site.");
+loadPendingReviews();
+loadTestimonialAdmin();
+}
+async function rejectReview(id){
+let list = await storeGet('settings:testimonials') || [];
+list = list.filter(r => r.id !== id);
+await storeSet('settings:testimonials', list);
+showToast("Review rejected.");
+loadPendingReviews();
+}
+function toggleChangePasswordPanel(){
+const body = document.getElementById('change-password-body');
+const caret = document.getElementById('change-password-caret');
+body.classList.toggle('open');
+caret.textContent = body.classList.contains('open') ? '▴' : '▾';
+}
+async function submitChangePassword(){
+const currentPassword = document.getElementById('cp-current').value;
+const newPassword = document.getElementById('cp-new').value;
+if(!currentPassword || !newPassword){ showToast("Fill in both fields."); return; }
+try{
+const res = await fetch(`/api/agent/${currentAgent.id}/change-password`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({currentPassword, newPassword})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't update password."); return; }
+document.getElementById('cp-current').value = '';
+document.getElementById('cp-new').value = '';
+showToast("Password updated.");
+}catch(e){ showToast("Something went wrong — please try again."); }
+}
+
+function togglePendingReviewsPanel(){
+const body = document.getElementById('pending-reviews-body');
+const caret = document.getElementById('pending-reviews-caret');
+body.classList.toggle('open');
+caret.textContent = body.classList.contains('open') ? '▴' : '▾';
 }
 
 async function loadEmailConfigIntoForm(){
@@ -1470,7 +1612,8 @@ loadLeads();
 }
 
 async function loadTestimonials(){
-const list = await storeGet('settings:testimonials') || [];
+const all = await storeGet('settings:testimonials') || [];
+const list = all.filter(t => t.status === 'approved' || !t.status);
 const section = document.getElementById('testimonials-section');
 const grid = document.getElementById('testimonials-grid');
 if(!list.length){ section.classList.remove('show'); return; }
@@ -1491,6 +1634,7 @@ navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 renderListings();
 loadTestimonials();
+maybeOpenLeaveReviewFromURL();
 restoreClientSession().then(()=>{ updateClientLoginLabel(); renderListings(); });
 </script>
 </body>
