@@ -327,6 +327,16 @@ app.post('/api/draft-reply', async (req, res) => {
   }
 });
 
+// ---------- Broker first-time setup security ----------
+// Prevents anyone from self-provisioning a broker account if the agent
+// list ever appears empty (e.g. during a database hiccup). Only someone
+// who knows this secret key can complete broker setup.
+app.get('/api/broker-setup-check', (req, res) => {
+  const key = req.query.key || '';
+  const expected = process.env.BROKER_SETUP_KEY;
+  res.json({ allowed: !!expected && key === expected });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
