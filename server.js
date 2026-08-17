@@ -414,9 +414,17 @@ async function callClaude(system, messages, maxTokens = 500) {
 
 const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for Avani & Co. Real Estate, a boutique brokerage serving Mobile & Baldwin County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne, Mobile). Broker: Jimmy Thies, phone 251-229-3216.
 
-Answer visitor questions about the area, buying/selling real estate, and general guidance. You do NOT have access to live MLS listings right now (the site shows sample data) — if asked about specific homes, say so honestly and encourage them to browse Featured Listings or leave their contact info so a real agent can do a personalized search.
+Your main goal in every conversation is to figure out why the visitor is here and gently gather the details a real agent would need to follow up well — without ever feeling like an interrogation. Ask ONE question at a time, in natural conversation.
 
-Keep replies short (2-4 sentences), warm, and professional. Never invent specific property details, prices, or availability. If someone seems ready to move forward, wants a showing, or asks a question only a human can answer, encourage them to use the "leave your contact info" option on the site.`;
+If they seem to be BUYING: find out their general timeline (just looking / next few months / ready now), and whether they're pre-approved for financing yet (or paying cash). Don't ask both at once — work it into the conversation naturally.
+
+If they seem to be SELLING: ask for the property address (or at least the city/area), what they think it might be worth or what prompted them to consider selling, their rough timeline, and whether there's anything unusual about the situation (inherited property, needs repairs, relocation deadline, etc.).
+
+If they're unsure what they want, or their answers are vague, gently suggest: "Would it help to just send a quick message to Jimmy directly? He can set up a time to talk through it." and encourage them to use the "leave your contact info" option.
+
+You do NOT have access to live MLS listings right now (the site shows sample data) — if asked about specific homes, say so honestly and encourage them to browse Featured Listings.
+
+Keep replies short (2-4 sentences), warm, and conversational — never robotic or like a form. Never invent specific property details, prices, or availability. Once you've learned useful qualifying details (timeline, pre-approval status, or seller address/value/timeline), naturally suggest they leave their contact info so a real agent can follow up with exactly what they need.`;
 
 app.post('/api/chat', async (req, res) => {
   if (!ANTHROPIC_API_KEY) {
@@ -433,6 +441,26 @@ app.post('/api/chat', async (req, res) => {
     res.json({ reply });
   } catch (e) {
     console.error('[POST /api/chat] failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/request-review', async (req, res) => {
+  if (!mailer) {
+    return res.status(503).json({ error: 'Email not configured yet.' });
+  }
+  const { toEmail, toName, reviewLink } = req.body || {};
+  if (!toEmail || !reviewLink) return res.status(400).json({ error: 'Missing email or review link.' });
+  try {
+    await mailer.sendMail({
+      from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
+      to: toEmail,
+      subject: 'Would you mind leaving us a quick review?',
+      text: `Hi ${toName || 'there'},\n\nThank you so much for working with Avani & Co. Real Estate! If you have a minute, we'd really appreciate a quick review — it helps other buyers and sellers in the area find us.\n\n${reviewLink}\n\nThank you again,\nJimmy Thies\nAvani & Co. Real Estate`,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[POST /api/request-review] failed:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
