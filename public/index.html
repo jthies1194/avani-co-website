@@ -194,6 +194,10 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 </div>
 
 <div id="crm-main" class="crm-wrap" style="display:none;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+<div id="crm-signed-in-as" style="font-size:12.5px; color:var(--driftwood);"></div>
+<button class="btn-sm" onclick="logoutAgent()">Log out</button>
+</div>
 <div class="stats-row" id="stats-row"></div>
 
 <div class="crm-toolbar">
@@ -947,10 +951,17 @@ function unlockCRM(){
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
 document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
+document.getElementById('crm-signed-in-as').textContent = `Signed in as ${currentAgent.name} (${currentAgent.role})`;
 loadLeads();
 loadEmailConfigIntoForm();
 loadViewLimitSetting();
 if(currentAgent.role === 'broker') loadAgents();
+}
+function logoutAgent(){
+currentAgent = null;
+document.getElementById('crm-main').style.display='none';
+document.getElementById('gate-input') && (document.getElementById('gate-input').value = '');
+initCRM();
 }
 
 async function loadAgents(){
