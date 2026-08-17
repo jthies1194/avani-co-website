@@ -55,7 +55,28 @@
 .chat-input-row input{flex:1;border:1px solid var(--line);border-radius:20px;padding:9px 14px;font-family:'Public Sans',sans-serif;font-size:13px;}
 .chat-input-row button{background:var(--marsh);color:var(--sand-light);border:none;border-radius:20px;padding:9px 16px;font-size:12px;font-weight:600;}
 .chat-cta{margin:0 12px 12px; text-align:center;}
-.chat-cta button{background:none;border:1px solid var(--coral);color:var(--coral);border-radius:20px;padding:7px 14px;font-size:11.5px;font-weight:600;}</style>
+.chat-cta button{background:none;border:1px solid var(--coral);color:var(--coral);border-radius:20px;padding:7px 14px;font-size:11.5px;font-weight:600;}
+.fav-btn{position:absolute;bottom:10px;left:10px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.92);border:none;display:flex;align-items:center;justify-content:center;}
+.fav-btn svg{width:16px;height:16px;stroke:var(--marsh);}
+.fav-btn.active svg{fill:var(--coral);stroke:var(--coral);}
+.auth-tabs{display:flex;gap:4px;margin-bottom:16px;background:var(--sand);border-radius:999px;padding:4px;}
+.auth-tabs button{flex:1;border:none;background:transparent;padding:8px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--driftwood);}
+.auth-tabs button.active{background:var(--marsh);color:var(--sand-light);}
+.auth-form{display:none;}
+.auth-form.active{display:block;}
+.save-search-btn{border:1px solid var(--coral);background:transparent;color:var(--coral);padding:8px 14px;border-radius:2px;font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;}
+.save-search-btn:hover{background:var(--coral);color:var(--white);}
+.account-section-title{font-family:'Fraunces',serif;font-size:15px;color:var(--marsh);margin:18px 0 10px;}
+.account-section-title:first-child{margin-top:0;}
+.saved-search-chip{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:8px;font-size:13px;}
+.saved-search-chip button{background:none;border:none;font-size:11px;color:var(--driftwood);text-decoration:underline;}
+.fav-mini-card{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:8px;font-size:13px;cursor:pointer;}
+.welcome-banner{display:none;max-width:1180px;margin:0 auto 28px;background:linear-gradient(135deg, var(--marsh) 0%, var(--marsh-deep) 100%);border-radius:6px;padding:18px 24px;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:0 10px 28px rgba(21,65,196,0.18);}
+.welcome-banner.show{display:flex;}
+.welcome-banner .msg{color:var(--sand-light);font-size:14px;}
+.welcome-banner .msg strong{font-family:'Fraunces',serif;font-weight:500;color:var(--coral);}
+.welcome-banner a.call-btn{background:var(--coral);color:var(--white);text-decoration:none;padding:11px 22px;border-radius:2px;font-weight:700;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:8px;}
+.welcome-banner a.call-btn svg{width:15px;height:15px;}</style>
 </head>
 <body>
 
@@ -105,12 +126,22 @@
 </div>
 
 <div class="section">
+<div class="welcome-banner" id="welcome-banner">
+<div class="msg"><strong id="welcome-name">Welcome back!</strong><br>Questions about a home, or ready to schedule a showing? I'm here to help.</div>
+<a class="call-btn" href="tel:2512293216">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+Call Jimmy · 251-229-3216
+</a>
+</div>
 <div class="placeholder-note">
 <strong>Note:</strong> the listings below are sample data, not live MLS. Once your BCMLS / Gulf Coast Mobile Assn IDX or RESO Web API credentials are wired in, this section pulls real, current listings automatically — see the <strong>Data Connection</strong> panel in the Agent CRM tab for how.
 </div>
 <div class="section-head">
 <h2>Featured listings</h2>
+<div style="display:flex; align-items:center; gap:14px;">
 <div class="count mono" id="listing-count">— homes</div>
+<button class="save-search-btn" onclick="saveCurrentSearch()">☆ Save this search</button>
+</div>
 </div>
 <div class="grid" id="listing-grid"></div>
 </div>
@@ -150,6 +181,8 @@
 Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate brokerage in the State of Alabama, license #000176513-0. All information deemed reliable but not guaranteed.
 </div>
 <button onclick="switchView('crm')" style="background:none; border:none; color:var(--driftwood); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; text-decoration:underline; text-underline-offset:3px; padding:0;">Agent Login</button>
+<span style="color:var(--line); margin:0 10px;">·</span>
+<button onclick="openClientAuthOrAccount()" id="client-login-link" style="background:none; border:none; color:var(--driftwood); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; text-decoration:underline; text-underline-offset:3px; padding:0;">Client Login</button>
 </footer>
 </div>
 
@@ -281,18 +314,55 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 </div>
 </div>
 
-<!-- ============ ACCOUNT GATE MODAL ============ -->
+<!-- ============ ACCOUNT GATE / CLIENT LOGIN MODAL ============ -->
 <div class="modal-overlay" id="account-gate-overlay">
 <div class="modal">
 <button class="modal-close" onclick="closeAccountGate()">&times;</button>
-<h3>Keep browsing free</h3>
-<div class="sub" id="account-gate-sub">You've viewed your free listings. Create a free account to keep browsing homes.</div>
-<form id="account-gate-form" onsubmit="submitAccountGate(event)">
-<div class="field"><label>Name</label><input required id="ag-name"></div>
-<div class="field"><label>Email</label><input type="email" required id="ag-email"></div>
+<h3>Your free account</h3>
+<div class="sub" id="account-gate-sub">Create a free account to save favorites, save searches, and keep browsing.</div>
+<div class="auth-tabs">
+<button id="auth-tab-signup" class="active" onclick="switchAuthTab('signup')">Sign up</button>
+<button id="auth-tab-login" onclick="switchAuthTab('login')">Log in</button>
+</div>
+<form id="signup-form" class="auth-form active" onsubmit="submitClientSignup(event)">
+<div class="field"><label>Name</label><input required id="su-name"></div>
+<div class="field"><label>Email</label><input type="email" required id="su-email"></div>
+<div class="field"><label>Password</label><input type="password" required minlength="6" id="su-password" placeholder="At least 6 characters"></div>
 <button class="submit-btn" type="submit">Create free account</button>
 </form>
-<div class="view-limit-note">No spam — just unlocks unlimited browsing on this device.</div>
+<form id="login-form" class="auth-form" onsubmit="submitClientLogin(event)">
+<div class="field"><label>Email</label><input type="email" required id="li-email"></div>
+<div class="field"><label>Password</label><input type="password" required id="li-password"></div>
+<button class="submit-btn" type="submit">Log in</button>
+</form>
+<div class="view-limit-note">No spam — just lets you save favorites and pick up where you left off.</div>
+</div>
+</div>
+
+<!-- ============ MY ACCOUNT MODAL ============ -->
+<div class="modal-overlay" id="my-account-overlay">
+<div class="modal">
+<button class="modal-close" onclick="closeMyAccount()">&times;</button>
+<h3 id="my-account-name">My Account</h3>
+<div class="sub">Your saved favorites and searches.</div>
+<div class="account-section-title">Saved searches</div>
+<div id="my-saved-searches"></div>
+<div class="account-section-title">Favorites</div>
+<div id="my-favorites"></div>
+<button class="btn-sm" style="width:100%; margin-top:12px;" onclick="logoutClient()">Log out</button>
+</div>
+</div>
+
+<!-- ============ CLIENT ACTIVITY MODAL (for agents) ============ -->
+<div class="modal-overlay" id="activity-modal-overlay">
+<div class="modal">
+<button class="modal-close" onclick="closeActivityModal()">&times;</button>
+<h3 id="activity-modal-name">Client activity</h3>
+<div class="sub">Live view of what they're searching for and have saved.</div>
+<div class="account-section-title">Saved searches</div>
+<div id="activity-searches"></div>
+<div class="account-section-title">Favorites</div>
+<div id="activity-favorites"></div>
 </div>
 </div>
 
@@ -421,6 +491,9 @@ return `
 ${HOUSE_ICON}
 <div class="status-badge ${l.StandardStatus==='Pending'?'pending':''}">${l.StandardStatus}</div>
 <div class="card-qr" title="Scan for this listing"><img src="${qrImg}" alt="QR code for MLS ${l.ListingKey}" loading="lazy"></div>
+<button class="fav-btn ${isFavorited(l.ListingKey)?'active':''}" onclick="event.stopPropagation(); toggleFavorite('${l.ListingKey}')" title="Save favorite">
+<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+</button>
 <div class="price-tag">$${l.ListPrice.toLocaleString()}</div>
 </div>
 <div class="card-body">
@@ -469,7 +542,7 @@ const viewed = getViewedListings();
 if(!viewed.includes(key)){ viewed.push(key); localStorage.setItem('viewedListings', JSON.stringify(viewed)); }
 }
 function isAccountUnlocked(){
-return localStorage.getItem('accountUnlocked') === 'true';
+return !!currentClient || localStorage.getItem('accountUnlocked') === 'true';
 }
 
 let currentDetailListing = null;
@@ -519,22 +592,157 @@ navigator.clipboard.writeText(url).then(()=> showToast("Link copied!")).catch(()
 }
 }
 
+// ---------- Client accounts (real login, favorites, saved searches) ----------
+let currentClient = null;
+
+async function restoreClientSession(){
+const savedId = localStorage.getItem('clientId');
+if(!savedId) return;
+try{
+const res = await fetch('/api/client/' + encodeURIComponent(savedId));
+const data = await res.json();
+if(res.ok && data.client){ currentClient = data.client; updateClientLoginLabel(); }
+else localStorage.removeItem('clientId');
+}catch(e){}
+}
+function updateClientLoginLabel(){
+const link = document.getElementById('client-login-link');
+if(link) link.textContent = currentClient ? `My Account (${currentClient.name.split(' ')[0]})` : 'Client Login';
+const banner = document.getElementById('welcome-banner');
+if(banner){
+banner.classList.toggle('show', !!currentClient);
+if(currentClient) document.getElementById('welcome-name').textContent = `Welcome back, ${currentClient.name.split(' ')[0]}!`;
+}
+}
+function openClientAuthOrAccount(){
+if(currentClient) openMyAccount();
+else { switchAuthTab('signup'); document.getElementById('account-gate-overlay').classList.add('active'); }
+}
 function closeAccountGate(){ document.getElementById('account-gate-overlay').classList.remove('active'); }
-async function submitAccountGate(e){
+function switchAuthTab(tab){
+document.getElementById('auth-tab-signup').classList.toggle('active', tab==='signup');
+document.getElementById('auth-tab-login').classList.toggle('active', tab==='login');
+document.getElementById('signup-form').classList.toggle('active', tab==='signup');
+document.getElementById('login-form').classList.toggle('active', tab==='login');
+}
+async function submitClientSignup(e){
 e.preventDefault();
-const name = document.getElementById('ag-name').value.trim();
-const email = document.getElementById('ag-email').value.trim();
+const name = document.getElementById('su-name').value.trim();
+const email = document.getElementById('su-email').value.trim();
+const password = document.getElementById('su-password').value;
+try{
+const res = await fetch('/api/client/signup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email,password})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't create account."); return; }
+currentClient = data.client;
+localStorage.setItem('clientId', currentClient.id);
+updateClientLoginLabel();
 const lead = {
 id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
 name, email, phone: '', message: 'Created a free account to browse listings.',
 source: 'account-signup', mlsKey: '', listingLabel: '', stage: 'New', notes: '', assignedAgentId: '',
+clientId: currentClient.id,
 createdAt: new Date().toISOString(),
 };
-await storeSet('lead:'+lead.id, lead);
+storeSet('lead:'+lead.id, lead);
 sendLeadNotification(lead);
-localStorage.setItem('accountUnlocked', 'true');
 closeAccountGate();
-showToast(`Welcome, ${name.split(' ')[0]}! Browse as many homes as you'd like.`);
+showToast(`Welcome, ${name.split(' ')[0]}! Browse and save as many homes as you'd like.`);
+renderListings();
+}catch(err){ showToast("Something went wrong — please try again."); }
+}
+async function submitClientLogin(e){
+e.preventDefault();
+const email = document.getElementById('li-email').value.trim();
+const password = document.getElementById('li-password').value;
+try{
+const res = await fetch('/api/client/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email,password})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't log in."); return; }
+currentClient = data.client;
+localStorage.setItem('clientId', currentClient.id);
+updateClientLoginLabel();
+closeAccountGate();
+showToast(`Welcome back, ${currentClient.name.split(' ')[0]}!`);
+renderListings();
+}catch(err){ showToast("Something went wrong — please try again."); }
+}
+function logoutClient(){
+currentClient = null;
+localStorage.removeItem('clientId');
+updateClientLoginLabel();
+closeMyAccount();
+showToast("Logged out.");
+renderListings();
+}
+// Keeps the client's linked CRM lead updated with a quick summary of their
+// live activity, so the assigned agent can see interest at a glance without
+// needing to open the full activity view.
+async function syncActivityToLead(summary){
+if(!currentClient) return;
+try{
+const keys = await storeListKeys('lead:');
+for(const k of keys){
+const lead = await storeGet(k);
+if(lead && lead.clientId === currentClient.id){
+lead.notes = summary;
+await storeSet(k, lead);
+break;
+}
+}
+}catch(e){}
+}
+function isFavorited(key){
+return !!(currentClient && currentClient.favorites && currentClient.favorites.includes(key));
+}
+async function toggleFavorite(key){
+if(!currentClient){ switchAuthTab('signup'); document.getElementById('account-gate-overlay').classList.add('active'); return; }
+const favs = currentClient.favorites || [];
+currentClient.favorites = favs.includes(key) ? favs.filter(k=>k!==key) : [...favs, key];
+await fetch(`/api/client/${currentClient.id}/favorites`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({favorites: currentClient.favorites})});
+renderListings();
+syncActivityToLead(`${currentClient.favorites.length} favorite(s) saved.`);
+}
+async function saveCurrentSearch(){
+if(!currentClient){ switchAuthTab('signup'); document.getElementById('account-gate-overlay').classList.add('active'); return; }
+const search = {
+city: document.getElementById('f-city').value.trim(),
+beds: document.getElementById('f-beds').value,
+price: document.getElementById('f-price').value,
+label: [document.getElementById('f-city').value.trim() || 'All cities', document.getElementById('f-beds').value ? document.getElementById('f-beds').value+'+ bd' : ''].filter(Boolean).join(' · '),
+savedAt: new Date().toISOString(),
+};
+currentClient.savedSearches = [...(currentClient.savedSearches||[]), search];
+await fetch(`/api/client/${currentClient.id}/saved-searches`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({savedSearches: currentClient.savedSearches})});
+showToast("Search saved — find it under My Account.");
+syncActivityToLead(`Latest saved search: ${search.label}`);
+}
+function openMyAccount(){
+document.getElementById('my-account-name').textContent = `Hi, ${currentClient.name.split(' ')[0]}`;
+const searchesEl = document.getElementById('my-saved-searches');
+searchesEl.innerHTML = (currentClient.savedSearches||[]).length
+? currentClient.savedSearches.map((s,i)=>`<div class="saved-search-chip"><span onclick="applySavedSearch(${i})" style="cursor:pointer;">${escapeHtml(s.label)}</span><button onclick="removeSavedSearch(${i})">Remove</button></div>`).join('')
+: '<p style="font-size:13px; color:var(--driftwood);">No saved searches yet.</p>';
+const favsEl = document.getElementById('my-favorites');
+const favs = (currentClient.favorites||[]).map(key => ALL_LISTINGS.find(l=>l.ListingKey===key)).filter(Boolean);
+favsEl.innerHTML = favs.length
+? favs.map(l=>`<div class="fav-mini-card" onclick="closeMyAccount(); openListingDetail('${l.ListingKey}')"><span>${escapeHtml(l.UnparsedAddress)} — $${l.ListPrice.toLocaleString()}</span></div>`).join('')
+: '<p style="font-size:13px; color:var(--driftwood);">No favorites yet — tap the heart on any listing.</p>';
+document.getElementById('my-account-overlay').classList.add('active');
+}
+function closeMyAccount(){ document.getElementById('my-account-overlay').classList.remove('active'); }
+function applySavedSearch(i){
+const s = currentClient.savedSearches[i];
+document.getElementById('f-city').value = s.city || '';
+document.getElementById('f-beds').value = s.beds || '';
+document.getElementById('f-price').value = s.price || '';
+closeMyAccount();
+renderListings();
+}
+async function removeSavedSearch(i){
+currentClient.savedSearches.splice(i,1);
+await fetch(`/api/client/${currentClient.id}/saved-searches`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({savedSearches: currentClient.savedSearches})});
+openMyAccount();
 }
 
 // ---------- AI chat widget ----------
@@ -864,7 +1072,7 @@ tbody.innerHTML = shown.map(l=>`
   : escapeHtml(agentName(l.assignedAgentId))}</td>
 <td><select class="stage-select" onchange="updateStage('${l.id}',this.value)">${STAGES.map(s=>`<option ${s===l.stage?'selected':''}>${s}</option>`).join('')}</select></td>
 <td><input class="notes-input" value="${escapeHtml(l.notes||'')}" onchange="updateNotes('${l.id}',this.value)" placeholder="Add note..."></td>
-<td><button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button><button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
+<td>${l.clientId ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="openClientActivityModal('${l.clientId}')" title="View their searches & favorites">👁</button>` : ''}<button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button><button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
 </tr>
 `).join('');
 }
@@ -895,6 +1103,33 @@ async function deleteLead(id){
 await storeDelete('lead:'+id);
 loadLeads();
 }
+
+async function openClientActivityModal(clientId){
+document.getElementById('activity-modal-overlay').classList.add('active');
+document.getElementById('activity-modal-name').textContent = 'Loading…';
+document.getElementById('activity-searches').innerHTML = '';
+document.getElementById('activity-favorites').innerHTML = '';
+try{
+const res = await fetch('/api/client/' + encodeURIComponent(clientId));
+const data = await res.json();
+if(!res.ok || !data.client){ document.getElementById('activity-modal-name').textContent = "Couldn't load this client's activity."; return; }
+const c = data.client;
+document.getElementById('activity-modal-name').textContent = `${c.name}'s activity`;
+const searches = c.savedSearches || [];
+document.getElementById('activity-searches').innerHTML = searches.length
+? searches.map(s=>`<div class="saved-search-chip"><span>${escapeHtml(s.label)}</span><span style="font-size:11px; color:var(--driftwood);">${fmtDate(s.savedAt)}</span></div>`).join('')
+: '<p style="font-size:13px; color:var(--driftwood);">No saved searches yet.</p>';
+const favKeys = c.favorites || [];
+if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
+const favs = favKeys.map(key => ALL_LISTINGS.find(l=>l.ListingKey===key)).filter(Boolean);
+document.getElementById('activity-favorites').innerHTML = favs.length
+? favs.map(l=>`<div class="fav-mini-card">${escapeHtml(l.UnparsedAddress)} — $${l.ListPrice.toLocaleString()}</div>`).join('')
+: '<p style="font-size:13px; color:var(--driftwood);">No favorites saved yet.</p>';
+}catch(e){
+document.getElementById('activity-modal-name').textContent = "Couldn't load this client's activity.";
+}
+}
+function closeActivityModal(){ document.getElementById('activity-modal-overlay').classList.remove('active'); }
 
 async function openDraftModal(leadId){
 const lead = await storeGet('lead:'+leadId);
@@ -1045,6 +1280,7 @@ navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
 renderListings();
+restoreClientSession().then(()=>{ updateClientLoginLabel(); renderListings(); });
 </script>
 </body>
 </html>
