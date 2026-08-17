@@ -359,7 +359,13 @@ app.post('/api/agent/create', async (req, res) => {
         to: normalizedEmail,
         subject: 'Your Avani & Co. CRM login',
         text: `Hi ${name},\n\nYou've been added to the Avani & Co. Real Estate CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\nAvani & Co. Real Estate`,
-      }).catch(() => {});
+      }).then(() => {
+        console.log(`[agent welcome email] sent successfully to ${normalizedEmail}`);
+      }).catch((mailErr) => {
+        console.error(`[agent welcome email] FAILED to send to ${normalizedEmail}:`, mailErr.message);
+      });
+    } else {
+      console.warn(`[agent welcome email] SKIPPED for ${normalizedEmail} — mailer is not configured (GMAIL_USER/GMAIL_APP_PASSWORD missing).`);
     }
     res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' } });
   } catch (e) {
