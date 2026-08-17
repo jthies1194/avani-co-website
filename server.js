@@ -172,7 +172,7 @@ function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(check));
 }
 function clientPublic(row) {
-  return { id: row.id, name: row.name, email: row.email, favorites: row.favorites || [], savedSearches: row.saved_searches || [] };
+  return { id: row.id, name: row.name, email: row.email, favorites: row.favorites || [], savedSearches: row.saved_searches || [], createdAt: row.created_at || null, lastLogin: row.last_login || null };
 }
 
 app.post('/api/client/signup', async (req, res) => {
@@ -202,6 +202,7 @@ app.post('/api/client/login', async (req, res) => {
     const { data, error } = await supabase.from('clients').select('*').eq('email', normalizedEmail).maybeSingle();
     if (error || !data) return res.status(401).json({ error: 'No account found with that email.' });
     if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
+    await supabase.from('clients').update({ last_login: new Date().toISOString() }).eq('id', data.id);
     res.json({ ok: true, client: clientPublic(data) });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -233,7 +234,7 @@ app.post('/api/client/:id/saved-searches', async (req, res) => {
 
 // ---------- Agent/broker accounts (real email + password login) ----------
 function agentPublic(row) {
-  return { id: row.id, name: row.name, email: row.email, phone: row.phone || '', role: row.role, reviewLink: row.review_link || '' };
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone || '', role: row.role, reviewLink: row.review_link || '', active: row.active !== false, lastLogin: row.last_login || null, createdAt: row.created_at || null };
 }
 
 app.post('/api/agent/setup', async (req, res) => {
@@ -309,7 +310,21 @@ app.post('/api/agent/login', async (req, res) => {
     const { data, error } = await supabase.from('agents').select('*').eq('email', normalizedEmail).maybeSingle();
     if (error || !data) return res.status(401).json({ error: 'No account found with that email.' });
     if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
+    if (data.active === false) return res.status(403).json({ error: 'This account has been deactivated. Contact your broker.' });
+    await supabase.from('agents').update({ last_login: new Date().toISOString() }).eq('id', data.id);
     res.json({ ok: true, agent: agentPublic(data) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/agent/:id/set-active', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { active } = req.body || {};
+  try {
+    const { error } = await supabase.from('agents').update({ active: !!active }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -330,7 +345,7 @@ app.post('/api/agent/:id/review-link', async (req, res) => {
 app.get('/api/agent/list', async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const { data, error } = await supabase.from('agents').select('id,name,email,phone,role,review_link').order('name');
+    const { data, error } = await supabase.from('agents').select('id,name,email,phone,role,review_link,active,last_login,created_at').order('name');
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true, agents: (data || []).map(agentPublic) });
   } catch (e) {
