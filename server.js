@@ -156,6 +156,81 @@ if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
   console.warn('[startup] GMAIL_USER / GMAIL_APP_PASSWORD not set — lead email notifications are disabled until configured.');
 }
 
+// ---------- Client accounts (favorites + saved searches) ----------
+// Kept in a separate 'clients' table (never exposed via /api/kv) since it
+// holds password hashes — real credentials deserve real, dedicated handling.
+const crypto = require('crypto');
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, stored) {
+  const [salt, hash] = (stored || '').split(':');
+  if (!salt || !hash) return false;
+  const check = crypto.scryptSync(password, salt, 64).toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(check));
+}
+function clientPublic(row) {
+  return { id: row.id, name: row.name, email: row.email, favorites: row.favorites || [], savedSearches: row.saved_searches || [] };
+}
+
+app.post('/api/client/signup', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { name, email, password } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  const normalizedEmail = email.trim().toLowerCase();
+  try {
+    const { data: existing } = await supabase.from('clients').select('id').eq('email', normalizedEmail).maybeSingle();
+    if (existing) return res.status(409).json({ error: 'An account with that email already exists — try logging in instead.' });
+    const id = 'client_' + Date.now();
+    const password_hash = hashPassword(password);
+    const { error } = await supabase.from('clients').insert({ id, name, email: normalizedEmail, password_hash, favorites: [], saved_searches: [] });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, client: { id, name, email: normalizedEmail, favorites: [], savedSearches: [] } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/client/login', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { email, password } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  try {
+    const { data, error } = await supabase.from('clients').select('*').eq('email', normalizedEmail).maybeSingle();
+    if (error || !data) return res.status(401).json({ error: 'No account found with that email.' });
+    if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
+    res.json({ ok: true, client: clientPublic(data) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/client/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabase.from('clients').select('*').eq('id', req.params.id).maybeSingle();
+  if (error || !data) return res.status(404).json({ error: 'Account not found.' });
+  res.json({ ok: true, client: clientPublic(data) });
+});
+
+app.post('/api/client/:id/favorites', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { favorites } = req.body || {};
+  const { error } = await supabase.from('clients').update({ favorites: favorites || [] }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+app.post('/api/client/:id/saved-searches', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { savedSearches } = req.body || {};
+  const { error } = await supabase.from('clients').update({ saved_searches: savedSearches || [] }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email not configured yet. Set GMAIL_USER and GMAIL_APP_PASSWORD in the hosting environment variables.' });
