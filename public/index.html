@@ -3,7 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Avani & Co. Real Estate | Southern Sands</title>
+<title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
+<meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
+<link rel="canonical" href="https://bamacoast.com/">
+<meta property="og:title" content="Avani & Co. Real Estate | Southern Sands">
+<meta property="og:description" content="Search homes and condos across Mobile & Baldwin County, Alabama — straight from a real local agent.">
+<meta property="og:image" content="https://bamacoast.com/assets/logo.png">
+<meta property="og:url" content="https://bamacoast.com/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="robots" content="index, follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="icon" type="image/png" href="assets/logo.png">
@@ -83,6 +92,9 @@
 .pending-review-item .txt{font-size:13px;font-style:italic;margin-bottom:8px;line-height:1.5;}
 .pending-review-item .meta{font-size:11px;color:var(--driftwood);margin-bottom:10px;}
 .pending-review-item .actions{display:flex;gap:8px;}
+.closed-deal-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:8px;font-size:12.5px;}
+.closed-deal-item .addr{font-weight:600;color:var(--marsh);}
+.closed-deal-item .details{color:var(--driftwood); font-size:11.5px;}
 .welcome-banner{display:none;max-width:1180px;margin:0 auto 28px;background:linear-gradient(135deg, var(--marsh) 0%, var(--marsh-deep) 100%);border-radius:6px;padding:18px 24px;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:0 10px 28px rgba(21,65,196,0.18);}
 .welcome-banner.show{display:flex;}
 .welcome-banner .msg{color:var(--sand-light);font-size:14px;}
@@ -317,6 +329,25 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 </div>
 </div>
 
+<div class="setup-panel" id="closed-deals-panel">
+<div class="setup-head" onclick="toggleClosedDealsPanel()">
+<h3>💰 Closed deals & commissions</h3>
+<span id="closed-deals-caret">▾</span>
+</div>
+<div class="setup-body" id="closed-deals-body">
+<p>Log a closed deal to keep a running tally of what you've sold and commission earned.</p>
+<div id="closed-deals-tally" style="font-family:'Fraunces',serif; font-size:20px; color:var(--marsh); margin:10px 0 16px;"></div>
+<div id="closed-deals-list" style="margin-bottom:16px;"></div>
+<div class="setup-grid">
+<input id="cd-address" placeholder="Property address">
+<input id="cd-price" type="number" placeholder="Sale price ($)">
+<input id="cd-date" type="date">
+<input id="cd-commission" type="number" placeholder="Your commission ($)">
+<button class="btn-sm primary" onclick="addClosedDeal()" style="grid-column:1/-1;">Log closed deal</button>
+</div>
+</div>
+</div>
+
 <div class="setup-panel" id="pending-reviews-panel">
 <div class="setup-head" onclick="togglePendingReviewsPanel()">
 <h3>⭐ Pending reviews to approve</h3>
@@ -446,6 +477,7 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 <div class="modal">
 <button class="modal-close" onclick="closeActivityModal()">&times;</button>
 <h3 id="activity-modal-name">Client activity</h3>
+<p id="activity-modal-meta" style="font-size:11.5px; color:var(--driftwood); margin:0 0 8px;"></p>
 <div class="sub">Live view of what they're searching for and have saved.</div>
 <div class="account-section-title">Saved searches</div>
 <div id="activity-searches"></div>
@@ -1122,6 +1154,7 @@ loadViewLimitSetting();
 loadTestimonialAdmin();
 loadMyReviewLink();
 loadPendingReviews();
+loadClosedDeals();
 if(currentAgent.role === 'broker') loadAgents();
 }
 function logoutAgent(){
@@ -1143,10 +1176,10 @@ const list = document.getElementById('agent-list');
 list.innerHTML = agents.map(a => `
 <div class="agent-row">
 <div class="info">
-<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span></div>
-<div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}</div>
+<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}</div>
+<div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
 </div>
-${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
 </div>
 `).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
 
@@ -1183,6 +1216,13 @@ const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't add agent."); return; }
 closeAgentModal();
 showToast(`${name} added — a welcome email with their login was sent to ${email}.`);
+loadAgents();
+}catch(e){ showToast("Something went wrong — please try again."); }
+}
+async function toggleAgentActive(id, makeActive){
+try{
+await fetch(`/api/agent/${id}/set-active`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({active: makeActive})});
+showToast(makeActive ? "Agent unlocked." : "Agent locked out.");
 loadAgents();
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
@@ -1306,6 +1346,7 @@ const data = await res.json();
 if(!res.ok || !data.client){ document.getElementById('activity-modal-name').textContent = "Couldn't load this client's activity."; return; }
 const c = data.client;
 document.getElementById('activity-modal-name').textContent = `${c.name}'s activity`;
+document.getElementById('activity-modal-meta').textContent = `Member since ${c.createdAt ? fmtDate(c.createdAt) : '—'} · Last active ${c.lastLogin ? fmtDate(c.lastLogin) : 'never logged back in'}`;
 const searches = c.savedSearches || [];
 document.getElementById('activity-searches').innerHTML = searches.length
 ? searches.map(s=>`<div class="saved-search-chip"><span>${escapeHtml(s.label)}</span><span style="font-size:11px; color:var(--driftwood);">${fmtDate(s.savedAt)}</span></div>`).join('')
@@ -1524,6 +1565,51 @@ document.getElementById('cp-current').value = '';
 document.getElementById('cp-new').value = '';
 showToast("Password updated.");
 }catch(e){ showToast("Something went wrong — please try again."); }
+}
+
+function toggleClosedDealsPanel(){
+const body = document.getElementById('closed-deals-body');
+const caret = document.getElementById('closed-deals-caret');
+body.classList.toggle('open');
+caret.textContent = body.classList.contains('open') ? '▴' : '▾';
+}
+async function loadClosedDeals(){
+const all = await storeGet('settings:closedDeals') || [];
+const mine = currentAgent.role === 'broker' ? all : all.filter(d => d.agentId === currentAgent.id);
+const total = mine.reduce((sum, d) => sum + (Number(d.commission) || 0), 0);
+document.getElementById('closed-deals-tally').textContent = `$${total.toLocaleString()} in commission${currentAgent.role==='broker' ? ' (all agents)' : ''}`;
+const el = document.getElementById('closed-deals-list');
+el.innerHTML = mine.slice().sort((a,b)=> new Date(b.closeDate) - new Date(a.closeDate)).map(d => `
+<div class="closed-deal-item">
+<div>
+<div class="addr">${escapeHtml(d.address)}</div>
+<div class="details">$${Number(d.price).toLocaleString()} · Closed ${d.closeDate}${currentAgent.role==='broker' ? ' · '+escapeHtml(d.agentName) : ''} · Commission: $${Number(d.commission).toLocaleString()}</div>
+</div>
+<button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">✕</button>
+</div>
+`).join('') || '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged yet.</p>';
+}
+async function addClosedDeal(){
+const address = document.getElementById('cd-address').value.trim();
+const price = document.getElementById('cd-price').value;
+const closeDate = document.getElementById('cd-date').value;
+const commission = document.getElementById('cd-commission').value;
+if(!address || !price || !closeDate || !commission){ showToast("Fill in all fields."); return; }
+const list = await storeGet('settings:closedDeals') || [];
+list.push({ id: 'deal_'+Date.now(), address, price, closeDate, commission, agentId: currentAgent.id, agentName: currentAgent.name });
+await storeSet('settings:closedDeals', list);
+document.getElementById('cd-address').value = '';
+document.getElementById('cd-price').value = '';
+document.getElementById('cd-date').value = '';
+document.getElementById('cd-commission').value = '';
+showToast("Closed deal logged.");
+loadClosedDeals();
+}
+async function removeClosedDeal(id){
+let list = await storeGet('settings:closedDeals') || [];
+list = list.filter(d => d.id !== id);
+await storeSet('settings:closedDeals', list);
+loadClosedDeals();
 }
 
 function togglePendingReviewsPanel(){
