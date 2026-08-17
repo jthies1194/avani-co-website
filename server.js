@@ -427,7 +427,13 @@ app.post('/api/agent/:id/reset-password', async (req, res) => {
         to: data.email,
         subject: 'Your Avani & Co. CRM password was reset',
         text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\nAvani & Co. Real Estate`,
-      }).catch(() => {});
+      }).then(() => {
+        console.log(`[agent reset-password email] sent successfully to ${data.email}`);
+      }).catch((mailErr) => {
+        console.error(`[agent reset-password email] FAILED to send to ${data.email}:`, mailErr.message);
+      });
+    } else {
+      console.warn(`[agent reset-password email] SKIPPED for ${data.email} — mailer is not configured.`);
     }
     res.json({ ok: true });
   } catch (e) {
