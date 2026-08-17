@@ -906,6 +906,27 @@ passcode: legacyPass, role: 'broker', createdAt: new Date().toISOString(),
 });
 return renderGateContent();
 }
+// No agents found. This could be a genuine first-run — OR it could be a
+// temporary database hiccup. Either way, never let a random visitor
+// self-provision broker access: require a secret setup key in the URL,
+// verified server-side, before showing the setup form at all.
+const setupKey = new URLSearchParams(location.search).get('setup');
+let setupAllowed = false;
+if(setupKey){
+try{
+const res = await fetch('/api/broker-setup-check?key=' + encodeURIComponent(setupKey));
+const data = await res.json();
+setupAllowed = !!data.allowed;
+}catch(e){}
+}
+if(!setupAllowed){
+content.innerHTML = `
+<h2>Agent sign-in</h2>
+<p style="font-size:13.5px; color:var(--driftwood); line-height:1.5;">We couldn't find your account right now. This is usually temporary — please try again in a moment, or contact the site administrator if it continues.</p>
+<button onclick="renderGateContent()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Try again</button>
+`;
+return;
+}
 // True first run — set up the broker account.
 content.innerHTML = `
 <h2>Set up your broker account</h2>
