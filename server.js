@@ -143,10 +143,15 @@ app.get('/api/listings', async (req, res) => {
 });
 
 // ---------- Lead email notifications (via your own Gmail account) ----------
+// Using explicit host/port 587 (STARTTLS) instead of the 'service: gmail'
+// shorthand (which defaults to port 465) — some hosting platforms block
+// outbound 465 as an anti-spam measure while allowing 587.
 let mailer = null;
 if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
   mailer = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
     auth: {
       user: process.env.GMAIL_USER,
       pass: process.env.GMAIL_APP_PASSWORD,
