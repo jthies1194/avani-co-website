@@ -292,12 +292,12 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <div class="modal">
 <button class="modal-close" onclick="closeAgentModal()">&times;</button>
 <h3>Add an agent</h3>
-<div class="sub">They'll sign in using just the passcode you set here.</div>
+<div class="sub">They'll sign in with the email and password you set here.</div>
 <form id="agent-form" onsubmit="submitAgent(event)">
 <div class="field"><label>Name</label><input required id="af-name"></div>
-<div class="field"><label>Email</label><input type="email" id="af-email"></div>
+<div class="field"><label>Email</label><input type="email" required id="af-email"></div>
 <div class="field"><label>Phone</label><input id="af-phone"></div>
-<div class="field"><label>Passcode</label><input required id="af-passcode" maxlength="12" placeholder="Choose a passcode for them"></div>
+<div class="field"><label>Password</label><input type="password" required id="af-password" minlength="6" placeholder="At least 6 characters"></div>
 <div class="field"><label>Role</label><select id="af-role"><option value="agent">Agent (sees only their own leads)</option><option value="broker">Broker (sees everything, can manage agents)</option></select></div>
 <button class="submit-btn" type="submit">Add agent</button>
 </form>
@@ -892,24 +892,17 @@ await renderGateContent();
 }
 
 async function renderGateContent(){
-const agentIds = await storeListKeys('agent:');
 const content = document.getElementById('gate-content');
+let agentCount = 0;
+try{
+const res = await fetch('/api/agent/list');
+const data = await res.json();
+agentCount = (data.agents || []).length;
+}catch(e){}
 
-if(agentIds.length === 0){
-// Check for a legacy single-passcode setup from before multi-agent support existed.
-const legacyPass = await storeGet('crm:passcode');
-if(legacyPass){
-const brokerId = 'agent_' + Date.now();
-await storeSet('agent:'+brokerId, {
-id: brokerId, name: 'Broker', email: '', phone: '',
-passcode: legacyPass, role: 'broker', createdAt: new Date().toISOString(),
-});
-return renderGateContent();
-}
-// No agents found. This could be a genuine first-run — OR it could be a
-// temporary database hiccup. Either way, never let a random visitor
-// self-provision broker access: require a secret setup key in the URL,
-// verified server-side, before showing the setup form at all.
+if(agentCount === 0){
+// No agents found. Never let a random visitor self-provision broker
+// access: require a secret setup key in the URL, verified server-side.
 const setupKey = new URLSearchParams(location.search).get('setup');
 let setupAllowed = false;
 if(setupKey){
@@ -933,44 +926,51 @@ content.innerHTML = `
 <p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">This is your main login. Once set up, you can add agents at your brokerage from inside the CRM.</p>
 <div class="field-label">Your name</div>
 <input id="setup-name" placeholder="Your name" style="margin-bottom:12px;">
-<div class="field-label">Choose a passcode</div>
-<input type="password" id="setup-passcode" placeholder="••••" maxlength="12">
+<div class="field-label">Email</div>
+<input type="email" id="setup-email" placeholder="you@example.com" style="margin-bottom:12px;">
+<div class="field-label">Password</div>
+<input type="password" id="setup-password" placeholder="At least 6 characters" minlength="6">
 <button onclick="handleBrokerSetup()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:6px;">Create broker account</button>
 `;
 } else {
 content.innerHTML = `
 <h2>Agent sign-in</h2>
-<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">Enter your passcode to view your leads.</p>
-<input type="password" id="gate-input" placeholder="••••" maxlength="12">
-<button onclick="handlePasscodeLogin()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700;">Sign in</button>
+<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">Sign in with your email and password.</p>
+<div class="field-label">Email</div>
+<input type="email" id="gate-email" placeholder="you@example.com" style="margin-bottom:12px;">
+<div class="field-label">Password</div>
+<input type="password" id="gate-password" placeholder="Your password">
+<button onclick="handleAgentLogin()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Sign in</button>
 `;
 }
 }
 
 async function handleBrokerSetup(){
 const name = document.getElementById('setup-name').value.trim();
-const passcode = document.getElementById('setup-passcode').value.trim();
-if(!name || !passcode){ showToast("Enter your name and a passcode."); return; }
-const id = 'agent_' + Date.now();
-const broker = { id, name, email:'', phone:'', passcode, role:'broker', createdAt: new Date().toISOString() };
-await storeSet('agent:'+id, broker);
-currentAgent = broker;
+const email = document.getElementById('setup-email').value.trim();
+const password = document.getElementById('setup-password').value;
+const setupKey = new URLSearchParams(location.search).get('setup');
+if(!name || !email || !password){ showToast("Fill in your name, email, and password."); return; }
+try{
+const res = await fetch('/api/agent/setup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email,password,setupKey})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't create account."); return; }
+currentAgent = data.agent;
 unlockCRM();
+}catch(e){ showToast("Something went wrong — please try again."); }
 }
 
-async function handlePasscodeLogin(){
-const val = document.getElementById('gate-input').value.trim();
-if(!val) return;
-const agentIds = await storeListKeys('agent:');
-for(const key of agentIds){
-const agent = await storeGet(key);
-if(agent && agent.passcode === val){
-currentAgent = agent;
+async function handleAgentLogin(){
+const email = document.getElementById('gate-email').value.trim();
+const password = document.getElementById('gate-password').value;
+if(!email || !password) return;
+try{
+const res = await fetch('/api/agent/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email,password})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't log in."); return; }
+currentAgent = data.agent;
 unlockCRM();
-return;
-}
-}
-showToast("Incorrect passcode.");
+}catch(e){ showToast("Something went wrong — please try again."); }
 }
 
 function unlockCRM(){
@@ -986,14 +986,16 @@ if(currentAgent.role === 'broker') loadAgents();
 function logoutAgent(){
 currentAgent = null;
 document.getElementById('crm-main').style.display='none';
-document.getElementById('gate-input') && (document.getElementById('gate-input').value = '');
 initCRM();
 }
 
 async function loadAgents(){
-const keys = await storeListKeys('agent:');
 let agents = [];
-for(const k of keys){ const a = await storeGet(k); if(a) agents.push(a); }
+try{
+const res = await fetch('/api/agent/list');
+const data = await res.json();
+agents = data.agents || [];
+}catch(e){}
 agents.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
 
 const list = document.getElementById('agent-list');
@@ -1030,23 +1032,24 @@ document.getElementById('agent-modal-overlay').classList.remove('active');
 }
 async function submitAgent(e){
 e.preventDefault();
-const id = 'agent_' + Date.now();
-const agent = {
-id,
-name: document.getElementById('af-name').value.trim(),
-email: document.getElementById('af-email').value.trim(),
-phone: document.getElementById('af-phone').value.trim(),
-passcode: document.getElementById('af-passcode').value.trim(),
-role: document.getElementById('af-role').value,
-createdAt: new Date().toISOString(),
-};
-await storeSet('agent:'+id, agent);
+const name = document.getElementById('af-name').value.trim();
+const email = document.getElementById('af-email').value.trim();
+const phone = document.getElementById('af-phone').value.trim();
+const password = document.getElementById('af-password').value;
+const role = document.getElementById('af-role').value;
+try{
+const res = await fetch('/api/agent/create', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email,phone,password,role})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't add agent."); return; }
 closeAgentModal();
-showToast(`${agent.name} added — share their passcode with them directly.`);
+showToast(`${name} added — share their email and password with them directly.`);
 loadAgents();
+}catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function deleteAgent(id){
-await storeDelete('agent:'+id);
+try{
+await fetch('/api/agent/' + id, {method:'DELETE'});
+}catch(e){}
 showToast("Agent removed.");
 loadAgents();
 loadLeads();
@@ -1075,8 +1078,11 @@ leads = leads.filter(l => l.assignedAgentId === currentAgent.id);
 
 let agents = [];
 if(currentAgent.role === 'broker'){
-const agentKeys = await storeListKeys('agent:');
-for(const k of agentKeys){ const a = await storeGet(k); if(a) agents.push(a); }
+try{
+const res = await fetch('/api/agent/list');
+const data = await res.json();
+agents = data.agents || [];
+}catch(e){}
 }
 const agentName = (id) => {
 if(!id) return 'Unassigned';
