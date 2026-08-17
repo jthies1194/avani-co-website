@@ -888,7 +888,31 @@ async function initCRM(){
 const gate = document.getElementById('crm-gate');
 const main = document.getElementById('crm-main');
 gate.style.display='block'; main.style.display='none';
+
+const resetToken = new URLSearchParams(location.search).get('reset');
+if(resetToken){
+document.getElementById('gate-content').innerHTML = `
+<h2>Set a new password</h2>
+<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">Choose a new password for your account.</p>
+<div class="field-label">New password</div>
+<input type="password" id="reset-new-password" placeholder="At least 6 characters" minlength="6">
+<button onclick="submitPasswordReset('${resetToken}')" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Set new password</button>
+`;
+return;
+}
 await renderGateContent();
+}
+async function submitPasswordReset(token){
+const password = document.getElementById('reset-new-password').value;
+if(!password || password.length < 6){ showToast("Password must be at least 6 characters."); return; }
+try{
+const res = await fetch('/api/agent/reset-password', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token,password})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't reset password."); return; }
+showToast("Password updated — you can now sign in.");
+history.replaceState(null, '', location.pathname);
+renderGateContent();
+}catch(e){ showToast("Something went wrong — please try again."); }
 }
 
 async function renderGateContent(){
@@ -941,6 +965,7 @@ content.innerHTML = `
 <div class="field-label">Password</div>
 <input type="password" id="gate-password" placeholder="Your password">
 <button onclick="handleAgentLogin()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Sign in</button>
+<button onclick="handleForgotPassword()" style="background:none; border:none; color:var(--driftwood); font-size:12px; text-decoration:underline; margin-top:14px; padding:0;">Forgot password?</button>
 `;
 }
 }
@@ -970,6 +995,14 @@ const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't log in."); return; }
 currentAgent = data.agent;
 unlockCRM();
+}catch(e){ showToast("Something went wrong — please try again."); }
+}
+async function handleForgotPassword(){
+const email = (document.getElementById('gate-email')?.value || '').trim();
+if(!email){ showToast("Enter your email above first, then click Forgot password."); return; }
+try{
+await fetch('/api/agent/forgot-password', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email})});
+showToast("If that email has an account, a reset link has been sent.");
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 
