@@ -71,6 +71,14 @@
 .saved-search-chip{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:8px;font-size:13px;}
 .saved-search-chip button{background:none;border:none;font-size:11px;color:var(--driftwood);text-decoration:underline;}
 .fav-mini-card{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:4px;margin-bottom:8px;font-size:13px;cursor:pointer;}
+.testimonials-section{max-width:1180px;margin:0 auto;padding:8px 32px 64px;display:none;}
+.testimonials-section.show{display:block;}
+.testimonials-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px;margin-top:22px;}
+.testimonial-card{background:var(--white);border:1px solid var(--line);border-radius:4px;padding:26px 24px;}
+.testimonial-card .quote{font-family:'Fraunces',serif;font-size:15px;line-height:1.6;color:var(--ink);font-style:italic;margin-bottom:14px;}
+.testimonial-card .author{font-size:12.5px;font-weight:600;color:var(--marsh);}
+.testimonial-item-admin{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:4px;margin-bottom:10px;}
+.testimonial-item-admin .txt{font-size:12.5px;flex:1;}
 .welcome-banner{display:none;max-width:1180px;margin:0 auto 28px;background:linear-gradient(135deg, var(--marsh) 0%, var(--marsh-deep) 100%);border-radius:6px;padding:18px 24px;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:0 10px 28px rgba(21,65,196,0.18);}
 .welcome-banner.show{display:flex;}
 .welcome-banner .msg{color:var(--sand-light);font-size:14px;}
@@ -128,6 +136,12 @@
 <option value="800000">Under $800k</option>
 <option value="1500000">Under $1.5M</option>
 </select>
+<select id="f-status">
+<option value="">Any status</option>
+<option value="Active">Active</option>
+<option value="Pending">Pending</option>
+<option value="Sold">Sold</option>
+</select>
 <button onclick="renderListings()">Search listings</button>
 </div>
 </div>
@@ -176,16 +190,35 @@ Call Jimmy · 251-229-3216
 <p>Buying, selling, or just curious about the coast — ask anything.</p>
 <button onclick="openLeadModal('contact')">Start a conversation</button>
 </div>
+<div class="lead-card">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21c-4-4-8-7.5-8-12a8 8 0 0 1 16 0c0 4.5-4 8-8 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
+<h3>Tell us what you want</h3>
+<p>Describe your dream home and we'll notify you the moment it's available.</p>
+<button onclick="openLeadModal('wishlist')">Share my wishlist</button>
+</div>
 </div>
 </div>
 </div>
 
+<div class="testimonials-section" id="testimonials-section">
+<div class="section-head">
+<h2>What our clients say</h2>
+</div>
+<div class="testimonials-grid" id="testimonials-grid"></div>
+</div>
+
 <footer>
 <div style="font-family:'Fraunces',serif; font-size:16px; color:var(--marsh); margin-bottom:6px;">Avani &amp; Co. Real Estate — Southern Sands</div>
-<div style="margin-bottom:6px;">Jimmy Thies, Broker/Owner</div>
-<div style="margin-bottom:10px;">Serving Mobile &amp; Baldwin County, AL · <a href="tel:2512293216" style="color:var(--marsh); font-weight:600;">251-229-3216</a></div>
-<div style="max-width:520px; margin:0 auto 18px; line-height:1.6;">
-Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate brokerage in the State of Alabama, license #000176513-0. All information deemed reliable but not guaranteed.
+<div style="margin-bottom:6px;">Jimmy Thies, Broker/Owner · Licensed Real Estate Broker</div>
+<div style="margin-bottom:10px;">191 Northshore Circle, Suite 100-D, Gulf Shores, AL 36542 · <a href="tel:2512293216" style="color:var(--marsh); font-weight:600;">251-229-3216</a></div>
+<div style="max-width:560px; margin:0 auto 14px; line-height:1.6;">
+Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate brokerage in the State of Alabama, license #000176513-0. Jimmy Thies, Qualifying Broker, Alabama license #000111842-1.
+</div>
+<div style="max-width:560px; margin:0 auto 14px; line-height:1.6;">
+Avani &amp; Co Real Estate, LLC is a licensed real estate broker in the State of Florida, license #CQ1074680. Jimmy Thies, Qualifying Broker, Florida license #BK3657541.
+</div>
+<div style="max-width:560px; margin:0 auto 18px; line-height:1.6; font-size:11.5px; opacity:0.85;">
+IDX information is provided exclusively for consumers' personal and non-commercial use. It may not be used for any purpose other than to identify prospective properties consumers may be interested in purchasing. The data is deemed reliable but is not guaranteed accurate by the MLS. All information deemed reliable but not guaranteed.
 </div>
 <button onclick="switchView('crm')" style="background:none; border:none; color:var(--driftwood); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; text-decoration:underline; text-underline-offset:3px; padding:0;">Agent Login</button>
 </footer>
@@ -249,6 +282,22 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <input type="number" id="view-limit-input" min="1" max="50" style="width:80px; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-family:'Public Sans',sans-serif; font-size:14px;">
 <button class="btn-sm primary" onclick="saveViewLimitSetting()">Save</button>
 </div>
+
+<h4>4. Testimonials</h4>
+<p>Add a quote and name — these show in a "What our clients say" section on the site. Paste in reviews from past clients or from Google.</p>
+<div id="testimonial-list" style="margin-top:10px;"></div>
+<div class="setup-grid" style="margin-top:10px;">
+<textarea id="testimonial-text" placeholder="The testimonial text..." style="grid-column:1/-1; min-height:60px; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-family:'Public Sans',sans-serif; font-size:13px;"></textarea>
+<input id="testimonial-author" placeholder="Client name (e.g. Sarah M.)" style="border:1px solid var(--line); border-radius:4px; padding:8px 10px;">
+<button class="btn-sm primary" onclick="addTestimonial()">Add testimonial</button>
+</div>
+
+<h4>5. Google review link</h4>
+<p>Paste your Google Business review link here — used by the "Request review" button on each lead.</p>
+<div style="display:flex; gap:10px; margin-top:10px; align-items:center; flex-wrap:wrap;">
+<input id="google-review-link-input" placeholder="https://g.page/r/..." style="flex:1; min-width:200px; border:1px solid var(--line); border-radius:4px; padding:8px 10px;">
+<button class="btn-sm primary" onclick="saveGoogleReviewLink()">Save</button>
+</div>
 </div>
 </div>
 
@@ -282,6 +331,10 @@ Equal Housing Opportunity. Avani &amp; Co. Real Estate is a licensed real estate
 <div class="field"><label>Phone</label><input id="lf-phone"></div>
 <div class="field" id="lf-message-field"><label>Message</label><textarea id="lf-message"></textarea></div>
 <div class="field" id="lf-agent-field" style="display:none;"><label>Assign to</label><select id="lf-agent"></select></div>
+<div class="field" id="lf-consent-field" style="display:flex; align-items:flex-start; gap:8px; margin-bottom:16px;">
+<input type="checkbox" required id="lf-consent" style="margin-top:3px; width:auto;">
+<label for="lf-consent" style="font-size:11.5px; color:var(--driftwood); font-weight:400; line-height:1.5;">By submitting, I agree to be contacted by Avani & Co. Real Estate by phone, text, or email about my inquiry, including by automated means. Message and data rates may apply. Consent is not a condition of purchase. Reply STOP to opt out of texts at any time.</label>
+</div>
 <button class="submit-btn" type="submit">Send</button>
 </form>
 </div>
@@ -486,8 +539,9 @@ if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 const city = document.getElementById('f-city').value.trim().toLowerCase();
 const beds = parseInt(document.getElementById('f-beds').value)||0;
 const price = parseInt(document.getElementById('f-price').value)||Infinity;
+const status = document.getElementById('f-status').value;
 const filtered = ALL_LISTINGS.filter(l =>
-(!city || l.City.toLowerCase().includes(city) || l.UnparsedAddress.toLowerCase().includes(city)) && l.BedroomsTotal>=beds && l.ListPrice<=price
+(!city || l.City.toLowerCase().includes(city) || l.UnparsedAddress.toLowerCase().includes(city)) && l.BedroomsTotal>=beds && l.ListPrice<=price && (!status || l.StandardStatus===status)
 );
 document.getElementById('listing-count').textContent = filtered.length + (filtered.length===1?" home":" homes");
 const grid = document.getElementById('listing-grid');
@@ -761,7 +815,11 @@ document.getElementById('chat-panel').classList.toggle('open');
 }
 function closeChatOpenLead(){
 document.getElementById('chat-panel').classList.remove('open');
-openLeadModal('contact');
+openLeadModal('chat');
+if(chatHistory.length){
+const transcript = chatHistory.map(m => (m.role==='user' ? 'Visitor: ' : 'AI: ') + m.content).join('\n');
+document.getElementById('lf-message').value = transcript;
+}
 }
 async function sendChatMessage(){
 const input = document.getElementById('chat-input');
@@ -807,8 +865,10 @@ const MODAL_COPY = {
 valuation:{title:"Free home valuation", sub:"Tell us about your property and we'll follow up with a market estimate.", msgLabel:"Property address"},
 alerts:{title:"New listing alerts", sub:"Tell us what you're looking for and we'll reach out when a match hits the market.", msgLabel:"What are you looking for?"},
 contact:{title:"Talk to an agent", sub:"Ask us anything about buying, selling, or the coastal AL market.", msgLabel:"How can we help?"},
+chat:{title:"Continue with a real agent", sub:"Here's a copy of our chat — a real agent will pick up right where we left off.", msgLabel:"Our conversation"},
 listing:{title:"Request info", sub:"", msgLabel:"Message"},
 manual:{title:"Add a lead manually", sub:"Add a lead you picked up by phone, in person, or elsewhere.", msgLabel:"Notes"},
+wishlist:{title:"Tell us what you want", sub:"Describe your dream home — beds, baths, location, must-haves — and we'll let you know the moment something matches.", msgLabel:"Describe what you're looking for"},
 };
 function openLeadModal(source, mlsKey, listingLabel){
 currentLeadContext = {source, mlsKey: mlsKey||"", listingLabel: listingLabel||""};
@@ -823,6 +883,10 @@ document.getElementById('lf-message').value = source==='listing' ? `I'm interest
 const showAgentField = source==='manual' && currentAgent && currentAgent.role==='broker';
 document.getElementById('lf-agent-field').style.display = showAgentField ? 'block' : 'none';
 if(showAgentField) loadAgents();
+const isManual = source==='manual';
+document.getElementById('lf-consent-field').style.display = isManual ? 'none' : 'flex';
+document.getElementById('lf-consent').required = !isManual;
+document.getElementById('lf-consent').checked = isManual;
 document.getElementById('modal-overlay').classList.add('active');
 }
 function closeLeadModal(){ document.getElementById('modal-overlay').classList.remove('active'); }
@@ -1014,6 +1078,8 @@ document.getElementById('crm-signed-in-as').textContent = `Signed in as ${curren
 loadLeads();
 loadEmailConfigIntoForm();
 loadViewLimitSetting();
+loadTestimonialAdmin();
+loadGoogleReviewLinkSetting();
 if(currentAgent.role === 'broker') loadAgents();
 }
 function logoutAgent(){
@@ -1148,7 +1214,7 @@ tbody.innerHTML = shown.map(l=>`
   : escapeHtml(agentName(l.assignedAgentId))}</td>
 <td><select class="stage-select" onchange="updateStage('${l.id}',this.value)">${STAGES.map(s=>`<option ${s===l.stage?'selected':''}>${s}</option>`).join('')}</select></td>
 <td><input class="notes-input" value="${escapeHtml(l.notes||'')}" onchange="updateNotes('${l.id}',this.value)" placeholder="Add note..."></td>
-<td>${l.clientId ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="openClientActivityModal('${l.clientId}')" title="View their searches & favorites">👁</button>` : ''}<button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button><button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
+<td>${l.clientId ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="openClientActivityModal('${l.clientId}')" title="View their searches & favorites">👁</button>` : ''}<button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button>${l.stage==='Closed' ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="requestReview('${l.id}')" title="Request a Google review">★</button>` : ''}<button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
 </tr>
 `).join('');
 }
@@ -1271,6 +1337,60 @@ cachedViewLimit = val;
 showToast(`Saved — visitors now get ${val} free listing views.`);
 }
 
+async function loadTestimonialAdmin(){
+const list = await storeGet('settings:testimonials') || [];
+const el = document.getElementById('testimonial-list');
+el.innerHTML = list.map((t,i) => `
+<div class="testimonial-item-admin">
+<div class="txt">"${escapeHtml(t.text)}" — <strong>${escapeHtml(t.author)}</strong></div>
+<button class="del-btn" onclick="removeTestimonial(${i})" title="Remove">✕</button>
+</div>
+`).join('') || '<p style="font-size:12.5px; color:var(--driftwood);">No testimonials added yet.</p>';
+}
+async function addTestimonial(){
+const text = document.getElementById('testimonial-text').value.trim();
+const author = document.getElementById('testimonial-author').value.trim();
+if(!text || !author){ showToast("Enter both the testimonial text and a name."); return; }
+const list = await storeGet('settings:testimonials') || [];
+list.push({text, author});
+await storeSet('settings:testimonials', list);
+document.getElementById('testimonial-text').value = '';
+document.getElementById('testimonial-author').value = '';
+showToast("Testimonial added.");
+loadTestimonialAdmin();
+loadTestimonials();
+}
+async function removeTestimonial(i){
+const list = await storeGet('settings:testimonials') || [];
+list.splice(i,1);
+await storeSet('settings:testimonials', list);
+loadTestimonialAdmin();
+loadTestimonials();
+}
+
+async function loadGoogleReviewLinkSetting(){
+const val = await storeGet('settings:googleReviewLink');
+const input = document.getElementById('google-review-link-input');
+if(input) input.value = val || '';
+}
+async function saveGoogleReviewLink(){
+const val = document.getElementById('google-review-link-input').value.trim();
+await storeSet('settings:googleReviewLink', val);
+showToast("Google review link saved.");
+}
+async function requestReview(leadId){
+const lead = await storeGet('lead:'+leadId);
+if(!lead || !lead.email){ showToast("This lead doesn't have an email on file."); return; }
+const reviewLink = await storeGet('settings:googleReviewLink');
+if(!reviewLink){ showToast("Add your Google review link in the setup panel first."); return; }
+try{
+const res = await fetch('/api/request-review', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({toEmail: lead.email, toName: lead.name, reviewLink})});
+const data = await res.json();
+if(!res.ok){ showToast(data.error || "Couldn't send the review request."); return; }
+showToast(`Review request sent to ${lead.name}.`);
+}catch(e){ showToast("Something went wrong — please try again."); }
+}
+
 async function loadEmailConfigIntoForm(){
   const statusEl = document.getElementById('email-status-text');
   if(!statusEl) return;
@@ -1349,6 +1469,20 @@ showToast(count > 0 ? `Imported ${count} lead${count===1?'':'s'}.` : "No leads w
 loadLeads();
 }
 
+async function loadTestimonials(){
+const list = await storeGet('settings:testimonials') || [];
+const section = document.getElementById('testimonials-section');
+const grid = document.getElementById('testimonials-grid');
+if(!list.length){ section.classList.remove('show'); return; }
+section.classList.add('show');
+grid.innerHTML = list.map(t => `
+<div class="testimonial-card">
+<div class="quote">"${escapeHtml(t.text)}"</div>
+<div class="author">— ${escapeHtml(t.author)}</div>
+</div>
+`).join('');
+}
+
 if('serviceWorker' in navigator){
 window.addEventListener('load', () => {
 navigator.serviceWorker.register('sw.js').catch(()=>{});
@@ -1356,6 +1490,7 @@ navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
 renderListings();
+loadTestimonials();
 restoreClientSession().then(()=>{ updateClientLoginLabel(); renderListings(); });
 </script>
 </body>
