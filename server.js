@@ -231,6 +231,87 @@ app.post('/api/client/:id/saved-searches', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Agent/broker accounts (real email + password login) ----------
+function agentPublic(row) {
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone || '', role: row.role };
+}
+
+app.post('/api/agent/setup', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { name, email, password, setupKey } = req.body || {};
+  const expected = process.env.BROKER_SETUP_KEY;
+  if (!expected || setupKey !== expected) return res.status(403).json({ error: 'Invalid or missing setup key.' });
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  const normalizedEmail = email.trim().toLowerCase();
+  try {
+    const { count } = await supabase.from('agents').select('id', { count: 'exact', head: true });
+    if (count > 0) return res.status(409).json({ error: 'A broker account already exists — please log in instead.' });
+    const id = 'agent_' + Date.now();
+    const password_hash = hashPassword(password);
+    const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, role: 'broker' });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: '', role: 'broker' } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/agent/login', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { email, password } = req.body || {};
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  try {
+    const { data, error } = await supabase.from('agents').select('*').eq('email', normalizedEmail).maybeSingle();
+    if (error || !data) return res.status(401).json({ error: 'No account found with that email.' });
+    if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
+    res.json({ ok: true, agent: agentPublic(data) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/agent/list', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const { data, error } = await supabase.from('agents').select('id,name,email,phone,role').order('name');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, agents: data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/agent/create', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { name, email, password, phone, role } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  const normalizedEmail = email.trim().toLowerCase();
+  try {
+    const { data: existing } = await supabase.from('agents').select('id').eq('email', normalizedEmail).maybeSingle();
+    if (existing) return res.status(409).json({ error: 'An agent with that email already exists.' });
+    const id = 'agent_' + Date.now();
+    const password_hash = hashPassword(password);
+    const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/agent/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const { error } = await supabase.from('agents').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email not configured yet. Set GMAIL_USER and GMAIL_APP_PASSWORD in the hosting environment variables.' });
