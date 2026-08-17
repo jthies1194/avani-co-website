@@ -372,22 +372,26 @@ app.post('/api/agent/create', async (req, res) => {
     const password_hash = hashPassword(defaultPassword);
     const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' });
     if (error) return res.status(500).json({ error: error.message });
+    let emailStatus = 'skipped';
     if (mailer) {
       const loginUrl = `${req.protocol}://${req.get('host')}/`;
-      mailer.sendMail({
-        from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
-        to: normalizedEmail,
-        subject: 'Your Avani & Co. CRM login',
-        text: `Hi ${name},\n\nYou've been added to the Avani & Co. Real Estate CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\nAvani & Co. Real Estate`,
-      }).then(() => {
+      try {
+        await mailer.sendMail({
+          from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
+          to: normalizedEmail,
+          subject: 'Your Avani & Co. CRM login',
+          text: `Hi ${name},\n\nYou've been added to the Avani & Co. Real Estate CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\nAvani & Co. Real Estate`,
+        });
         console.log(`[agent welcome email] sent successfully to ${normalizedEmail}`);
-      }).catch((mailErr) => {
+        emailStatus = 'sent';
+      } catch (mailErr) {
         console.error(`[agent welcome email] FAILED to send to ${normalizedEmail}:`, mailErr.message);
-      });
+        emailStatus = 'failed: ' + mailErr.message;
+      }
     } else {
       console.warn(`[agent welcome email] SKIPPED for ${normalizedEmail} — mailer is not configured (GMAIL_USER/GMAIL_APP_PASSWORD missing).`);
     }
-    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' } });
+    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' }, emailStatus });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -421,21 +425,25 @@ app.post('/api/agent/:id/reset-password', async (req, res) => {
     const { data, error } = await supabase.from('agents').select('name,email').eq('id', req.params.id).maybeSingle();
     if (error || !data) return res.status(404).json({ error: 'Account not found.' });
     await supabase.from('agents').update({ password_hash: hashPassword(defaultPassword) }).eq('id', req.params.id);
+    let emailStatus = 'skipped';
     if (mailer) {
-      mailer.sendMail({
-        from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
-        to: data.email,
-        subject: 'Your Avani & Co. CRM password was reset',
-        text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\nAvani & Co. Real Estate`,
-      }).then(() => {
+      try {
+        await mailer.sendMail({
+          from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
+          to: data.email,
+          subject: 'Your Avani & Co. CRM password was reset',
+          text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\nAvani & Co. Real Estate`,
+        });
         console.log(`[agent reset-password email] sent successfully to ${data.email}`);
-      }).catch((mailErr) => {
+        emailStatus = 'sent';
+      } catch (mailErr) {
         console.error(`[agent reset-password email] FAILED to send to ${data.email}:`, mailErr.message);
-      });
+        emailStatus = 'failed: ' + mailErr.message;
+      }
     } else {
       console.warn(`[agent reset-password email] SKIPPED for ${data.email} — mailer is not configured.`);
     }
-    res.json({ ok: true });
+    res.json({ ok: true, emailStatus });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
