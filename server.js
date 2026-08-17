@@ -233,7 +233,7 @@ app.post('/api/client/:id/saved-searches', async (req, res) => {
 
 // ---------- Agent/broker accounts (real email + password login) ----------
 function agentPublic(row) {
-  return { id: row.id, name: row.name, email: row.email, phone: row.phone || '', role: row.role };
+  return { id: row.id, name: row.name, email: row.email, phone: row.phone || '', role: row.role, reviewLink: row.review_link || '' };
 }
 
 app.post('/api/agent/setup', async (req, res) => {
@@ -315,12 +315,24 @@ app.post('/api/agent/login', async (req, res) => {
   }
 });
 
+app.post('/api/agent/:id/review-link', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { reviewLink } = req.body || {};
+  try {
+    const { error } = await supabase.from('agents').update({ review_link: reviewLink || '' }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/agent/list', async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
-    const { data, error } = await supabase.from('agents').select('id,name,email,phone,role').order('name');
+    const { data, error } = await supabase.from('agents').select('id,name,email,phone,role,review_link').order('name');
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, agents: data || [] });
+    res.json({ ok: true, agents: (data || []).map(agentPublic) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -328,18 +340,70 @@ app.get('/api/agent/list', async (req, res) => {
 
 app.post('/api/agent/create', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const { name, email, password, phone, role } = req.body || {};
-  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required.' });
-  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  const { name, email, phone, role } = req.body || {};
+  const defaultPassword = process.env.DEFAULT_AGENT_PASSWORD;
+  if (!defaultPassword) return res.status(503).json({ error: 'DEFAULT_AGENT_PASSWORD is not set up yet. Add it in the hosting environment variables.' });
+  if (!name || !email) return res.status(400).json({ error: 'Name and email are required.' });
   const normalizedEmail = email.trim().toLowerCase();
   try {
     const { data: existing } = await supabase.from('agents').select('id').eq('email', normalizedEmail).maybeSingle();
     if (existing) return res.status(409).json({ error: 'An agent with that email already exists.' });
     const id = 'agent_' + Date.now();
-    const password_hash = hashPassword(password);
+    const password_hash = hashPassword(defaultPassword);
     const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' });
     if (error) return res.status(500).json({ error: error.message });
+    if (mailer) {
+      const loginUrl = `${req.protocol}://${req.get('host')}/`;
+      mailer.sendMail({
+        from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
+        to: normalizedEmail,
+        subject: 'Your Avani & Co. CRM login',
+        text: `Hi ${name},\n\nYou've been added to the Avani & Co. Real Estate CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\nAvani & Co. Real Estate`,
+      }).catch(() => {});
+    }
     res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/agent/:id/change-password', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required.' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+  try {
+    const { data, error } = await supabase.from('agents').select('password_hash').eq('id', req.params.id).maybeSingle();
+    if (error || !data) return res.status(404).json({ error: 'Account not found.' });
+    if (!verifyPassword(currentPassword, data.password_hash)) return res.status(401).json({ error: 'Current password is incorrect.' });
+    await supabase.from('agents').update({ password_hash: hashPassword(newPassword) }).eq('id', req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Broker-only override: reset any agent's password back to the shared
+// default, and email them so they know how to log in again. The broker
+// never loses the ability to manage agent accounts, no matter what an
+// agent changes their own password to.
+app.post('/api/agent/:id/reset-password', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const defaultPassword = process.env.DEFAULT_AGENT_PASSWORD;
+  if (!defaultPassword) return res.status(503).json({ error: 'DEFAULT_AGENT_PASSWORD is not set up yet.' });
+  try {
+    const { data, error } = await supabase.from('agents').select('name,email').eq('id', req.params.id).maybeSingle();
+    if (error || !data) return res.status(404).json({ error: 'Account not found.' });
+    await supabase.from('agents').update({ password_hash: hashPassword(defaultPassword) }).eq('id', req.params.id);
+    if (mailer) {
+      mailer.sendMail({
+        from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
+        to: data.email,
+        subject: 'Your Avani & Co. CRM password was reset',
+        text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\nAvani & Co. Real Estate`,
+      }).catch(() => {});
+    }
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -449,14 +513,15 @@ app.post('/api/request-review', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email not configured yet.' });
   }
-  const { toEmail, toName, reviewLink } = req.body || {};
-  if (!toEmail || !reviewLink) return res.status(400).json({ error: 'Missing email or review link.' });
+  const { toEmail, toName, reviewLink, agentId, agentName } = req.body || {};
+  if (!toEmail) return res.status(400).json({ error: 'Missing email.' });
+  const siteReviewUrl = `${req.protocol}://${req.get('host')}/?leaveReview=1${agentId ? '&agent=' + encodeURIComponent(agentId) : ''}`;
   try {
     await mailer.sendMail({
       from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
       to: toEmail,
       subject: 'Would you mind leaving us a quick review?',
-      text: `Hi ${toName || 'there'},\n\nThank you so much for working with Avani & Co. Real Estate! If you have a minute, we'd really appreciate a quick review — it helps other buyers and sellers in the area find us.\n\n${reviewLink}\n\nThank you again,\nJimmy Thies\nAvani & Co. Real Estate`,
+      text: `Hi ${toName || 'there'},\n\nThank you so much for working with ${agentName || 'Avani & Co. Real Estate'}! If you have a minute, we'd really appreciate a quick review — it helps other buyers and sellers in the area find us.\n\n${reviewLink ? `Leave a Google review: ${reviewLink}\n\n` : ''}Or leave a review directly on our site: ${siteReviewUrl}\n\nThank you again,\nJimmy Thies\nAvani & Co. Real Estate`,
     });
     res.json({ ok: true });
   } catch (e) {
