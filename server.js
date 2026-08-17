@@ -22,7 +22,6 @@ require('dns').setDefaultResultOrder('ipv4first');
 const express = require('express');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -142,23 +141,34 @@ app.get('/api/listings', async (req, res) => {
   }
 });
 
-// ---------- Lead email notifications (via your own Gmail account) ----------
-// Using explicit host/port 587 (STARTTLS) instead of the 'service: gmail'
-// shorthand (which defaults to port 465) — some hosting platforms block
-// outbound 465 as an anti-spam measure while allowing 587.
+// ---------- Email notifications (via Resend's HTTP API) ----------
+// Switched from direct Gmail SMTP to Resend after discovering this hosting
+// platform blocks outbound SMTP entirely (ports 465 and 587 both refused
+// the connection). Resend sends over regular HTTPS instead, which works
+// fine here — same as our Supabase and Anthropic API calls.
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM = 'Avani & Co. Real Estate <notify@mail.bamacoast.com>';
 let mailer = null;
-if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-  mailer = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
+if (RESEND_API_KEY) {
+  mailer = {
+    sendMail: async ({ to, subject, text }) => {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ from: RESEND_FROM, to, subject, text }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Resend API error ${res.status}: ${errText.slice(0, 300)}`);
+      }
+      return res.json();
     },
-  });
+  };
 } else {
-  console.warn('[startup] GMAIL_USER / GMAIL_APP_PASSWORD not set — lead email notifications are disabled until configured.');
+  console.warn('[startup] RESEND_API_KEY not set — email notifications are disabled until configured.');
 }
 
 // ---------- Client accounts (favorites + saved searches) ----------
