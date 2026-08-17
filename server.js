@@ -257,6 +257,50 @@ app.post('/api/agent/setup', async (req, res) => {
   }
 });
 
+app.post('/api/agent/forgot-password', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const normalizedEmail = (req.body?.email || '').trim().toLowerCase();
+  // Always respond the same way whether or not the email exists, so this
+  // can't be used to check which emails have accounts.
+  const genericReply = { ok: true, message: 'If that email has an account, a reset link has been sent.' };
+  if (!normalizedEmail) return res.json(genericReply);
+  try {
+    const { data } = await supabase.from('agents').select('id,name,email').eq('email', normalizedEmail).maybeSingle();
+    if (data) {
+      const token = crypto.randomBytes(24).toString('hex');
+      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+      await supabase.from('agents').update({ reset_token: token, reset_expires: expires }).eq('id', data.id);
+      if (mailer) {
+        const resetUrl = `${req.protocol}://${req.get('host')}/?reset=${token}`;
+        await mailer.sendMail({
+          from: `"Avani & Co. Website" <${process.env.GMAIL_USER}>`,
+          to: data.email,
+          subject: 'Reset your Avani & Co. CRM password',
+          text: `Hi ${data.name},\n\nSomeone requested a password reset for your Avani & Co. CRM account. If this was you, set a new password here (link expires in 1 hour):\n\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {}
+  res.json(genericReply);
+});
+
+app.post('/api/agent/reset-password', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'Missing token or password.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  try {
+    const { data, error } = await supabase.from('agents').select('id,reset_expires').eq('reset_token', token).maybeSingle();
+    if (error || !data) return res.status(400).json({ error: 'This reset link is invalid or has already been used.' });
+    if (!data.reset_expires || new Date(data.reset_expires) < new Date()) return res.status(400).json({ error: 'This reset link has expired — please request a new one.' });
+    const password_hash = hashPassword(password);
+    await supabase.from('agents').update({ password_hash, reset_token: null, reset_expires: null }).eq('id', data.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/agent/login', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { email, password } = req.body || {};
