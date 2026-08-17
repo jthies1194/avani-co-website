@@ -561,6 +561,19 @@ app.get('/api/broker-setup-check', (req, res) => {
   res.json({ allowed: !!expected && key === expected });
 });
 
+// Temporary: reports this server's outbound IP address(es), needed for
+// the Bridge/MLS data feed agreement's "IP addresses" question. Safe to
+// remove later, but harmless to leave in.
+app.get('/api/my-outbound-ip', async (req, res) => {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    const data = await r.json();
+    res.json({ outboundIp: data.ip });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
