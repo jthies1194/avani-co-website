@@ -617,7 +617,7 @@ Call Jimmy · 251-229-3216
 </a>
 </div>
 <div class="placeholder-note">
-<strong>Note:</strong> the listings below are sample data, not live MLS. Once your BCMLS / Gulf Coast Mobile Assn IDX or RESO Web API credentials are wired in, this section pulls real, current listings automatically — see the <strong>Data Connection</strong> panel in the Agent CRM tab for how.
+<span id="mls-notice"><strong>Note:</strong> the listings below are sample data, not live MLS.</span></strong> the listings below are sample data, not live MLS. Once your BCMLS / Gulf Coast Mobile Assn IDX or RESO Web API credentials are wired in, this section pulls real, current listings automatically — see the <strong>Data Connection</strong> panel in the Agent CRM tab for how.
 </div>
 <div class="client-bar" id="client-bar">
   <div class="who" id="cb-who"></div>
@@ -1196,7 +1196,64 @@ const MOCK_LISTINGS = [
 {ListingKey:"AL10234544", StandardStatus:"Active", ListPrice:719000, City:"Fairhope", UnparsedAddress:"14 Volanta Ave", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2510},
 ];
 
-async function fetchListings(){ return MOCK_LISTINGS; }
+let LISTINGS_ARE_LIVE = false;
+
+/* Pulls real listings from the Bridge/Gulf Coast MLS feed via our own server.
+   Falls back to the sample set if the feed is unavailable, so the site never
+   renders an empty page. */
+async function fetchListings(){
+  try{
+    const res = await fetch('/api/listings');
+    const data = await res.json();
+    if(data && data.mock){ LISTINGS_ARE_LIVE = false; return MOCK_LISTINGS; }
+    const rows = (data && data.value) || [];
+    if(!rows.length){ LISTINGS_ARE_LIVE = false; return MOCK_LISTINGS; }
+    LISTINGS_ARE_LIVE = true;
+    return rows.map(normalizeListing);
+  }catch(e){
+    console.error('[listings] falling back to sample data:', e);
+    LISTINGS_ARE_LIVE = false;
+    return MOCK_LISTINGS;
+  }
+}
+
+/* Maps a RESO Property record onto the shape the site already renders.
+   Everything is defensive — MLS records vary and missing fields are normal. */
+function normalizeListing(r){
+  const photos = extractPhotos(r);
+  return {
+    ListingKey:  r.ListingKey || r.ListingId || '',
+    ListingId:   r.ListingId || r.ListingKey || '',
+    StandardStatus: r.StandardStatus || r.MlsStatus || 'Active',
+    ListPrice:   Number(r.ListPrice) || 0,
+    City:        r.City || '',
+    UnparsedAddress: r.UnparsedAddress || [r.StreetNumber, r.StreetName, r.StreetSuffix].filter(Boolean).join(' ') || 'Address withheld',
+    BedroomsTotal: Number(r.BedroomsTotal) || 0,
+    BathroomsTotalInteger: Number(r.BathroomsTotalInteger || r.BathroomsFull) || 0,
+    LivingArea:  Number(r.LivingArea || r.BuildingAreaTotal) || 0,
+    PropertyType: r.PropertyType || '',
+    photo:       photos[0] || '',
+    photos:      photos,
+    ListOfficeName: r.ListOfficeName || '',
+    ListAgentFullName: r.ListAgentFullName || '',
+    ModificationTimestamp: r.ModificationTimestamp || '',
+  };
+}
+
+/* Photo URLs live in different places depending on the MLS. Check the usual ones. */
+function extractPhotos(r){
+  const out = [];
+  const push = u => { if(typeof u === 'string' && /^https?:\/\//.test(u) && !out.includes(u)) out.push(u); };
+  if(Array.isArray(r.Media)){
+    r.Media.forEach(m => {
+      if(typeof m === 'string') push(m);
+      else if(m) push(m.MediaURL || m.MediaUrl || m.Url || m.url);
+    });
+  }
+  if(Array.isArray(r.Photos)) r.Photos.forEach(p => push(typeof p === 'string' ? p : (p && (p.Uri1600 || p.Uri800 || p.MediaURL))));
+  push(r.PhotoURL); push(r.ThumbnailURL);
+  return out;
+}
 
 const HOUSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="#1541C4" stroke-width="1.2" opacity="0.55"><path d="M3 11 L12 3 L21 11"/><path d="M5 10 V21 H19 V10"/><path d="M10 21 V14 H14 V21"/></svg>`;
 const PHOTO_TONES = ["#EDEFF7","#F1EAD8","#E7EAF3","#F0E9DA","#EAEDF5"];
@@ -1248,6 +1305,7 @@ if(v==='crm'){ document.getElementById('chat-panel').classList.remove('open'); i
 let ALL_LISTINGS = [];
 async function renderListings(){
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
+if(typeof updateMlsNotice==='function') updateMlsNotice();
 const city = document.getElementById('f-city').value.trim().toLowerCase();
 const beds = parseInt(document.getElementById('f-beds').value)||0;
 const price = parseInt(document.getElementById('f-price').value)||Infinity;
@@ -2170,6 +2228,7 @@ document.getElementById('activity-searches').innerHTML = searches.length
 : '<p style="font-size:13px; color:var(--driftwood);">No saved searches yet.</p>';
 const favKeys = c.favorites || [];
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
+if(typeof updateMlsNotice==='function') updateMlsNotice();
 const favs = favKeys.map(key => ALL_LISTINGS.find(l=>l.ListingKey===key)).filter(Boolean);
 document.getElementById('activity-favorites').innerHTML = favs.length
 ? favs.map(l=>`<div class="fav-mini-card">${escapeHtml(l.UnparsedAddress)} — $${l.ListPrice.toLocaleString()}</div>`).join('')
@@ -3285,6 +3344,22 @@ document.addEventListener('click', function(e){
     window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
   }, 60);
 });
+</script>
+<script>
+/* MLS display compliance: attribution must show whenever real data is displayed. */
+function updateMlsNotice(){
+  const el = document.getElementById('mls-notice');
+  if(!el) return;
+  const box = el.closest('.mls-note') || el.parentElement;
+  if(LISTINGS_ARE_LIVE){
+    el.innerHTML = 'Listing data courtesy of <strong>Gulf Coast MLS \u2014 Mobile Area Association of REALTORS\u00AE</strong>. '
+      + 'Information is deemed reliable but not guaranteed and should be independently verified. '
+      + 'Listings may be from other brokerages. Equal Housing Opportunity.';
+    if(box) box.style.opacity = '.9';
+  }else{
+    el.innerHTML = '<strong>Note:</strong> the listings below are sample data, not live MLS.';
+  }
+}
 </script>
 </body>
 </html>
