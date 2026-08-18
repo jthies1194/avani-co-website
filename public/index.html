@@ -1893,9 +1893,10 @@ if(isBroker){
 html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (official)</h4>
 <div class="setup-grid">
 <input id="cd-address" placeholder="Property address">
-<input id="cd-price" type="number" placeholder="Sale price ($)">
+<input id="cd-price" type="number" placeholder="Sale price ($)" oninput="calcGci('cd')">
 <input id="cd-date" type="date">
-<input id="cd-gci" type="number" placeholder="Gross commission ($)">
+<input id="cd-pct" type="number" step="0.01" placeholder="Commission % (e.g. 3)" oninput="calcGci('cd')">
+<input id="cd-gci" type="number" placeholder="Gross commission ($)" oninput="markGciEdited('cd')">
 <button class="btn-sm primary" onclick="addClosedDeal('${agentId}')" style="grid-column:1/-1;">Add to official ledger</button>
 </div>
 <p style="font-size:11.5px; color:var(--driftwood); margin-top:6px;">Splits and fees are calculated automatically from this agent's plan.</p>`;
@@ -1904,9 +1905,10 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Submit a deal for the br
 <p style="font-size:12px; color:var(--driftwood); margin-bottom:10px;">If a closing is missing above, submit it here. It won't change any totals until the broker approves it.</p>
 <div class="setup-grid">
 <input id="sub-address" placeholder="Property address">
-<input id="sub-price" type="number" placeholder="Sale price ($)">
+<input id="sub-price" type="number" placeholder="Sale price ($)" oninput="calcGci('sub')">
 <input id="sub-date" type="date">
-<input id="sub-gci" type="number" placeholder="Gross commission ($)">
+<input id="sub-pct" type="number" step="0.01" placeholder="Commission % (e.g. 3)" oninput="calcGci('sub')">
+<input id="sub-gci" type="number" placeholder="Gross commission ($)" oninput="markGciEdited('sub')">
 <input id="sub-note" placeholder="Note for the broker (optional)" style="grid-column:1/-1;">
 <button class="btn-sm primary" onclick="submitAgentDeal()" style="grid-column:1/-1;">Submit for review</button>
 </div>`;
@@ -1974,6 +1976,29 @@ showToast("Plan saved.");
 loadClosedDeals();
 }
 
+/* Fills in gross commission from sale price x commission %.
+   Stops auto-filling as soon as the user types a gross amount by hand,
+   so unusual deals (flat fee, split rates) can always be overridden. */
+let gciEditedManually = {};
+function markGciEdited(prefix){ gciEditedManually[prefix] = true; }
+function calcGci(prefix){
+if(gciEditedManually[prefix]) return;
+const price = Number(document.getElementById(prefix+'-price').value) || 0;
+const pct = Number(document.getElementById(prefix+'-pct').value) || 0;
+const out = document.getElementById(prefix+'-gci');
+if(!out) return;
+out.value = (price > 0 && pct > 0) ? Math.round(price * pct / 100) : '';
+}
+function resetDealForm(prefix){
+['-address','-price','-date','-pct','-gci'].forEach(sfx=>{
+const el = document.getElementById(prefix+sfx);
+if(el) el.value = '';
+});
+const note = document.getElementById(prefix+'-note');
+if(note) note.value = '';
+gciEditedManually[prefix] = false;
+}
+
 async function addClosedDeal(agentId){
 const address = document.getElementById('cd-address').value.trim();
 const price = document.getElementById('cd-price').value;
@@ -1985,6 +2010,7 @@ const list = await storeGet('settings:closedDeals') || [];
 list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
 agentId, agentName: agent?agent.name:'', source:'broker' });
 await storeSet('settings:closedDeals', list);
+resetDealForm('cd');
 showToast("Added to the official ledger.");
 loadClosedDeals();
 }
@@ -2000,6 +2026,7 @@ const subs = await storeGet('settings:dealSubmissions') || [];
 subs.push({ id:'sub_'+Date.now(), address, price, closeDate, gci, note,
 agentId: currentAgent.id, agentName: currentAgent.name, status:'pending', submittedAt: new Date().toISOString() });
 await storeSet('settings:dealSubmissions', subs);
+resetDealForm('sub');
 showToast("Submitted \u2014 your broker will review it.");
 loadClosedDeals();
 }
