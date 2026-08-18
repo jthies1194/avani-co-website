@@ -1382,7 +1382,7 @@ const filtered = ALL_LISTINGS.filter(l =>
   }
 })();
 const grid = document.getElementById('listing-grid');
-if(typeof visibleCount === 'undefined') window.visibleCount = 24;
+if(typeof visibleCount === 'undefined') window.visibleCount = 12;
 const source = serverMode ? SEARCH_RESULTS : filtered;
 const pageItems = serverMode ? source : source.slice(0, window.visibleCount);
 grid.innerHTML = pageItems.map((l,i)=>{
@@ -1433,8 +1433,8 @@ maybeAutoOpenListingFromURL(filtered);
   }else{
     const left = filtered.length - pageItems.length;
     more.innerHTML = left > 0
-      ? `<button class="btn" onclick="window.visibleCount += 24; renderListings();">Show more homes <span style="opacity:.7">(${left} more)</span></button>`
-      : (filtered.length > 24 ? `<p style="color:var(--grey);font-size:14.5px;">Showing ${filtered.length} recent homes \u2014 use search to see all 3,798 active listings.</p>` : '');
+      ? `<button class="btn" onclick="window.visibleCount += 12; renderListings();">Show more homes <span style="opacity:.7">(${left} more)</span></button>`
+      : (filtered.length > 12 ? `<p style="color:var(--grey);font-size:14.5px;">Showing ${filtered.length} recent homes \u2014 use search to see all 3,798 active listings.</p>` : '');
   }
 })();
 
@@ -3300,7 +3300,7 @@ addEventListener('scroll', () => {
 /* Bridges the new min/max boxes to the existing renderListings() filter */
 function priceNum(v){ const n = parseInt(String(v||'').replace(/[^0-9]/g,''),10); return isNaN(n)?'':n; }
 function runSearch(){
-  window.visibleCount = 24;
+  window.visibleCount = 12;
   if(typeof anyFilterSet === 'function' && anyFilterSet()){ runServerSearch(false); return; }
   if(typeof SEARCH_MODE !== 'undefined'){ SEARCH_MODE = false; SEARCH_RESULTS = []; SEARCH_SKIP = 0; }
   const lo = priceNum(document.getElementById('pmin').value);
@@ -3526,7 +3526,7 @@ function searchTown(name){
   const city = document.getElementById('f-city');
   if(city) city.value = name;
   const st = document.getElementById('f-status'); if(st) st.value = '';
-  window.visibleCount = 24;
+  window.visibleCount = 12;
   if(typeof runSearch === 'function') runSearch();
   const grid = document.getElementById('listings') || document.getElementById('listing-grid');
   if(grid){
@@ -3550,7 +3550,7 @@ function searchTown(name){
       b.classList.add('on');
       lo.value = money(b.dataset.lo);
       hi.value = money(b.dataset.hi);
-      window.visibleCount = 24;
+      window.visibleCount = 12;
       if(typeof runSearch === 'function') runSearch();
     }));
     [lo,hi].forEach(el => {
@@ -3631,7 +3631,7 @@ function clearSearch(){
   ['f-beds','f-status'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.querySelectorAll('.price-quick button').forEach(b => b.classList.remove('on'));
   SEARCH_MODE = false; SEARCH_RESULTS = []; SEARCH_SKIP = 0;
-  window.visibleCount = 24;
+  window.visibleCount = 12;
   renderListings();
 }
 
