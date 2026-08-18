@@ -1362,7 +1362,7 @@ else localStorage.removeItem('clientId');
 }catch(e){}
 }
 function updateClientLoginLabel(){
-try{ refreshClientBar(); }catch(e){}
+if(window.refreshClientBar) window.refreshClientBar();
 const link = document.getElementById('client-login-link');
 if(link) link.textContent = currentClient ? `My Account (${currentClient.name.split(' ')[0]})` : 'Client Login';
 const banner = document.getElementById('welcome-banner');
@@ -1427,6 +1427,7 @@ renderListings();
 }
 function logoutClient(){
 currentClient = null;
+if(window.refreshClientBar) setTimeout(window.refreshClientBar, 0);
 localStorage.removeItem('clientId');
 updateClientLoginLabel();
 closeMyAccount();
@@ -3153,6 +3154,12 @@ async function submitContactForm(){
 /* ---------- signed-in client bar ---------- */
 let clientFilter = 'all';
 
+/* This block loads after the client-account code, so a restored session would
+   otherwise call refreshClientBar() before it exists. Re-run it once on load. */
+document.addEventListener('DOMContentLoaded', () => { try{ refreshClientBar(); }catch(e){} });
+window.addEventListener('load', () => { try{ refreshClientBar(); }catch(e){} });
+
+window.refreshClientBar = refreshClientBar;
 function refreshClientBar(){
   const bar = document.getElementById('client-bar');
   if(!bar) return;
