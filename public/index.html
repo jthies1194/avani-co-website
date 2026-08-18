@@ -1778,8 +1778,7 @@ const pending = cdData.subs.filter(s => s.status === 'pending').length;
 const mk = (id,label) => `<button class="btn-sm${cdTab===id?' primary':''}" onclick="cdSelectTab('${id}')">${label}</button>`;
 el.innerHTML = mk('all','All agents')
 + cdData.agents.map(a => mk('agent:'+a.id, escapeHtml(a.name))).join('')
-+ mk('pending', `Pending${pending?' ('+pending+')':''}`)
-+ mk('plans','Commission plans');
++ mk('pending', `Pending${pending?' ('+pending+')':''}`);
 }
 function cdSelectTab(id){ cdTab = id; renderCdTabs(); renderCdContent(); }
 
@@ -1788,7 +1787,6 @@ const el = document.getElementById('cd-content');
 if(!el) return;
 if(cdTab === 'all') el.innerHTML = viewAllAgents();
 else if(cdTab === 'pending') el.innerHTML = viewPending();
-else if(cdTab === 'plans') el.innerHTML = viewPlans();
 else if(cdTab.startsWith('agent:')) el.innerHTML = viewAgent(cdTab.slice(6));
 }
 
@@ -1850,12 +1848,21 @@ const r = computeAgentYear(agentId, cdYear);
 const p = r.plan, t = r.totals;
 const isBroker = currentAgent.role === 'broker';
 
-let html = yearSelector()
-+ `<div style="border:1px solid var(--line); border-radius:4px; padding:12px; margin-bottom:16px; font-size:12.5px;">
-<strong>${escapeHtml(agent.name)}'s plan:</strong> ${p.splitPct}% to agent${p.teamSplitPct?` · ${escapeHtml(p.teamName||'Team')} takes ${p.teamSplitPct}% off the top`:''}${p.capAmount?` · annual cap ${fmtMoney(p.capAmount)}`:' · no cap'}
-${p.deskFeeMonthly?`<br>Desk fee ${fmtMoney(p.deskFeeMonthly)}/mo`:''}${p.transactionFee?` · ${fmtMoney(p.transactionFee)}/transaction`:''}${p.eoFee?` · E&O ${fmtMoney(p.eoFee)}/deal`:''}${p.franchisePct?` · franchise ${p.franchisePct}%`:''}
-${p.capAmount?`<br><span style="color:${t.capRemaining===0?'var(--marsh)':'var(--driftwood)'};">${t.capRemaining===0?'\u2705 Cap met \u2014 now at 100%':fmtMoney(t.capRemaining)+' left before cap'}</span>`:''}
+const planSummary = `${p.splitPct}% to agent${p.teamSplitPct?` \u00b7 ${escapeHtml(p.teamName||'Team')} takes ${p.teamSplitPct}% off the top`:''}${p.capAmount?` \u00b7 annual cap ${fmtMoney(p.capAmount)}`:' \u00b7 no cap'}${p.deskFeeMonthly?` \u00b7 desk ${fmtMoney(p.deskFeeMonthly)}/mo`:''}${p.transactionFee?` \u00b7 ${fmtMoney(p.transactionFee)}/txn`:''}${p.eoFee?` \u00b7 E&O ${fmtMoney(p.eoFee)}`:''}${p.franchisePct?` \u00b7 franchise ${p.franchisePct}%`:''}`;
+const capLine = p.capAmount?`<div style="margin-top:6px; font-size:12px; color:${t.capRemaining===0?'var(--marsh)':'var(--driftwood)'};">${t.capRemaining===0?'\u2705 Cap met \u2014 now earning 100%':fmtMoney(t.capRemaining)+' left before cap'}</div>`:'';
+
+let html = `<div style="border:1px solid var(--line); border-radius:4px; padding:14px; margin-bottom:16px;">
+<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+<div style="flex:1; min-width:200px;">
+<div style="font-family:'Fraunces',serif; font-size:17px; color:var(--marsh);">${escapeHtml(agent.name)}</div>
+<div style="font-size:12px; color:var(--driftwood); margin-top:4px;">${planSummary}</div>
+${capLine}
 </div>
+${isBroker?`<button class="btn-sm" id="plan-toggle-${agentId}" onclick="togglePlanEditor('${agentId}')">Edit plan</button>`:''}
+</div>
+${isBroker?`<div id="plan-editor-${agentId}" style="display:none; margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">${planEditor(agentId, p)}</div>`:''}
+</div>
+` + yearSelector() + `
 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
 ${statBox('Deals', r.rows.length)}
 ${statBox('Volume', fmtMoney(t.volume))}
@@ -1930,25 +1937,28 @@ ${x.note?'<br>Note: '+escapeHtml(x.note):''}</div>
 </div>`).join('');
 }
 
-function viewPlans(){
-return `<p style="font-size:12.5px; margin-bottom:14px;">Set each agent's terms. Leave a field blank or 0 if it doesn't apply. Only you can see or change this.</p>`
-+ cdData.agents.map(a=>{
-const p = planFor(a.id);
-return `<div style="border:1px solid var(--line); border-radius:4px; padding:12px; margin-bottom:12px;">
-<div style="font-weight:600; color:var(--marsh); margin-bottom:10px;">${escapeHtml(a.name)}</div>
-<div class="setup-grid">
-<div><div class="field-label">Agent split %</div><input type="number" id="pl-split-${a.id}" value="${p.splitPct}" placeholder="70"></div>
-<div><div class="field-label">Annual cap ($)</div><input type="number" id="pl-cap-${a.id}" value="${p.capAmount||''}" placeholder="none"></div>
-<div><div class="field-label">Team name</div><input id="pl-teamname-${a.id}" value="${escapeHtml(p.teamName)}" placeholder="none"></div>
-<div><div class="field-label">Team split % (off top)</div><input type="number" id="pl-team-${a.id}" value="${p.teamSplitPct||''}" placeholder="0"></div>
-<div><div class="field-label">Desk fee ($/month)</div><input type="number" id="pl-desk-${a.id}" value="${p.deskFeeMonthly||''}" placeholder="0"></div>
-<div><div class="field-label">Fee per transaction ($)</div><input type="number" id="pl-txn-${a.id}" value="${p.transactionFee||''}" placeholder="0"></div>
-<div><div class="field-label">E&amp;O per deal ($)</div><input type="number" id="pl-eo-${a.id}" value="${p.eoFee||''}" placeholder="0"></div>
-<div><div class="field-label">Franchise fee %</div><input type="number" id="pl-fran-${a.id}" value="${p.franchisePct||''}" placeholder="0"></div>
+function planEditor(agentId, p){
+return `<div class="setup-grid">
+<div><div class="field-label">Agent split %</div><input type="number" id="pl-split-${agentId}" value="${p.splitPct}" placeholder="70"></div>
+<div><div class="field-label">Annual cap ($)</div><input type="number" id="pl-cap-${agentId}" value="${p.capAmount||''}" placeholder="none"></div>
+<div><div class="field-label">Team name</div><input id="pl-teamname-${agentId}" value="${escapeHtml(p.teamName)}" placeholder="none"></div>
+<div><div class="field-label">Team split % (off top)</div><input type="number" id="pl-team-${agentId}" value="${p.teamSplitPct||''}" placeholder="0"></div>
+<div><div class="field-label">Desk fee ($/month)</div><input type="number" id="pl-desk-${agentId}" value="${p.deskFeeMonthly||''}" placeholder="0"></div>
+<div><div class="field-label">Fee per transaction ($)</div><input type="number" id="pl-txn-${agentId}" value="${p.transactionFee||''}" placeholder="0"></div>
+<div><div class="field-label">E&amp;O per deal ($)</div><input type="number" id="pl-eo-${agentId}" value="${p.eoFee||''}" placeholder="0"></div>
+<div><div class="field-label">Franchise fee %</div><input type="number" id="pl-fran-${agentId}" value="${p.franchisePct||''}" placeholder="0"></div>
 </div>
-<button class="btn-sm primary" style="margin-top:10px;" onclick="savePlan('${a.id}')">Save ${escapeHtml(a.name.split(' ')[0])}'s plan</button>
-</div>`;
-}).join('');
+<button class="btn-sm primary" style="margin-top:10px;" onclick="savePlan('${agentId}')">Save plan</button>
+<p style="font-size:11.5px; color:var(--driftwood); margin-top:8px;">Leave a field blank or 0 if it doesn't apply. Only you can see or change this.</p>`;
+}
+
+function togglePlanEditor(agentId){
+const box = document.getElementById('plan-editor-'+agentId);
+const btn = document.getElementById('plan-toggle-'+agentId);
+if(!box) return;
+const isOpen = box.style.display !== 'none';
+box.style.display = isOpen ? 'none' : 'block';
+if(btn) btn.textContent = isOpen ? 'Edit plan' : 'Close';
 }
 
 async function savePlan(agentId){
