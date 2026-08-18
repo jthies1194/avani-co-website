@@ -1470,7 +1470,7 @@ let cachedViewLimit = null;
 async function getViewLimit(){
 if(cachedViewLimit !== null) return cachedViewLimit;
 const val = await storeGet('settings:viewLimit');
-cachedViewLimit = (val && Number.isFinite(val.limit)) ? val.limit : 5;
+cachedViewLimit = (val && Number.isFinite(val.limit)) ? val.limit : 10;
 return cachedViewLimit;
 }
 function getViewedListings(){
