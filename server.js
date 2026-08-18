@@ -152,6 +152,32 @@ app.get('/api/listing/:key', async (req, res) => {
 
 // Server-side search. Sends the filters to Bridge so results cover all ~3,800
 // active listings instead of only the batch we cache for the homepage.
+// Diagnostic: what does this dataset actually put in CountyOrParish / City?
+app.get('/api/mls-fields', async (req, res) => {
+  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
+  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+  try {
+    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+      + `?access_token=${encodeURIComponent(token)}&$top=200`
+      + `&$filter=${encodeURIComponent(STATUS_CLAUSE)}`;
+    const r = await fetch(url);
+    const json = await r.json();
+    const rows = json.value || [];
+    const tally = (f) => {
+      const m = {};
+      rows.forEach(x => { const v = x[f]; if (v !== undefined && v !== null && v !== '') m[v] = (m[v]||0)+1; });
+      return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0, 40);
+    };
+    res.json({
+      sampled: rows.length,
+      hasCountyField: rows.length ? ('CountyOrParish' in rows[0]) : null,
+      counties: tally('CountyOrParish'),
+      cities: tally('City'),
+      states: tally('StateOrProvince'),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/search', async (req, res) => {
   const token = process.env.BRIDGE_SERVER_TOKEN;
   const dataset = process.env.BRIDGE_DATASET;
@@ -163,7 +189,7 @@ app.get('/api/search', async (req, res) => {
 
   const parts = [];
   const status = (q.status || '').trim();
-  parts.push(serviceAreaClause());
+  if (String(q.area || '') !== 'off') parts.push(serviceAreaClause());
   if (status) {
     parts.push(`StandardStatus eq '${esc(status)}'`);
   } else {
@@ -194,7 +220,13 @@ app.get('/api/search', async (req, res) => {
       console.error(`[search] Bridge ${r.status}: ${text.slice(0, 300)}`);
       return res.status(502).json({ error: `MLS search error ${r.status}`, detail: text.slice(0, 300) });
     }
-    const json = await r.json();
+    let json = await r.json();
+    // if the service-area clause matched nothing, retry once without it
+    if ((json.value || []).length === 0 && !req.query.area) {
+      const retry = url.replace(encodeURIComponent(serviceAreaClause() + ' and '), '');
+      const r2 = await fetch(retry);
+      if (r2.ok) json = await r2.json();
+    }
     res.json({
       value: json.value || [],
       total: json['@odata.count'] != null ? json['@odata.count'] : null,
@@ -241,18 +273,21 @@ app.get('/api/listings', async (req, res) => {
       if (!r.ok) {
         const text = await r.text().catch(() => '');
         if (useCounty && skip === 0) {
-          // this dataset may not expose CountyOrParish — fall back to everything
           console.warn('[listings] county filter rejected, retrying without it:', text.slice(0, 200));
-          useCounty = false;
-          skip -= PAGE;
-          continue;
+          useCounty = false; skip -= PAGE; continue;
         }
         if (all.length) break;
         return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
       }
       const json = await r.json();
-      if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
       const rows = json.value || [];
+      // The filter can be valid yet match nothing if this dataset spells county
+      // values differently. Treat an empty first page as "unsupported" too.
+      if (useCounty && skip === 0 && rows.length === 0) {
+        console.warn('[listings] county filter returned 0 rows — retrying without it.');
+        useCounty = false; skip -= PAGE; continue;
+      }
+      if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
       all.push(...rows);
       if (rows.length < PAGE) break;
     }
