@@ -1353,9 +1353,36 @@ function fmtDate(iso){ const d=new Date(iso); return d.toLocaleDateString('en-US
 async function updateLeadAgent(id, agentId){
 const lead = await storeGet('lead:'+id);
 if(!lead) return;
+const previousAgentId = lead.assignedAgentId || '';
 lead.assignedAgentId = agentId || '';
 await storeSet('lead:'+id, lead);
 loadLeads();
+
+// Unassigning, or re-picking the same agent — nothing to notify.
+if(!agentId || agentId === previousAgentId){
+if(!agentId) showToast("Lead unassigned.");
+return;
+}
+
+showToast("Assigned — notifying agent...");
+try{
+const res = await fetch('/api/notify-assignment', {
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body: JSON.stringify({ agentId, lead })
+});
+const data = await res.json().catch(()=>({}));
+if(res.ok && data.ok && !data.skipped){
+showToast(`Assigned to ${data.agentName || 'agent'} — email sent.`);
+}else if(data.skipped === 'agent-locked'){
+showToast("Assigned. That agent's login is locked, so no email was sent.");
+}else{
+showToast("Assigned and saved, but the email didn't send.");
+}
+}catch(e){
+// The assignment itself already saved — only the email failed.
+showToast("Assigned and saved, but the email didn't send.");
+}
 }
 async function updateStage(id, stage){
 const lead = await storeGet('lead:'+id);
