@@ -116,6 +116,7 @@ app.delete('/api/kv/:key', async (req, res) => {
 });
 
 // ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
+let listingsCache = { data: null, at: 0 };
 // TODO: once you have the exact Bridge "Dataset" resource name for GCMLS,
 // confirm this URL shape against Bridge's docs — it may need adjusting.
 app.get('/api/listings', async (req, res) => {
@@ -123,20 +124,43 @@ app.get('/api/listings', async (req, res) => {
   const dataset = process.env.BRIDGE_DATASET;
 
   if (!token || !dataset) {
-    // Not configured yet — tell the frontend so it can fall back to sample data.
     return res.json({ mock: true, value: [] });
   }
 
+  // Bridge caps each response at 200 records, so page through with $skip until
+  // we have enough. Cached for 10 minutes so we're not hammering the feed on
+  // every page view — MLS data doesn't change second to second.
+  const WANT = Math.min(parseInt(req.query.limit, 10) || 500, 2000);
+  const PAGE = 200;
+
+  if (listingsCache.data && Date.now() - listingsCache.at < 10 * 60 * 1000 && !req.query.fresh) {
+    return res.json({ value: listingsCache.data, cached: true, count: listingsCache.data.length });
+  }
+
   try {
-    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property?access_token=${encodeURIComponent(token)}&$top=50`;
-    const r = await fetch(url);
-    if (!r.ok) {
-      const text = await r.text().catch(() => '');
-      return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
+    const all = [];
+    for (let skip = 0; skip < WANT; skip += PAGE) {
+      const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+        + `?access_token=${encodeURIComponent(token)}`
+        + `&$top=${PAGE}&$skip=${skip}`
+        + `&$filter=${encodeURIComponent("StandardStatus eq 'Active'")}`
+        + `&$orderby=ModificationTimestamp desc`;
+      const r = await fetch(url);
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        if (all.length) break; // keep whatever we already have
+        return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
+      }
+      const json = await r.json();
+      const rows = json.value || [];
+      all.push(...rows);
+      if (rows.length < PAGE) break; // reached the end of the feed
     }
-    const json = await r.json();
-    res.json(json);
+    listingsCache = { data: all, at: Date.now() };
+    console.log(`[listings] fetched ${all.length} active listings from ${dataset}`);
+    res.json({ value: all, count: all.length, cached: false });
   } catch (e) {
+    console.error('[listings] FAILED:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
