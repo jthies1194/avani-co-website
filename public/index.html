@@ -523,6 +523,10 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .saved-empty{padding:15px 4px;color:var(--grey);font-size:15.5px}
 .saved-add{margin-top:14px;border-color:var(--gold-deep);color:var(--gold-deep)}
 .saved-add:hover{background:var(--gold-deep);color:#fff;border-color:var(--gold-deep)}
+
+/* anchor targets must clear the fixed strip + header, or a jump looks like nothing happened */
+#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
+@media(max-width:1080px){#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:160px}}
 </style>
 </head>
 <body>
@@ -3257,6 +3261,30 @@ async function defaultAssigneeId(){
   }catch(e){ _brokerId = ''; }
   return _brokerId;
 }
+</script>
+<script>
+/* Anchor jumps: offset for the fixed header, and make sure we're on the public
+   view first (clicking a nav link from inside the CRM would otherwise do nothing). */
+document.addEventListener('click', function(e){
+  const a = e.target.closest('a[href^="#"]');
+  if(!a) return;
+  const id = a.getAttribute('href').slice(1);
+  if(!id) return;
+  const target = document.getElementById(id);
+  if(!target) return;
+  e.preventDefault();
+  const site = document.getElementById('view-site');
+  if(site && site.offsetParent === null && typeof switchView === 'function'){
+    switchView('site');
+  }
+  setTimeout(() => {
+    const bar = document.querySelector('.utility');
+    const hdr = document.getElementById('hdr');
+    const offset = (bar ? bar.offsetHeight : 0) + (hdr ? hdr.offsetHeight : 0) + 24;
+    const y = target.getBoundingClientRect().top + window.pageYOffset - offset;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }, 60);
+});
 </script>
 </body>
 </html>
