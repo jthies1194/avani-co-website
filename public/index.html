@@ -248,6 +248,10 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 </div>
 
 <div id="crm-main" class="crm-wrap" style="display:none;">
+<div id="impersonation-banner" style="display:none; background:var(--marsh); color:var(--sand-light); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:13px; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+<span id="impersonation-text"></span>
+<button class="btn-sm" style="background:var(--sand-light); color:var(--marsh); border:none; font-weight:700;" onclick="returnToBrokerView()">Back to my broker view</button>
+</div>
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
 <div id="crm-signed-in-as" style="font-size:12.5px; color:var(--driftwood);"></div>
 <button class="btn-sm" onclick="logoutAgent()">Log out</button>
@@ -1169,13 +1173,59 @@ showToast("If that email has an account, a reset link has been sent.");
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 
+/* --- Broker "View as agent" ---
+   Lets the broker preview the CRM through an agent's eyes without logging out.
+   brokerIdentity holds the broker's own record while previewing; the saved
+   login session is never overwritten, so refreshing returns to the broker. */
+let brokerIdentity = null;
+
+function renderImpersonationBanner(){
+const bar = document.getElementById('impersonation-banner');
+const txt = document.getElementById('impersonation-text');
+if(!bar) return;
+if(brokerIdentity){
+bar.style.display = 'flex';
+if(txt) txt.innerHTML = `\u{1F441} You're viewing the CRM as <strong>${escapeHtml(currentAgent.name)}</strong>. This is what they see when they log in.`;
+}else{
+bar.style.display = 'none';
+}
+}
+
+async function viewAsAgent(agentId){
+try{
+const res = await fetch('/api/agent/list');
+const data = await res.json();
+const target = (data.agents || []).find(a => a.id === agentId);
+if(!target){ showToast("Couldn't find that agent."); return; }
+if(!brokerIdentity) brokerIdentity = currentAgent;
+currentAgent = target;
+cdTab = 'agent:' + target.id;
+unlockCRM();
+window.scrollTo({top: 0, behavior: 'smooth'});
+showToast(`Now viewing as ${target.name}.`);
+}catch(e){ showToast("Couldn't switch view \u2014 please try again."); }
+}
+
+function returnToBrokerView(){
+if(!brokerIdentity) return;
+currentAgent = brokerIdentity;
+brokerIdentity = null;
+cdTab = 'all';
+unlockCRM();
+window.scrollTo({top: 0, behavior: 'smooth'});
+showToast("Back to your broker view.");
+}
+
 function unlockCRM(){
-saveAgentSession(currentAgent);
+if(!brokerIdentity) saveAgentSession(currentAgent);
 resetIdleTimer();
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
 document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
-document.getElementById('crm-signed-in-as').textContent = `Signed in as ${currentAgent.name} (${currentAgent.role})`;
+document.getElementById('crm-signed-in-as').textContent = brokerIdentity
+? `Previewing as ${currentAgent.name} (${currentAgent.role})`
+: `Signed in as ${currentAgent.name} (${currentAgent.role})`;
+renderImpersonationBanner();
 loadLeads();
 loadEmailConfigIntoForm();
 loadViewLimitSetting();
@@ -1216,6 +1266,7 @@ document.addEventListener(evt, ()=>{ if(currentAgent) resetIdleTimer(); }, {pass
 function logoutAgent(){
 clearIdleTimers();
 clearAgentSession();
+brokerIdentity = null;
 currentAgent = null;
 document.getElementById('crm-main').style.display='none';
 initCRM();
@@ -1237,7 +1288,7 @@ list.innerHTML = agents.map(a => `
 <div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}</div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
 </div>
-${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button><button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
 </div>
 `).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
 
