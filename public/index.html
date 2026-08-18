@@ -763,6 +763,11 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .dd-row.total{border-bottom:none;border-top:2px solid var(--marsh);margin-top:6px;padding-top:8px;font-size:15px}
 .dd-note{font-size:13px;color:var(--driftwood);margin-top:6px;line-height:1.6}
 @media(max-width:820px){.dd-wrap{grid-template-columns:1fr;gap:14px}}
+
+.ref-dir{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.06em;
+  padding:2px 6px;border-radius:3px;vertical-align:middle;margin-right:5px}
+.ref-dir.out{background:#F3E0DA;color:#8A3B1E}
+.ref-dir.in{background:#DDEBDD;color:#2F6B33}
 </style>
 </head>
 <body>
@@ -3190,6 +3195,7 @@ ${statBox('Closed deals', g.deals)}
 <tr style="text-align:left; color:var(--driftwood); font-size:11px; text-transform:uppercase;">
 <th style="padding:6px 8px;">Agent</th><th style="padding:6px 8px;">Plan</th><th style="padding:6px 8px;">Deals</th>
 <th style="padding:6px 8px;">Volume</th><th style="padding:6px 8px;">GCI</th>
+<th style="padding:6px 8px;">Referrals</th>
 <th style="padding:6px 8px;">To brokerage</th><th style="padding:6px 8px;">Fees</th><th style="padding:6px 8px;">Agent net</th></tr>
 ${per.map(x=>{
 const p=x.r.plan; const t=x.r.totals;
@@ -3200,6 +3206,7 @@ return `<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${x.r.rows.length}</td>
 <td style="padding:8px;">${fmtMoney(t.volume)}</td>
 <td style="padding:8px;">${fmtMoney(t.gci)}</td>
+<td style="padding:8px;">${t.refOut?`<span class="ref-dir out">\u2191</span>${fmtMoney(t.refOut)}`:''}${t.refIn?`${t.refOut?'<br>':''}<span class="ref-dir in">\u2193</span>${fmtMoney(t.refIn)}`:''}${(!t.refOut&&!t.refIn)?'\u2014':''}</td>
 <td style="padding:8px;">${fmtMoney(t.brokerage)}</td>
 <td style="padding:8px;">${fmtMoney(t.fees + t.deskFees)}</td>
 <td style="padding:8px;"><strong>${fmtMoney(t.agentNet)}</strong></td></tr>`;
@@ -3232,7 +3239,8 @@ ${statBox('Deals', r.rows.length)}
 ${(function(){const dbl=r.rows.filter(d=>d.side==='both').length; return dbl?statBox('Double-sided', dbl, 'var(--coral)'):'';})()}
 ${statBox('Volume', fmtMoney(t.volume))}
 ${statBox('Gross commission', fmtMoney(t.gci))}
-${t.referral?statBox('Referrals paid', fmtMoney(t.referral)):''}
+${t.refOut?statBox('Referrals paid out', fmtMoney(t.refOut)):''}
+${t.refIn?statBox('Referral fees received', fmtMoney(t.refIn), 'var(--coral)'):''}
 ${statBox('Paid to brokerage', fmtMoney(t.brokerage))}
 ${statBox('Fees paid', fmtMoney(t.fees + t.deskFees))}
 ${statBox('Take-home', fmtMoney(t.agentNet - t.deskFees), 'var(--marsh)')}
@@ -3248,7 +3256,7 @@ ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${d.closeDate}</td>
 <td style="padding:8px;">${fmtMoney(d.price)}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.gci)}</td>
-<td style="padding:8px;">${d.calc.referral?`${fmtMoney(d.calc.referral)}${d.referralTo?`<div style="font-size:11px;color:var(--driftwood);">${escapeHtml(d.referralTo)}${d.referralDate?' \u00b7 '+d.referralDate:''}</div>`:''}`:'\u2014'}</td>
+<td style="padding:8px;">${d.calc.referral?`<span class="ref-dir ${d.referralDirection==='in'?'in':'out'}">${d.referralDirection==='in'?'\u2193 IN':'\u2191 OUT'}</span> ${fmtMoney(d.calc.referral)}${d.referralTo?`<div style="font-size:11px;color:var(--driftwood);">${d.referralDirection==='in'?'from':'to'} ${escapeHtml(d.referralTo)}${d.referralDate?' \u00b7 '+d.referralDate:''}</div>`:''}`:'\u2014'}</td>
 <td style="padding:8px;">${d.calc.team?fmtMoney(d.calc.team):'\u2014'}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?` <span class="agent-role-tag" title="Capped \u2014 ${fmtMoney(d.calc.capSaved)} not charged">cap</span>`:''}${d.calc.capSaved?`<div style="font-size:11px;color:var(--marsh);">saved ${fmtMoney(d.calc.capSaved)}</div>`:''}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.fees)}</td>
