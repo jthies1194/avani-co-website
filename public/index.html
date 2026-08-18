@@ -527,6 +527,14 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 /* anchor targets must clear the fixed strip + header, or a jump looks like nothing happened */
 #listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
 @media(max-width:1080px){#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:160px}}
+
+.card-photo{position:relative;overflow:hidden}
+.card-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;
+  transition:transform .9s cubic-bezier(.2,.7,.2,1)}
+.card:hover .card-img{transform:scale(1.05)}
+.card-photo .status-badge,.card-photo .card-qr,.card-photo .fav-btn,.card-photo .price-tag{z-index:3}
+.card-photo::after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(to top,rgba(23,31,99,.45),transparent 42%)}
 </style>
 </head>
 <body>
@@ -1328,7 +1336,7 @@ const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=90x90&margin=0&c
 return `
 <div class="card">
 <div class="card-photo" style="background:${PHOTO_TONES[i%PHOTO_TONES.length]}; cursor:pointer;" onclick="openListingDetail('${l.ListingKey}')">
-${HOUSE_ICON}
+${l.photo ? `<img class="card-img" src="${l.photo}" alt="${escapeHtml(l.UnparsedAddress||'Listing')}" loading="lazy" onerror="this.remove()">` : HOUSE_ICON}
 <div class="status-badge ${l.StandardStatus==='Pending'?'pending':''}">${l.StandardStatus}</div>
 <div class="card-qr" title="Scan for this listing"><img src="${qrImg}" alt="QR code for MLS ${l.ListingKey}" loading="lazy"></div>
 <button class="fav-btn ${isFavorited(l.ListingKey)?'active':''}" onclick="event.stopPropagation(); toggleFavorite('${l.ListingKey}')" title="Save favorite">
