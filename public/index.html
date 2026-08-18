@@ -169,6 +169,11 @@ header.stuck .mark-text{color:var(--blue-ink);font-size:27px}
   letter-spacing:0.42em;text-transform:uppercase;color:var(--gold-pale);margin-top:5px;transition:.5s}
 header.stuck .mark-text span{color:var(--gold)}
 nav{display:flex;gap:26px;align-items:center;flex-shrink:0}
+@media(max-width:1280px){nav{gap:18px}nav a{font-size:13px}.mark-text{font-size:30px}.seal{height:64px}}
+@media(max-width:1080px){nav{gap:13px}nav a{font-size:12px;letter-spacing:.05em}.mark-text{font-size:26px}
+  .seal{height:56px}header{padding:16px 24px}}
+@media(max-width:940px){nav{gap:10px}nav a{font-size:11.5px}.mark-text{font-size:23px}
+  .mark-text span{font-size:8px;letter-spacing:.18em}.seal{height:48px}}
 nav a{position:relative;color:var(--ivory);font-size:14px;font-weight:500;letter-spacing:0.10em;
   text-transform:uppercase;padding-bottom:5px;transition:color .5s}
 header.stuck nav a{color:var(--blue-ink)}
@@ -311,7 +316,7 @@ header.stuck nav .tel{color:var(--gold)}
 .site-footer .legal{max-width:1340px;margin:0 auto;border-top:1px solid var(--line-light);padding-top:28px;
   font-size:12.5px;line-height:1.85;color:rgba(255,255,255,3.00)}
 
-@media(max-width:1180px){
+@media(max-width:860px){
   nav{display:none}
   .about-grid{padding:0 24px}
   .services{grid-template-columns:repeat(2,1fr)}
@@ -488,7 +493,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .client-bar{display:none;max-width:1180px;margin:0 auto 22px;background:var(--sand);
   border:1px solid var(--line);padding:14px 18px;align-items:center;gap:10px;flex-wrap:wrap}
 .client-bar.show{display:flex}
-.client-bar .who{font-size:15px;color:var(--blue-ink);margin-right:auto;font-weight:500}
+.client-bar .who{font-size:15px;color:var(--blue-ink);margin-right:auto;font-weight:500;max-width:38ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .client-bar .who span{color:var(--grey);font-weight:400}
 .cb-btn{background:transparent;border:1px solid var(--line);color:var(--blue-ink);
   padding:9px 16px;font-family:'Jost',sans-serif;font-size:14px;font-weight:500;transition:.28s;white-space:nowrap}
@@ -504,6 +509,20 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .saved-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
 .saved-row .lbl{flex:1;font-size:15.5px;color:var(--blue-ink)}
 @media(max-width:820px){.client-bar,.saved-list{margin-left:16px;margin-right:16px}}
+
+.saved-help{margin:0 0 14px;font-size:14.5px;color:var(--grey)}
+.saved-row{display:flex;align-items:center;gap:10px;padding:0;border-top:1px solid var(--line)}
+.saved-go{flex:1;text-align:left;background:transparent;border:none;cursor:pointer;
+  padding:15px 4px;font-family:'Jost',sans-serif;font-size:16.5px;font-weight:500;
+  color:var(--blue);transition:.25s}
+.saved-go:hover{color:var(--gold-deep)}
+.saved-go::after{content:'  \2192';opacity:.5}
+.saved-x{background:transparent;border:none;color:var(--grey);font-size:22px;line-height:1;
+  cursor:pointer;padding:6px 10px;transition:.25s}
+.saved-x:hover{color:#B84A2E}
+.saved-empty{padding:15px 4px;color:var(--grey);font-size:15.5px}
+.saved-add{margin-top:14px;border-color:var(--gold-deep);color:var(--gold-deep)}
+.saved-add:hover{background:var(--gold-deep);color:#fff;border-color:var(--gold-deep)}
 </style>
 </head>
 <body>
@@ -585,7 +604,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <button class="btn" onclick="runSearch()">Search</button>
 </div>
 
-<div class="section">
+<div class="section" id="listings">
 <div class="welcome-banner" id="welcome-banner">
 <div class="msg"><strong id="welcome-name">Welcome back!</strong><br>Questions about a home, or ready to schedule a showing? I'm here to help.</div>
 <a class="call-btn" href="tel:2512293216">
@@ -770,7 +789,7 @@ Call Jimmy · 251-229-3216
   </div>
 </section>
 
-<div class="lead-band">
+<div class="lead-band" id="value">
 <div class="lead-band-inner">
 <h2>Not ready to browse alone?</h2>
 <div class="sub">Every request below comes straight to your agent — nothing gets sold to a third party.</div>
@@ -824,7 +843,7 @@ Call Jimmy · 251-229-3216
       <a href="#communities">Communities</a>
       <a href="#value">Home Valuation</a>
       <a href="#about">About</a>
-      <a href="#client-login">Client Login</a>
+      <a href="#" onclick="openClientAuthOrAccount();return false;">Client Login</a>
       <a href="#" onclick="applyToJoin();return false;">Join the Brokerage</a>
       <a href="#" onclick="switchView('crm');return false;">Agent Login</a>
     </div>
@@ -1469,6 +1488,7 @@ const search = {
 city: document.getElementById('f-city').value.trim(),
 beds: document.getElementById('f-beds').value,
 price: document.getElementById('f-price').value,
+priceMin: (document.getElementById('f-price-min')||{}).value || '',
 label: [document.getElementById('f-city').value.trim() || 'All cities', document.getElementById('f-beds').value ? document.getElementById('f-beds').value+'+ bd' : ''].filter(Boolean).join(' · '),
 savedAt: new Date().toISOString(),
 };
@@ -3189,10 +3209,16 @@ function clientView(mode){
     const el = document.getElementById('saved-list');
     const list = (currentClient && currentClient.savedSearches) || [];
     document.getElementById('cb-srch').classList.add('on');
-    el.innerHTML = '<h4>Your saved searches</h4>' + (list.length
-      ? list.map((sr,i) => `<div class="saved-row"><div class="lbl">${escapeHtml(sr.label || 'Saved search')}</div>
-          <button class="cb-btn" onclick="applySavedSearch(${i})">Run it</button></div>`).join('')
-      : '<div class="saved-row"><div class="lbl">No saved searches yet — set your filters above and press \u201cSave this search\u201d.</div></div>');
+    el.innerHTML =
+      '<h4>Your saved searches</h4>' +
+      '<p class="saved-help">A saved search remembers your filters. Click one to run it again and see what\'s new.</p>' +
+      (list.length
+        ? list.map((sr,i) => `<div class="saved-row">
+             <button class="saved-go" onclick="applySavedSearch(${i})">${escapeHtml(sr.label || 'Saved search')}</button>
+             <button class="saved-x" title="Remove" onclick="removeSavedSearch(${i}); setTimeout(()=>clientView('searches'),120);">&times;</button>
+           </div>`).join('')
+        : '<div class="saved-row"><div class="lbl saved-empty">Nothing saved yet. Set your filters above, then use the button below.</div></div>') +
+      '<button class="cb-btn saved-add" onclick="saveCurrentSearch(); setTimeout(()=>clientView(\'searches\'),400);">+ Save my current search</button>';
     el.classList.add('show');
     el.scrollIntoView({behavior:'smooth', block:'nearest'});
     return;
@@ -3210,7 +3236,7 @@ function applySavedSearch(i){
   document.getElementById('f-city').value  = sr.city || '';
   document.getElementById('f-beds').value  = sr.beds || '';
   document.getElementById('pmax').value    = sr.price ? '$' + Number(sr.price).toLocaleString() : '';
-  document.getElementById('pmin').value    = '';
+  document.getElementById('pmin').value    = sr.priceMin ? '$' + Number(sr.priceMin).toLocaleString() : '';
   clientFilter = 'all';
   hideSavedList();
   runSearch();
