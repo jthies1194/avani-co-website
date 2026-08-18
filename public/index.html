@@ -2972,7 +2972,7 @@ ${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClos
 </table></div>` : '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged for this year yet.</p>';
 
 if(isBroker){
-gciEditedManually['cd'] = false;
+gciEditedManually['cd'] = false; refEditedManually = false;
 html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (official)</h4>
 <div class="setup-grid">
 <input id="cd-address" placeholder="Property address">
@@ -2984,9 +2984,18 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 <div class="field-label">Referral fee (optional)</div>
 <div class="setup-grid" style="margin-top:6px;">
 <input id="cd-refname" placeholder="Paid to (name or brokerage)">
-<input id="cd-refamt" type="number" placeholder="Referral amount ($)">
+<div style="display:flex; gap:8px;">
+<select id="cd-reftype" onchange="calcReferral()" style="flex:0 0 110px;">
+<option value="pct">% of gross</option>
+<option value="flat">Flat fee</option>
+</select>
+<input id="cd-refpct" type="number" step="0.01" placeholder="25" oninput="calcReferral()" style="flex:1;">
+</div>
+<input id="cd-refamt" type="number" placeholder="Referral amount ($)" oninput="markRefEdited()">
 <input id="cd-refdate" type="date" title="Date the referral was paid">
-</div></div>
+</div>
+<p id="cd-refnote" style="font-size:11.5px; color:var(--driftwood); margin:6px 0 0;"></p>
+</div>
 <button class="btn-sm primary" onclick="addClosedDeal('${agentId}')" style="grid-column:1/-1;">Add to official ledger</button>
 </div>
 <p style="font-size:11.5px; color:var(--driftwood); margin-top:6px;">Splits and fees are calculated automatically from this agent's plan.</p>`;
@@ -3077,6 +3086,7 @@ function markGciEdited(prefix){
   const has = el && String(el.value).trim() !== '';
   gciEditedManually[prefix] = !!has;
   if(!has) calcGci(prefix);
+  if(prefix === 'cd' && typeof calcReferral === 'function') calcReferral();
 }
 function calcGci(prefix){
 if(gciEditedManually[prefix]) return;
@@ -3085,9 +3095,10 @@ const pct = Number(document.getElementById(prefix+'-pct').value) || 0;
 const out = document.getElementById(prefix+'-gci');
 if(!out) return;
 out.value = (price > 0 && pct > 0) ? Math.round(price * pct / 100) : '';
+if(prefix === 'cd' && typeof calcReferral === 'function') calcReferral();
 }
 function resetDealForm(prefix){
-['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate'].forEach(sfx=>{
+['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate','-refpct'].forEach(sfx=>{
 const el = document.getElementById(prefix+sfx);
 if(el) el.value = '';
 });
@@ -3107,8 +3118,11 @@ const list = await storeGet('settings:closedDeals') || [];
 const refName = (document.getElementById('cd-refname')||{}).value || '';
 const refAmt  = (document.getElementById('cd-refamt')||{}).value || '';
 const refDate = (document.getElementById('cd-refdate')||{}).value || '';
+const refType = (document.getElementById('cd-reftype')||{}).value || 'pct';
+const refPct  = (document.getElementById('cd-refpct')||{}).value || '';
 list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
 referralTo: refName.trim(), referralAmount: refAmt, referralDate: refDate,
+referralType: refType, referralPct: refPct,
 agentId, agentName: agent?agent.name:'', source:'broker' });
 await storeSet('settings:closedDeals', list);
 resetDealForm('cd');
@@ -3760,7 +3774,8 @@ function printReport(title, bodyHtml){
   <div class="sub">${title} &middot; generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
   ${bodyHtml}
   <p class="noprint" style="margin-top:26px;font-size:12px;color:#5A6288;">Use your browser's Print command (Ctrl+P) — choose "Save as PDF" to send it to your accountant.</p>
-  </body></html>`);
+
+</body></html>`);
   w.document.close();
 }
 
@@ -3839,6 +3854,71 @@ function printCommissions(){
      </div>
      <p style="margin-top:20px;font-size:12px;color:#5A6288;">This is a summary of earnings for your records.
      It is not a tax form. Your official 1099-NEC is issued separately by the brokerage.</p>`);
+}
+</script>
+<script>
+/* Referral fee: usually a percentage of the gross commission (25% is common),
+   sometimes a flat amount. Percentage auto-calculates from the gross. */
+function calcReferral(){
+  const typeEl = document.getElementById('cd-reftype');
+  const pctEl  = document.getElementById('cd-refpct');
+  const amtEl  = document.getElementById('cd-refamt');
+  const gciEl  = document.getElementById('cd-gci');
+  if(!typeEl || !pctEl || !amtEl) return;
+  const isPct = typeEl.value === 'pct';
+  pctEl.style.display = isPct ? '' : 'none';
+  pctEl.placeholder = isPct ? '25' : '';
+  if(!isPct){ showRefNote(); return; }
+  if(refEditedManually) { showRefNote(); return; }
+  const gci = Number(gciEl && gciEl.value) || 0;
+  const pct = Number(pctEl.value) || 0;
+  amtEl.value = (gci > 0 && pct > 0) ? Math.round(gci * pct / 100 * 100) / 100 : '';
+  showRefNote();
+}
+function showRefNote(){
+  const note = document.getElementById('cd-refnote');
+  if(!note) return;
+  const gci = Number((document.getElementById('cd-gci')||{}).value) || 0;
+  const amt = Number((document.getElementById('cd-refamt')||{}).value) || 0;
+  if(!gci || !amt){ note.textContent = ''; return; }
+  const pct = (amt / gci * 100).toFixed(1);
+  note.textContent = `Referral ${fmtMoney(amt)} (${pct}% of gross) \u2014 ${fmtMoney(gci - amt)} left to split.`;
+}
+</script>
+<script>
+/* Referral fee: usually a percentage of the gross commission (25% is common),
+   sometimes a flat amount. Percentage auto-calculates from the gross. */
+let refEditedManually = false;
+function markRefEdited(){
+  const el = document.getElementById('cd-refamt');
+  refEditedManually = !!(el && String(el.value).trim() !== '');
+  if(!refEditedManually) calcReferral();
+  showRefNote();
+}
+function calcReferral(){
+  const typeEl = document.getElementById('cd-reftype');
+  const pctEl  = document.getElementById('cd-refpct');
+  const amtEl  = document.getElementById('cd-refamt');
+  const gciEl  = document.getElementById('cd-gci');
+  if(!typeEl || !pctEl || !amtEl) return;
+  const isPct = typeEl.value === 'pct';
+  pctEl.style.display = isPct ? '' : 'none';
+  pctEl.placeholder = isPct ? '25' : '';
+  if(!isPct){ showRefNote(); return; }
+  if(refEditedManually) { showRefNote(); return; }
+  const gci = Number(gciEl && gciEl.value) || 0;
+  const pct = Number(pctEl.value) || 0;
+  amtEl.value = (gci > 0 && pct > 0) ? Math.round(gci * pct / 100 * 100) / 100 : '';
+  showRefNote();
+}
+function showRefNote(){
+  const note = document.getElementById('cd-refnote');
+  if(!note) return;
+  const gci = Number((document.getElementById('cd-gci')||{}).value) || 0;
+  const amt = Number((document.getElementById('cd-refamt')||{}).value) || 0;
+  if(!gci || !amt){ note.textContent = ''; return; }
+  const pct = (amt / gci * 100).toFixed(1);
+  note.textContent = `Referral ${fmtMoney(amt)} (${pct}% of gross) \u2014 ${fmtMoney(gci - amt)} left to split.`;
 }
 </script>
 </body>
