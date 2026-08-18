@@ -497,6 +497,55 @@ app.post('/api/notify-lead', async (req, res) => {
   }
 });
 
+// Notify an agent that a lead has just been assigned to them.
+// The agent's email address is looked up server-side from the agents table
+// rather than trusted from the browser — the client only sends the agent id.
+app.post('/api/notify-assignment', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (!mailer) {
+    return res.status(503).json({ error: 'Email is not configured yet.' });
+  }
+  const { agentId, lead } = req.body || {};
+  if (!agentId) return res.status(400).json({ error: 'agentId is required' });
+  const L = lead || {};
+  try {
+    const { data: agent, error } = await supabase
+      .from('agents').select('id,name,email,active').eq('id', agentId).maybeSingle();
+    if (error || !agent) return res.status(404).json({ error: 'Agent not found.' });
+    if (agent.active === false) {
+      console.warn(`[lead assignment email] SKIPPED — agent ${agent.email} is locked.`);
+      return res.json({ ok: true, skipped: 'agent-locked' });
+    }
+
+    const lines = [
+      `You've been assigned a new lead by the broker.`,
+      ``,
+      `Name:  ${L.name || '(not provided)'}`,
+      `Email: ${L.email || '(not provided)'}`,
+      `Phone: ${L.phone || '(not provided)'}`,
+      L.source ? `Source: ${L.source}` : null,
+      L.listingLabel ? `Listing: ${L.listingLabel}` : null,
+      L.stage ? `Stage: ${L.stage}` : null,
+      ``,
+      `Message / notes:`,
+      (L.message || L.notes || '(none)'),
+      ``,
+      `Log in to the CRM to follow up: https://bamacoast.com`,
+    ].filter(v => v !== null);
+
+    await mailer.sendMail({
+      to: agent.email,
+      subject: `New lead assigned to you: ${L.name || 'Unknown'}`,
+      text: lines.join('\n'),
+    });
+    console.log(`[lead assignment email] sent successfully to ${agent.email}`);
+    res.json({ ok: true, notified: agent.email, agentName: agent.name });
+  } catch (e) {
+    console.error('[lead assignment email] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ---------- AI features (chat widget + reply drafting), via your own Anthropic API key ----------
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 if (!ANTHROPIC_API_KEY) {
