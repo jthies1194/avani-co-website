@@ -3780,14 +3780,22 @@ function printReport(title, bodyHtml){
   <style>
     body{font-family:Georgia,'Times New Roman',serif;color:#171F63;margin:40px;line-height:1.6}
     h1{font-size:22px;margin:0 0 4px}
+    h2{font-family:Georgia,serif;font-weight:normal}
     .sub{font-size:12px;color:#5A6288;margin-bottom:22px}
-    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px}
-    th{text-align:left;border-bottom:2px solid #171F63;padding:7px 6px;font-size:10px;
-       letter-spacing:.08em;text-transform:uppercase}
-    td{border-bottom:1px solid #ddd;padding:7px 6px}
+    /* Tables use a sans face with lining, fixed-width figures — Georgia's
+       old-style numerals sit at different heights and make columns look ragged. */
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px;
+      font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+      font-variant-numeric:lining-nums tabular-nums;
+      font-feature-settings:'lnum' 1,'tnum' 1}
+    th{text-align:left;border-bottom:2px solid #171F63;padding:7px 8px;font-size:9.5px;
+       letter-spacing:.09em;text-transform:uppercase;white-space:nowrap;vertical-align:bottom}
+    td{border-bottom:1px solid #ddd;padding:8px;vertical-align:top}
+    th.num,td.num{text-align:right;white-space:nowrap}
     tfoot td{font-weight:bold;border-top:2px solid #171F63;border-bottom:none}
-    .totals{margin-top:18px;font-size:13px}
+    .totals{margin-top:18px;font-size:13px;font-variant-numeric:lining-nums tabular-nums}
     .totals div{padding:3px 0}
+    .meta{font-size:10px;color:#5A6288;line-height:1.45;margin-top:3px}
     @media print{ body{margin:14mm} .noprint{display:none} }
   </style></head><body>
   <h1>Avani &amp; Co. Real Estate</h1>
@@ -3808,12 +3816,12 @@ function printExpenses(){
     <td>${escapeHtml(e.description||'')}</td><td>${escapeHtml(e.payee||'')}</td>
     <td>${escapeHtml(e.method||'')}${e.ref?' #'+escapeHtml(e.ref):''}</td>
     ${!agentId?`<td>${escapeHtml(e.agentName||'')}</td>`:''}
-    <td style="text-align:right">${fmtMoney(e.amount)}</td></tr>`).join('');
+    <td class="num">${fmtMoney(e.amount)}</td></tr>`).join('');
   printReport(`Business expenses — ${who} — ${exYear}`,
     `<table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid to</th><th>Method</th>
-      ${!agentId?'<th>Agent</th>':''}<th style="text-align:right">Amount</th></tr></thead>
+      ${!agentId?'<th>Agent</th>':''}<th class="num">Amount</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="7">No expenses recorded.</td></tr>'}</tbody>
-      <tfoot><tr><td colspan="${!agentId?6:5}">Total</td><td style="text-align:right">${fmtMoney(total)}</td></tr></tfoot>
+      <tfoot><tr><td colspan="${!agentId?6:5}">Total</td><td class="num">${fmtMoney(total)}</td></tr></tfoot>
     </table>`);
 }
 
@@ -3823,25 +3831,25 @@ function printCommissions(){
     const per = (cdData.agents||[]).map(a => ({agent:a, r:computeAgentYear(a.id, cdYear)}))
                  .filter(x => x.r.rows.length);
     const rows = per.map(x => `<tr><td>${escapeHtml(x.agent.name)}</td><td>${x.r.rows.length}</td>
-      <td style="text-align:right">${fmtMoney(x.r.totals.volume)}</td>
-      <td style="text-align:right">${fmtMoney(x.r.totals.gci)}</td>
-      <td style="text-align:right">${fmtMoney(x.r.totals.referral)}</td>
-      <td style="text-align:right">${fmtMoney(x.r.totals.brokerage)}</td>
-      <td style="text-align:right">${fmtMoney(x.r.totals.fees + x.r.totals.deskFees)}</td>
-      <td style="text-align:right">${fmtMoney(x.r.totals.agentNet)}</td></tr>`).join('');
+      <td class="num">${fmtMoney(x.r.totals.volume)}</td>
+      <td class="num">${fmtMoney(x.r.totals.gci)}</td>
+      <td class="num">${fmtMoney(x.r.totals.referral)}</td>
+      <td class="num">${fmtMoney(x.r.totals.brokerage)}</td>
+      <td class="num">${fmtMoney(x.r.totals.fees + x.r.totals.deskFees)}</td>
+      <td class="num">${fmtMoney(x.r.totals.agentNet)}</td></tr>`).join('');
     const sum = per.reduce((a,x)=>({v:a.v+x.r.totals.volume,g:a.g+x.r.totals.gci,
       rf:a.rf+x.r.totals.referral,b:a.b+x.r.totals.brokerage,
       f:a.f+x.r.totals.fees+x.r.totals.deskFees,n:a.n+x.r.totals.agentNet}),{v:0,g:0,rf:0,b:0,f:0,n:0});
     printReport(`Brokerage commission summary — ${cdYear}`,
-      `<table><thead><tr><th>Agent</th><th>Deals</th><th style="text-align:right">Volume</th>
-        <th style="text-align:right">GCI</th><th style="text-align:right">Referrals</th>
-        <th style="text-align:right">To brokerage</th><th style="text-align:right">Fees</th>
-        <th style="text-align:right">Paid to agent</th></tr></thead>
+      `<table><thead><tr><th>Agent</th><th>Deals</th><th class="num">Volume</th>
+        <th class="num">GCI</th><th class="num">Referrals</th>
+        <th class="num">To brokerage</th><th class="num">Fees</th>
+        <th class="num">Paid to agent</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="8">No closed deals recorded.</td></tr>'}</tbody>
         <tfoot><tr><td colspan="2">Totals</td>
-          <td style="text-align:right">${fmtMoney(sum.v)}</td><td style="text-align:right">${fmtMoney(sum.g)}</td>
-          <td style="text-align:right">${fmtMoney(sum.rf)}</td><td style="text-align:right">${fmtMoney(sum.b)}</td>
-          <td style="text-align:right">${fmtMoney(sum.f)}</td><td style="text-align:right">${fmtMoney(sum.n)}</td></tr></tfoot>
+          <td class="num">${fmtMoney(sum.v)}</td><td class="num">${fmtMoney(sum.g)}</td>
+          <td class="num">${fmtMoney(sum.rf)}</td><td class="num">${fmtMoney(sum.b)}</td>
+          <td class="num">${fmtMoney(sum.f)}</td><td class="num">${fmtMoney(sum.n)}</td></tr></tfoot>
       </table>
       <p style="margin-top:20px;font-size:12px;color:#5A6288;">For accounting use. "Paid to agent" is the
       figure to reconcile against payments issued and to carry into each agent's 1099-NEC.</p>
@@ -3854,23 +3862,23 @@ function printCommissions(){
   const refCell = d => {
     if(!d.calc.referral) return '—';
     const dir = d.referralDirection === 'in' ? 'Received from' : 'Paid to';
-    return `${fmtMoney(d.calc.referral)}<div style="font-size:10px;color:#5A6288">${dir} ${escapeHtml(d.referralTo||'—')}`
+    return `${fmtMoney(d.calc.referral)}<div class="meta">${dir} ${escapeHtml(d.referralTo||'—')}`
       + `${d.referralEin?`<br>EIN ${escapeHtml(d.referralEin)}`:''}`
       + `${d.referralDate?`<br>${d.referralDate}`:''}`
       + `${d.referralNotes?`<br>${escapeHtml(d.referralNotes)}`:''}</div>`;
   };
-  const rows = r.rows.map(d => `<tr><td>${escapeHtml(d.address)}${d.notes?`<div style="font-size:10px;color:#5A6288">${escapeHtml(d.notes)}</div>`:''}</td><td>${d.closeDate}</td>
-    <td style="text-align:right">${fmtMoney(d.price)}</td>
-    <td style="text-align:right">${fmtMoney(d.calc.gci)}</td>
+  const rows = r.rows.map(d => `<tr><td>${escapeHtml(d.address)}${d.notes?`<div class="meta">${escapeHtml(d.notes)}</div>`:''}</td><td>${d.closeDate}</td>
+    <td class="num">${fmtMoney(d.price)}</td>
+    <td class="num">${fmtMoney(d.calc.gci)}</td>
     <td>${refCell(d)}</td>
-    <td style="text-align:right">${fmtMoney(d.calc.brokerage)}</td>
-    <td style="text-align:right">${fmtMoney(d.calc.fees)}</td>
-    <td style="text-align:right">${fmtMoney(d.calc.agentNet)}</td></tr>`).join('');
+    <td class="num">${fmtMoney(d.calc.brokerage)}</td>
+    <td class="num">${fmtMoney(d.calc.fees)}</td>
+    <td class="num">${fmtMoney(d.calc.agentNet)}</td></tr>`).join('');
   printReport(`Earnings statement — ${a.name} — ${cdYear}`,
-    `<table><thead><tr><th>Property</th><th>Closed</th><th style="text-align:right">Price</th>
-      <th style="text-align:right">GCI</th><th style="text-align:right">Referral</th>
-      <th style="text-align:right">Brokerage</th><th style="text-align:right">Fees</th>
-      <th style="text-align:right">Net</th></tr></thead>
+    `<table><thead><tr><th>Property</th><th>Closed</th><th class="num">Price</th>
+      <th class="num">GCI</th><th>Referral</th>
+      <th class="num">Brokerage</th><th class="num">Fees</th>
+      <th class="num">Net</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="8">No closed deals recorded.</td></tr>'}</tbody></table>
      <div class="totals">
        <div>Closed transactions: <strong>${r.rows.length}</strong></div>
@@ -3988,13 +3996,13 @@ function referralLedgerHtml(year){
   const recd = rows.filter(r=>r.dir==='Received').reduce((a,r)=>a+r.amt,0);
   return `<h2 style="font-size:17px;margin:34px 0 0;">Referral ledger — ${year}</h2>
     <table><thead><tr><th>Date</th><th>Direction</th><th>Brokerage / agent</th><th>EIN / Tax ID</th>
-      <th>Property</th><th>Our agent</th><th>Notes</th><th style="text-align:right">Amount</th></tr></thead>
+      <th>Property</th><th>Our agent</th><th>Notes</th><th class="num">Amount</th></tr></thead>
       <tbody>${rows.map(r=>`<tr><td>${r.date}</td><td>${r.dir}</td><td>${escapeHtml(r.who)}</td>
         <td>${escapeHtml(r.ein)}</td><td>${escapeHtml(r.property)}</td><td>${escapeHtml(r.agent)}</td>
-        <td>${escapeHtml(r.notes)}</td><td style="text-align:right">${fmtMoney(r.amt)}</td></tr>`).join('')}</tbody>
+        <td>${escapeHtml(r.notes)}</td><td class="num">${fmtMoney(r.amt)}</td></tr>`).join('')}</tbody>
       <tfoot>
-        <tr><td colspan="7">Total referrals paid out</td><td style="text-align:right">${fmtMoney(paid)}</td></tr>
-        <tr><td colspan="7">Total referral fees received</td><td style="text-align:right">${fmtMoney(recd)}</td></tr>
+        <tr><td colspan="7">Total referrals paid out</td><td class="num">${fmtMoney(paid)}</td></tr>
+        <tr><td colspan="7">Total referral fees received</td><td class="num">${fmtMoney(recd)}</td></tr>
       </tfoot></table>
     <p style="margin-top:12px;font-size:12px;color:#5A6288;">Referral fees paid to another brokerage or
     unincorporated agent generally require a Form 1099-NEC if they total $600 or more in the year.
