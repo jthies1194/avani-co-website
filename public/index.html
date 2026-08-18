@@ -2793,8 +2793,12 @@ franchisePct: Number(p.franchisePct)||0
 function computeDeal(deal, plan, ytdPaid){
 const gci = Number(deal.gci)||0;
 // A referral fee is paid off the gross before anyone splits anything.
+// Only an outbound referral (one we pay) reduces the gross. A referral we
+// receive IS the gross on that transaction, so nothing is deducted.
 const referral = Number(deal.referralAmount)||0;
-const afterReferral = Math.max(0, gci - referral);
+const refOut = (deal.referralDirection || 'out') === 'out' ? referral : 0;
+const refIn  = (deal.referralDirection === 'in') ? referral : 0;
+const afterReferral = Math.max(0, gci - refOut);
 const team = afterReferral * (plan.teamSplitPct/100);
 const afterTeam = afterReferral - team;
 let brokerage = afterTeam * ((100 - plan.splitPct)/100);
@@ -2806,7 +2810,7 @@ if(brokerage > left){ brokerage = left; capped = true; }
 const franchise = gci * (plan.franchisePct/100);
 const fees = plan.transactionFee + plan.eoFee + franchise;
 const agentGross = afterTeam - brokerage;
-return { gci, referral, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped };
+return { gci, referral, refOut, refIn, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped };
 }
 
 /* Walks an agent's deals oldest-first so the cap accumulates correctly. */
@@ -2822,10 +2826,10 @@ ytdPaid += c.brokerage;
 return Object.assign({}, d, { calc: c });
 });
 const t = rows.reduce((a,r)=>({
-gci: a.gci + r.calc.gci, referral: a.referral + r.calc.referral, team: a.team + r.calc.team,
+gci: a.gci + r.calc.gci, referral: a.referral + r.calc.referral, refOut: a.refOut + r.calc.refOut, refIn: a.refIn + r.calc.refIn, team: a.team + r.calc.team,
 brokerage: a.brokerage + r.calc.brokerage, fees: a.fees + r.calc.fees,
 agentNet: a.agentNet + r.calc.agentNet, volume: a.volume + (Number(r.price)||0)
-}), {gci:0,referral:0,team:0,brokerage:0,fees:0,agentNet:0,volume:0});
+}), {gci:0,referral:0,refOut:0,refIn:0,team:0,brokerage:0,fees:0,agentNet:0,volume:0});
 const monthsSoFar = (year === new Date().getFullYear()) ? (new Date().getMonth()+1) : 12;
 t.deskFees = plan.deskFeeMonthly * monthsSoFar;
 t.capRemaining = plan.capAmount > 0 ? Math.max(0, plan.capAmount - t.brokerage) : 0;
@@ -2981,9 +2985,14 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 <input id="cd-pct" type="number" step="0.01" placeholder="Commission % (e.g. 3)" oninput="calcGci('cd')" onchange="calcGci('cd')">
 <input id="cd-gci" type="number" placeholder="Gross commission ($)" oninput="markGciEdited('cd')">
 <div style="grid-column:1/-1; border-top:1px solid var(--line); margin-top:6px; padding-top:12px;">
-<div class="field-label">Referral fee (optional)</div>
+<div class="field-label">Referral (optional)</div>
 <div class="setup-grid" style="margin-top:6px;">
-<input id="cd-refname" placeholder="Paid to (name or brokerage)">
+<select id="cd-refdir" onchange="calcReferral()">
+<option value="">No referral</option>
+<option value="out">We PAID a referral (comes off our gross)</option>
+<option value="in">We RECEIVED a referral fee (income to us)</option>
+</select>
+<input id="cd-refname" placeholder="Other brokerage / agent name">
 <div style="display:flex; gap:8px;">
 <select id="cd-reftype" onchange="calcReferral()" style="flex:0 0 110px;">
 <option value="pct">% of gross</option>
@@ -2992,9 +3001,15 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 <input id="cd-refpct" type="number" step="0.01" placeholder="25" oninput="calcReferral()" style="flex:1;">
 </div>
 <input id="cd-refamt" type="number" placeholder="Referral amount ($)" oninput="markRefEdited()">
-<input id="cd-refdate" type="date" title="Date the referral was paid">
+<input id="cd-refein" placeholder="Their EIN / Tax ID (from W-9)">
+<input id="cd-refdate" type="date" title="Date paid or received">
+<input id="cd-refnotes" placeholder="Referral notes (agreement #, contact, terms)" style="grid-column:1/-1;">
 </div>
 <p id="cd-refnote" style="font-size:11.5px; color:var(--driftwood); margin:6px 0 0;"></p>
+</div>
+<div style="grid-column:1/-1;">
+<div class="field-label">Deal notes</div>
+<input id="cd-notes" placeholder="Anything worth remembering about this transaction">
 </div>
 <button class="btn-sm primary" onclick="addClosedDeal('${agentId}')" style="grid-column:1/-1;">Add to official ledger</button>
 </div>
@@ -3098,7 +3113,7 @@ out.value = (price > 0 && pct > 0) ? Math.round(price * pct / 100) : '';
 if(prefix === 'cd' && typeof calcReferral === 'function') calcReferral();
 }
 function resetDealForm(prefix){
-['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate','-refpct'].forEach(sfx=>{
+['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate','-refpct','-refein','-refnotes','-notes'].forEach(sfx=>{
 const el = document.getElementById(prefix+sfx);
 if(el) el.value = '';
 });
@@ -3120,9 +3135,14 @@ const refAmt  = (document.getElementById('cd-refamt')||{}).value || '';
 const refDate = (document.getElementById('cd-refdate')||{}).value || '';
 const refType = (document.getElementById('cd-reftype')||{}).value || 'pct';
 const refPct  = (document.getElementById('cd-refpct')||{}).value || '';
+const refDir  = (document.getElementById('cd-refdir')||{}).value || '';
+const refEin  = (document.getElementById('cd-refein')||{}).value || '';
+const refNotes= (document.getElementById('cd-refnotes')||{}).value || '';
+const dealNotes=(document.getElementById('cd-notes')||{}).value || '';
 list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
 referralTo: refName.trim(), referralAmount: refAmt, referralDate: refDate,
-referralType: refType, referralPct: refPct,
+referralType: refType, referralPct: refPct, referralDirection: refDir,
+referralEin: refEin.trim(), referralNotes: refNotes.trim(), notes: dealNotes.trim(),
 agentId, agentName: agent?agent.name:'', source:'broker' });
 await storeSet('settings:closedDeals', list);
 resetDealForm('cd');
@@ -3824,16 +3844,25 @@ function printCommissions(){
           <td style="text-align:right">${fmtMoney(sum.f)}</td><td style="text-align:right">${fmtMoney(sum.n)}</td></tr></tfoot>
       </table>
       <p style="margin-top:20px;font-size:12px;color:#5A6288;">For accounting use. "Paid to agent" is the
-      figure to reconcile against payments issued and to carry into each agent's 1099-NEC.</p>`);
+      figure to reconcile against payments issued and to carry into each agent's 1099-NEC.</p>
+      ${referralLedgerHtml(cdYear)}`);
     return;
   }
   const agentId = cdTab.startsWith('agent:') ? cdTab.slice(6) : currentAgent.id;
   const a = (cdData.agents||[]).find(x=>x.id===agentId) || {name:'Agent'};
   const r = computeAgentYear(agentId, cdYear), t = r.totals;
-  const rows = r.rows.map(d => `<tr><td>${escapeHtml(d.address)}</td><td>${d.closeDate}</td>
+  const refCell = d => {
+    if(!d.calc.referral) return '—';
+    const dir = d.referralDirection === 'in' ? 'Received from' : 'Paid to';
+    return `${fmtMoney(d.calc.referral)}<div style="font-size:10px;color:#5A6288">${dir} ${escapeHtml(d.referralTo||'—')}`
+      + `${d.referralEin?`<br>EIN ${escapeHtml(d.referralEin)}`:''}`
+      + `${d.referralDate?`<br>${d.referralDate}`:''}`
+      + `${d.referralNotes?`<br>${escapeHtml(d.referralNotes)}`:''}</div>`;
+  };
+  const rows = r.rows.map(d => `<tr><td>${escapeHtml(d.address)}${d.notes?`<div style="font-size:10px;color:#5A6288">${escapeHtml(d.notes)}</div>`:''}</td><td>${d.closeDate}</td>
     <td style="text-align:right">${fmtMoney(d.price)}</td>
     <td style="text-align:right">${fmtMoney(d.calc.gci)}</td>
-    <td style="text-align:right">${d.calc.referral?fmtMoney(d.calc.referral):'—'}</td>
+    <td>${refCell(d)}</td>
     <td style="text-align:right">${fmtMoney(d.calc.brokerage)}</td>
     <td style="text-align:right">${fmtMoney(d.calc.fees)}</td>
     <td style="text-align:right">${fmtMoney(d.calc.agentNet)}</td></tr>`).join('');
@@ -3847,7 +3876,8 @@ function printCommissions(){
        <div>Closed transactions: <strong>${r.rows.length}</strong></div>
        <div>Sales volume: <strong>${fmtMoney(t.volume)}</strong></div>
        <div>Gross commission: <strong>${fmtMoney(t.gci)}</strong></div>
-       <div>Referrals paid: <strong>${fmtMoney(t.referral)}</strong></div>
+       <div>Referrals paid out: <strong>${fmtMoney(t.refOut)}</strong></div>
+       <div>Referral fees received: <strong>${fmtMoney(t.refIn)}</strong></div>
        <div>Paid to brokerage: <strong>${fmtMoney(t.brokerage)}</strong></div>
        <div>Fees (transaction, E&amp;O, franchise, desk): <strong>${fmtMoney(t.fees + t.deskFees)}</strong></div>
        <div style="font-size:15px;margin-top:8px;">Net paid to agent: <strong>${fmtMoney(t.agentNet - t.deskFees)}</strong></div>
@@ -3882,7 +3912,14 @@ function showRefNote(){
   const amt = Number((document.getElementById('cd-refamt')||{}).value) || 0;
   if(!gci || !amt){ note.textContent = ''; return; }
   const pct = (amt / gci * 100).toFixed(1);
-  note.textContent = `Referral ${fmtMoney(amt)} (${pct}% of gross) \u2014 ${fmtMoney(gci - amt)} left to split.`;
+  const dir = (document.getElementById('cd-refdir')||{}).value || '';
+  if(dir === 'in'){
+    note.textContent = `Referral fee received: ${fmtMoney(amt)}. Recorded as income \u2014 the gross is not reduced.`;
+  }else if(dir === 'out'){
+    note.textContent = `Referral paid ${fmtMoney(amt)} (${pct}% of gross) \u2014 ${fmtMoney(gci - amt)} left to split.`;
+  }else{
+    note.textContent = '';
+  }
 }
 </script>
 <script>
@@ -3918,7 +3955,50 @@ function showRefNote(){
   const amt = Number((document.getElementById('cd-refamt')||{}).value) || 0;
   if(!gci || !amt){ note.textContent = ''; return; }
   const pct = (amt / gci * 100).toFixed(1);
-  note.textContent = `Referral ${fmtMoney(amt)} (${pct}% of gross) \u2014 ${fmtMoney(gci - amt)} left to split.`;
+  const dir = (document.getElementById('cd-refdir')||{}).value || '';
+  if(dir === 'in'){
+    note.textContent = `Referral fee received: ${fmtMoney(amt)}. Recorded as income \u2014 the gross is not reduced.`;
+  }else if(dir === 'out'){
+    note.textContent = `Referral paid ${fmtMoney(amt)} (${pct}% of gross) \u2014 ${fmtMoney(gci - amt)} left to split.`;
+  }else{
+    note.textContent = '';
+  }
+}
+</script>
+<script>
+/* Referral ledger — who we paid, who paid us, and their tax ID. This is the
+   trail your accountant needs when issuing or reconciling 1099s. */
+function referralLedgerHtml(year){
+  const rows = [];
+  (cdData.deals||[]).forEach(d => {
+    if(new Date(d.closeDate).getFullYear() !== year) return;
+    const amt = Number(d.referralAmount)||0;
+    if(!amt) return;
+    rows.push({
+      dir: d.referralDirection === 'in' ? 'Received' : 'Paid',
+      who: d.referralTo || '—', ein: d.referralEin || '—',
+      date: d.referralDate || d.closeDate, amt,
+      property: d.address || '', agent: d.agentName || '',
+      notes: d.referralNotes || '',
+    });
+  });
+  if(!rows.length) return '';
+  rows.sort((a,b) => new Date(a.date) - new Date(b.date));
+  const paid = rows.filter(r=>r.dir==='Paid').reduce((a,r)=>a+r.amt,0);
+  const recd = rows.filter(r=>r.dir==='Received').reduce((a,r)=>a+r.amt,0);
+  return `<h2 style="font-size:17px;margin:34px 0 0;">Referral ledger — ${year}</h2>
+    <table><thead><tr><th>Date</th><th>Direction</th><th>Brokerage / agent</th><th>EIN / Tax ID</th>
+      <th>Property</th><th>Our agent</th><th>Notes</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r.date}</td><td>${r.dir}</td><td>${escapeHtml(r.who)}</td>
+        <td>${escapeHtml(r.ein)}</td><td>${escapeHtml(r.property)}</td><td>${escapeHtml(r.agent)}</td>
+        <td>${escapeHtml(r.notes)}</td><td style="text-align:right">${fmtMoney(r.amt)}</td></tr>`).join('')}</tbody>
+      <tfoot>
+        <tr><td colspan="7">Total referrals paid out</td><td style="text-align:right">${fmtMoney(paid)}</td></tr>
+        <tr><td colspan="7">Total referral fees received</td><td style="text-align:right">${fmtMoney(recd)}</td></tr>
+      </tfoot></table>
+    <p style="margin-top:12px;font-size:12px;color:#5A6288;">Referral fees paid to another brokerage or
+    unincorporated agent generally require a Form 1099-NEC if they total $600 or more in the year.
+    Confirm with your accountant.</p>`;
 }
 </script>
 </body>
