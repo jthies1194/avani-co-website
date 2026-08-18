@@ -571,6 +571,64 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   box-shadow:0 2px 9px rgba(23,31,99,.30);opacity:1;
   display:flex;align-items:center;justify-content:center;width:auto;height:auto;line-height:0}
 .card-photo .card-qr img{display:block;width:48px;height:48px;margin:0}
+
+/* ---------- CRM section navigation ---------- */
+.crm-nav{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 22px;border-bottom:2px solid var(--line)}
+.crm-nav button{background:transparent;border:none;border-bottom:3px solid transparent;
+  padding:14px 20px;font-family:'Jost',sans-serif;font-size:15px;font-weight:500;
+  color:var(--driftwood);cursor:pointer;transition:.25s;margin-bottom:-2px;
+  display:flex;align-items:center;gap:8px;white-space:nowrap}
+.crm-nav button:hover{color:var(--marsh);background:var(--sand)}
+.crm-nav button.on{color:var(--marsh);border-bottom-color:var(--marsh)}
+.crm-nav button .pill{background:var(--coral);color:#fff;border-radius:20px;
+  font-size:11px;font-weight:600;padding:1px 8px;line-height:1.7}
+.crm-nav button.on .pill{background:var(--marsh)}
+.crm-sec{display:none}
+.crm-sec.on{display:block}
+/* inside a section the panel is always open — no second click to find anything */
+.crm-sec .setup-panel{border:none;background:transparent;box-shadow:none;margin:0}
+.crm-sec .setup-head{display:none}
+.crm-sec .setup-body{display:block!important;max-height:none!important;overflow:visible!important;padding:0!important}
+@media(max-width:820px){
+  .crm-nav{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .crm-nav::-webkit-scrollbar{display:none}
+  .crm-nav button{padding:12px 14px;font-size:13.5px}
+}
+
+#celebrations{display:none;background:var(--sand);border:1px solid var(--line);
+  border-left:3px solid var(--coral);padding:14px 18px;margin-bottom:20px}
+.celebrate-head{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--coral);margin-bottom:8px}
+.celebrate-row{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--ink);padding:5px 0}
+.celebrate-row.warn{color:#8A4B12}
+.celebrate-row.capped{color:#7A5A0B;font-weight:500}
+.celebrate-date{margin-left:auto;font-size:12.5px;color:var(--driftwood);white-space:nowrap}
+
+.cap-banner{margin-top:10px;background:linear-gradient(135deg,var(--coral),#E6C381);
+  color:#3A2A08;padding:12px 16px;border-radius:4px;font-size:15px;line-height:1.6}
+.cap-banner strong{color:#2A1E05}
+
+.whatif{border:1px solid var(--line);border-radius:4px;padding:18px;margin:22px 0;
+  background:linear-gradient(160deg,var(--sand),#fff)}
+.whatif-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.whatif h4{margin:4px 0 0;font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;color:var(--marsh)}
+.eyebrow-sm{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--coral)}
+.wi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:16px 0}
+.wi-stat{background:#fff;border:1px solid var(--line);border-radius:4px;padding:12px}
+.wi-stat .l{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--driftwood)}
+.wi-stat .n{font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--ink);margin-top:4px}
+.wi-stat.hero{background:var(--marsh);border-color:var(--marsh)}
+.wi-stat.hero .l{color:rgba(255,255,255,.8)}
+.wi-stat.hero .n{color:#fff}
+.wi-cap{background:linear-gradient(135deg,var(--coral),#E6C381);color:#3A2A08;
+  padding:12px 15px;border-radius:4px;font-size:15px;margin-bottom:10px}
+.wi-goal{font-size:15px;color:var(--ink);padding:10px 0}
+.wi-table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+.wi-table th{text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--driftwood);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:500}
+.wi-table td{padding:8px;border-bottom:1px solid var(--line)}
+.wi-table .r{text-align:right}
+.whatif-note{font-size:11.5px;color:var(--driftwood);margin:12px 0 0}
 </style>
 </head>
 <body>
@@ -933,6 +991,10 @@ Call Jimmy · 251-229-3216
 <div id="crm-signed-in-as" style="font-size:12.5px; color:var(--driftwood);"></div>
 <button class="btn-sm" onclick="logoutAgent()">Log out</button>
 </div>
+<nav class="crm-nav" id="crm-nav"></nav>
+<div id="celebrations"></div>
+
+<div id="sec-leads" class="crm-sec">
 <div class="stats-row" id="stats-row"></div>
 
 <div class="crm-toolbar">
@@ -957,8 +1019,9 @@ Call Jimmy · 251-229-3216
 <div>No leads yet in this view. Leads submitted from your website will show up here instantly.</div>
 </div>
 </div>
+</div>
 
-<div class="setup-panel">
+<div class="crm-sec" id="sec-setup"><div class="setup-panel" id="setup-panel">
 <div class="setup-head" onclick="toggleSetup()">
 <h3>⚙ Data connection &amp; lead notification setup</h3>
 <span id="setup-caret">▾</span>
@@ -996,9 +1059,9 @@ Call Jimmy · 251-229-3216
 <button class="btn-sm primary" onclick="saveMyReviewLink()">Save</button>
 </div>
 </div>
-</div>
+</div></div>
 
-<div class="setup-panel" id="change-password-panel">
+<div class="crm-sec" id="sec-password"><div class="setup-panel" id="change-password-panel">
 <div class="setup-head" onclick="toggleChangePasswordPanel()">
 <h3>🔑 Change my password</h3>
 <span id="change-password-caret">▾</span>
@@ -1008,9 +1071,9 @@ Call Jimmy · 251-229-3216
 <div class="field"><label>New password</label><input type="password" id="cp-new" minlength="6" placeholder="At least 6 characters"></div>
 <button class="btn-sm primary" onclick="submitChangePassword()">Update password</button>
 </div>
-</div>
+</div></div>
 
-<div class="setup-panel" id="closed-deals-panel">
+<div class="crm-sec" id="sec-commissions"><div class="setup-panel" id="closed-deals-panel">
 <div class="setup-head" onclick="toggleClosedDealsPanel()">
 <h3>💰 Closed deals & commissions</h3>
 <span id="closed-deals-caret">▾</span>
@@ -1018,13 +1081,13 @@ Call Jimmy · 251-229-3216
 <div class="setup-body" id="closed-deals-body">
 <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
 <div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
-<button class="btn-sm" style="margin-left:auto;" onclick="printCommissions()">\u2399 Print / PDF</button>
+<button class="btn-sm" style="margin-left:auto;" onclick="printCommissions()">&#9113; Print / PDF</button>
 </div>
 <div id="cd-content"></div>
 </div>
-</div>
+</div></div>
 
-<div class="setup-panel" id="expenses-panel">
+<div class="crm-sec" id="sec-expenses"><div class="setup-panel" id="expenses-panel">
 <div class="setup-head" onclick="toggleExpensesPanel()">
 <h3>🧾 Business expenses</h3>
 <span id="expenses-caret">▾</span>
@@ -1032,13 +1095,13 @@ Call Jimmy · 251-229-3216
 <div class="setup-body" id="expenses-body">
 <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
 <div id="ex-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
-<button class="btn-sm" style="margin-left:auto;" onclick="printExpenses()">\u2399 Print / PDF</button>
+<button class="btn-sm" style="margin-left:auto;" onclick="printExpenses()">&#9113; Print / PDF</button>
 </div>
 <div id="ex-content"></div>
 </div>
-</div>
+</div></div>
 
-<div class="setup-panel" id="pending-reviews-panel">
+<div class="crm-sec" id="sec-reviews"><div class="setup-panel" id="pending-reviews-panel">
 <div class="setup-head" onclick="togglePendingReviewsPanel()">
 <h3>⭐ Pending reviews to approve</h3>
 <span id="pending-reviews-caret">▾</span>
@@ -1047,9 +1110,9 @@ Call Jimmy · 251-229-3216
 <p>Clients can leave a review directly on the site. Nothing shows publicly until you approve it here.</p>
 <div id="pending-reviews-list" style="margin-top:10px;"></div>
 </div>
-</div>
+</div></div>
 
-<div class="setup-panel" id="agents-panel" style="display:none;">
+<div class="crm-sec" id="sec-agents"><div class="setup-panel" id="agents-panel">
 <div class="setup-head" onclick="toggleAgentsPanel()">
 <h3>👥 Manage agents</h3>
 <span id="agents-caret">▾</span>
@@ -1060,7 +1123,7 @@ Call Jimmy · 251-229-3216
 <div id="agent-profile-box"></div>
 <button class="btn-sm primary" style="margin-top:14px;" onclick="openAgentModal()">+ Add agent</button>
 </div>
-</div>
+</div></div>
 
 <div style="text-align:center; padding:32px 0 0;">
 <button onclick="switchView('site')" style="background:none; border:none; color:var(--driftwood); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; text-decoration:underline; text-underline-offset:3px; padding:0;">← Back to Website</button>
@@ -2058,11 +2121,13 @@ if(!brokerIdentity) saveAgentSession(currentAgent);
 resetIdleTimer();
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
-document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
+// visibility of the Agents tab is handled by renderCrmNav()
 document.getElementById('crm-signed-in-as').textContent = brokerIdentity
 ? `Previewing as ${currentAgent.name} (${currentAgent.role})`
 : `Signed in as ${currentAgent.name} (${currentAgent.role})`;
 renderImpersonationBanner();
+if(typeof renderCrmNav === 'function'){ renderCrmNav(); showCrmSection(crmSection); }
+if(typeof loadCelebrations === 'function') loadCelebrations();
 loadLeads();
 loadEmailConfigIntoForm();
 loadViewLimitSetting();
@@ -2240,6 +2305,8 @@ document.getElementById('stats-row').innerHTML = `
 `;
 initStageFilters();
 
+window.__leadCount = leads.filter(l => l.stage === 'New').length;
+if(typeof renderCrmNav === 'function') renderCrmNav();
 const shown = currentFilterStage==='all' ? leads : leads.filter(l=>l.stage===currentFilterStage);
 const tbody = document.getElementById('lead-tbody');
 document.getElementById('empty-state').style.display = shown.length===0 ? 'block':'none';
@@ -2774,8 +2841,10 @@ let cdTab = 'all';
 let cdData = { deals: [], subs: [], plans: {}, agents: [] };
 
 function fmtMoney(n){ return '$' + Math.round(Number(n)||0).toLocaleString(); }
-function planFor(agentId){
-const p = cdData.plans[agentId] || {};
+/* Plans are versioned. Each deal is calculated with the plan that was in force
+   on its closing date, so changing terms never rewrites history. */
+function normalizePlan(p){
+p = p || {};
 return {
 splitPct: p.splitPct===undefined||p.splitPct===''?100:Number(p.splitPct),
 capAmount: Number(p.capAmount)||0,
@@ -2784,8 +2853,34 @@ teamSplitPct: Number(p.teamSplitPct)||0,
 deskFeeMonthly: Number(p.deskFeeMonthly)||0,
 transactionFee: Number(p.transactionFee)||0,
 eoFee: Number(p.eoFee)||0,
-franchisePct: Number(p.franchisePct)||0
+franchisePct: Number(p.franchisePct)||0,
+effectiveDate: p.effectiveDate || '',
+planNote: p.planNote || '',
+planType: p.planType || 'split',
+feesCountTowardCap: !!p.feesCountTowardCap
 };
+}
+
+function planHistoryFor(agentId){
+const h = (cdData.planHistory || {})[agentId] || [];
+return h.slice().sort((a,b) => new Date(a.effectiveDate||0) - new Date(b.effectiveDate||0));
+}
+
+/* Current plan, or the one in force on a given date. */
+function planFor(agentId, onDate){
+const hist = planHistoryFor(agentId);
+if(hist.length){
+const when = onDate ? new Date(onDate) : new Date();
+let chosen = null;
+hist.forEach(v => {
+const eff = v.effectiveDate ? new Date(v.effectiveDate) : new Date(0);
+if(eff <= when) chosen = v;
+});
+// a deal closed before the first version uses that first version
+if(chosen) return normalizePlan(chosen);
+return normalizePlan(hist[0]);
+}
+return normalizePlan(cdData.plans[agentId] || {});
 }
 
 /* Splits one deal into its parts. ytdPaid = brokerage dollars this agent has
@@ -2803,26 +2898,30 @@ const team = afterReferral * (plan.teamSplitPct/100);
 const afterTeam = afterReferral - team;
 let brokerage = afterTeam * ((100 - plan.splitPct)/100);
 let capped = false;
+let capSaved = 0;
 if(plan.capAmount > 0){
 const left = Math.max(0, plan.capAmount - ytdPaid);
-if(brokerage > left){ brokerage = left; capped = true; }
+if(brokerage > left){ capSaved = brokerage - left; brokerage = left; capped = true; }
 }
 const franchise = gci * (plan.franchisePct/100);
 const fees = plan.transactionFee + plan.eoFee + franchise;
 const agentGross = afterTeam - brokerage;
-return { gci, referral, refOut, refIn, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped };
+return { gci, referral, refOut, refIn, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped, capSaved };
 }
 
 /* Walks an agent's deals oldest-first so the cap accumulates correctly. */
 function computeAgentYear(agentId, year){
-const plan = planFor(agentId);
+const plan = planFor(agentId);   // current terms, for the header summary
 const list = cdData.deals
 .filter(d => d.agentId === agentId && new Date(d.closeDate).getFullYear() === year)
 .sort((a,b) => new Date(a.closeDate) - new Date(b.closeDate));
 let ytdPaid = 0;
 const rows = list.map(d => {
-const c = computeDeal(d, plan, ytdPaid);
-ytdPaid += c.brokerage;
+const dealPlan = planFor(agentId, d.closeDate);
+const c = computeDeal(d, dealPlan, ytdPaid);
+c.planEffective = dealPlan.effectiveDate || '';
+c.capCounts = capContribution(c, dealPlan);
+ytdPaid += c.capCounts;
 return Object.assign({}, d, { calc: c });
 });
 const t = rows.reduce((a,r)=>({
@@ -2832,7 +2931,19 @@ agentNet: a.agentNet + r.calc.agentNet, volume: a.volume + (Number(r.price)||0)
 }), {gci:0,referral:0,refOut:0,refIn:0,team:0,brokerage:0,fees:0,agentNet:0,volume:0});
 const monthsSoFar = (year === new Date().getFullYear()) ? (new Date().getMonth()+1) : 12;
 t.deskFees = plan.deskFeeMonthly * monthsSoFar;
+t.capAmount = plan.capAmount || 0;
 t.capRemaining = plan.capAmount > 0 ? Math.max(0, plan.capAmount - t.brokerage) : 0;
+t.capMet = plan.capAmount > 0 && t.capRemaining === 0;
+// the closing that tipped them over
+t.capDate = '';
+if(t.capMet){
+let running = 0;
+for(const r of rows){
+running += r.calc.brokerage;
+if(running >= plan.capAmount){ t.capDate = r.closeDate; break; }
+}
+}
+t.savedByCap = rows.reduce((a,r) => a + (r.calc.capSaved || 0), 0);
 return { plan, rows, totals: t };
 }
 
@@ -2840,6 +2951,7 @@ async function loadClosedDeals(){
 cdData.deals = await storeGet('settings:closedDeals') || [];
 cdData.subs  = await storeGet('settings:dealSubmissions') || [];
 cdData.plans = await storeGet('settings:agentPlans') || {};
+cdData.planHistory = await storeGet('settings:agentPlanHistory') || {};
 if(currentAgent.role === 'broker'){
 try{
 const res = await fetch('/api/agent/list');
@@ -2871,7 +2983,7 @@ const el = document.getElementById('cd-content');
 if(!el) return;
 if(cdTab === 'all') el.innerHTML = viewAllAgents();
 else if(cdTab === 'pending') el.innerHTML = viewPending();
-else if(cdTab.startsWith('agent:')) el.innerHTML = viewAgent(cdTab.slice(6));
+else if(cdTab.startsWith('agent:')){ el.innerHTML = viewAgent(cdTab.slice(6)); setTimeout(()=>{ try{ runWhatIf(cdTab.slice(6)); }catch(e){} }, 30); }
 }
 
 function yearSelector(){
@@ -2915,7 +3027,7 @@ ${per.map(x=>{
 const p=x.r.plan; const t=x.r.totals;
 const planTxt = `${p.splitPct}%${p.capAmount?` · cap ${fmtMoney(p.capAmount)}`:''}${p.teamSplitPct?` · team ${p.teamSplitPct}%`:''}`;
 return `<tr style="border-top:1px solid var(--line);">
-<td style="padding:8px;"><strong>${escapeHtml(x.agent.name)}</strong>${t.capRemaining===0&&p.capAmount?' <span class="agent-role-tag">capped</span>':''}</td>
+<td style="padding:8px;"><strong>${escapeHtml(x.agent.name)}</strong>${t.capMet?' <span class="agent-role-tag" style="background:var(--coral);color:#fff;">\u{1F389} capped</span>':''}${(p.capAmount&&!t.capMet&&t.capRemaining<=Math.max(1000,p.capAmount*0.15))?' <span class="agent-role-tag" style="background:#F5E3C8;">near cap</span>':''}</td>
 <td style="padding:8px; color:var(--driftwood); font-size:11.5px;">${planTxt}</td>
 <td style="padding:8px;">${x.r.rows.length}</td>
 <td style="padding:8px;">${fmtMoney(t.volume)}</td>
@@ -2969,13 +3081,14 @@ ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${fmtMoney(d.calc.gci)}</td>
 <td style="padding:8px;">${d.calc.referral?`${fmtMoney(d.calc.referral)}${d.referralTo?`<div style="font-size:11px;color:var(--driftwood);">${escapeHtml(d.referralTo)}${d.referralDate?' \u00b7 '+d.referralDate:''}</div>`:''}`:'\u2014'}</td>
 <td style="padding:8px;">${d.calc.team?fmtMoney(d.calc.team):'\u2014'}</td>
-<td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?' <span class="agent-role-tag">cap</span>':''}</td>
+<td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?` <span class="agent-role-tag" title="Capped \u2014 ${fmtMoney(d.calc.capSaved)} not charged">cap</span>`:''}${d.calc.capSaved?`<div style="font-size:11px;color:var(--marsh);">saved ${fmtMoney(d.calc.capSaved)}</div>`:''}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.fees)}</td>
 <td style="padding:8px;"><strong>${fmtMoney(d.calc.agentNet)}</strong></td>
 ${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">\u2715</button></td>`:''}</tr>`).join('')}
 </table></div>` : '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged for this year yet.</p>';
 
 if(isBroker){
+html += renderWhatIf(agentId);
 gciEditedManually['cd'] = false; refEditedManually = false;
 html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (official)</h4>
 <div class="setup-grid">
@@ -3015,6 +3128,7 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 </div>
 <p style="font-size:11.5px; color:var(--driftwood); margin-top:6px;">Splits and fees are calculated automatically from this agent's plan.</p>`;
 }else{
+html += renderWhatIf(agentId);
 html += `<h4 style="margin:20px 0 8px; font-size:13px;">Submit a deal for the broker to review</h4>
 <p style="font-size:12px; color:var(--driftwood); margin-bottom:10px;">If a closing is missing above, submit it here. It won't change any totals until the broker approves it.</p>
 <div class="setup-grid">
@@ -3054,7 +3168,16 @@ ${x.note?'<br>Note: '+escapeHtml(x.note):''}</div>
 }
 
 function planEditor(agentId, p){
-return `<div class="setup-grid">
+return `<div style="margin-bottom:12px;">
+<div class="field-label">Plan type</div>
+<select id="pl-type-${agentId}" onchange="applyPlanType('${agentId}')">
+<option value="split"${(p.planType||'split')==='split'?' selected':''}>Commission split (e.g. 70/30)</option>
+<option value="fee"${p.planType==='fee'?' selected':''}>100% to agent + transaction fee</option>
+<option value="hybrid"${p.planType==='hybrid'?' selected':''}>Split + transaction fee</option>
+</select>
+<p style="font-size:11.5px;color:var(--driftwood);margin:6px 0 0;" id="pl-typehelp-${agentId}"></p>
+</div>
+<div class="setup-grid">
 <div><div class="field-label">Agent split %</div><input type="number" id="pl-split-${agentId}" value="${p.splitPct}" placeholder="70"></div>
 <div><div class="field-label">Annual cap ($)</div><input type="number" id="pl-cap-${agentId}" value="${p.capAmount||''}" placeholder="none"></div>
 <div><div class="field-label">Team name</div><input id="pl-teamname-${agentId}" value="${escapeHtml(p.teamName)}" placeholder="none"></div>
@@ -3063,8 +3186,13 @@ return `<div class="setup-grid">
 <div><div class="field-label">Fee per transaction ($)</div><input type="number" id="pl-txn-${agentId}" value="${p.transactionFee||''}" placeholder="0"></div>
 <div><div class="field-label">E&amp;O per deal ($)</div><input type="number" id="pl-eo-${agentId}" value="${p.eoFee||''}" placeholder="0"></div>
 <div><div class="field-label">Franchise fee %</div><input type="number" id="pl-fran-${agentId}" value="${p.franchisePct||''}" placeholder="0"></div>
+<div><div class="field-label">Effective from</div><input type="date" id="pl-eff-${agentId}" value="${p.effectiveDate||''}"></div>
+<div><div class="field-label">Note (why it changed)</div><input id="pl-note-${agentId}" value="${escapeHtml(p.planNote||'')}" placeholder="e.g. 2027 renewal, moved to 80/20"></div>
+<div><div class="field-label">Fees count toward cap?</div>
+<select id="pl-feecap-${agentId}"><option value=""${!p.feesCountTowardCap?' selected':''}>No \u2014 cap applies to split only</option><option value="1"${p.feesCountTowardCap?' selected':''}>Yes \u2014 transaction fees count too</option></select></div>
 </div>
-<button class="btn-sm primary" style="margin-top:10px;" onclick="savePlan('${agentId}')">Save plan</button>
+<button class="btn-sm primary" style="margin-top:10px;" onclick="savePlan('${agentId}')">Save as new plan version</button>
+${planHistoryHtml(agentId)}
 <p style="font-size:11.5px; color:var(--driftwood); margin-top:8px;">Leave a field blank or 0 if it doesn't apply. Only you can see or change this.</p>`;
 }
 
@@ -3078,16 +3206,69 @@ if(btn) btn.textContent = isOpen ? 'Edit plan' : 'Close';
 }
 
 async function savePlan(agentId){
-const v = id => document.getElementById(id+agentId).value;
-const plans = await storeGet('settings:agentPlans') || {};
-plans[agentId] = {
+const v = id => (document.getElementById(id+agentId)||{}).value || '';
+const eff = v('pl-eff-');
+if(!eff){ showToast("Set an effective date so we know when these terms started."); return; }
+const version = {
 splitPct: v('pl-split-'), capAmount: v('pl-cap-'), teamName: v('pl-teamname-').trim(),
 teamSplitPct: v('pl-team-'), deskFeeMonthly: v('pl-desk-'), transactionFee: v('pl-txn-'),
-eoFee: v('pl-eo-'), franchisePct: v('pl-fran-')
+eoFee: v('pl-eo-'), franchisePct: v('pl-fran-'),
+planType: v('pl-type-') || 'split', feesCountTowardCap: v('pl-feecap-') === '1',
+effectiveDate: eff, planNote: v('pl-note-').trim(),
+savedAt: new Date().toISOString(), savedBy: (currentAgent && currentAgent.name) || ''
 };
+
+const hist = await storeGet('settings:agentPlanHistory') || {};
+const list = hist[agentId] || [];
+const existing = list.findIndex(x => x.effectiveDate === eff);
+if(existing >= 0){
+if(!confirm("A plan version already starts on " + eff + ". Replace it?")) return;
+list[existing] = version;
+}else{
+list.push(version);
+}
+hist[agentId] = list;
+await storeSet('settings:agentPlanHistory', hist);
+
+// keep the plain current-plan record in step for anything still reading it
+const plans = await storeGet('settings:agentPlans') || {};
+plans[agentId] = version;
 await storeSet('settings:agentPlans', plans);
-showToast("Plan saved.");
+
+showToast("Plan version saved, effective " + eff + ".");
 loadClosedDeals();
+}
+
+async function removePlanVersion(agentId, eff){
+if(!confirm("Remove the plan version starting " + eff + "? Deals in that period will fall back to the next earliest version.")) return;
+const hist = await storeGet('settings:agentPlanHistory') || {};
+hist[agentId] = (hist[agentId]||[]).filter(v => v.effectiveDate !== eff);
+await storeSet('settings:agentPlanHistory', hist);
+showToast("Plan version removed.");
+loadClosedDeals();
+}
+
+function planHistoryHtml(agentId){
+const hist = planHistoryFor(agentId);
+if(!hist.length) return '<p style="font-size:11.5px;color:var(--driftwood);margin-top:10px;">No plan history yet \u2014 saving above creates the first version.</p>';
+const today = new Date();
+let currentEff = '';
+hist.forEach(v => { if(new Date(v.effectiveDate) <= today) currentEff = v.effectiveDate; });
+return `<div style="margin-top:14px;">
+<div class="field-label">Plan history</div>
+${hist.slice().reverse().map(v => {
+const p = normalizePlan(v);
+const isNow = v.effectiveDate === currentEff;
+return `<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:12.5px;">
+<div style="flex:1;">
+<strong>${v.effectiveDate}</strong>${isNow?' <span class="agent-role-tag">current</span>':''}
+<div style="color:var(--driftwood);">${p.splitPct}% to agent${p.capAmount?` \u00b7 cap ${fmtMoney(p.capAmount)}`:''}${p.teamSplitPct?` \u00b7 team ${p.teamSplitPct}%`:''}${p.transactionFee?` \u00b7 ${fmtMoney(p.transactionFee)}/txn`:''}</div>
+${v.planNote?`<div style="color:var(--driftwood);">${escapeHtml(v.planNote)}</div>`:''}
+</div>
+<button class="del-btn" title="Remove this version" onclick="removePlanVersion('${agentId}','${v.effectiveDate}')">\u2715</button>
+</div>`;
+}).join('')}
+</div>`;
 }
 
 /* Fills in gross commission from sale price x commission %.
@@ -3742,6 +3923,7 @@ async function openAgentProfile(agentId){
   box.innerHTML = `<div style="border:1px solid var(--line);border-radius:4px;padding:14px;margin-top:12px;">
     <div style="font-weight:600;color:var(--marsh);margin-bottom:10px;">${escapeHtml(a.name||'Agent')} \u2014 details</div>
     <div class="setup-grid">
+      ${f('startDate','Joined the brokerage','date')}
       ${f('phone','Mobile phone','tel','251-000-0000')}
       ${f('personalEmail','Personal email','email')}
       ${f('address','Home address')}
@@ -3764,7 +3946,7 @@ async function openAgentProfile(agentId){
 }
 
 async function saveAgentProfile(agentId){
-  const keys = ['phone','personalEmail','address','city','state','zip','license','licenseExp','dob','emergencyName','emergencyPhone','w9','notes'];
+  const keys = ['startDate','phone','personalEmail','address','city','state','zip','license','licenseExp','dob','emergencyName','emergencyPhone','w9','notes'];
   const p = {};
   keys.forEach(k => { const el = document.getElementById('ap-'+k); if(el) p[k] = el.value.trim(); });
   await storeSet('agentProfile:'+agentId, p);
@@ -4007,6 +4189,226 @@ function referralLedgerHtml(year){
     <p style="margin-top:12px;font-size:12px;color:#5A6288;">Referral fees paid to another brokerage or
     unincorporated agent generally require a Form 1099-NEC if they total $600 or more in the year.
     Confirm with your accountant.</p>`;
+}
+</script>
+<script>
+/* ---------- CRM section navigation ----------
+   The CRM was a stack of collapsed accordions — finding commissions meant
+   scrolling past everything else. Now it's proper tabs. */
+const CRM_SECTIONS = [
+  { id:'sec-leads',       label:'Leads',       icon:'\u2709', badge:() => (window.__leadCount || 0) },
+  { id:'sec-commissions', label:'Commissions', icon:'\u0024' },
+  { id:'sec-expenses',    label:'Expenses',    icon:'\u2338' },
+  { id:'sec-agents',      label:'Agents',      icon:'\u263A', brokerOnly:true },
+  { id:'sec-reviews',     label:'Reviews',     icon:'\u2605', brokerOnly:true },
+  { id:'sec-setup',       label:'Settings',    icon:'\u2699', brokerOnly:true },
+  { id:'sec-password',    label:'My password', icon:'\u26BF' },
+];
+let crmSection = 'sec-leads';
+
+function renderCrmNav(){
+  const nav = document.getElementById('crm-nav');
+  if(!nav || !currentAgent) return;
+  const isBroker = currentAgent.role === 'broker';
+  nav.innerHTML = CRM_SECTIONS
+    .filter(sc => !sc.brokerOnly || isBroker)
+    .map(sc => {
+      const n = sc.badge ? sc.badge() : 0;
+      return `<button class="${crmSection===sc.id?'on':''}" onclick="showCrmSection('${sc.id}')">
+        <span style="opacity:.75">${sc.icon}</span>${sc.label}${n?`<span class="pill">${n}</span>`:''}</button>`;
+    }).join('');
+}
+
+function showCrmSection(id){
+  crmSection = id;
+  document.querySelectorAll('.crm-sec').forEach(el => el.classList.toggle('on', el.id === id));
+  renderCrmNav();
+  // load fresh data for whichever section just opened
+  try{
+    if(id === 'sec-commissions') loadClosedDeals();
+    if(id === 'sec-expenses')    loadExpenses();
+    if(id === 'sec-agents')      loadAgents();
+    if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
+  }catch(e){}
+  const main = document.getElementById('crm-main');
+  if(main) window.scrollTo({top: Math.max(0, main.offsetTop - 40), behavior:'smooth'});
+}
+</script>
+<script>
+/* ---------- anniversaries & birthdays ----------
+   Reads each agent's profile and surfaces what's coming in the next 45 days. */
+let CELEBRATIONS = [];
+
+function daysUntilNext(monthDay){
+  if(!monthDay) return null;
+  const d = new Date(monthDay);
+  if(isNaN(d)) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  let next = new Date(today.getFullYear(), d.getMonth(), d.getDate());
+  if(next < today) next = new Date(today.getFullYear()+1, d.getMonth(), d.getDate());
+  return { days: Math.round((next - today)/86400000), date: next, years: next.getFullYear() - d.getFullYear() };
+}
+
+async function loadCelebrations(){
+  if(!currentAgent || currentAgent.role !== 'broker') return;
+  const agents = cdData.agents || [];
+  const out = [];
+  for(const a of agents){
+    let p = null;
+    try{ p = await storeGet('agentProfile:'+a.id); }catch(e){}
+    if(!p) continue;
+    const anniv = daysUntilNext(p.startDate);
+    if(anniv && anniv.days <= 45) out.push({ type:'anniversary', name:a.name, ...anniv });
+    const bday = daysUntilNext(p.dob);
+    if(bday && bday.days <= 45) out.push({ type:'birthday', name:a.name, ...bday });
+    const lic = daysUntilNext(p.licenseExp);
+    if(lic && lic.days <= 60) out.push({ type:'license', name:a.name, ...lic });
+  }
+  // agents who have capped this year — worth celebrating publicly
+  const year = new Date().getFullYear();
+  agents.forEach(a => {
+    try{
+      const r = computeAgentYear(a.id, year);
+      if(r.totals.capMet){
+        out.unshift({ type:'capped', name:a.name, days:-1,
+          date: r.totals.capDate ? new Date(r.totals.capDate) : new Date(),
+          years: 0, saved: r.totals.savedByCap });
+      }else if(r.totals.capAmount > 0 && r.totals.capRemaining <= Math.max(1000, r.totals.capAmount*0.15)){
+        out.push({ type:'nearcap', name:a.name, days:0, date:new Date(), remaining:r.totals.capRemaining });
+      }
+    }catch(e){}
+  });
+  out.sort((x,y) => x.days - y.days);
+  CELEBRATIONS = out;
+  renderCelebrations();
+}
+
+function renderCelebrations(){
+  const box = document.getElementById('celebrations');
+  if(!box) return;
+  if(!CELEBRATIONS.length){ box.style.display='none'; box.innerHTML=''; return; }
+  const when = d => d === 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`;
+  const line = c => {
+    if(c.type === 'anniversary')
+      return `\u{1F389} <strong>${escapeHtml(c.name)}</strong> \u2014 ${c.years} year${c.years===1?'':'s'} with Avani &amp; Co. ${when(c.days)}`;
+    if(c.type === 'birthday')
+      return `\u{1F382} <strong>${escapeHtml(c.name)}</strong>'s birthday ${when(c.days)}`;
+    if(c.type === 'capped')
+      return `\u{1F389} <strong>${escapeHtml(c.name)}</strong> has CAPPED \u2014 now earning 100%${c.saved?`, ${fmtMoney(c.saved)} saved so far`:''}`;
+    if(c.type === 'nearcap')
+      return `\u{1F4C8} <strong>${escapeHtml(c.name)}</strong> is ${fmtMoney(c.remaining)} away from capping`;
+    return `\u26A0 <strong>${escapeHtml(c.name)}</strong>'s real estate licence expires ${when(c.days)}`;
+  };
+  box.style.display = 'block';
+  box.innerHTML = `<div class="celebrate-head">Coming up</div>` +
+    CELEBRATIONS.map(c => `<div class="celebrate-row ${c.type==='license'?'warn':''}${c.type==='capped'?' capped':''}">${line(c)}
+      <span class="celebrate-date">${(c.type==='capped'||c.type==='nearcap')?'' : c.date.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span></div>`).join('');
+}
+</script>
+<script>
+/* ---------- "What if" earnings calculator ----------
+   Runs real deals through the agent's actual plan — split, cap, team split and
+   fees — so the projection matches what they'd genuinely be paid. */
+function renderWhatIf(agentId){
+  const plan = planFor(agentId);
+  const r = computeAgentYear(agentId, cdYear);
+  const ytdPaidIn = r.totals.brokerage;
+  return `
+  <div class="whatif">
+    <div class="whatif-head">
+      <div>
+        <div class="eyebrow-sm">Earnings calculator</div>
+        <h4>What if you closed more?</h4>
+      </div>
+    </div>
+    <div class="setup-grid">
+      <div><div class="field-label">Average sale price</div>
+        <input type="number" id="wi-price" value="450000" oninput="runWhatIf('${agentId}')"></div>
+      <div><div class="field-label">Your commission %</div>
+        <input type="number" step="0.01" id="wi-pct" value="3" oninput="runWhatIf('${agentId}')"></div>
+      <div><div class="field-label">Deals in the year</div>
+        <input type="number" id="wi-deals" value="12" oninput="runWhatIf('${agentId}')"></div>
+      <div><div class="field-label">Income goal ($)</div>
+        <input type="number" id="wi-goal" value="100000" oninput="runWhatIf('${agentId}')"></div>
+    </div>
+    <div id="wi-out" data-ytd="${ytdPaidIn}"></div>
+    <p class="whatif-note">Based on your current plan: ${plan.splitPct}% split${plan.capAmount?` with a ${fmtMoney(plan.capAmount)} annual cap`:', no cap'}${plan.transactionFee?` and ${fmtMoney(plan.transactionFee)} per transaction`:''}. Estimates only \u2014 actual splits depend on each contract.</p>
+  </div>`;
+}
+
+function runWhatIf(agentId){
+  const out = document.getElementById('wi-out');
+  if(!out) return;
+  const plan  = planFor(agentId);
+  const price = Number((document.getElementById('wi-price')||{}).value) || 0;
+  const pct   = Number((document.getElementById('wi-pct')||{}).value) || 0;
+  const deals = Math.max(0, Math.min(200, Number((document.getElementById('wi-deals')||{}).value) || 0));
+  const goal  = Number((document.getElementById('wi-goal')||{}).value) || 0;
+  const gci   = price * pct / 100;
+  if(!gci || !deals){ out.innerHTML = ''; return; }
+
+  // walk deal by deal so the cap behaves exactly as it would in real life
+  let ytd = Number(out.dataset.ytd) || 0;
+  let net = 0, toBrokerage = 0, capDealNo = 0, feesTotal = 0;
+  const ladder = [];
+  for(let i = 1; i <= deals; i++){
+    const c = computeDeal({ gci }, plan, ytd);
+    ytd += c.brokerage;
+    net += c.agentNet;
+    toBrokerage += c.brokerage;
+    feesTotal += c.fees;
+    if(!capDealNo && plan.capAmount > 0 && ytd >= plan.capAmount) capDealNo = i;
+    if(i <= 3 || i === deals) ladder.push({ i, net, perDeal: c.agentNet, capped: c.capped });
+  }
+  const perDealAvg = net / deals;
+  const dealsForGoal = perDealAvg > 0 ? Math.ceil(goal / perDealAvg) : 0;
+  const volume = price * deals;
+
+  out.innerHTML = `
+    <div class="wi-grid">
+      ${wiStat('Gross commission', fmtMoney(gci * deals))}
+      ${wiStat('You take home', fmtMoney(net), true)}
+      ${wiStat('Average per deal', fmtMoney(perDealAvg))}
+      ${wiStat('Sales volume', fmtMoney(volume))}
+    </div>
+    ${capDealNo ? `<div class="wi-cap">\u{1F389} You'd cap on deal <strong>#${capDealNo}</strong> \u2014 every closing after that is
+       <strong>100% yours</strong> (${fmtMoney(gci - (plan.transactionFee + plan.eoFee))} per deal).</div>` : ''}
+    <div class="wi-goal">To hit <strong>${fmtMoney(goal)}</strong> you'd need about
+      <strong>${dealsForGoal} closing${dealsForGoal===1?'':'s'}</strong> at this price point
+      \u2014 that's ${(dealsForGoal/12).toFixed(1)} a month.</div>
+    <table class="wi-table">
+      <tr><th>After</th><th class="r">This deal</th><th class="r">Running total</th></tr>
+      ${ladder.map(l => `<tr><td>Deal ${l.i}${l.capped?' <span class="agent-role-tag">capped</span>':''}</td>
+        <td class="r">${fmtMoney(l.perDeal)}</td><td class="r"><strong>${fmtMoney(l.net)}</strong></td></tr>`).join('')}
+    </table>`;
+}
+function wiStat(label, value, hero){
+  return `<div class="wi-stat${hero?' hero':''}"><div class="l">${label}</div><div class="n">${value}</div></div>`;
+}
+</script>
+<script>
+/* Plan type is a shortcut that fills the underlying fields — the maths is the
+   same either way, this just makes the intent obvious. */
+function applyPlanType(agentId){
+  const t = (document.getElementById('pl-type-'+agentId)||{}).value;
+  const split = document.getElementById('pl-split-'+agentId);
+  const txn = document.getElementById('pl-txn-'+agentId);
+  const help = document.getElementById('pl-typehelp-'+agentId);
+  if(t === 'fee'){
+    if(split) split.value = 100;
+    if(txn && !Number(txn.value)) txn.value = 495;
+    if(help) help.textContent = 'Agent keeps the full commission; the brokerage earns a flat fee per closing. Leave the split at 100%.';
+  }else if(t === 'hybrid'){
+    if(help) help.textContent = 'Brokerage takes a split AND a flat fee per closing.';
+  }else{
+    if(help) help.textContent = 'Brokerage takes a percentage of each commission.';
+  }
+}
+
+/* Transaction fees can count toward the cap if you want the cap to represent
+   everything the agent pays the brokerage in a year. */
+function capContribution(calc, plan){
+  return calc.brokerage + (plan.feesCountTowardCap ? (plan.transactionFee + plan.eoFee) : 0);
 }
 </script>
 </body>
