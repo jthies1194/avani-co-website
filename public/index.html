@@ -1021,6 +1021,31 @@ async function sendLeadNotification(lead){
 
 let currentAgent = null;
 
+/* --- Keep broker/agent signed in across page navigation --- */
+const AGENT_SESSION_KEY = 'agentSession';
+function saveAgentSession(a){ try{ localStorage.setItem(AGENT_SESSION_KEY, JSON.stringify(a)); }catch(e){} }
+function clearAgentSession(){ try{ localStorage.removeItem(AGENT_SESSION_KEY); }catch(e){} }
+function readAgentSession(){ try{ return JSON.parse(localStorage.getItem(AGENT_SESSION_KEY) || 'null'); }catch(e){ return null; } }
+
+/* Re-check with the server that this account still exists and isn't locked.
+   Runs in the background so restoring a session still feels instant. */
+async function validateAgentSession(saved){
+try{
+const res = await fetch('/api/agent/list');
+const data = await res.json();
+const found = (data.agents || []).find(x => x.id === saved.id);
+if(!found || found.active === false){
+clearAgentSession();
+currentAgent = null;
+document.getElementById('crm-main').style.display='none';
+initCRM();
+showToast("Your session has ended — please sign in again.");
+return;
+}
+currentAgent = found;
+}catch(e){ /* offline or server hiccup — leave them signed in */ }
+}
+
 async function initCRM(){
 const gate = document.getElementById('crm-gate');
 const main = document.getElementById('crm-main');
@@ -1037,6 +1062,15 @@ document.getElementById('gate-content').innerHTML = `
 `;
 return;
 }
+
+const savedSession = readAgentSession();
+if(savedSession && savedSession.id){
+currentAgent = savedSession;
+unlockCRM();
+validateAgentSession(savedSession);
+return;
+}
+
 await renderGateContent();
 }
 async function submitPasswordReset(token){
@@ -1144,6 +1178,7 @@ showToast("If that email has an account, a reset link has been sent.");
 }
 
 function unlockCRM(){
+saveAgentSession(currentAgent);
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
 document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
@@ -1158,6 +1193,7 @@ loadClosedDeals();
 if(currentAgent.role === 'broker') loadAgents();
 }
 function logoutAgent(){
+clearAgentSession();
 currentAgent = null;
 document.getElementById('crm-main').style.display='none';
 initCRM();
