@@ -143,7 +143,7 @@ app.get('/api/listings', async (req, res) => {
       const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
         + `?access_token=${encodeURIComponent(token)}`
         + `&$top=${PAGE}&$skip=${skip}`
-        + `&$filter=${encodeURIComponent("StandardStatus eq 'Active'")}`
+        + `&$filter=${encodeURIComponent("StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending'")}`
         + `&$orderby=ModificationTimestamp desc`;
       const r = await fetch(url);
       if (!r.ok) {
