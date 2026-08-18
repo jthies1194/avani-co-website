@@ -717,12 +717,24 @@ app.post('/api/agent/:id/review-link', async (req, res) => {
 });
 
 app.get('/api/agent/list', async (req, res) => {
-  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
+  // The sign-in screen calls this before anyone is logged in (to tell first-run
+  // setup from a normal login), and public lead capture uses it to find the
+  // broker. So it stays reachable — but contact details are staff-only.
+  const sess = await getSession(req);
   if (!requireSupabase(res)) return;
   try {
     const { data, error } = await supabase.from('agents').select('id,name,email,phone,role,review_link,active,last_login,created_at').order('name');
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, agents: (data || []).map(agentPublic) });
+    const rows = data || [];
+    if (!isStaff(sess)) {
+      // names and roles only — no email, phone, or login history
+      return res.json({
+        ok: true,
+        agents: rows.map(a => ({ id: a.id, name: a.name, role: a.role, active: a.active !== false })),
+        limited: true,
+      });
+    }
+    res.json({ ok: true, agents: rows.map(agentPublic) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
