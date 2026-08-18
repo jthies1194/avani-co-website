@@ -335,16 +335,8 @@ IDX information is provided exclusively for consumers' personal and non-commerci
 <span id="closed-deals-caret">▾</span>
 </div>
 <div class="setup-body" id="closed-deals-body">
-<p>Log a closed deal to keep a running tally of what you've sold and commission earned.</p>
-<div id="closed-deals-tally" style="font-family:'Fraunces',serif; font-size:20px; color:var(--marsh); margin:10px 0 16px;"></div>
-<div id="closed-deals-list" style="margin-bottom:16px;"></div>
-<div class="setup-grid">
-<input id="cd-address" placeholder="Property address">
-<input id="cd-price" type="number" placeholder="Sale price ($)">
-<input id="cd-date" type="date">
-<input id="cd-commission" type="number" placeholder="Your commission ($)">
-<button class="btn-sm primary" onclick="addClosedDeal()" style="grid-column:1/-1;">Log closed deal</button>
-</div>
+<div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;"></div>
+<div id="cd-content"></div>
 </div>
 </div>
 
@@ -1693,44 +1685,350 @@ const caret = document.getElementById('closed-deals-caret');
 body.classList.toggle('open');
 caret.textContent = body.classList.contains('open') ? '▴' : '▾';
 }
-async function loadClosedDeals(){
-const all = await storeGet('settings:closedDeals') || [];
-const mine = currentAgent.role === 'broker' ? all : all.filter(d => d.agentId === currentAgent.id);
-const total = mine.reduce((sum, d) => sum + (Number(d.commission) || 0), 0);
-document.getElementById('closed-deals-tally').textContent = `$${total.toLocaleString()} in commission${currentAgent.role==='broker' ? ' (all agents)' : ''}`;
-const el = document.getElementById('closed-deals-list');
-el.innerHTML = mine.slice().sort((a,b)=> new Date(b.closeDate) - new Date(a.closeDate)).map(d => `
-<div class="closed-deal-item">
-<div>
-<div class="addr">${escapeHtml(d.address)}</div>
-<div class="details">$${Number(d.price).toLocaleString()} · Closed ${d.closeDate}${currentAgent.role==='broker' ? ' · '+escapeHtml(d.agentName) : ''} · Commission: $${Number(d.commission).toLocaleString()}</div>
-</div>
-<button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">✕</button>
-</div>
-`).join('') || '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged yet.</p>';
+/* ---------- Commission tracking ----------
+   Two separate records, deliberately kept apart:
+     settings:closedDeals     = the broker's OFFICIAL ledger (broker edits only)
+     settings:dealSubmissions = deals agents logged themselves, pending review
+   An agent submission never touches the official numbers until the broker
+   approves it, so agent entries can't skew brokerage reporting.
+   settings:agentPlans = per-agent commission plan (split / cap / team / fees)
+*/
+let cdTab = 'all';
+let cdData = { deals: [], subs: [], plans: {}, agents: [] };
+
+function fmtMoney(n){ return '$' + Math.round(Number(n)||0).toLocaleString(); }
+function planFor(agentId){
+const p = cdData.plans[agentId] || {};
+return {
+splitPct: p.splitPct===undefined||p.splitPct===''?100:Number(p.splitPct),
+capAmount: Number(p.capAmount)||0,
+teamName: p.teamName||'',
+teamSplitPct: Number(p.teamSplitPct)||0,
+deskFeeMonthly: Number(p.deskFeeMonthly)||0,
+transactionFee: Number(p.transactionFee)||0,
+eoFee: Number(p.eoFee)||0,
+franchisePct: Number(p.franchisePct)||0
+};
 }
-async function addClosedDeal(){
+
+/* Splits one deal into its parts. ytdPaid = brokerage dollars this agent has
+   already paid in this calendar year, used to stop charging once they cap. */
+function computeDeal(deal, plan, ytdPaid){
+const gci = Number(deal.gci)||0;
+const team = gci * (plan.teamSplitPct/100);
+const afterTeam = gci - team;
+let brokerage = afterTeam * ((100 - plan.splitPct)/100);
+let capped = false;
+if(plan.capAmount > 0){
+const left = Math.max(0, plan.capAmount - ytdPaid);
+if(brokerage > left){ brokerage = left; capped = true; }
+}
+const franchise = gci * (plan.franchisePct/100);
+const fees = plan.transactionFee + plan.eoFee + franchise;
+const agentGross = afterTeam - brokerage;
+return { gci, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped };
+}
+
+/* Walks an agent's deals oldest-first so the cap accumulates correctly. */
+function computeAgentYear(agentId, year){
+const plan = planFor(agentId);
+const list = cdData.deals
+.filter(d => d.agentId === agentId && new Date(d.closeDate).getFullYear() === year)
+.sort((a,b) => new Date(a.closeDate) - new Date(b.closeDate));
+let ytdPaid = 0;
+const rows = list.map(d => {
+const c = computeDeal(d, plan, ytdPaid);
+ytdPaid += c.brokerage;
+return Object.assign({}, d, { calc: c });
+});
+const t = rows.reduce((a,r)=>({
+gci: a.gci + r.calc.gci, team: a.team + r.calc.team,
+brokerage: a.brokerage + r.calc.brokerage, fees: a.fees + r.calc.fees,
+agentNet: a.agentNet + r.calc.agentNet, volume: a.volume + (Number(r.price)||0)
+}), {gci:0,team:0,brokerage:0,fees:0,agentNet:0,volume:0});
+const monthsSoFar = (year === new Date().getFullYear()) ? (new Date().getMonth()+1) : 12;
+t.deskFees = plan.deskFeeMonthly * monthsSoFar;
+t.capRemaining = plan.capAmount > 0 ? Math.max(0, plan.capAmount - t.brokerage) : 0;
+return { plan, rows, totals: t };
+}
+
+async function loadClosedDeals(){
+cdData.deals = await storeGet('settings:closedDeals') || [];
+cdData.subs  = await storeGet('settings:dealSubmissions') || [];
+cdData.plans = await storeGet('settings:agentPlans') || {};
+if(currentAgent.role === 'broker'){
+try{
+const res = await fetch('/api/agent/list');
+const d = await res.json();
+cdData.agents = d.agents || [];
+}catch(e){ cdData.agents = []; }
+}else{
+cdData.agents = [currentAgent];
+cdTab = 'agent:' + currentAgent.id;
+}
+renderCdTabs();
+renderCdContent();
+}
+
+function renderCdTabs(){
+const el = document.getElementById('cd-tabs');
+if(!el) return;
+if(currentAgent.role !== 'broker'){ el.innerHTML = ''; return; }
+const pending = cdData.subs.filter(s => s.status === 'pending').length;
+const mk = (id,label) => `<button class="btn-sm${cdTab===id?' primary':''}" onclick="cdSelectTab('${id}')">${label}</button>`;
+el.innerHTML = mk('all','All agents')
++ cdData.agents.map(a => mk('agent:'+a.id, escapeHtml(a.name))).join('')
++ mk('pending', `Pending${pending?' ('+pending+')':''}`)
++ mk('plans','Commission plans');
+}
+function cdSelectTab(id){ cdTab = id; renderCdTabs(); renderCdContent(); }
+
+function renderCdContent(){
+const el = document.getElementById('cd-content');
+if(!el) return;
+if(cdTab === 'all') el.innerHTML = viewAllAgents();
+else if(cdTab === 'pending') el.innerHTML = viewPending();
+else if(cdTab === 'plans') el.innerHTML = viewPlans();
+else if(cdTab.startsWith('agent:')) el.innerHTML = viewAgent(cdTab.slice(6));
+}
+
+function yearSelector(){
+const years = Array.from(new Set(cdData.deals.map(d=>new Date(d.closeDate).getFullYear())));
+if(!years.includes(cdYear)) years.push(cdYear);
+return `<select class="stage-select" onchange="cdYear=Number(this.value); renderCdContent();" style="margin-bottom:14px;">${years.sort((a,b)=>b-a).map(y=>`<option value="${y}" ${y===cdYear?'selected':''}>${y}</option>`).join('')}</select>`;
+}
+let cdYear = new Date().getFullYear();
+
+function statBox(label, value, accent){
+return `<div style="border:1px solid var(--line); border-radius:4px; padding:10px 12px; min-width:130px;">
+<div style="font-size:11px; color:var(--driftwood); text-transform:uppercase; letter-spacing:.05em;">${label}</div>
+<div style="font-family:'Fraunces',serif; font-size:18px; color:${accent||'var(--marsh)'}; margin-top:3px;">${value}</div></div>`;
+}
+
+function viewAllAgents(){
+const per = cdData.agents.map(a => ({ agent:a, r: computeAgentYear(a.id, cdYear) }))
+.filter(x => x.r.rows.length > 0 || x.r.totals.deskFees > 0);
+const g = per.reduce((a,x)=>({
+gci:a.gci+x.r.totals.gci, brokerage:a.brokerage+x.r.totals.brokerage,
+agentNet:a.agentNet+x.r.totals.agentNet, fees:a.fees+x.r.totals.fees,
+desk:a.desk+x.r.totals.deskFees, volume:a.volume+x.r.totals.volume,
+deals:a.deals+x.r.rows.length
+}), {gci:0,brokerage:0,agentNet:0,fees:0,desk:0,volume:0,deals:0});
+
+return yearSelector()
++ `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
+${statBox('Sales volume', fmtMoney(g.volume))}
+${statBox('Gross commission', fmtMoney(g.gci))}
+${statBox('Brokerage kept', fmtMoney(g.brokerage + g.fees + g.desk), 'var(--marsh)')}
+${statBox('Paid to agents', fmtMoney(g.agentNet))}
+${statBox('Closed deals', g.deals)}
+</div>
+<p style="font-size:11.5px; color:var(--driftwood); margin-bottom:12px;">"Brokerage kept" includes company split, transaction/E&amp;O/franchise fees, and desk fees.</p>`
++ (per.length ? `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+<tr style="text-align:left; color:var(--driftwood); font-size:11px; text-transform:uppercase;">
+<th style="padding:6px 8px;">Agent</th><th style="padding:6px 8px;">Plan</th><th style="padding:6px 8px;">Deals</th>
+<th style="padding:6px 8px;">Volume</th><th style="padding:6px 8px;">GCI</th>
+<th style="padding:6px 8px;">To brokerage</th><th style="padding:6px 8px;">Fees</th><th style="padding:6px 8px;">Agent net</th></tr>
+${per.map(x=>{
+const p=x.r.plan; const t=x.r.totals;
+const planTxt = `${p.splitPct}%${p.capAmount?` · cap ${fmtMoney(p.capAmount)}`:''}${p.teamSplitPct?` · team ${p.teamSplitPct}%`:''}`;
+return `<tr style="border-top:1px solid var(--line);">
+<td style="padding:8px;"><strong>${escapeHtml(x.agent.name)}</strong>${t.capRemaining===0&&p.capAmount?' <span class="agent-role-tag">capped</span>':''}</td>
+<td style="padding:8px; color:var(--driftwood); font-size:11.5px;">${planTxt}</td>
+<td style="padding:8px;">${x.r.rows.length}</td>
+<td style="padding:8px;">${fmtMoney(t.volume)}</td>
+<td style="padding:8px;">${fmtMoney(t.gci)}</td>
+<td style="padding:8px;">${fmtMoney(t.brokerage)}</td>
+<td style="padding:8px;">${fmtMoney(t.fees + t.deskFees)}</td>
+<td style="padding:8px;"><strong>${fmtMoney(t.agentNet)}</strong></td></tr>`;
+}).join('')}</table></div>` : '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged for this year yet.</p>');
+}
+
+function viewAgent(agentId){
+const agent = cdData.agents.find(a=>a.id===agentId) || {name:'Agent'};
+const r = computeAgentYear(agentId, cdYear);
+const p = r.plan, t = r.totals;
+const isBroker = currentAgent.role === 'broker';
+
+let html = yearSelector()
++ `<div style="border:1px solid var(--line); border-radius:4px; padding:12px; margin-bottom:16px; font-size:12.5px;">
+<strong>${escapeHtml(agent.name)}'s plan:</strong> ${p.splitPct}% to agent${p.teamSplitPct?` · ${escapeHtml(p.teamName||'Team')} takes ${p.teamSplitPct}% off the top`:''}${p.capAmount?` · annual cap ${fmtMoney(p.capAmount)}`:' · no cap'}
+${p.deskFeeMonthly?`<br>Desk fee ${fmtMoney(p.deskFeeMonthly)}/mo`:''}${p.transactionFee?` · ${fmtMoney(p.transactionFee)}/transaction`:''}${p.eoFee?` · E&O ${fmtMoney(p.eoFee)}/deal`:''}${p.franchisePct?` · franchise ${p.franchisePct}%`:''}
+${p.capAmount?`<br><span style="color:${t.capRemaining===0?'var(--marsh)':'var(--driftwood)'};">${t.capRemaining===0?'\u2705 Cap met \u2014 now at 100%':fmtMoney(t.capRemaining)+' left before cap'}</span>`:''}
+</div>
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
+${statBox('Deals', r.rows.length)}
+${statBox('Volume', fmtMoney(t.volume))}
+${statBox('Gross commission', fmtMoney(t.gci))}
+${statBox('Paid to brokerage', fmtMoney(t.brokerage))}
+${statBox('Fees paid', fmtMoney(t.fees + t.deskFees))}
+${statBox('Take-home', fmtMoney(t.agentNet - t.deskFees), 'var(--marsh)')}
+</div>`;
+
+html += r.rows.length ? `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+<tr style="text-align:left; color:var(--driftwood); font-size:11px; text-transform:uppercase;">
+<th style="padding:6px 8px;">Property</th><th style="padding:6px 8px;">Closed</th><th style="padding:6px 8px;">Price</th>
+<th style="padding:6px 8px;">GCI</th><th style="padding:6px 8px;">Team</th><th style="padding:6px 8px;">Brokerage</th>
+<th style="padding:6px 8px;">Fees</th><th style="padding:6px 8px;">Net</th>${isBroker?'<th></th>':''}</tr>
+${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
+<td style="padding:8px;">${escapeHtml(d.address)}</td>
+<td style="padding:8px;">${d.closeDate}</td>
+<td style="padding:8px;">${fmtMoney(d.price)}</td>
+<td style="padding:8px;">${fmtMoney(d.calc.gci)}</td>
+<td style="padding:8px;">${d.calc.team?fmtMoney(d.calc.team):'\u2014'}</td>
+<td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?' <span class="agent-role-tag">cap</span>':''}</td>
+<td style="padding:8px;">${fmtMoney(d.calc.fees)}</td>
+<td style="padding:8px;"><strong>${fmtMoney(d.calc.agentNet)}</strong></td>
+${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">\u2715</button></td>`:''}</tr>`).join('')}
+</table></div>` : '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged for this year yet.</p>';
+
+if(isBroker){
+html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (official)</h4>
+<div class="setup-grid">
+<input id="cd-address" placeholder="Property address">
+<input id="cd-price" type="number" placeholder="Sale price ($)">
+<input id="cd-date" type="date">
+<input id="cd-gci" type="number" placeholder="Gross commission ($)">
+<button class="btn-sm primary" onclick="addClosedDeal('${agentId}')" style="grid-column:1/-1;">Add to official ledger</button>
+</div>
+<p style="font-size:11.5px; color:var(--driftwood); margin-top:6px;">Splits and fees are calculated automatically from this agent's plan.</p>`;
+}else{
+html += `<h4 style="margin:20px 0 8px; font-size:13px;">Submit a deal for the broker to review</h4>
+<p style="font-size:12px; color:var(--driftwood); margin-bottom:10px;">If a closing is missing above, submit it here. It won't change any totals until the broker approves it.</p>
+<div class="setup-grid">
+<input id="sub-address" placeholder="Property address">
+<input id="sub-price" type="number" placeholder="Sale price ($)">
+<input id="sub-date" type="date">
+<input id="sub-gci" type="number" placeholder="Gross commission ($)">
+<input id="sub-note" placeholder="Note for the broker (optional)" style="grid-column:1/-1;">
+<button class="btn-sm primary" onclick="submitAgentDeal()" style="grid-column:1/-1;">Submit for review</button>
+</div>`;
+const mine = cdData.subs.filter(x=>x.agentId===currentAgent.id);
+if(mine.length){
+html += `<h4 style="margin:18px 0 8px; font-size:13px;">Your submissions</h4>` + mine.slice().reverse().map(x=>`
+<div class="closed-deal-item"><div>
+<div class="addr">${escapeHtml(x.address)}</div>
+<div class="details">${fmtMoney(x.price)} \u00b7 ${x.closeDate} \u00b7 GCI ${fmtMoney(x.gci)} \u00b7 <strong>${x.status==='pending'?'Awaiting review':(x.status==='approved'?'\u2705 Approved':'Not accepted')}</strong>${x.brokerNote?' \u00b7 '+escapeHtml(x.brokerNote):''}</div>
+</div></div>`).join('');
+}
+}
+return html;
+}
+
+function viewPending(){
+const pend = cdData.subs.filter(s=>s.status==='pending');
+if(!pend.length) return '<p style="font-size:12.5px; color:var(--driftwood);">No submissions waiting for review.</p>';
+return `<p style="font-size:12.5px; margin-bottom:12px;">Deals your agents logged. Approving copies it into the official ledger.</p>`
++ pend.slice().reverse().map(x=>`
+<div style="border:1px solid var(--line); border-radius:4px; padding:12px; margin-bottom:10px; font-size:12.5px;">
+<div style="font-weight:600; color:var(--marsh);">${escapeHtml(x.address)}</div>
+<div style="color:var(--driftwood); font-size:11.5px; margin:4px 0 8px;">
+${escapeHtml(x.agentName)} \u00b7 ${fmtMoney(x.price)} \u00b7 Closed ${x.closeDate} \u00b7 GCI ${fmtMoney(x.gci)}
+${x.note?'<br>Note: '+escapeHtml(x.note):''}</div>
+<button class="btn-sm primary" onclick="approveSubmission('${x.id}')">Approve &amp; add</button>
+<button class="btn-sm" style="margin-left:6px;" onclick="rejectSubmission('${x.id}')">Decline</button>
+</div>`).join('');
+}
+
+function viewPlans(){
+return `<p style="font-size:12.5px; margin-bottom:14px;">Set each agent's terms. Leave a field blank or 0 if it doesn't apply. Only you can see or change this.</p>`
++ cdData.agents.map(a=>{
+const p = planFor(a.id);
+return `<div style="border:1px solid var(--line); border-radius:4px; padding:12px; margin-bottom:12px;">
+<div style="font-weight:600; color:var(--marsh); margin-bottom:10px;">${escapeHtml(a.name)}</div>
+<div class="setup-grid">
+<div><div class="field-label">Agent split %</div><input type="number" id="pl-split-${a.id}" value="${p.splitPct}" placeholder="70"></div>
+<div><div class="field-label">Annual cap ($)</div><input type="number" id="pl-cap-${a.id}" value="${p.capAmount||''}" placeholder="none"></div>
+<div><div class="field-label">Team name</div><input id="pl-teamname-${a.id}" value="${escapeHtml(p.teamName)}" placeholder="none"></div>
+<div><div class="field-label">Team split % (off top)</div><input type="number" id="pl-team-${a.id}" value="${p.teamSplitPct||''}" placeholder="0"></div>
+<div><div class="field-label">Desk fee ($/month)</div><input type="number" id="pl-desk-${a.id}" value="${p.deskFeeMonthly||''}" placeholder="0"></div>
+<div><div class="field-label">Fee per transaction ($)</div><input type="number" id="pl-txn-${a.id}" value="${p.transactionFee||''}" placeholder="0"></div>
+<div><div class="field-label">E&amp;O per deal ($)</div><input type="number" id="pl-eo-${a.id}" value="${p.eoFee||''}" placeholder="0"></div>
+<div><div class="field-label">Franchise fee %</div><input type="number" id="pl-fran-${a.id}" value="${p.franchisePct||''}" placeholder="0"></div>
+</div>
+<button class="btn-sm primary" style="margin-top:10px;" onclick="savePlan('${a.id}')">Save ${escapeHtml(a.name.split(' ')[0])}'s plan</button>
+</div>`;
+}).join('');
+}
+
+async function savePlan(agentId){
+const v = id => document.getElementById(id+agentId).value;
+const plans = await storeGet('settings:agentPlans') || {};
+plans[agentId] = {
+splitPct: v('pl-split-'), capAmount: v('pl-cap-'), teamName: v('pl-teamname-').trim(),
+teamSplitPct: v('pl-team-'), deskFeeMonthly: v('pl-desk-'), transactionFee: v('pl-txn-'),
+eoFee: v('pl-eo-'), franchisePct: v('pl-fran-')
+};
+await storeSet('settings:agentPlans', plans);
+showToast("Plan saved.");
+loadClosedDeals();
+}
+
+async function addClosedDeal(agentId){
 const address = document.getElementById('cd-address').value.trim();
 const price = document.getElementById('cd-price').value;
 const closeDate = document.getElementById('cd-date').value;
-const commission = document.getElementById('cd-commission').value;
-if(!address || !price || !closeDate || !commission){ showToast("Fill in all fields."); return; }
+const gci = document.getElementById('cd-gci').value;
+if(!address || !price || !closeDate || !gci){ showToast("Fill in all fields."); return; }
+const agent = cdData.agents.find(a=>a.id===agentId);
 const list = await storeGet('settings:closedDeals') || [];
-list.push({ id: 'deal_'+Date.now(), address, price, closeDate, commission, agentId: currentAgent.id, agentName: currentAgent.name });
+list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
+agentId, agentName: agent?agent.name:'', source:'broker' });
 await storeSet('settings:closedDeals', list);
-document.getElementById('cd-address').value = '';
-document.getElementById('cd-price').value = '';
-document.getElementById('cd-date').value = '';
-document.getElementById('cd-commission').value = '';
-showToast("Closed deal logged.");
+showToast("Added to the official ledger.");
 loadClosedDeals();
 }
+
+async function submitAgentDeal(){
+const address = document.getElementById('sub-address').value.trim();
+const price = document.getElementById('sub-price').value;
+const closeDate = document.getElementById('sub-date').value;
+const gci = document.getElementById('sub-gci').value;
+const note = document.getElementById('sub-note').value.trim();
+if(!address || !price || !closeDate || !gci){ showToast("Fill in address, price, date, and commission."); return; }
+const subs = await storeGet('settings:dealSubmissions') || [];
+subs.push({ id:'sub_'+Date.now(), address, price, closeDate, gci, note,
+agentId: currentAgent.id, agentName: currentAgent.name, status:'pending', submittedAt: new Date().toISOString() });
+await storeSet('settings:dealSubmissions', subs);
+showToast("Submitted \u2014 your broker will review it.");
+loadClosedDeals();
+}
+
+async function approveSubmission(id){
+const subs = await storeGet('settings:dealSubmissions') || [];
+const sub = subs.find(x=>x.id===id);
+if(!sub) return;
+const list = await storeGet('settings:closedDeals') || [];
+list.push({ id:'deal_'+Date.now(), address:sub.address, price:sub.price, closeDate:sub.closeDate,
+gci:sub.gci, commission:sub.gci, agentId:sub.agentId, agentName:sub.agentName, source:'agent-approved' });
+await storeSet('settings:closedDeals', list);
+sub.status = 'approved';
+await storeSet('settings:dealSubmissions', subs);
+showToast("Approved and added to the ledger.");
+loadClosedDeals();
+}
+
+async function rejectSubmission(id){
+const note = prompt("Optional note back to the agent (why it wasn't accepted):") || '';
+const subs = await storeGet('settings:dealSubmissions') || [];
+const sub = subs.find(x=>x.id===id);
+if(!sub) return;
+sub.status = 'declined';
+sub.brokerNote = note;
+await storeSet('settings:dealSubmissions', subs);
+showToast("Submission declined.");
+loadClosedDeals();
+}
+
 async function removeClosedDeal(id){
+if(!confirm("Remove this deal from the official ledger?")) return;
 let list = await storeGet('settings:closedDeals') || [];
 list = list.filter(d => d.id !== id);
 await storeSet('settings:closedDeals', list);
+showToast("Deal removed.");
 loadClosedDeals();
 }
+
 
 function togglePendingReviewsPanel(){
 const body = document.getElementById('pending-reviews-body');
