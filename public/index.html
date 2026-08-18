@@ -753,6 +753,16 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .admin-box h4{margin:0 0 6px;font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:500;color:var(--marsh)}
 .req-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
   background:#fff;border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-top:8px;font-size:14.5px}
+
+.deal-detail td{background:var(--sand);padding:0 !important}
+.dd-wrap{display:grid;grid-template-columns:1fr 1fr;gap:26px;padding:18px 22px}
+.dd-h{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--coral);margin-bottom:8px}
+.dd-row{display:flex;justify-content:space-between;gap:14px;padding:5px 0;font-size:13.5px;
+  border-bottom:1px solid rgba(23,31,99,.07)}
+.dd-row span{color:var(--driftwood)}
+.dd-row.total{border-bottom:none;border-top:2px solid var(--marsh);margin-top:6px;padding-top:8px;font-size:15px}
+.dd-note{font-size:13px;color:var(--driftwood);margin-top:6px;line-height:1.6}
+@media(max-width:820px){.dd-wrap{grid-template-columns:1fr;gap:14px}}
 </style>
 </head>
 <body>
@@ -1293,7 +1303,8 @@ Call Jimmy · 251-229-3216
 <div class="field"><label>Name</label><input required id="af-name"></div>
 <div class="field"><label>Email</label><input type="email" required id="af-email"></div>
 <div class="field"><label>Phone</label><input id="af-phone"></div>
-<div class="field"><label>Role</label><select id="af-role"><option value="agent">Agent (sees only their own leads)</option><option value="broker">Broker (sees everything, can manage agents)</option></select></div>
+<div class="field"><label>Role</label><select id="af-role" onchange="describeRole()"><option value="agent">Agent &mdash; sees only their own leads</option><option value="admin">Admin &mdash; full CRM access, your account protected</option><option value="broker">Broker &mdash; full access, no restrictions</option></select></div>
+<p id="af-roledesc" style="font-size:12.5px;color:var(--driftwood);margin:-6px 0 12px;"></p>
 <button class="submit-btn" type="submit">Add agent</button>
 </form>
 </div>
@@ -3233,7 +3244,7 @@ html += r.rows.length ? `<div style="overflow-x:auto;"><table style="width:100%;
 <th style="padding:6px 8px;">GCI</th><th style="padding:6px 8px;">Referral</th><th style="padding:6px 8px;">Team</th><th style="padding:6px 8px;">Brokerage</th>
 <th style="padding:6px 8px;">Fees</th><th style="padding:6px 8px;">Net</th>${isBroker?'<th></th>':''}</tr>
 ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
-<td style="padding:8px;">${escapeHtml(d.address)}${d.side==='both'?' <span class="agent-role-tag" style="background:var(--coral);color:#3A2A08;">\u2605 both sides</span>':d.side?` <span class="agent-role-tag">${d.side==='buy'?'buy':'list'} side</span>`:''}${d.coAgent?`<div style="font-size:11px;color:var(--driftwood);">w/ ${escapeHtml(d.coAgent)}${d.coBrokerage?' \u00b7 '+escapeHtml(d.coBrokerage):''}</div>`:''}</td>
+<td style="padding:8px;"><span style="cursor:pointer;text-decoration:underline dotted;" onclick="toggleDealDetail('${d.id}')" title="Show the full breakdown">${escapeHtml(d.address)}</span>${d.side==='both'?' <span class="agent-role-tag" style="background:var(--coral);color:#3A2A08;">\u2605 both sides</span>':d.side?` <span class="agent-role-tag">${d.side==='buy'?'buy':'list'} side</span>`:''}${d.coAgent?`<div style="font-size:11px;color:var(--driftwood);">w/ ${escapeHtml(d.coAgent)}${d.coBrokerage?' \u00b7 '+escapeHtml(d.coBrokerage):''}</div>`:''}</td>
 <td style="padding:8px;">${d.closeDate}</td>
 <td style="padding:8px;">${fmtMoney(d.price)}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.gci)}</td>
@@ -3242,7 +3253,8 @@ ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?` <span class="agent-role-tag" title="Capped \u2014 ${fmtMoney(d.calc.capSaved)} not charged">cap</span>`:''}${d.calc.capSaved?`<div style="font-size:11px;color:var(--marsh);">saved ${fmtMoney(d.calc.capSaved)}</div>`:''}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.fees)}</td>
 <td style="padding:8px;"><strong>${fmtMoney(d.calc.agentNet)}</strong></td>
-${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">\u2715</button></td>`:''}</tr>`).join('')}
+${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">\u2715</button></td>`:''}</tr>
+<tr id="dd-${d.id}" class="deal-detail" style="display:none;"><td colspan="${isBroker?9:8}">${dealDetailHtml(d)}</td></tr>`).join('')}
 </table></div>` : '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged for this year yet.</p>';
 
 if(isBroker){
@@ -3331,6 +3343,61 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Submit a deal for the br
 <input id="sub-date" type="date">
 <input id="sub-pct" type="number" step="0.01" placeholder="Commission % (e.g. 3)" oninput="calcGci('sub')" onchange="calcGci('sub')">
 <input id="sub-gci" type="number" placeholder="Gross commission ($)" oninput="markGciEdited('sub')">
+<div style="grid-column:1/-1; border-top:1px solid var(--line); margin-top:6px; padding-top:12px;">
+<div class="field-label">Which side did you represent?</div>
+<div class="side-picker" id="sub-sidepicker">
+<button type="button" data-side="buy"  onclick="pickSide('buy','sub')">Buy side</button>
+<button type="button" data-side="list" onclick="pickSide('list','sub')">List side</button>
+<button type="button" data-side="both" onclick="pickSide('both','sub')">&#9733; Both sides</button>
+</div>
+<input type="hidden" id="sub-side" value="">
+<div id="sub-double" style="display:none; margin-top:12px;">
+<div class="double-note">Double-sided \u2014 enter each side and we'll total it.</div>
+<div class="setup-grid" style="margin-top:8px;">
+<div><div class="field-label">List side %</div><input type="number" step="0.01" id="sub-listpct" placeholder="3" oninput="calcSides(false,'sub')"></div>
+<div><div class="field-label">List side ($)</div><input type="number" id="sub-listamt" placeholder="auto" oninput="calcSides(true,'sub')"></div>
+<div><div class="field-label">Buy side %</div><input type="number" step="0.01" id="sub-buypct" placeholder="3" oninput="calcSides(false,'sub')"></div>
+<div><div class="field-label">Buy side ($)</div><input type="number" id="sub-buyamt" placeholder="auto" oninput="calcSides(true,'sub')"></div>
+</div>
+<div class="double-total" id="sub-doubletotal"></div>
+</div>
+</div>
+<div style="grid-column:1/-1;">
+<div class="field-label">The other side</div>
+<div class="setup-grid" style="margin-top:6px;" id="sub-otherside">
+<input id="sub-coagent" placeholder="Other agent's name">
+<input id="sub-cobrokerage" placeholder="Their brokerage">
+</div>
+</div>
+<div style="grid-column:1/-1;">
+<div class="field-label">Lender &amp; closing</div>
+<div class="setup-grid" style="margin-top:6px;">
+<input id="sub-lo" placeholder="Loan officer">
+<input id="sub-lender" placeholder="Lender / mortgage company">
+<input id="sub-title" placeholder="Title company / closing attorney">
+<select id="sub-financing"><option value="">Financing type</option><option>Conventional</option><option>FHA</option><option>VA</option><option>USDA</option><option>Cash</option><option>Owner financing</option><option>Other</option></select>
+</div>
+</div>
+<div style="grid-column:1/-1;">
+<div class="field-label">Referral (optional)</div>
+<div class="setup-grid" style="margin-top:6px;">
+<select id="sub-refdir" onchange="calcReferral('sub')">
+<option value="">No referral</option>
+<option value="out">We PAID a referral</option>
+<option value="in">We RECEIVED a referral fee</option>
+</select>
+<input id="sub-refname" placeholder="Other brokerage / agent name">
+<div style="display:flex; gap:8px;">
+<select id="sub-reftype" onchange="calcReferral('sub')" style="flex:0 0 110px;">
+<option value="pct">% of gross</option><option value="flat">Flat fee</option></select>
+<input id="sub-refpct" type="number" step="0.01" placeholder="25" oninput="calcReferral('sub')" style="flex:1;">
+</div>
+<input id="sub-refamt" type="number" placeholder="Referral amount ($)" oninput="markRefEdited('sub')">
+<input id="sub-refein" placeholder="Their EIN / Tax ID">
+<input id="sub-refdate" type="date">
+</div>
+<p id="sub-refnote" style="font-size:11.5px; color:var(--driftwood); margin:6px 0 0;"></p>
+</div>
 <input id="sub-note" placeholder="Note for the broker (optional)" style="grid-column:1/-1;">
 <button class="btn-sm primary" onclick="submitAgentDeal()" style="grid-column:1/-1;">Submit for review</button>
 </div>`;
@@ -3476,7 +3543,7 @@ function markGciEdited(prefix){
   const has = el && String(el.value).trim() !== '';
   gciEditedManually[prefix] = !!has;
   if(!has) calcGci(prefix);
-  if(prefix === 'cd' && typeof calcReferral === 'function') calcReferral();
+  if(typeof calcReferral === 'function') calcReferral(prefix);
 }
 function calcGci(prefix){
 if(gciEditedManually[prefix]) return;
@@ -3485,10 +3552,10 @@ const pct = Number(document.getElementById(prefix+'-pct').value) || 0;
 const out = document.getElementById(prefix+'-gci');
 if(!out) return;
 out.value = (price > 0 && pct > 0) ? Math.round(price * pct / 100) : '';
-if(prefix === 'cd' && typeof calcReferral === 'function') calcReferral();
+if(typeof calcReferral === 'function') calcReferral(prefix);
 }
 function resetDealForm(prefix){
-['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate','-refpct','-refein','-refnotes','-notes','-listpct','-listamt','-buypct','-buyamt','-coagent','-cobrokerage','-lo','-lender','-title'].forEach(sfx=>{
+['-address','-price','-date','-pct','-gci','-side','-listpct','-listamt','-buypct','-buyamt','-coagent','-cobrokerage','-lo','-lender','-title','-refname','-refamt','-refdate','-refpct','-refein','-refnotes','-notes','-listpct','-listamt','-buypct','-buyamt','-coagent','-cobrokerage','-lo','-lender','-title'].forEach(sfx=>{
 const el = document.getElementById(prefix+sfx);
 if(el) el.value = '';
 });
@@ -3542,7 +3609,15 @@ const gci = document.getElementById('sub-gci').value;
 const note = document.getElementById('sub-note').value.trim();
 if(!address || !price || !closeDate || !gci){ showToast("Fill in address, price, date, and commission."); return; }
 const subs = await storeGet('settings:dealSubmissions') || [];
+const g = id => (document.getElementById('sub-'+id)||{}).value || '';
 subs.push({ id:'sub_'+Date.now(), address, price, closeDate, gci, note,
+side: g('side'), listSideAmount: g('listamt'), buySideAmount: g('buyamt'),
+coAgent: g('coagent').trim(), coBrokerage: g('cobrokerage').trim(),
+loanOfficer: g('lo').trim(), lender: g('lender').trim(),
+titleCompany: g('title').trim(), financing: g('financing'),
+referralDirection: g('refdir'), referralTo: g('refname').trim(),
+referralType: g('reftype'), referralPct: g('refpct'),
+referralAmount: g('refamt'), referralEin: g('refein').trim(), referralDate: g('refdate'),
 agentId: currentAgent.id, agentName: currentAgent.name, status:'pending', submittedAt: new Date().toISOString() });
 await storeSet('settings:dealSubmissions', subs);
 resetDealForm('sub');
@@ -3556,7 +3631,16 @@ const sub = subs.find(x=>x.id===id);
 if(!sub) return;
 const list = await storeGet('settings:closedDeals') || [];
 list.push({ id:'deal_'+Date.now(), address:sub.address, price:sub.price, closeDate:sub.closeDate,
-gci:sub.gci, commission:sub.gci, agentId:sub.agentId, agentName:sub.agentName, source:'agent-approved' });
+gci:sub.gci, commission:sub.gci,
+side:sub.side||'', listSideAmount:sub.listSideAmount||'', buySideAmount:sub.buySideAmount||'',
+coAgent:sub.coAgent||'', coBrokerage:sub.coBrokerage||'',
+loanOfficer:sub.loanOfficer||'', lender:sub.lender||'', titleCompany:sub.titleCompany||'',
+financing:sub.financing||'',
+referralDirection:sub.referralDirection||'', referralTo:sub.referralTo||'',
+referralType:sub.referralType||'', referralPct:sub.referralPct||'',
+referralAmount:sub.referralAmount||'', referralEin:sub.referralEin||'', referralDate:sub.referralDate||'',
+notes:sub.note||'',
+agentId:sub.agentId, agentName:sub.agentName, source:'agent-approved' });
 await storeSet('settings:closedDeals', list);
 sub.status = 'approved';
 await storeSet('settings:dealSubmissions', subs);
@@ -4117,7 +4201,7 @@ function statsFor(l){
 }
 </script>
 <script>
-/* Agent profile — address, licence, W-9 status etc. Broker-only. */
+/* Agent profile — address, license, W-9 status etc. Broker-only. */
 async function openAgentProfile(agentId){
   const a = (cdData.agents||[]).find(x=>x.id===agentId) || {};
   const p = (await storeGet('agentProfile:'+agentId)) || {};
@@ -4269,30 +4353,32 @@ function printCommissions(){
 <script>
 /* Referral fee: usually a percentage of the gross commission (25% is common),
    sometimes a flat amount. Percentage auto-calculates from the gross. */
-function calcReferral(){
-  const typeEl = document.getElementById('cd-reftype');
-  const pctEl  = document.getElementById('cd-refpct');
-  const amtEl  = document.getElementById('cd-refamt');
-  const gciEl  = document.getElementById('cd-gci');
+function calcReferral(pfx){
+  pfx = pfx || 'cd';
+  const typeEl = document.getElementById(pfx+'-reftype');
+  const pctEl  = document.getElementById(pfx+'-refpct');
+  const amtEl  = document.getElementById(pfx+'-refamt');
+  const gciEl  = document.getElementById(pfx+'-gci');
   if(!typeEl || !pctEl || !amtEl) return;
   const isPct = typeEl.value === 'pct';
   pctEl.style.display = isPct ? '' : 'none';
   pctEl.placeholder = isPct ? '25' : '';
-  if(!isPct){ showRefNote(); return; }
-  if(refEditedManually) { showRefNote(); return; }
+  if(!isPct){ showRefNote(pfx); return; }
+  if(refEditedManually) { showRefNote(pfx); return; }
   const gci = Number(gciEl && gciEl.value) || 0;
   const pct = Number(pctEl.value) || 0;
   amtEl.value = (gci > 0 && pct > 0) ? Math.round(gci * pct / 100 * 100) / 100 : '';
-  showRefNote();
+  showRefNote(pfx);
 }
-function showRefNote(){
-  const note = document.getElementById('cd-refnote');
+function showRefNote(pfx){
+  pfx = pfx || 'cd';
+  const note = document.getElementById(pfx+'-refnote');
   if(!note) return;
-  const gci = Number((document.getElementById('cd-gci')||{}).value) || 0;
-  const amt = Number((document.getElementById('cd-refamt')||{}).value) || 0;
+  const gci = Number((document.getElementById(pfx+'-gci')||{}).value) || 0;
+  const amt = Number((document.getElementById(pfx+'-refamt')||{}).value) || 0;
   if(!gci || !amt){ note.textContent = ''; return; }
   const pct = (amt / gci * 100).toFixed(1);
-  const dir = (document.getElementById('cd-refdir')||{}).value || '';
+  const dir = (document.getElementById(pfx+'-refdir')||{}).value || '';
   if(dir === 'in'){
     note.textContent = `Referral fee received: ${fmtMoney(amt)}. Recorded as income \u2014 the gross is not reduced.`;
   }else if(dir === 'out'){
@@ -4306,36 +4392,39 @@ function showRefNote(){
 /* Referral fee: usually a percentage of the gross commission (25% is common),
    sometimes a flat amount. Percentage auto-calculates from the gross. */
 let refEditedManually = false;
-function markRefEdited(){
-  const el = document.getElementById('cd-refamt');
+function markRefEdited(pfx){
+  pfx = pfx || 'cd';
+  const el = document.getElementById(pfx+'-refamt');
   refEditedManually = !!(el && String(el.value).trim() !== '');
-  if(!refEditedManually) calcReferral();
-  showRefNote();
+  if(!refEditedManually) calcReferral(pfx);
+  showRefNote(pfx);
 }
-function calcReferral(){
-  const typeEl = document.getElementById('cd-reftype');
-  const pctEl  = document.getElementById('cd-refpct');
-  const amtEl  = document.getElementById('cd-refamt');
-  const gciEl  = document.getElementById('cd-gci');
+function calcReferral(pfx){
+  pfx = pfx || 'cd';
+  const typeEl = document.getElementById(pfx+'-reftype');
+  const pctEl  = document.getElementById(pfx+'-refpct');
+  const amtEl  = document.getElementById(pfx+'-refamt');
+  const gciEl  = document.getElementById(pfx+'-gci');
   if(!typeEl || !pctEl || !amtEl) return;
   const isPct = typeEl.value === 'pct';
   pctEl.style.display = isPct ? '' : 'none';
   pctEl.placeholder = isPct ? '25' : '';
-  if(!isPct){ showRefNote(); return; }
-  if(refEditedManually) { showRefNote(); return; }
+  if(!isPct){ showRefNote(pfx); return; }
+  if(refEditedManually) { showRefNote(pfx); return; }
   const gci = Number(gciEl && gciEl.value) || 0;
   const pct = Number(pctEl.value) || 0;
   amtEl.value = (gci > 0 && pct > 0) ? Math.round(gci * pct / 100 * 100) / 100 : '';
-  showRefNote();
+  showRefNote(pfx);
 }
-function showRefNote(){
-  const note = document.getElementById('cd-refnote');
+function showRefNote(pfx){
+  pfx = pfx || 'cd';
+  const note = document.getElementById(pfx+'-refnote');
   if(!note) return;
-  const gci = Number((document.getElementById('cd-gci')||{}).value) || 0;
-  const amt = Number((document.getElementById('cd-refamt')||{}).value) || 0;
+  const gci = Number((document.getElementById(pfx+'-gci')||{}).value) || 0;
+  const amt = Number((document.getElementById(pfx+'-refamt')||{}).value) || 0;
   if(!gci || !amt){ note.textContent = ''; return; }
   const pct = (amt / gci * 100).toFixed(1);
-  const dir = (document.getElementById('cd-refdir')||{}).value || '';
+  const dir = (document.getElementById(pfx+'-refdir')||{}).value || '';
   if(dir === 'in'){
     note.textContent = `Referral fee received: ${fmtMoney(amt)}. Recorded as income \u2014 the gross is not reduced.`;
   }else if(dir === 'out'){
@@ -4503,12 +4592,12 @@ function renderCelebrations(){
     if(c.type === 'anniversary')
       return `\u{1F389} <strong>${escapeHtml(c.name)}</strong> \u2014 ${c.years} year${c.years===1?'':'s'} with Avani &amp; Co. ${when(c.days)}`;
     if(c.type === 'birthday')
-      return `\u{1F382} <strong>${escapeHtml(c.name)}</strong>'s birthday ${when(c.days)}`;
+      return `\u{1F382} <strong>${escapeHtml(c.name)}</strong> \u2014 birthday ${when(c.days)}`;
     if(c.type === 'capped')
       return `\u{1F389} <strong>${escapeHtml(c.name)}</strong> has CAPPED \u2014 now earning 100%${c.saved?`, ${fmtMoney(c.saved)} saved so far`:''}`;
     if(c.type === 'nearcap')
       return `\u{1F4C8} <strong>${escapeHtml(c.name)}</strong> is ${fmtMoney(c.remaining)} away from capping`;
-    return `\u26A0 <strong>${escapeHtml(c.name)}</strong>'s real estate licence expires ${when(c.days)}`;
+    return `\u26A0 <strong>${escapeHtml(c.name)} \u2014 real estate license expires ${when(c.days)}</strong>`;
   };
   box.style.display = 'block';
   box.innerHTML = `<div class="celebrate-head">Coming up</div>` +
@@ -4893,40 +4982,43 @@ function goToLeads(stage){
 /* ---------- deal sides ----------
    Double-sided closings earn both the listing and buying commission, so the
    two sides are entered separately and totalled. */
-function pickSide(side){
-  document.getElementById('cd-side').value = side;
-  document.querySelectorAll('#cd-sidepicker button').forEach(b =>
+function pickSide(side, pfx){
+  pfx = pfx || 'cd';
+  const sideEl = document.getElementById(pfx+'-side');
+  if(sideEl) sideEl.value = side;
+  document.querySelectorAll('#'+pfx+'-sidepicker button').forEach(b =>
     b.classList.toggle('on', b.dataset.side === side));
-  const dbl = document.getElementById('cd-double');
-  const other = document.getElementById('cd-otherside');
+  const dbl = document.getElementById(pfx+'-double');
+  const other = document.getElementById(pfx+'-otherside');
   const isBoth = side === 'both';
   if(dbl) dbl.style.display = isBoth ? 'block' : 'none';
   // there is no other agent on a double-sided deal
   if(other) other.style.display = isBoth ? 'none' : 'grid';
   if(isBoth){
-    const pct = Number((document.getElementById('cd-pct')||{}).value) || 0;
-    const lp = document.getElementById('cd-listpct'), bp = document.getElementById('cd-buypct');
+    const pct = Number((document.getElementById(pfx+'-pct')||{}).value) || 0;
+    const lp = document.getElementById(pfx+'-listpct'), bp = document.getElementById(pfx+'-buypct');
     if(lp && !lp.value && pct) lp.value = pct;
     if(bp && !bp.value && pct) bp.value = pct;
-    calcSides();
+    calcSides(false, pfx);
   }else{
-    calcGci('cd');
+    calcGci(pfx);
   }
 }
 
-function calcSides(manual){
-  const price = Number((document.getElementById('cd-price')||{}).value) || 0;
-  const lp = document.getElementById('cd-listpct'), la = document.getElementById('cd-listamt');
-  const bp = document.getElementById('cd-buypct'), ba = document.getElementById('cd-buyamt');
+function calcSides(manual, pfx){
+  pfx = pfx || 'cd';
+  const price = Number((document.getElementById(pfx+'-price')||{}).value) || 0;
+  const lp = document.getElementById(pfx+'-listpct'), la = document.getElementById(pfx+'-listamt');
+  const bp = document.getElementById(pfx+'-buypct'), ba = document.getElementById(pfx+'-buyamt');
   if(!la || !ba) return;
   if(!manual && price){
     if(Number(lp.value)) la.value = Math.round(price * Number(lp.value) / 100);
     if(Number(bp.value)) ba.value = Math.round(price * Number(bp.value) / 100);
   }
   const total = (Number(la.value)||0) + (Number(ba.value)||0);
-  const gci = document.getElementById('cd-gci');
-  if(gci && total){ gci.value = total; gciEditedManually['cd'] = false; }
-  const note = document.getElementById('cd-doubletotal');
+  const gci = document.getElementById(pfx+'-gci');
+  if(gci && total){ gci.value = total; gciEditedManually[pfx] = false; }
+  const note = document.getElementById(pfx+'-doubletotal');
   if(note){
     note.innerHTML = total
       ? `Both sides: <strong>${fmtMoney(Number(la.value)||0)}</strong> listing +
@@ -4934,7 +5026,7 @@ function calcSides(manual){
          <strong>${fmtMoney(total)}</strong> gross commission`
       : '';
   }
-  if(typeof calcReferral === 'function') calcReferral();
+  if(typeof calcReferral === 'function') calcReferral(pfx);
 }
 </script>
 <script>
@@ -5072,6 +5164,58 @@ async function resolveRequest(id, status){
   await storeSet('settings:adminRequests', reqs);
   showToast(status === 'approved' ? "Approved \u2014 issue a bypass code so they can proceed." : "Request denied.");
   renderAdminRequests();
+}
+</script>
+<script>
+function describeRole(){
+  const el = document.getElementById('af-role');
+  const out = document.getElementById('af-roledesc');
+  if(!el || !out) return;
+  const v = el.value;
+  out.textContent =
+    v === 'admin'  ? "Can do everything you can \u2014 leads, commissions, agents, settings \u2014 except lock, delete or reset your broker account without your approval or a bypass code."
+  : v === 'broker' ? "Full unrestricted access. Only add a second broker if they genuinely co-own the brokerage."
+  : "Sees only leads assigned to them, their own commissions and their own expenses.";
+}
+</script>
+<script>
+function toggleDealDetail(id){
+  const row = document.getElementById('dd-' + id);
+  if(row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+
+/* The full working behind a deal — shown to the agent as well as the broker,
+   so they can check the numbers against their own records. */
+function dealDetailHtml(d){
+  const c = d.calc || {};
+  const row = (k, v) => v ? `<div class="dd-row"><span>${k}</span><strong>${v}</strong></div>` : '';
+  const money = v => v ? fmtMoney(v) : '';
+  return `<div class="dd-wrap">
+    <div class="dd-col">
+      <div class="dd-h">How this was calculated</div>
+      ${row('Sale price', money(d.price))}
+      ${d.side==='both' ? row('List side', money(d.listSideAmount)) + row('Buy side', money(d.buySideAmount)) : ''}
+      ${row('Gross commission', money(c.gci))}
+      ${c.refOut ? row('Less referral paid', '\u2212 ' + money(c.refOut)) : ''}
+      ${c.team ? row('Less team split', '\u2212 ' + money(c.team)) : ''}
+      ${row('To brokerage', '\u2212 ' + money(c.brokerage) + (c.capped ? '  (capped)' : ''))}
+      ${c.capSaved ? row('Saved by your cap', '+ ' + money(c.capSaved)) : ''}
+      ${c.fees ? row('Fees', '\u2212 ' + money(c.fees)) : ''}
+      <div class="dd-row total"><span>Your net</span><strong>${money(c.agentNet)}</strong></div>
+      ${d.planEffective ? `<div class="dd-note">Calculated on the plan effective ${d.planEffective}.</div>` : ''}
+    </div>
+    <div class="dd-col">
+      <div class="dd-h">Transaction</div>
+      ${row('Side', d.side==='both'?'Both sides':d.side==='buy'?'Buy side':d.side==='list'?'List side':'')}
+      ${row('Other agent', d.coAgent ? escapeHtml(d.coAgent) + (d.coBrokerage?' \u00b7 '+escapeHtml(d.coBrokerage):'') : '')}
+      ${row('Loan officer', d.loanOfficer ? escapeHtml(d.loanOfficer) + (d.lender?' \u00b7 '+escapeHtml(d.lender):'') : '')}
+      ${row('Title / closing', d.titleCompany ? escapeHtml(d.titleCompany) : '')}
+      ${row('Financing', d.financing ? escapeHtml(d.financing) : '')}
+      ${row('Referral', d.referralTo ? `${d.referralDirection==='in'?'Received from':'Paid to'} ${escapeHtml(d.referralTo)}${d.referralEin?' \u00b7 EIN '+escapeHtml(d.referralEin):''}` : '')}
+      ${d.notes ? `<div class="dd-h" style="margin-top:12px;">Broker's notes</div><div class="dd-note">${escapeHtml(d.notes)}</div>` : ''}
+      ${d.referralNotes ? `<div class="dd-note">${escapeHtml(d.referralNotes)}</div>` : ''}
+    </div>
+  </div>`;
 }
 </script>
 </body>
