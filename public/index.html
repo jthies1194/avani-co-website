@@ -1345,15 +1345,25 @@ const price = parseInt(document.getElementById('f-price').value)||Infinity;
 const priceMin = parseInt((document.getElementById('f-price-min')||{}).value)||0;
 const status = document.getElementById('f-status').value;
 const favOnly = (typeof clientFilter !== 'undefined' && clientFilter === 'fav' && currentClient);
+const serverMode = (typeof SEARCH_MODE !== 'undefined' && SEARCH_MODE && !favOnly);
 const favKeys = favOnly ? (currentClient.favorites || []) : null;
 const filtered = ALL_LISTINGS.filter(l =>
 (!favOnly || favKeys.includes(l.ListingKey)) &&
 (!city || l.City.toLowerCase().includes(city) || l.UnparsedAddress.toLowerCase().includes(city)) && l.BedroomsTotal>=beds && l.ListPrice>=priceMin && l.ListPrice<=price && (!status || l.StandardStatus===status)
 );
-document.getElementById('listing-count').textContent = filtered.length + (filtered.length===1?" home":" homes");
+(function(){
+  const el = document.getElementById('listing-count');
+  if(!el) return;
+  if(serverMode){
+    el.textContent = SEARCH_TOTAL.toLocaleString() + (SEARCH_TOTAL===1?" home":" homes") + " found";
+  }else{
+    el.textContent = filtered.length + (filtered.length===1?" home":" homes");
+  }
+})();
 const grid = document.getElementById('listing-grid');
 if(typeof visibleCount === 'undefined') window.visibleCount = 24;
-const pageItems = filtered.slice(0, window.visibleCount);
+const source = serverMode ? SEARCH_RESULTS : filtered;
+const pageItems = serverMode ? source : source.slice(0, window.visibleCount);
 grid.innerHTML = pageItems.map((l,i)=>{
 const qrTarget = location.origin + location.pathname + '?listing=' + encodeURIComponent(l.ListingKey);
 const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=90x90&margin=0&color=2E3CB0&data=' + encodeURIComponent(qrTarget);
@@ -1393,10 +1403,18 @@ maybeAutoOpenListingFromURL(filtered);
     more.style.cssText = 'text-align:center;margin:34px auto 0;max-width:1180px;';
     grid.parentNode.insertBefore(more, grid.nextSibling);
   }
-  const left = filtered.length - pageItems.length;
-  more.innerHTML = left > 0
-    ? `<button class="btn" onclick="window.visibleCount += 24; renderListings();">Show more homes <span style="opacity:.7">(${left} more)</span></button>`
-    : (filtered.length > 24 ? '<p style="color:var(--grey);font-size:14.5px;">That\'s all ' + filtered.length + ' homes.</p>' : '');
+  if(serverMode){
+    const left = Math.max(0, SEARCH_TOTAL - SEARCH_RESULTS.length);
+    more.innerHTML = (left > 0
+      ? `<button class="btn" onclick="loadMoreServer()">Show more homes <span style="opacity:.7">(${left.toLocaleString()} more)</span></button>`
+      : `<p style="color:var(--grey);font-size:14.5px;">That's all ${SEARCH_TOTAL.toLocaleString()} matching homes.</p>`)
+      + ` <button class="btn" style="margin-left:10px;border-color:var(--gold-deep);color:var(--gold-deep);" onclick="clearSearch()">Clear search</button>`;
+  }else{
+    const left = filtered.length - pageItems.length;
+    more.innerHTML = left > 0
+      ? `<button class="btn" onclick="window.visibleCount += 24; renderListings();">Show more homes <span style="opacity:.7">(${left} more)</span></button>`
+      : (filtered.length > 24 ? `<p style="color:var(--grey);font-size:14.5px;">Showing ${filtered.length} recent homes \u2014 use search to see all 3,798 active listings.</p>` : '');
+  }
 })();
 
 }
@@ -3262,6 +3280,8 @@ addEventListener('scroll', () => {
 function priceNum(v){ const n = parseInt(String(v||'').replace(/[^0-9]/g,''),10); return isNaN(n)?'':n; }
 function runSearch(){
   window.visibleCount = 24;
+  if(typeof anyFilterSet === 'function' && anyFilterSet()){ runServerSearch(false); return; }
+  if(typeof SEARCH_MODE !== 'undefined'){ SEARCH_MODE = false; SEARCH_RESULTS = []; SEARCH_SKIP = 0; }
   const lo = priceNum(document.getElementById('pmin').value);
   const hi = priceNum(document.getElementById('pmax').value);
   document.getElementById('f-price').value = hi === '' ? '' : hi;
@@ -3538,6 +3558,65 @@ function populateCityOptions(){
     `<option value="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c]})</option>`).join('');
   const inp = document.getElementById('f-city');
   if(inp) inp.placeholder = cities.length + ' cities available — start typing';
+}
+</script>
+<script>
+/* ---------- server-side search ----------
+   When any filter is set we ask the MLS directly, so results cover all active
+   listings rather than only the batch cached for the homepage. */
+let SEARCH_MODE = false, SEARCH_RESULTS = [], SEARCH_TOTAL = 0, SEARCH_SKIP = 0;
+const SEARCH_PAGE = 24;
+
+function currentFilters(){
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  return { city: g('f-city'), beds: g('f-beds'), status: g('f-status'), min: g('pmin'), max: g('pmax') };
+}
+function anyFilterSet(){
+  const f = currentFilters();
+  return !!(f.city || f.beds || f.status || f.min || f.max);
+}
+
+async function runServerSearch(append){
+  const f = currentFilters();
+  if(!append){ SEARCH_SKIP = 0; SEARCH_RESULTS = []; }
+  const params = new URLSearchParams({
+    city: f.city, beds: f.beds, status: f.status,
+    min: f.min.replace(/[^0-9]/g,''), max: f.max.replace(/[^0-9]/g,''),
+    top: SEARCH_PAGE, skip: SEARCH_SKIP,
+  });
+  const grid = document.getElementById('listing-grid');
+  if(grid && !append) grid.innerHTML = '<p style="padding:26px 0;color:var(--grey);font-size:16px;">Searching the MLS…</p>';
+  try{
+    const res = await fetch('/api/search?' + params.toString());
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'search failed');
+    const rows = (d.value || []).map(normalizeListing);
+    SEARCH_RESULTS = append ? SEARCH_RESULTS.concat(rows) : rows;
+    SEARCH_TOTAL = d.total != null ? d.total : SEARCH_RESULTS.length;
+    SEARCH_MODE = true;
+    // keep detail lookups working for anything we've now seen
+    rows.forEach(r => { if(!ALL_LISTINGS.some(x => x.ListingKey === r.ListingKey)) ALL_LISTINGS.push(r); });
+    renderListings();
+  }catch(e){
+    console.error('[search] falling back to local filtering:', e);
+    SEARCH_MODE = false;
+    renderListings();
+    if(typeof showToast === 'function') showToast("Couldn't reach the MLS search — showing local results.");
+  }
+}
+
+function clearSearch(){
+  ['f-city','pmin','pmax'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['f-beds','f-status'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.querySelectorAll('.price-quick button').forEach(b => b.classList.remove('on'));
+  SEARCH_MODE = false; SEARCH_RESULTS = []; SEARCH_SKIP = 0;
+  window.visibleCount = 24;
+  renderListings();
+}
+
+function loadMoreServer(){
+  SEARCH_SKIP += SEARCH_PAGE;
+  runServerSearch(true);
 }
 </script>
 </body>
