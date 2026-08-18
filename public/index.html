@@ -640,6 +640,107 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 #profile-gate-overlay .sub{font-size:15px;color:var(--driftwood);margin:0 0 18px;line-height:1.7}
 .profile-missing{color:#8A4B12;font-size:13.5px;margin-bottom:12px}
 .profile-missing:empty{display:none}
+
+/* ---------- CRM section presentation ---------- */
+.sec-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+  flex-wrap:wrap;padding-bottom:16px;margin-bottom:22px;border-bottom:1px solid var(--line)}
+.sec-header .eyebrow-sm{margin-bottom:4px}
+.sec-header h2{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:500;
+  color:var(--marsh);margin:0;line-height:1.1}
+.sec-header p{margin:6px 0 0;font-size:15px;color:var(--driftwood);max-width:62ch}
+.sec-header .actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* bigger, calmer stat cards */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px}
+.stat-box{background:#fff;border:1px solid var(--line);border-radius:4px;padding:18px 20px;
+  transition:.3s;position:relative;overflow:hidden}
+.stat-box::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line)}
+.stat-box:nth-child(1)::after{background:var(--marsh)}
+.stat-box:nth-child(2)::after{background:var(--coral)}
+.stat-box:nth-child(3)::after{background:#7B8FD4}
+.stat-box:nth-child(4)::after{background:#9BA5C4}
+.stat-box .n{font-family:'Cormorant Garamond',serif;font-size:38px;line-height:1;color:var(--ink)}
+.stat-box .l{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--driftwood);margin-top:8px}
+
+/* the CRM generally: larger, easier to scan */
+.crm-wrap{font-size:15.5px}
+#lead-table{font-size:14.5px}
+#lead-table th{font-size:11.5px;letter-spacing:.1em;padding:12px 10px}
+#lead-table td{padding:14px 10px}
+.setup-grid input,.setup-grid select{font-size:15px;padding:11px 12px}
+.field-label{font-size:12.5px}
+.btn-sm{font-size:14px;padding:10px 16px}
+.stage-filters button{font-size:14px;padding:9px 16px}
+
+#sec-password .setup-body{max-width:520px}
+#sec-password .setup-grid{gap:14px}
+#sec-myprofile{max-width:920px}
+#sec-password .pw-card{background:var(--sand);border:1px solid var(--line);border-radius:4px;padding:22px;margin-top:4px}
+
+/* ---------- Today dashboard ---------- */
+#sec-today{max-width:1100px}
+.dash-hero{display:flex;justify-content:space-between;align-items:stretch;gap:24px;flex-wrap:wrap;
+  background:linear-gradient(135deg,var(--marsh),var(--marsh-deep));color:#fff;
+  border-radius:6px;padding:28px 30px;margin-bottom:22px}
+.dash-hero .eyebrow-sm{color:var(--gold-pale);opacity:.95}
+.dash-hero h2{font-family:'Cormorant Garamond',serif;font-size:38px;font-weight:400;margin:6px 0 0;color:#fff}
+.dash-hero p{margin:8px 0 0;font-size:16px;color:rgba(255,255,255,.9)}
+.dash-earn{background:rgba(255,255,255,.12);border-radius:5px;padding:18px 22px;min-width:250px}
+.de-l{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-pale)}
+.de-n{font-family:'Cormorant Garamond',serif;font-size:40px;line-height:1.05;margin-top:4px;color:#fff}
+.de-s{font-size:13px;color:rgba(255,255,255,.82);margin-top:5px}
+.de-bar{height:6px;background:rgba(255,255,255,.22);border-radius:3px;margin-top:12px;overflow:hidden}
+.de-bar span{display:block;height:100%;background:var(--gold);transition:width .8s cubic-bezier(.2,.7,.2,1)}
+.de-cap{margin-top:10px;background:var(--gold);color:#3A2A08;border-radius:3px;padding:6px 10px;
+  font-size:13.5px;font-weight:500;display:inline-block}
+
+.dash-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.dash-card{text-align:left;background:#fff;border:1px solid var(--line);border-radius:5px;
+  padding:18px 20px;cursor:pointer;transition:.25s;border-left-width:4px}
+.dash-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(23,31,99,.10)}
+.dash-card.urgent{border-left-color:var(--coral)}
+.dash-card.warn{border-left-color:#C97A3C}
+.dash-card.info{border-left-color:#7B8FD4}
+.dash-card.calm{border-left-color:#A9B4CE}
+.dc-n{font-family:'Cormorant Garamond',serif;font-size:40px;line-height:1;color:var(--ink)}
+.dc-l{font-size:14.5px;font-weight:500;color:var(--ink);margin-top:6px}
+.dc-s{font-size:12.5px;color:var(--driftwood);margin-top:2px}
+
+.dash-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+.da{display:inline-flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);
+  border-radius:40px;padding:11px 20px;font-family:'Jost',sans-serif;font-size:14.5px;
+  color:var(--ink);cursor:pointer;transition:.25s}
+.da span{color:var(--coral);font-weight:600}
+.da:hover{border-color:var(--marsh);color:var(--marsh);background:var(--sand)}
+
+.dash-split{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+.dash-panel{background:#fff;border:1px solid var(--line);border-radius:5px;padding:20px 22px}
+.dash-panel h4{margin:0 0 14px;font-family:'Cormorant Garamond',serif;font-size:22px;
+  font-weight:500;color:var(--marsh)}
+.dash-lead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 0;border-top:1px solid var(--line);cursor:pointer}
+.dash-lead:first-of-type{border-top:none}
+.dash-lead:hover .dl-name{color:var(--coral)}
+.dl-name{font-size:15.5px;font-weight:500;color:var(--ink)}
+.dl-meta{font-size:12.5px;color:var(--driftwood);margin-top:2px}
+.dl-stage{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--marsh);
+  background:var(--sand);border-radius:20px;padding:4px 11px;white-space:nowrap}
+.dash-empty{font-size:14px;color:var(--driftwood);margin:0}
+@media(max-width:900px){
+  .dash-split{grid-template-columns:1fr}
+  .dash-hero{padding:22px}
+  .dash-hero h2{font-size:30px}
+}
+
+.side-picker{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.side-picker button{flex:1;min-width:110px;background:#fff;border:1px solid var(--line);
+  border-radius:4px;padding:12px 14px;font-family:'Jost',sans-serif;font-size:14.5px;
+  color:var(--ink);cursor:pointer;transition:.25s}
+.side-picker button:hover{border-color:var(--marsh);color:var(--marsh)}
+.side-picker button.on{background:var(--marsh);border-color:var(--marsh);color:#fff;font-weight:500}
+.side-picker button[data-side="both"].on{background:var(--coral);border-color:var(--coral);color:#3A2A08}
+.double-note{font-size:13px;color:#8A5B12;background:#FBF3E2;border-radius:4px;padding:9px 12px}
+.double-total{font-size:14.5px;color:var(--ink);margin-top:10px}
 </style>
 </head>
 <body>
@@ -1006,6 +1107,7 @@ Call Jimmy · 251-229-3216
 <nav class="crm-nav" id="crm-nav"></nav>
 <div id="celebrations"></div>
 
+<div id="sec-today" class="crm-sec"></div>
 <div id="sec-leads" class="crm-sec">
 <div class="stats-row" id="stats-row"></div>
 
@@ -1028,7 +1130,7 @@ Call Jimmy · 251-229-3216
 </table>
 <div id="empty-state" class="empty-state" style="display:none;">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12 C3 12 7 4 12 4 C17 4 21 12 21 12 C21 12 17 20 12 20 C7 20 3 12 3 12 Z"/><circle cx="12" cy="12" r="3"/></svg>
-<div>No leads yet in this view. Leads submitted from your website will show up here instantly.</div>
+<div style="font-size:16px;">No leads in this view yet.<br><span style="font-size:14px;color:var(--driftwood);">Anything submitted from bamacoast.com lands here the moment it arrives.</span></div>
 </div>
 </div>
 </div>
@@ -2320,6 +2422,8 @@ document.getElementById('stats-row').innerHTML = `
 initStageFilters();
 
 window.__leadCount = leads.filter(l => l.stage === 'New').length;
+DASH_LEADS = leads;
+if(crmSection === 'sec-today' && typeof renderDashboard === 'function') renderDashboard();
 if(typeof renderCrmNav === 'function') renderCrmNav();
 const shown = currentFilterStage==='all' ? leads : leads.filter(l=>l.stage===currentFilterStage);
 const tbody = document.getElementById('lead-tbody');
@@ -2798,9 +2902,11 @@ Commission take-home ${fmtMoney(yr.totals.agentNet - yr.totals.deskFees)} \u2212
 }catch(e){ netLine = ''; }
 
 el.innerHTML = exYearSelector()
-+ `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-${statBox('Total spend', fmtMoney(total))}
-${statBox('Entries', list.length)}
++ `<div class="wi-grid" style="margin-bottom:18px;">
+${wiStat('Total spend', fmtMoney(total))}
+${wiStat('Entries', list.length)}
+${wiStat('Monthly average', fmtMoney(total / Math.max(1, (exYear===new Date().getFullYear()? new Date().getMonth()+1 : 12))))}
+${wiStat('Biggest category', (function(){const by={};list.forEach(e=>{by[e.category]=(by[e.category]||0)+(Number(e.amount)||0)});const top=Object.entries(by).sort((a,b)=>b[1]-a[1])[0];return top?top[0]:'\u2014';})())}
 </div>`
 + netLine
 + categoryBreakdown(list)
@@ -3075,6 +3181,7 @@ ${isBroker?`<div id="plan-editor-${agentId}" style="display:none; margin-top:14p
 ` + yearSelector() + `
 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
 ${statBox('Deals', r.rows.length)}
+${(function(){const dbl=r.rows.filter(d=>d.side==='both').length; return dbl?statBox('Double-sided', dbl, 'var(--coral)'):'';})()}
 ${statBox('Volume', fmtMoney(t.volume))}
 ${statBox('Gross commission', fmtMoney(t.gci))}
 ${t.referral?statBox('Referrals paid', fmtMoney(t.referral)):''}
@@ -3089,7 +3196,7 @@ html += r.rows.length ? `<div style="overflow-x:auto;"><table style="width:100%;
 <th style="padding:6px 8px;">GCI</th><th style="padding:6px 8px;">Referral</th><th style="padding:6px 8px;">Team</th><th style="padding:6px 8px;">Brokerage</th>
 <th style="padding:6px 8px;">Fees</th><th style="padding:6px 8px;">Net</th>${isBroker?'<th></th>':''}</tr>
 ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
-<td style="padding:8px;">${escapeHtml(d.address)}</td>
+<td style="padding:8px;">${escapeHtml(d.address)}${d.side==='both'?' <span class="agent-role-tag" style="background:var(--coral);color:#3A2A08;">\u2605 both sides</span>':d.side?` <span class="agent-role-tag">${d.side==='buy'?'buy':'list'} side</span>`:''}${d.coAgent?`<div style="font-size:11px;color:var(--driftwood);">w/ ${escapeHtml(d.coAgent)}${d.coBrokerage?' \u00b7 '+escapeHtml(d.coBrokerage):''}</div>`:''}</td>
 <td style="padding:8px;">${d.closeDate}</td>
 <td style="padding:8px;">${fmtMoney(d.price)}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.gci)}</td>
@@ -3104,6 +3211,7 @@ ${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClos
 if(isBroker){
 html += renderWhatIf(agentId);
 gciEditedManually['cd'] = false; refEditedManually = false;
+setTimeout(()=>{ try{ pickSide(''); }catch(e){} }, 20);
 html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (official)</h4>
 <div class="setup-grid">
 <input id="cd-address" placeholder="Property address">
@@ -3111,6 +3219,41 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 <input id="cd-date" type="date">
 <input id="cd-pct" type="number" step="0.01" placeholder="Commission % (e.g. 3)" oninput="calcGci('cd')" onchange="calcGci('cd')">
 <input id="cd-gci" type="number" placeholder="Gross commission ($)" oninput="markGciEdited('cd')">
+<div style="grid-column:1/-1; border-top:1px solid var(--line); margin-top:6px; padding-top:12px;">
+<div class="field-label">Which side did we represent?</div>
+<div class="side-picker" id="cd-sidepicker">
+<button type="button" data-side="buy"  onclick="pickSide('buy')">Buy side</button>
+<button type="button" data-side="list" onclick="pickSide('list')">List side</button>
+<button type="button" data-side="both" onclick="pickSide('both')">&#9733; Both sides</button>
+</div>
+<input type="hidden" id="cd-side" value="">
+<div id="cd-double" style="display:none; margin-top:12px;">
+<div class="double-note">Double-sided \u2014 enter each side and we'll total the commission.</div>
+<div class="setup-grid" style="margin-top:8px;">
+<div><div class="field-label">List side %</div><input type="number" step="0.01" id="cd-listpct" placeholder="3" oninput="calcSides()"></div>
+<div><div class="field-label">List side ($)</div><input type="number" id="cd-listamt" placeholder="auto" oninput="calcSides(true)"></div>
+<div><div class="field-label">Buy side %</div><input type="number" step="0.01" id="cd-buypct" placeholder="3" oninput="calcSides()"></div>
+<div><div class="field-label">Buy side ($)</div><input type="number" id="cd-buyamt" placeholder="auto" oninput="calcSides(true)"></div>
+</div>
+<div class="double-total" id="cd-doubletotal"></div>
+</div>
+</div>
+<div style="grid-column:1/-1;">
+<div class="field-label">The other side</div>
+<div class="setup-grid" style="margin-top:6px;" id="cd-otherside">
+<input id="cd-coagent" placeholder="Other agent's name">
+<input id="cd-cobrokerage" placeholder="Their brokerage">
+</div>
+</div>
+<div style="grid-column:1/-1;">
+<div class="field-label">Lender &amp; closing</div>
+<div class="setup-grid" style="margin-top:6px;">
+<input id="cd-lo" placeholder="Loan officer">
+<input id="cd-lender" placeholder="Lender / mortgage company">
+<input id="cd-title" placeholder="Title company / closing attorney">
+<select id="cd-financing"><option value="">Financing type</option><option>Conventional</option><option>FHA</option><option>VA</option><option>USDA</option><option>Cash</option><option>Owner financing</option><option>Other</option></select>
+</div>
+</div>
 <div style="grid-column:1/-1; border-top:1px solid var(--line); margin-top:6px; padding-top:12px;">
 <div class="field-label">Referral (optional)</div>
 <div class="setup-grid" style="margin-top:6px;">
@@ -3308,7 +3451,7 @@ out.value = (price > 0 && pct > 0) ? Math.round(price * pct / 100) : '';
 if(prefix === 'cd' && typeof calcReferral === 'function') calcReferral();
 }
 function resetDealForm(prefix){
-['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate','-refpct','-refein','-refnotes','-notes'].forEach(sfx=>{
+['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate','-refpct','-refein','-refnotes','-notes','-listpct','-listamt','-buypct','-buyamt','-coagent','-cobrokerage','-lo','-lender','-title'].forEach(sfx=>{
 const el = document.getElementById(prefix+sfx);
 if(el) el.value = '';
 });
@@ -3336,6 +3479,15 @@ const refNotes= (document.getElementById('cd-refnotes')||{}).value || '';
 const dealNotes=(document.getElementById('cd-notes')||{}).value || '';
 list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
 referralTo: refName.trim(), referralAmount: refAmt, referralDate: refDate,
+side: (document.getElementById('cd-side')||{}).value || '',
+listSideAmount: (document.getElementById('cd-listamt')||{}).value || '',
+buySideAmount: (document.getElementById('cd-buyamt')||{}).value || '',
+coAgent: ((document.getElementById('cd-coagent')||{}).value || '').trim(),
+coBrokerage: ((document.getElementById('cd-cobrokerage')||{}).value || '').trim(),
+loanOfficer: ((document.getElementById('cd-lo')||{}).value || '').trim(),
+lender: ((document.getElementById('cd-lender')||{}).value || '').trim(),
+titleCompany: ((document.getElementById('cd-title')||{}).value || '').trim(),
+financing: (document.getElementById('cd-financing')||{}).value || '',
 referralType: refType, referralPct: refPct, referralDirection: refDir,
 referralEin: refEin.trim(), referralNotes: refNotes.trim(), notes: dealNotes.trim(),
 agentId, agentName: agent?agent.name:'', source:'broker' });
@@ -4027,7 +4179,7 @@ function printCommissions(){
         <th class="num">GCI</th><th class="num">Referrals</th>
         <th class="num">To brokerage</th><th class="num">Fees</th>
         <th class="num">Paid to agent</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="8">No closed deals recorded.</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="9">No closed deals recorded.</td></tr>'}</tbody>
         <tfoot><tr><td colspan="2">Totals</td>
           <td class="num">${fmtMoney(sum.v)}</td><td class="num">${fmtMoney(sum.g)}</td>
           <td class="num">${fmtMoney(sum.rf)}</td><td class="num">${fmtMoney(sum.b)}</td>
@@ -4051,17 +4203,18 @@ function printCommissions(){
   };
   const rows = r.rows.map(d => `<tr><td>${escapeHtml(d.address)}${d.notes?`<div class="meta">${escapeHtml(d.notes)}</div>`:''}</td><td>${d.closeDate}</td>
     <td class="num">${fmtMoney(d.price)}</td>
+    <td>${d.side==='both'?'Both':d.side==='buy'?'Buy':d.side==='list'?'List':'—'}${d.coAgent?`<div class="meta">w/ ${escapeHtml(d.coAgent)}${d.coBrokerage?' · '+escapeHtml(d.coBrokerage):''}</div>`:''}${d.loanOfficer?`<div class="meta">LO ${escapeHtml(d.loanOfficer)}${d.lender?' · '+escapeHtml(d.lender):''}</div>`:''}${d.titleCompany?`<div class="meta">${escapeHtml(d.titleCompany)}</div>`:''}</td>
     <td class="num">${fmtMoney(d.calc.gci)}</td>
     <td>${refCell(d)}</td>
     <td class="num">${fmtMoney(d.calc.brokerage)}</td>
     <td class="num">${fmtMoney(d.calc.fees)}</td>
     <td class="num">${fmtMoney(d.calc.agentNet)}</td></tr>`).join('');
   printReport(`Earnings statement — ${a.name} — ${cdYear}`,
-    `<table><thead><tr><th>Property</th><th>Closed</th><th class="num">Price</th>
+    `<table><thead><tr><th>Property</th><th>Closed</th><th class="num">Price</th><th>Side</th>
       <th class="num">GCI</th><th>Referral</th>
       <th class="num">Brokerage</th><th class="num">Fees</th>
       <th class="num">Net</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="8">No closed deals recorded.</td></tr>'}</tbody></table>
+      <tbody>${rows || '<tr><td colspan="9">No closed deals recorded.</td></tr>'}</tbody></table>
      <div class="totals">
        <div>Closed transactions: <strong>${r.rows.length}</strong></div>
        <div>Sales volume: <strong>${fmtMoney(t.volume)}</strong></div>
@@ -4196,6 +4349,7 @@ function referralLedgerHtml(year){
    The CRM was a stack of collapsed accordions — finding commissions meant
    scrolling past everything else. Now it's proper tabs. */
 const CRM_SECTIONS = [
+  { id:'sec-today',       label:'Today',       icon:'\u25C9' },
   { id:'sec-leads',       label:'Leads',       icon:'\u2709', badge:() => (window.__leadCount || 0) },
   { id:'sec-commissions', label:'Commissions', icon:'\u0024' },
   { id:'sec-expenses',    label:'Expenses',    icon:'\u2338' },
@@ -4205,12 +4359,21 @@ const CRM_SECTIONS = [
   { id:'sec-myprofile',   label:'My details',  icon:'\u2637', agentOnly:true },
   { id:'sec-password',    label:'My password', icon:'\u26BF' },
 ];
-let crmSection = 'sec-leads';
+let crmSection = 'sec-today';
+
+function allowedSections(){
+  const isBroker = currentAgent && currentAgent.role === 'broker';
+  return CRM_SECTIONS.filter(sc => (!sc.brokerOnly || isBroker) && (!sc.agentOnly || !isBroker));
+}
 
 function renderCrmNav(){
   const nav = document.getElementById('crm-nav');
   if(!nav || !currentAgent) return;
   const isBroker = currentAgent.role === 'broker';
+  // A section the current role can't see must never stay open — otherwise
+  // switching to an agent view leaves broker content on screen.
+  const allowed = allowedSections().map(sc => sc.id);
+  if(!allowed.includes(crmSection)) crmSection = 'sec-today';
   nav.innerHTML = CRM_SECTIONS
     .filter(sc => (!sc.brokerOnly || isBroker) && (!sc.agentOnly || !isBroker))
     .map(sc => {
@@ -4221,9 +4384,17 @@ function renderCrmNav(){
 }
 
 function showCrmSection(id){
+  const allowed = allowedSections().map(sc => sc.id);
+  if(!allowed.includes(id)) id = 'sec-today';
   crmSection = id;
-  document.querySelectorAll('.crm-sec').forEach(el => el.classList.toggle('on', el.id === id));
+  const permitted = new Set(allowedSections().map(sc => sc.id));
+  document.querySelectorAll('.crm-sec').forEach(el => {
+    const ok = permitted.has(el.id);
+    el.classList.toggle('on', ok && el.id === id);
+    el.style.display = ok ? '' : 'none';
+  });
   renderCrmNav();
+  injectSectionHeader(id);
   // load fresh data for whichever section just opened
   try{
     if(id === 'sec-commissions') loadClosedDeals();
@@ -4231,6 +4402,7 @@ function showCrmSection(id){
     if(id === 'sec-agents')      loadAgents();
     if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
     if(id === 'sec-myprofile') renderMyProfileSection();
+    if(id === 'sec-today') renderDashboard();
   }catch(e){}
   const main = document.getElementById('crm-main');
   if(main) window.scrollTo({top: Math.max(0, main.offsetTop - 40), behavior:'smooth'});
@@ -4514,6 +4686,218 @@ async function renderMyProfileSection(){
     <div id="profile-missing" class="profile-missing">${missing.length?'\u26A0 Still needed: '+missing.join(', '):''}</div>
     ${profileFormHtml(currentAgent.id, p)}
     <button class="btn-sm primary" style="margin-top:12px;" onclick="saveMyProfile('${currentAgent.id}', false)">Save my details</button>`;
+}
+</script>
+<script>
+const SECTION_META = {
+  'sec-leads':      { eyebrow:'Pipeline',   title:'Leads',            blurb:'Everyone who has reached out. Assign them, move them through your stages, and keep notes as you go.' },
+  'sec-commissions':{ eyebrow:'Earnings',   title:'Closed deals & commissions', blurb:'Every closing, split out by plan, cap, referrals and fees \u2014 with a calculator to model what more closings would be worth.' },
+  'sec-expenses':   { eyebrow:'Your costs', title:'Business expenses', blurb:'Track what you spend running your business, so you know what you actually keep after expenses.' },
+  'sec-agents':     { eyebrow:'Your team',  title:'Agents',           blurb:'Add agents, set their commission plans, keep their details on file, and preview the CRM as they see it.' },
+  'sec-reviews':    { eyebrow:'Approvals',  title:'Pending reviews',  blurb:'Deals your agents submitted. Nothing counts toward the official ledger until you approve it.' },
+  'sec-setup':      { eyebrow:'Setup',      title:'Data & notifications', blurb:'MLS connection, lead alerts, and the settings that drive the public site.' },
+  'sec-myprofile':  { eyebrow:'Your file',  title:'My details',       blurb:'The information the brokerage is required to hold for you. Only the broker can see it.' },
+  'sec-password':   { eyebrow:'Security',   title:'My password',      blurb:'Change the password you use to sign in to this CRM.' },
+};
+
+function injectSectionHeader(id){
+  const el = document.getElementById(id);
+  const m = SECTION_META[id];
+  if(!el || !m) return;
+  if(el.querySelector(':scope > .sec-header')) return;
+  const h = document.createElement('div');
+  h.className = 'sec-header';
+  h.innerHTML = `<div><div class="eyebrow-sm">${m.eyebrow}</div><h2>${m.title}</h2><p>${m.blurb}</p></div>`;
+  el.insertBefore(h, el.firstChild);
+}
+</script>
+<script>
+/* ---------- Today: the CRM home ----------
+   Opens with what needs doing rather than a table. Agents see their own
+   pipeline and progress; the broker sees the brokerage. */
+let DASH_LEADS = [];
+
+function daysAgo(iso){
+  if(!iso) return 999;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
+function greeting(){
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+async function renderDashboard(){
+  const el = document.getElementById('sec-today');
+  if(!el || !currentAgent) return;
+  const isBroker = currentAgent.role === 'broker';
+  const first = (currentAgent.name || '').split(' ')[0] || '';
+
+  // leads this person is responsible for
+  const mine = isBroker ? DASH_LEADS : DASH_LEADS.filter(l => l.assignedAgentId === currentAgent.id);
+  const newLeads   = mine.filter(l => l.stage === 'New');
+  const stale      = mine.filter(l => l.stage !== 'Closed' && l.stage !== 'New' && daysAgo(l.updatedAt || l.createdAt) >= 7);
+  const unassigned = isBroker ? DASH_LEADS.filter(l => !l.assignedAgentId && l.stage !== 'Closed') : [];
+  const thisWeek   = mine.filter(l => daysAgo(l.createdAt) <= 7);
+
+  // earnings position
+  const year = new Date().getFullYear();
+  let earn = null;
+  try{
+    if(isBroker){
+      const per = (cdData.agents || []).map(a => computeAgentYear(a.id, year));
+      earn = {
+        gci: per.reduce((s, r) => s + r.totals.gci, 0),
+        net: per.reduce((s, r) => s + r.totals.brokerage + r.totals.fees, 0),
+        deals: per.reduce((s, r) => s + r.rows.length, 0),
+        volume: per.reduce((s, r) => s + r.totals.volume, 0),
+      };
+    }else{
+      const r = computeAgentYear(currentAgent.id, year);
+      earn = { gci: r.totals.gci, net: r.totals.agentNet - r.totals.deskFees,
+               deals: r.rows.length, volume: r.totals.volume,
+               capMet: r.totals.capMet, capRemaining: r.totals.capRemaining, capAmount: r.totals.capAmount };
+    }
+  }catch(e){}
+
+  const goal = Number(localStorage.getItem('incomeGoal:' + currentAgent.id)) || 0;
+  const pct = goal > 0 && earn ? Math.min(100, Math.round(earn.net / goal * 100)) : 0;
+
+  const card = (cls, count, label, sub, action) => `
+    <button class="dash-card ${cls}" onclick="${action}">
+      <div class="dc-n">${count}</div>
+      <div class="dc-l">${label}</div>
+      <div class="dc-s">${sub}</div>
+    </button>`;
+
+  el.innerHTML = `
+    <div class="dash-hero">
+      <div>
+        <div class="eyebrow-sm">${new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})}</div>
+        <h2>${greeting()}${first ? ', ' + escapeHtml(first) : ''}.</h2>
+        <p>${newLeads.length
+            ? `You have <strong>${newLeads.length}</strong> new lead${newLeads.length===1?'':'s'} waiting.`
+            : 'Nothing new waiting — good place to be.'}</p>
+      </div>
+      ${earn ? `<div class="dash-earn">
+        <div class="de-l">${isBroker ? 'Brokerage income ' + year : 'Your earnings ' + year}</div>
+        <div class="de-n">${fmtMoney(earn.net)}</div>
+        <div class="de-s">${earn.deals} closing${earn.deals===1?'':'s'} &middot; ${fmtMoney(earn.volume)} volume</div>
+        ${goal > 0 ? `<div class="de-bar"><span style="width:${pct}%"></span></div>
+          <div class="de-s">${pct}% of your ${fmtMoney(goal)} goal</div>` : ''}
+        ${(!isBroker && earn.capMet) ? `<div class="de-cap">&#127881; Capped &mdash; 100% yours</div>`
+          : (!isBroker && earn.capAmount) ? `<div class="de-s">${fmtMoney(earn.capRemaining)} to cap</div>` : ''}
+      </div>` : ''}
+    </div>
+
+    <div class="dash-cards">
+      ${card('urgent', newLeads.length, 'New leads', newLeads.length ? 'Reach out today' : 'All caught up', "goToLeads('New')")}
+      ${card('warn', stale.length, 'Going cold', stale.length ? 'No contact in 7+ days' : 'Nothing stalling', "goToLeads('all')")}
+      ${isBroker ? card('info', unassigned.length, 'Unassigned', unassigned.length ? 'Needs an agent' : 'All assigned', "goToLeads('all')") : ''}
+      ${card('calm', thisWeek.length, 'New this week', 'Last 7 days', "goToLeads('all')")}
+    </div>
+
+    <div class="dash-actions">
+      <button class="da" onclick="openLeadModal('manual')"><span>+</span> Add a lead</button>
+      <button class="da" onclick="showCrmSection('sec-commissions')"><span>$</span> Log a closing</button>
+      <button class="da" onclick="showCrmSection('sec-expenses')"><span>&#8942;</span> Log an expense</button>
+      <button class="da" onclick="switchView('site')"><span>&#8981;</span> Search the MLS</button>
+      ${isBroker ? `<button class="da" onclick="showCrmSection('sec-agents')"><span>&#9786;</span> Manage agents</button>` : ''}
+    </div>
+
+    <div class="dash-split">
+      <div class="dash-panel">
+        <h4>Needs a call</h4>
+        ${(newLeads.concat(stale)).slice(0,6).map(l => `
+          <div class="dash-lead" onclick="openLeadDetail && openLeadDetail('${l.id}')">
+            <div>
+              <div class="dl-name">${escapeHtml(l.name || 'Unnamed')}</div>
+              <div class="dl-meta">${escapeHtml(l.email || l.phone || '')} &middot; ${escapeHtml(l.source || '')}
+                &middot; ${daysAgo(l.createdAt)}d ago</div>
+            </div>
+            <span class="dl-stage">${escapeHtml(l.stage || 'New')}</span>
+          </div>`).join('') || '<p class="dash-empty">No one waiting. Nice work.</p>'}
+        ${(newLeads.length + stale.length) > 6 ? `<button class="btn-sm" style="margin-top:10px;" onclick="goToLeads('all')">See all ${newLeads.length + stale.length}</button>` : ''}
+      </div>
+
+      <div class="dash-panel">
+        <h4>Set your goal</h4>
+        <p class="dash-empty" style="margin-bottom:10px;">What do you want to earn this year? We'll track it here.</p>
+        <div style="display:flex; gap:8px;">
+          <input type="number" id="dash-goal" value="${goal || ''}" placeholder="100000" style="flex:1;">
+          <button class="btn-sm primary" onclick="saveGoal()">Save</button>
+        </div>
+        ${goal > 0 && earn ? `<p class="dash-empty" style="margin-top:12px;">
+          ${earn.net >= goal
+            ? '&#127881; You have passed your goal for the year.'
+            : `${fmtMoney(goal - earn.net)} to go. At your average of ${fmtMoney(earn.deals ? earn.net/earn.deals : 0)} per closing,
+               that is about <strong>${earn.deals && earn.net ? Math.ceil((goal - earn.net) / (earn.net/earn.deals)) : '\u2014'}</strong> more.`}</p>` : ''}
+      </div>
+    </div>`;
+}
+
+function saveGoal(){
+  const v = (document.getElementById('dash-goal') || {}).value || '';
+  localStorage.setItem('incomeGoal:' + currentAgent.id, String(Number(v) || 0));
+  showToast('Goal saved.');
+  renderDashboard();
+}
+
+function goToLeads(stage){
+  showCrmSection('sec-leads');
+  if(stage && stage !== 'all'){
+    currentFilterStage = stage;
+    if(typeof loadLeads === 'function') loadLeads();
+  }
+}
+
+</script>
+<script>
+/* ---------- deal sides ----------
+   Double-sided closings earn both the listing and buying commission, so the
+   two sides are entered separately and totalled. */
+function pickSide(side){
+  document.getElementById('cd-side').value = side;
+  document.querySelectorAll('#cd-sidepicker button').forEach(b =>
+    b.classList.toggle('on', b.dataset.side === side));
+  const dbl = document.getElementById('cd-double');
+  const other = document.getElementById('cd-otherside');
+  const isBoth = side === 'both';
+  if(dbl) dbl.style.display = isBoth ? 'block' : 'none';
+  // there is no other agent on a double-sided deal
+  if(other) other.style.display = isBoth ? 'none' : 'grid';
+  if(isBoth){
+    const pct = Number((document.getElementById('cd-pct')||{}).value) || 0;
+    const lp = document.getElementById('cd-listpct'), bp = document.getElementById('cd-buypct');
+    if(lp && !lp.value && pct) lp.value = pct;
+    if(bp && !bp.value && pct) bp.value = pct;
+    calcSides();
+  }else{
+    calcGci('cd');
+  }
+}
+
+function calcSides(manual){
+  const price = Number((document.getElementById('cd-price')||{}).value) || 0;
+  const lp = document.getElementById('cd-listpct'), la = document.getElementById('cd-listamt');
+  const bp = document.getElementById('cd-buypct'), ba = document.getElementById('cd-buyamt');
+  if(!la || !ba) return;
+  if(!manual && price){
+    if(Number(lp.value)) la.value = Math.round(price * Number(lp.value) / 100);
+    if(Number(bp.value)) ba.value = Math.round(price * Number(bp.value) / 100);
+  }
+  const total = (Number(la.value)||0) + (Number(ba.value)||0);
+  const gci = document.getElementById('cd-gci');
+  if(gci && total){ gci.value = total; gciEditedManually['cd'] = false; }
+  const note = document.getElementById('cd-doubletotal');
+  if(note){
+    note.innerHTML = total
+      ? `Both sides: <strong>${fmtMoney(Number(la.value)||0)}</strong> listing +
+         <strong>${fmtMoney(Number(ba.value)||0)}</strong> buying =
+         <strong>${fmtMoney(total)}</strong> gross commission`
+      : '';
+  }
+  if(typeof calcReferral === 'function') calcReferral();
 }
 </script>
 </body>
