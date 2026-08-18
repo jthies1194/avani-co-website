@@ -5273,7 +5273,10 @@ async function revokeBypassCode(){
 
 async function renderAdminRequests(){
   const el = document.getElementById('admin-requests');
-  if(!el || !isOwner()) return;
+  if(!el) return;
+  // Only the owner issues bypass codes. Clear the panel for anyone else —
+  // returning early would leave the broker's version on screen after switching.
+  if(!isOwner() || brokerIdentity){ el.innerHTML = ''; return; }
   const reqs = (await storeGet('settings:adminRequests')) || [];
   const pending = reqs.filter(r => r.status === 'pending');
   el.innerHTML = `
