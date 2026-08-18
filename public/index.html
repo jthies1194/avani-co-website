@@ -1016,7 +1016,10 @@ Call Jimmy · 251-229-3216
 <span id="closed-deals-caret">▾</span>
 </div>
 <div class="setup-body" id="closed-deals-body">
-<div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;"></div>
+<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+<div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+<button class="btn-sm" style="margin-left:auto;" onclick="printCommissions()">\u2399 Print / PDF</button>
+</div>
 <div id="cd-content"></div>
 </div>
 </div>
@@ -1027,7 +1030,10 @@ Call Jimmy · 251-229-3216
 <span id="expenses-caret">▾</span>
 </div>
 <div class="setup-body" id="expenses-body">
-<div id="ex-tabs" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;"></div>
+<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+<div id="ex-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+<button class="btn-sm" style="margin-left:auto;" onclick="printExpenses()">\u2399 Print / PDF</button>
+</div>
 <div id="ex-content"></div>
 </div>
 </div>
@@ -1051,6 +1057,7 @@ Call Jimmy · 251-229-3216
 <div class="setup-body" id="agents-body">
 <p>Add agents at your brokerage so they can log in and manage their own leads. Each agent only sees leads assigned to them — you (as broker) see everything and can assign leads to whoever should follow up.</p>
 <div class="agent-list" id="agent-list"></div>
+<div id="agent-profile-box"></div>
 <button class="btn-sm primary" style="margin-top:14px;" onclick="openAgentModal()">+ Add agent</button>
 </div>
 </div>
@@ -1128,14 +1135,14 @@ Call Jimmy · 251-229-3216
 <button id="auth-tab-login" onclick="switchAuthTab('login')">Log in</button>
 </div>
 <form id="signup-form" class="auth-form active" onsubmit="submitClientSignup(event)">
-<div class="field"><label>Name</label><input required id="su-name"></div>
-<div class="field"><label>Email</label><input type="email" required id="su-email"></div>
-<div class="field"><label>Password</label><input type="password" required minlength="6" id="su-password" placeholder="At least 6 characters"></div>
+<div class="field"><label>Name</label><input required id="su-name" name="fullname" type="text" autocomplete="name" placeholder="First and last name"></div>
+<div class="field"><label>Email</label><input type="email" required id="su-email" name="email" autocomplete="email" placeholder="you@email.com"></div>
+<div class="field"><label>Password</label><input type="password" required minlength="6" id="su-password" name="new-password" autocomplete="new-password" placeholder="At least 6 characters"></div>
 <button class="submit-btn" type="submit">Create free account</button>
 </form>
 <form id="login-form" class="auth-form" onsubmit="submitClientLogin(event)">
-<div class="field"><label>Email</label><input type="email" required id="li-email"></div>
-<div class="field"><label>Password</label><input type="password" required id="li-password"></div>
+<div class="field"><label>Email</label><input type="email" required id="li-email" name="email" autocomplete="email"></div>
+<div class="field"><label>Password</label><input type="password" required id="li-password" name="password" autocomplete="current-password"></div>
 <button class="submit-btn" type="submit">Log in</button>
 </form>
 <div class="view-limit-note">No spam — just lets you save favorites and pick up where you left off.</div>
@@ -2119,7 +2126,7 @@ list.innerHTML = agents.map(a => `
 <div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}</div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
 </div>
-${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button><button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button><button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and licence details">Details</button><button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
 </div>
 `).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
 
@@ -2648,7 +2655,7 @@ return `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:
 ${list.map(e=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${e.date}</td>
 <td style="padding:8px;">${escapeHtml(e.category)}</td>
-<td style="padding:8px;">${escapeHtml(e.description||'')}</td>
+<td style="padding:8px;">${escapeHtml(e.description||'')}${e.payee?`<div style="color:var(--driftwood);font-size:11.5px;">Paid to ${escapeHtml(e.payee)}${e.method?' \u00b7 '+escapeHtml(e.method):''}${e.ref?' #'+escapeHtml(e.ref):''}</div>`:''}${e.notes?`<div style="color:var(--driftwood);font-size:11.5px;">${escapeHtml(e.notes)}</div>`:''}</td>
 ${currentAgent.role==='broker'&&exTab==='all'?`<td style="padding:8px; color:var(--driftwood);">${escapeHtml(e.agentName||'')}</td>`:''}
 <td style="padding:8px; text-align:right; font-weight:600;">${fmtMoney(e.amount)}</td>
 ${canDelete?`<td style="padding:8px;"><button class="del-btn" onclick="removeExpense('${e.id}')" title="Remove">\u2715</button></td>`:''}
@@ -2662,6 +2669,10 @@ return `<h4 style="margin:20px 0 8px; font-size:13px;">Log an expense</h4>
 <div><div class="field-label">Category</div><select id="ex-cat">${EXPENSE_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select></div>
 <div><div class="field-label">Description</div><input id="ex-desc" placeholder="e.g. Drone photos \u2014 111 Beach Blvd"></div>
 <div><div class="field-label">Amount ($)</div><input type="number" step="0.01" id="ex-amount" placeholder="250"></div>
+<div><div class="field-label">Paid to</div><input id="ex-payee" placeholder="Vendor or person"></div>
+<div><div class="field-label">Payment method</div><select id="ex-method"><option value="">\u2014</option><option>Check</option><option>Card</option><option>Cash</option><option>ACH / transfer</option><option>Auto-draft</option><option>Other</option></select></div>
+<div><div class="field-label">Check / reference #</div><input id="ex-ref" placeholder="optional"></div>
+<div><div class="field-label">Notes</div><input id="ex-notes" placeholder="optional"></div>
 </div>
 <button class="btn-sm primary" style="margin-top:10px;" onclick="addExpense()">Add expense</button>`;
 }
@@ -2723,11 +2734,15 @@ const description = document.getElementById('ex-desc').value.trim();
 const amount = document.getElementById('ex-amount').value;
 if(!date || !amount || Number(amount) <= 0){ showToast("Enter a date and an amount."); return; }
 const list = await storeGet('settings:expenses') || [];
+const payee  = (document.getElementById('ex-payee')||{}).value || '';
+const method = (document.getElementById('ex-method')||{}).value || '';
+const ref    = (document.getElementById('ex-ref')||{}).value || '';
+const notes  = (document.getElementById('ex-notes')||{}).value || '';
 list.push({ id:'exp_'+Date.now(), date, category, description, amount,
+payee: payee.trim(), method, ref: ref.trim(), notes: notes.trim(),
 agentId: currentAgent.id, agentName: currentAgent.name });
 await storeSet('settings:expenses', list);
-document.getElementById('ex-desc').value = '';
-document.getElementById('ex-amount').value = '';
+['ex-desc','ex-amount','ex-payee','ex-ref','ex-notes'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
 showToast("Expense logged.");
 loadExpenses();
 }
@@ -2777,8 +2792,11 @@ franchisePct: Number(p.franchisePct)||0
    already paid in this calendar year, used to stop charging once they cap. */
 function computeDeal(deal, plan, ytdPaid){
 const gci = Number(deal.gci)||0;
-const team = gci * (plan.teamSplitPct/100);
-const afterTeam = gci - team;
+// A referral fee is paid off the gross before anyone splits anything.
+const referral = Number(deal.referralAmount)||0;
+const afterReferral = Math.max(0, gci - referral);
+const team = afterReferral * (plan.teamSplitPct/100);
+const afterTeam = afterReferral - team;
 let brokerage = afterTeam * ((100 - plan.splitPct)/100);
 let capped = false;
 if(plan.capAmount > 0){
@@ -2788,7 +2806,7 @@ if(brokerage > left){ brokerage = left; capped = true; }
 const franchise = gci * (plan.franchisePct/100);
 const fees = plan.transactionFee + plan.eoFee + franchise;
 const agentGross = afterTeam - brokerage;
-return { gci, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped };
+return { gci, referral, team, brokerage, franchise, fees, agentGross, agentNet: agentGross - fees, capped };
 }
 
 /* Walks an agent's deals oldest-first so the cap accumulates correctly. */
@@ -2804,10 +2822,10 @@ ytdPaid += c.brokerage;
 return Object.assign({}, d, { calc: c });
 });
 const t = rows.reduce((a,r)=>({
-gci: a.gci + r.calc.gci, team: a.team + r.calc.team,
+gci: a.gci + r.calc.gci, referral: a.referral + r.calc.referral, team: a.team + r.calc.team,
 brokerage: a.brokerage + r.calc.brokerage, fees: a.fees + r.calc.fees,
 agentNet: a.agentNet + r.calc.agentNet, volume: a.volume + (Number(r.price)||0)
-}), {gci:0,team:0,brokerage:0,fees:0,agentNet:0,volume:0});
+}), {gci:0,referral:0,team:0,brokerage:0,fees:0,agentNet:0,volume:0});
 const monthsSoFar = (year === new Date().getFullYear()) ? (new Date().getMonth()+1) : 12;
 t.deskFees = plan.deskFeeMonthly * monthsSoFar;
 t.capRemaining = plan.capAmount > 0 ? Math.max(0, plan.capAmount - t.brokerage) : 0;
@@ -2929,6 +2947,7 @@ ${isBroker?`<div id="plan-editor-${agentId}" style="display:none; margin-top:14p
 ${statBox('Deals', r.rows.length)}
 ${statBox('Volume', fmtMoney(t.volume))}
 ${statBox('Gross commission', fmtMoney(t.gci))}
+${t.referral?statBox('Referrals paid', fmtMoney(t.referral)):''}
 ${statBox('Paid to brokerage', fmtMoney(t.brokerage))}
 ${statBox('Fees paid', fmtMoney(t.fees + t.deskFees))}
 ${statBox('Take-home', fmtMoney(t.agentNet - t.deskFees), 'var(--marsh)')}
@@ -2937,13 +2956,14 @@ ${statBox('Take-home', fmtMoney(t.agentNet - t.deskFees), 'var(--marsh)')}
 html += r.rows.length ? `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;">
 <tr style="text-align:left; color:var(--driftwood); font-size:11px; text-transform:uppercase;">
 <th style="padding:6px 8px;">Property</th><th style="padding:6px 8px;">Closed</th><th style="padding:6px 8px;">Price</th>
-<th style="padding:6px 8px;">GCI</th><th style="padding:6px 8px;">Team</th><th style="padding:6px 8px;">Brokerage</th>
+<th style="padding:6px 8px;">GCI</th><th style="padding:6px 8px;">Referral</th><th style="padding:6px 8px;">Team</th><th style="padding:6px 8px;">Brokerage</th>
 <th style="padding:6px 8px;">Fees</th><th style="padding:6px 8px;">Net</th>${isBroker?'<th></th>':''}</tr>
 ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${escapeHtml(d.address)}</td>
 <td style="padding:8px;">${d.closeDate}</td>
 <td style="padding:8px;">${fmtMoney(d.price)}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.gci)}</td>
+<td style="padding:8px;">${d.calc.referral?`${fmtMoney(d.calc.referral)}${d.referralTo?`<div style="font-size:11px;color:var(--driftwood);">${escapeHtml(d.referralTo)}${d.referralDate?' \u00b7 '+d.referralDate:''}</div>`:''}`:'\u2014'}</td>
 <td style="padding:8px;">${d.calc.team?fmtMoney(d.calc.team):'\u2014'}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?' <span class="agent-role-tag">cap</span>':''}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.fees)}</td>
@@ -2959,6 +2979,13 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 <input id="cd-date" type="date">
 <input id="cd-pct" type="number" step="0.01" placeholder="Commission % (e.g. 3)" oninput="calcGci('cd')">
 <input id="cd-gci" type="number" placeholder="Gross commission ($)" oninput="markGciEdited('cd')">
+<div style="grid-column:1/-1; border-top:1px solid var(--line); margin-top:6px; padding-top:12px;">
+<div class="field-label">Referral fee (optional)</div>
+<div class="setup-grid" style="margin-top:6px;">
+<input id="cd-refname" placeholder="Paid to (name or brokerage)">
+<input id="cd-refamt" type="number" placeholder="Referral amount ($)">
+<input id="cd-refdate" type="date" title="Date the referral was paid">
+</div></div>
 <button class="btn-sm primary" onclick="addClosedDeal('${agentId}')" style="grid-column:1/-1;">Add to official ledger</button>
 </div>
 <p style="font-size:11.5px; color:var(--driftwood); margin-top:6px;">Splits and fees are calculated automatically from this agent's plan.</p>`;
@@ -3052,7 +3079,7 @@ if(!out) return;
 out.value = (price > 0 && pct > 0) ? Math.round(price * pct / 100) : '';
 }
 function resetDealForm(prefix){
-['-address','-price','-date','-pct','-gci'].forEach(sfx=>{
+['-address','-price','-date','-pct','-gci','-refname','-refamt','-refdate'].forEach(sfx=>{
 const el = document.getElementById(prefix+sfx);
 if(el) el.value = '';
 });
@@ -3069,7 +3096,11 @@ const gci = document.getElementById('cd-gci').value;
 if(!address || !price || !closeDate || !gci){ showToast("Fill in all fields."); return; }
 const agent = cdData.agents.find(a=>a.id===agentId);
 const list = await storeGet('settings:closedDeals') || [];
+const refName = (document.getElementById('cd-refname')||{}).value || '';
+const refAmt  = (document.getElementById('cd-refamt')||{}).value || '';
+const refDate = (document.getElementById('cd-refdate')||{}).value || '';
 list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
+referralTo: refName.trim(), referralAmount: refAmt, referralDate: refDate,
 agentId, agentName: agent?agent.name:'', source:'broker' });
 await storeSet('settings:closedDeals', list);
 resetDealForm('cd');
@@ -3657,6 +3688,149 @@ function statsFor(l){
   if(acres) bits.push(acres.toLocaleString(undefined,{maximumFractionDigits:2}) + ' acres');
   bits.push(l.PropertySubType || l.PropertyType || 'Land');
   return bits.map(t => '<span>' + t + '</span>').join('');
+}
+</script>
+<script>
+/* Agent profile — address, licence, W-9 status etc. Broker-only. */
+async function openAgentProfile(agentId){
+  const a = (cdData.agents||[]).find(x=>x.id===agentId) || {};
+  const p = (await storeGet('agentProfile:'+agentId)) || {};
+  const f = (k,label,type,ph) => `<div><div class="field-label">${label}</div><input type="${type||'text'}" id="ap-${k}" value="${escapeHtml(p[k]||'')}" placeholder="${ph||''}"></div>`;
+  const box = document.getElementById('agent-profile-box');
+  box.innerHTML = `<div style="border:1px solid var(--line);border-radius:4px;padding:14px;margin-top:12px;">
+    <div style="font-weight:600;color:var(--marsh);margin-bottom:10px;">${escapeHtml(a.name||'Agent')} \u2014 details</div>
+    <div class="setup-grid">
+      ${f('phone','Mobile phone','tel','251-000-0000')}
+      ${f('personalEmail','Personal email','email')}
+      ${f('address','Home address')}
+      ${f('city','City')}
+      ${f('state','State')}
+      ${f('zip','ZIP')}
+      ${f('license','Real estate license #')}
+      ${f('licenseExp','License expires','date')}
+      ${f('dob','Date of birth','date')}
+      ${f('emergencyName','Emergency contact')}
+      ${f('emergencyPhone','Emergency phone','tel')}
+      ${f('w9','W-9 on file (date)','date')}
+    </div>
+    <div style="margin-top:10px;"><div class="field-label">Notes</div>
+      <input id="ap-notes" value="${escapeHtml(p.notes||'')}" placeholder="Anything else worth keeping"></div>
+    <button class="btn-sm primary" style="margin-top:10px;" onclick="saveAgentProfile('${agentId}')">Save details</button>
+    <p style="font-size:11.5px;color:var(--driftwood);margin-top:8px;">Only you can see this. Never store full Social Security numbers here \u2014 keep those on the signed W-9 itself.</p>
+  </div>`;
+  box.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+async function saveAgentProfile(agentId){
+  const keys = ['phone','personalEmail','address','city','state','zip','license','licenseExp','dob','emergencyName','emergencyPhone','w9','notes'];
+  const p = {};
+  keys.forEach(k => { const el = document.getElementById('ap-'+k); if(el) p[k] = el.value.trim(); });
+  await storeSet('agentProfile:'+agentId, p);
+  showToast("Agent details saved.");
+}
+</script>
+<script>
+/* Printable reports — opens a clean print view in a new tab. */
+function printReport(title, bodyHtml){
+  const w = window.open('', '_blank');
+  if(!w){ showToast("Allow pop-ups to print this report."); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+  <style>
+    body{font-family:Georgia,'Times New Roman',serif;color:#171F63;margin:40px;line-height:1.6}
+    h1{font-size:22px;margin:0 0 4px}
+    .sub{font-size:12px;color:#5A6288;margin-bottom:22px}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px}
+    th{text-align:left;border-bottom:2px solid #171F63;padding:7px 6px;font-size:10px;
+       letter-spacing:.08em;text-transform:uppercase}
+    td{border-bottom:1px solid #ddd;padding:7px 6px}
+    tfoot td{font-weight:bold;border-top:2px solid #171F63;border-bottom:none}
+    .totals{margin-top:18px;font-size:13px}
+    .totals div{padding:3px 0}
+    @media print{ body{margin:14mm} .noprint{display:none} }
+  </style></head><body>
+  <h1>Avani &amp; Co. Real Estate</h1>
+  <div class="sub">${title} &middot; generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+  ${bodyHtml}
+  <p class="noprint" style="margin-top:26px;font-size:12px;color:#5A6288;">Use your browser's Print command (Ctrl+P) — choose "Save as PDF" to send it to your accountant.</p>
+  </body></html>`);
+  w.document.close();
+}
+
+function printExpenses(){
+  const agentId = exTab.startsWith('agent:') ? exTab.slice(6) : (currentAgent.role==='broker' && exTab==='all' ? null : currentAgent.id);
+  const list = expensesFor(agentId, exYear);
+  const who = agentId ? ((cdData.agents||[]).find(a=>a.id===agentId)||{}).name || '' : 'All agents';
+  const total = sumExpenses(list);
+  const rows = list.map(e => `<tr><td>${e.date}</td><td>${escapeHtml(e.category)}</td>
+    <td>${escapeHtml(e.description||'')}</td><td>${escapeHtml(e.payee||'')}</td>
+    <td>${escapeHtml(e.method||'')}${e.ref?' #'+escapeHtml(e.ref):''}</td>
+    ${!agentId?`<td>${escapeHtml(e.agentName||'')}</td>`:''}
+    <td style="text-align:right">${fmtMoney(e.amount)}</td></tr>`).join('');
+  printReport(`Business expenses — ${who} — ${exYear}`,
+    `<table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid to</th><th>Method</th>
+      ${!agentId?'<th>Agent</th>':''}<th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7">No expenses recorded.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="${!agentId?6:5}">Total</td><td style="text-align:right">${fmtMoney(total)}</td></tr></tfoot>
+    </table>`);
+}
+
+function printCommissions(){
+  const isAll = cdTab === 'all';
+  if(isAll){
+    const per = (cdData.agents||[]).map(a => ({agent:a, r:computeAgentYear(a.id, cdYear)}))
+                 .filter(x => x.r.rows.length);
+    const rows = per.map(x => `<tr><td>${escapeHtml(x.agent.name)}</td><td>${x.r.rows.length}</td>
+      <td style="text-align:right">${fmtMoney(x.r.totals.volume)}</td>
+      <td style="text-align:right">${fmtMoney(x.r.totals.gci)}</td>
+      <td style="text-align:right">${fmtMoney(x.r.totals.referral)}</td>
+      <td style="text-align:right">${fmtMoney(x.r.totals.brokerage)}</td>
+      <td style="text-align:right">${fmtMoney(x.r.totals.fees + x.r.totals.deskFees)}</td>
+      <td style="text-align:right">${fmtMoney(x.r.totals.agentNet)}</td></tr>`).join('');
+    const sum = per.reduce((a,x)=>({v:a.v+x.r.totals.volume,g:a.g+x.r.totals.gci,
+      rf:a.rf+x.r.totals.referral,b:a.b+x.r.totals.brokerage,
+      f:a.f+x.r.totals.fees+x.r.totals.deskFees,n:a.n+x.r.totals.agentNet}),{v:0,g:0,rf:0,b:0,f:0,n:0});
+    printReport(`Brokerage commission summary — ${cdYear}`,
+      `<table><thead><tr><th>Agent</th><th>Deals</th><th style="text-align:right">Volume</th>
+        <th style="text-align:right">GCI</th><th style="text-align:right">Referrals</th>
+        <th style="text-align:right">To brokerage</th><th style="text-align:right">Fees</th>
+        <th style="text-align:right">Paid to agent</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8">No closed deals recorded.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="2">Totals</td>
+          <td style="text-align:right">${fmtMoney(sum.v)}</td><td style="text-align:right">${fmtMoney(sum.g)}</td>
+          <td style="text-align:right">${fmtMoney(sum.rf)}</td><td style="text-align:right">${fmtMoney(sum.b)}</td>
+          <td style="text-align:right">${fmtMoney(sum.f)}</td><td style="text-align:right">${fmtMoney(sum.n)}</td></tr></tfoot>
+      </table>
+      <p style="margin-top:20px;font-size:12px;color:#5A6288;">For accounting use. "Paid to agent" is the
+      figure to reconcile against payments issued and to carry into each agent's 1099-NEC.</p>`);
+    return;
+  }
+  const agentId = cdTab.startsWith('agent:') ? cdTab.slice(6) : currentAgent.id;
+  const a = (cdData.agents||[]).find(x=>x.id===agentId) || {name:'Agent'};
+  const r = computeAgentYear(agentId, cdYear), t = r.totals;
+  const rows = r.rows.map(d => `<tr><td>${escapeHtml(d.address)}</td><td>${d.closeDate}</td>
+    <td style="text-align:right">${fmtMoney(d.price)}</td>
+    <td style="text-align:right">${fmtMoney(d.calc.gci)}</td>
+    <td style="text-align:right">${d.calc.referral?fmtMoney(d.calc.referral):'—'}</td>
+    <td style="text-align:right">${fmtMoney(d.calc.brokerage)}</td>
+    <td style="text-align:right">${fmtMoney(d.calc.fees)}</td>
+    <td style="text-align:right">${fmtMoney(d.calc.agentNet)}</td></tr>`).join('');
+  printReport(`Earnings statement — ${a.name} — ${cdYear}`,
+    `<table><thead><tr><th>Property</th><th>Closed</th><th style="text-align:right">Price</th>
+      <th style="text-align:right">GCI</th><th style="text-align:right">Referral</th>
+      <th style="text-align:right">Brokerage</th><th style="text-align:right">Fees</th>
+      <th style="text-align:right">Net</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8">No closed deals recorded.</td></tr>'}</tbody></table>
+     <div class="totals">
+       <div>Closed transactions: <strong>${r.rows.length}</strong></div>
+       <div>Sales volume: <strong>${fmtMoney(t.volume)}</strong></div>
+       <div>Gross commission: <strong>${fmtMoney(t.gci)}</strong></div>
+       <div>Referrals paid: <strong>${fmtMoney(t.referral)}</strong></div>
+       <div>Paid to brokerage: <strong>${fmtMoney(t.brokerage)}</strong></div>
+       <div>Fees (transaction, E&amp;O, franchise, desk): <strong>${fmtMoney(t.fees + t.deskFees)}</strong></div>
+       <div style="font-size:15px;margin-top:8px;">Net paid to agent: <strong>${fmtMoney(t.agentNet - t.deskFees)}</strong></div>
+     </div>
+     <p style="margin-top:20px;font-size:12px;color:#5A6288;">This is a summary of earnings for your records.
+     It is not a tax form. Your official 1099-NEC is issued separately by the brokerage.</p>`);
 }
 </script>
 </body>
