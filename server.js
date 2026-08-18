@@ -116,12 +116,6 @@ app.delete('/api/kv/:key', async (req, res) => {
 });
 
 // ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
-// Gulf Coast MLS covers well beyond Avani's service area (listings as far as
-// Montgomery and Atmore). Restrict to the counties actually served.
-const SERVICE_COUNTIES = ['Baldwin', 'Mobile', 'Escambia', 'Santa Rosa'];
-function serviceAreaClause() {
-  return '(' + SERVICE_COUNTIES.map(c => `CountyOrParish eq '${c}'`).join(' or ') + ')';
-}
 const STATUS_CLAUSE = "(StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending')";
 
 let listingsCache = { data: null, at: 0 };
@@ -189,7 +183,6 @@ app.get('/api/search', async (req, res) => {
 
   const parts = [];
   const status = (q.status || '').trim();
-  if (String(q.area || '') !== 'off') parts.push(serviceAreaClause());
   if (status) {
     parts.push(`StandardStatus eq '${esc(status)}'`);
   } else {
@@ -220,13 +213,7 @@ app.get('/api/search', async (req, res) => {
       console.error(`[search] Bridge ${r.status}: ${text.slice(0, 300)}`);
       return res.status(502).json({ error: `MLS search error ${r.status}`, detail: text.slice(0, 300) });
     }
-    let json = await r.json();
-    // if the service-area clause matched nothing, retry once without it
-    if ((json.value || []).length === 0 && !req.query.area) {
-      const retry = url.replace(encodeURIComponent(serviceAreaClause() + ' and '), '');
-      const r2 = await fetch(retry);
-      if (r2.ok) json = await r2.json();
-    }
+    const json = await r.json();
     res.json({
       value: json.value || [],
       total: json['@odata.count'] != null ? json['@odata.count'] : null,
@@ -259,10 +246,9 @@ app.get('/api/listings', async (req, res) => {
   try {
     const all = [];
     let totalAvailable = null;
-    let useCounty = true;
 
     for (let skip = 0; skip < WANT; skip += PAGE) {
-      const filter = STATUS_CLAUSE + (useCounty ? ' and ' + serviceAreaClause() : '');
+      const filter = STATUS_CLAUSE;
       const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
         + `?access_token=${encodeURIComponent(token)}`
         + `&$filter=${encodeURIComponent(filter)}`
@@ -272,21 +258,11 @@ app.get('/api/listings', async (req, res) => {
       const r = await fetch(url);
       if (!r.ok) {
         const text = await r.text().catch(() => '');
-        if (useCounty && skip === 0) {
-          console.warn('[listings] county filter rejected, retrying without it:', text.slice(0, 200));
-          useCounty = false; skip -= PAGE; continue;
-        }
         if (all.length) break;
         return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
       }
       const json = await r.json();
       const rows = json.value || [];
-      // The filter can be valid yet match nothing if this dataset spells county
-      // values differently. Treat an empty first page as "unsupported" too.
-      if (useCounty && skip === 0 && rows.length === 0) {
-        console.warn('[listings] county filter returned 0 rows — retrying without it.');
-        useCounty = false; skip -= PAGE; continue;
-      }
       if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
       all.push(...rows);
       if (rows.length < PAGE) break;
