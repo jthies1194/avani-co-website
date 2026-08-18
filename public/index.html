@@ -768,6 +768,16 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   padding:2px 6px;border-radius:3px;vertical-align:middle;margin-right:5px}
 .ref-dir.out{background:#F3E0DA;color:#8A3B1E}
 .ref-dir.in{background:#DDEBDD;color:#2F6B33}
+
+.switch-wrap{display:inline-flex;align-items:center;gap:8px;background:var(--sand);
+  border:1px solid var(--line);border-radius:30px;padding:5px 6px 5px 14px}
+.switch-wrap span{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--driftwood)}
+.switch-wrap select{border:none;background:transparent;font-family:'Jost',sans-serif;
+  font-size:14px;color:var(--marsh);padding:4px 6px;cursor:pointer}
+.switch-wrap select:focus{outline:none}
+.switch-back{background:var(--coral);color:#3A2A08;border:none;border-radius:30px;
+  padding:8px 16px;font-family:'Jost',sans-serif;font-size:14px;font-weight:500;cursor:pointer}
+.switch-back:hover{background:var(--gold)}
 </style>
 </head>
 <body>
@@ -1131,7 +1141,10 @@ Call Jimmy · 251-229-3216
 <button class="btn-sm" style="background:var(--sand-light); color:var(--marsh); border:none; font-weight:700;" onclick="returnToBrokerView()">Back to my broker view</button>
 </div>
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+<div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
 <div id="crm-signed-in-as" style="font-size:12.5px; color:var(--driftwood);"></div>
+<div id="agent-switcher"></div>
+</div>
 <button class="btn-sm" onclick="logoutAgent()">Log out</button>
 </div>
 <nav class="crm-nav" id="crm-nav"></nav>
@@ -1570,6 +1583,10 @@ document.getElementById('view-site').classList.toggle('active', v==='site');
 document.getElementById('view-crm').classList.toggle('active', v==='crm');
 document.getElementById('chat-fab').style.display = v==='site' ? 'flex' : 'none';
 if(v==='crm'){ document.getElementById('chat-panel').classList.remove('open'); initCRM(); }
+// so Back moves between the site and the CRM instead of leaving bamacoast.com
+if(typeof suppressHistory !== 'undefined' && !suppressHistory){
+try{ history.pushState({ view: v }, '', v === 'crm' ? '#crm' : location.pathname); }catch(e){}
+}
 }
 
 let ALL_LISTINGS = [];
@@ -2073,11 +2090,57 @@ async function sendLeadNotification(lead){
 
 let currentAgent = null;
 
+/* Role helpers. Declared here rather than further down: function declarations
+   only hoist within their own <script> block, and these are used throughout. */
+function isOwner(){ return !!(currentAgent && currentAgent.role === 'broker'); }
+function isAdminOrOwner(){ return !!(currentAgent && (currentAgent.role === 'broker' || currentAgent.role === 'admin')); }
+
 /* --- Keep broker/agent signed in across page navigation --- */
 const AGENT_SESSION_KEY = 'agentSession';
-function saveAgentSession(a){ try{ localStorage.setItem(AGENT_SESSION_KEY, JSON.stringify(a)); }catch(e){} }
-function clearAgentSession(){ try{ localStorage.removeItem(AGENT_SESSION_KEY); }catch(e){} }
-function readAgentSession(){ try{ return JSON.parse(localStorage.getItem(AGENT_SESSION_KEY) || 'null'); }catch(e){ return null; } }
+const SESSION_MAX_HOURS = 12;
+
+/* Sessions live in sessionStorage by default, so closing the browser signs you
+   out — important on a shared or public computer. "Keep me signed in on this
+   device" moves it to localStorage with a hard 12-hour expiry either way. */
+function sessionStore(){
+  try{ return localStorage.getItem('agentRemember') === '1' ? localStorage : sessionStorage; }
+  catch(e){ return sessionStorage; }
+}
+function saveAgentSession(a){
+  try{
+    const payload = { agent: a, savedAt: Date.now() };
+    sessionStore().setItem(AGENT_SESSION_KEY, JSON.stringify(payload));
+  }catch(e){}
+}
+function clearAgentSession(){
+  try{
+    sessionStorage.removeItem(AGENT_SESSION_KEY);
+    localStorage.removeItem(AGENT_SESSION_KEY);
+    localStorage.removeItem('agentRemember');
+  }catch(e){}
+}
+function readAgentSession(){
+  try{
+    const raw = sessionStore().getItem(AGENT_SESSION_KEY)
+             || sessionStorage.getItem(AGENT_SESSION_KEY);
+    if(!raw) return null;
+    const p = JSON.parse(raw);
+    if(!p) return null;
+    // older sessions were stored bare; treat those as expired
+    if(!p.agent || !p.savedAt) { clearAgentSession(); return null; }
+    if(Date.now() - p.savedAt > SESSION_MAX_HOURS * 3600 * 1000){
+      clearAgentSession();
+      return null;
+    }
+    return p.agent;
+  }catch(e){ return null; }
+}
+function setRememberDevice(on){
+  try{
+    if(on) localStorage.setItem('agentRemember','1');
+    else localStorage.removeItem('agentRemember');
+  }catch(e){}
+}
 
 /* Re-check with the server that this account still exists and isn't locked.
    Runs in the background so restoring a session still feels instant. */
@@ -2187,6 +2250,11 @@ content.innerHTML = `
 <input type="email" id="gate-email" placeholder="you@example.com" style="margin-bottom:12px;">
 <div class="field-label">Password</div>
 <input type="password" id="gate-password" placeholder="Your password">
+<label style="display:flex; align-items:center; gap:9px; margin:14px 0 2px; font-size:13.5px; color:var(--driftwood); cursor:pointer;">
+<input type="checkbox" id="gate-remember" style="width:auto; margin:0;">
+Keep me signed in on this device
+</label>
+<p style="font-size:11.5px; color:var(--driftwood); margin:4px 0 0;">Leave this unticked on a shared or public computer &mdash; closing the browser will sign you out.</p>
 <button onclick="handleAgentLogin()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Sign in</button>
 <button onclick="handleForgotPassword()" style="background:none; border:none; color:var(--driftwood); font-size:12px; text-decoration:underline; margin-top:14px; padding:0;">Forgot password?</button>
 `;
@@ -2209,6 +2277,7 @@ unlockCRM();
 }
 
 async function handleAgentLogin(){
+try{ setRememberDevice(!!(document.getElementById('gate-remember')||{}).checked); }catch(e){}
 const email = document.getElementById('gate-email').value.trim();
 const password = document.getElementById('gate-password').value;
 if(!email || !password) return;
@@ -2283,6 +2352,7 @@ document.getElementById('crm-signed-in-as').textContent = brokerIdentity
 : `Signed in as ${currentAgent.name} (${currentAgent.role})`;
 renderImpersonationBanner();
 if(typeof renderCrmNav === 'function'){ renderCrmNav(); showCrmSection(crmSection); }
+if(typeof renderAgentSwitcher === 'function') renderAgentSwitcher();
 if(typeof loadCelebrations === 'function') loadCelebrations();
 if(typeof checkProfileGate === 'function') checkProfileGate();
 loadLeads();
@@ -2293,7 +2363,7 @@ loadMyReviewLink();
 loadPendingReviews();
 loadClosedDeals();
 loadExpenses();
-if(currentAgent.role === 'broker') loadAgents();
+if(isAdminOrOwner()) loadAgents();
 }
 /* --- Auto sign-out after 30 minutes of inactivity --- */
 const IDLE_LIMIT_MS = 30 * 60 * 1000;
@@ -2436,12 +2506,12 @@ if(l) leads.push(l);
 leads.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
 
 // Agents only see leads assigned to them; brokers see everything.
-if(currentAgent.role !== 'broker'){
+if(!isAdminOrOwner()){
 leads = leads.filter(l => l.assignedAgentId === currentAgent.id);
 }
 
 let agents = [];
-if(currentAgent.role === 'broker'){
+if(isAdminOrOwner()){
 try{
 const res = await fetch('/api/agent/list');
 const data = await res.json();
@@ -2450,7 +2520,7 @@ agents = data.agents || [];
 }
 const agentName = (id) => {
 if(!id) return 'Unassigned';
-if(currentAgent.role !== 'broker') return currentAgent.name;
+if(!isAdminOrOwner()) return currentAgent.name;
 const a = agents.find(a=>a.id===id);
 return a ? a.name : 'Unassigned';
 };
@@ -2757,7 +2827,7 @@ showToast("Thank you! Your review has been submitted.");
 
 async function loadPendingReviews(){
 const list = await storeGet('settings:testimonials') || [];
-const mine = currentAgent.role === 'broker'
+const mine = isAdminOrOwner()
 ? list.filter(r => r.status === 'pending')
 : list.filter(r => r.status === 'pending' && r.agentId === currentAgent.id);
 const el = document.getElementById('pending-reviews-list');
@@ -2840,7 +2910,7 @@ caret.textContent = body.classList.contains('open') ? '\u25B4' : '\u25BE';
 
 async function loadExpenses(){
 exData = await storeGet('settings:expenses') || [];
-if(currentAgent.role !== 'broker') exTab = 'agent:' + currentAgent.id;
+if(!isAdminOrOwner()) exTab = 'agent:' + currentAgent.id;
 renderExTabs();
 renderExContent();
 }
@@ -2848,7 +2918,7 @@ renderExContent();
 function renderExTabs(){
 const el = document.getElementById('ex-tabs');
 if(!el) return;
-if(currentAgent.role !== 'broker'){ el.innerHTML = ''; return; }
+if(!isAdminOrOwner()){ el.innerHTML = ''; return; }
 const mk = (id,label) => `<button class="btn-sm${exTab===id?' primary':''}" onclick="exSelectTab('${id}')">${label}</button>`;
 el.innerHTML = mk('all','Everyone')
 + (cdData.agents || []).map(a => mk('agent:'+a.id, escapeHtml(a.name))).join('');
@@ -2918,7 +2988,7 @@ return `<h4 style="margin:20px 0 8px; font-size:13px;">Log an expense</h4>
 function renderExContent(){
 const el = document.getElementById('ex-content');
 if(!el) return;
-const isBroker = currentAgent.role === 'broker';
+const isBroker = isAdminOrOwner();
 
 if(isBroker && exTab === 'all'){
 const list = expensesFor(null, exYear);
@@ -3125,7 +3195,7 @@ cdData.deals = await storeGet('settings:closedDeals') || [];
 cdData.subs  = await storeGet('settings:dealSubmissions') || [];
 cdData.plans = await storeGet('settings:agentPlans') || {};
 cdData.planHistory = await storeGet('settings:agentPlanHistory') || {};
-if(currentAgent.role === 'broker'){
+if(isAdminOrOwner()){
 try{
 const res = await fetch('/api/agent/list');
 const d = await res.json();
@@ -3142,7 +3212,7 @@ renderCdContent();
 function renderCdTabs(){
 const el = document.getElementById('cd-tabs');
 if(!el) return;
-if(currentAgent.role !== 'broker'){ el.innerHTML = ''; return; }
+if(!isAdminOrOwner()){ el.innerHTML = ''; return; }
 const pending = cdData.subs.filter(s => s.status === 'pending').length;
 const mk = (id,label) => `<button class="btn-sm${cdTab===id?' primary':''}" onclick="cdSelectTab('${id}')">${label}</button>`;
 el.innerHTML = mk('all','All agents')
@@ -3217,7 +3287,7 @@ function viewAgent(agentId){
 const agent = cdData.agents.find(a=>a.id===agentId) || {name:'Agent'};
 const r = computeAgentYear(agentId, cdYear);
 const p = r.plan, t = r.totals;
-const isBroker = currentAgent.role === 'broker';
+const isBroker = isAdminOrOwner();
 
 const planSummary = `${p.splitPct}% to agent${p.teamSplitPct?` \u00b7 ${escapeHtml(p.teamName||'Team')} takes ${p.teamSplitPct}% off the top`:''}${p.capAmount?` \u00b7 annual cap ${fmtMoney(p.capAmount)}`:' \u00b7 no cap'}${p.deskFeeMonthly?` \u00b7 desk ${fmtMoney(p.deskFeeMonthly)}/mo`:''}${p.transactionFee?` \u00b7 ${fmtMoney(p.transactionFee)}/txn`:''}${p.eoFee?` \u00b7 E&O ${fmtMoney(p.eoFee)}`:''}${p.franchisePct?` \u00b7 franchise ${p.franchisePct}%`:''}`;
 const capLine = p.capAmount?`<div style="margin-top:6px; font-size:12px; color:${t.capRemaining===0?'var(--marsh)':'var(--driftwood)'};">${t.capRemaining===0?'\u2705 Cap met \u2014 now earning 100%':fmtMoney(t.capRemaining)+' left before cap'}</div>`:'';
@@ -3911,7 +3981,17 @@ let clientFilter = 'all';
 
 /* This block loads after the client-account code, so a restored session would
    otherwise call refreshClientBar() before it exists. Re-run it once on load. */
-document.addEventListener('DOMContentLoaded', () => { try{ refreshClientBar(); }catch(e){} });
+document.addEventListener('DOMContentLoaded', () => {
+  try{ refreshClientBar(); }catch(e){}
+  // /#crm or /#commissions opens the CRM directly
+  const h = (location.hash || '').replace('#','');
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile'].includes(h)){
+    try{
+      switchView('crm');
+      if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
+    }catch(e){}
+  }
+});
 window.addEventListener('load', () => { try{ refreshClientBar(); }catch(e){} });
 
 window.refreshClientBar = refreshClientBar;
@@ -4529,6 +4609,8 @@ function showCrmSection(id){
   });
   renderCrmNav();
   injectSectionHeader(id);
+  pushCrmHistory(id);
+  if(typeof renderAgentSwitcher === 'function') renderAgentSwitcher();
   // load fresh data for whichever section just opened
   try{
     if(id === 'sec-commissions') loadClosedDeals();
@@ -4558,7 +4640,7 @@ function daysUntilNext(monthDay){
 }
 
 async function loadCelebrations(){
-  if(!currentAgent || currentAgent.role !== 'broker') return;
+  if(!isAdminOrOwner()) return;
   const agents = cdData.agents || [];
   const out = [];
   for(const a of agents){
@@ -4864,7 +4946,7 @@ function greeting(){
 async function renderDashboard(){
   const el = document.getElementById('sec-today');
   if(!el || !currentAgent) return;
-  const isBroker = currentAgent.role === 'broker';
+  const isBroker = isAdminOrOwner();
   const first = (currentAgent.name || '').split(' ')[0] || '';
 
   // leads this person is responsible for
@@ -5073,8 +5155,7 @@ async function guardAgentAction(id, what){
 /* ---------- roles ----------
    broker (owner) > admin (full CRM, but the broker's own account is protected)
    > agent. Only the broker can change roles. */
-function isOwner(){ return currentAgent && currentAgent.role === 'broker'; }
-function isAdminOrOwner(){ return currentAgent && (currentAgent.role === 'broker' || currentAgent.role === 'admin'); }
+/* isOwner / isAdminOrOwner are defined early — see the main script block. */
 
 let ADMIN_BYPASS = '';
 
@@ -5225,6 +5306,49 @@ function dealDetailHtml(d){
     </div>
   </div>`;
 }
+</script>
+<script>
+/* ---------- quick agent switcher ----------
+   Previewing an agent shouldn't take three clicks from wherever you are. */
+function renderAgentSwitcher(){
+  const box = document.getElementById('agent-switcher');
+  if(!box) return;
+  if(!isAdminOrOwner() && !brokerIdentity){ box.innerHTML = ''; return; }
+  const agents = (cdData.agents || []).filter(a => a.role !== 'broker');
+  if(brokerIdentity){
+    box.innerHTML = `<button class="switch-back" onclick="returnToBrokerView()">&#8592; Back to my view</button>`;
+    return;
+  }
+  if(!agents.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <label class="switch-wrap">
+      <span>View as</span>
+      <select onchange="if(this.value) viewAsAgent(this.value); this.selectedIndex=0;">
+        <option value="">Me (${escapeHtml((currentAgent.name||'').split(' ')[0])})</option>
+        ${agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('')}
+      </select>
+    </label>`;
+}
+
+/* ---------- browser history ----------
+   Back used to leave the site entirely. Sections now behave like pages. */
+let suppressHistory = false;
+function pushCrmHistory(id){
+  if(suppressHistory) return;
+  try{ history.pushState({ crm: id }, '', '#' + id.replace('sec-','')); }catch(e){}
+}
+window.addEventListener('popstate', (e) => {
+  const st = e.state || {};
+  suppressHistory = true;
+  try{
+    if(st.crm){
+      if(document.getElementById('view-crm').style.display === 'none') switchView('crm');
+      showCrmSection(st.crm);
+    }else if(st.view === 'site'){
+      switchView('site');
+    }
+  }finally{ suppressHistory = false; }
+});
 </script>
 </body>
 </html>
