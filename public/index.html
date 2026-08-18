@@ -1403,7 +1403,7 @@ ${l.photo ? `<img class="card-img" src="${l.photo}" alt="${escapeHtml(l.Unparsed
 <h3 style="cursor:pointer;" onclick="openListingDetail('${l.ListingKey}')">${l.UnparsedAddress}</h3>
 <div class="card-loc">${l.City}, AL</div>
 <div class="card-stats">
-<span>${l.BedroomsTotal} bd</span><span>${l.BathroomsTotalInteger} ba</span><span>${l.LivingArea.toLocaleString()} sqft</span>
+${statsFor(l)}
 </div>
 <div class="card-mls">MLS# ${l.ListingId || l.ListingKey}</div>
 <button class="card-cta" onclick="openLeadModal('listing','${l.ListingKey}','${l.UnparsedAddress.replace(/'/g,"")}, ${l.City}')">Request info</button>
@@ -1507,7 +1507,7 @@ renderDetailGallery(listing, key);
 document.getElementById('detail-price').textContent = '$' + listing.ListPrice.toLocaleString();
 document.getElementById('detail-address').textContent = listing.UnparsedAddress;
 document.getElementById('detail-loc').textContent = listing.City + ', AL · ' + listing.StandardStatus;
-document.getElementById('detail-stats').innerHTML = `<span>${listing.BedroomsTotal} bd</span><span>${listing.BathroomsTotalInteger} ba</span><span>${listing.LivingArea.toLocaleString()} sqft</span>`;
+document.getElementById('detail-stats').innerHTML = statsFor(listing);
 document.getElementById('detail-mls').textContent = 'MLS# ' + (listing.ListingId || listing.ListingKey);
 (function(){
   const stats = document.getElementById('detail-stats');
@@ -3638,6 +3638,25 @@ function clearSearch(){
 function loadMoreServer(){
   SEARCH_SKIP += SEARCH_PAGE;
   runServerSearch(true);
+}
+</script>
+<script>
+/* Land and lot listings have no beds/baths/sqft — "0 bd 0 ba 0 sqft" looks broken.
+   Show acreage or property type instead. */
+function statsFor(l){
+  const bd = Number(l.BedroomsTotal)||0, ba = Number(l.BathroomsTotalInteger)||0, sf = Number(l.LivingArea)||0;
+  if(bd || ba || sf){
+    const out = [];
+    if(bd) out.push(bd + ' bd');
+    if(ba) out.push(ba + ' ba');
+    if(sf) out.push(sf.toLocaleString() + ' sqft');
+    return out.map(t => '<span>' + t + '</span>').join('');
+  }
+  const acres = Number(l.LotSizeAcres)||0;
+  const bits = [];
+  if(acres) bits.push(acres.toLocaleString(undefined,{maximumFractionDigits:2}) + ' acres');
+  bits.push(l.PropertySubType || l.PropertyType || 'Land');
+  return bits.map(t => '<span>' + t + '</span>').join('');
 }
 </script>
 </body>
