@@ -26,8 +26,7 @@
 .card:nth-child(2n) svg{animation-delay:0.8s}
 .card:nth-child(3n) svg{animation-delay:1.6s}
 .hero{background-size:200% 200%;animation:slowDrift 18s ease-in-out infinite}
-.card-qr{position:absolute;top:10px;right:10px;background:var(--white);padding:4px;border-radius:2px;box-shadow:0 4px 10px rgba(21,65,196,0.18);width:44px;height:44px}
-.card-qr img{display:block;width:100%;height:100%}
+.card-qr{position:absolute;top:10px;right:10px;background:var(--white);border-radius:2px;box-shadow:0 4px 10px rgba(23,31,99,0.18);}
 @media(prefers-reduced-motion:reduce){.card-photo svg,.hero{animation:none}}
 .agent-list{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:14px}
 .agent-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--white)}
@@ -569,8 +568,9 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 /* Always fully opaque — a QR is scanned with a phone pointed at the screen,
    so it can't depend on hover (the cursor would be sitting on top of it). */
 .card-photo .card-qr{z-index:5;background:#fff;padding:5px;border-radius:2px;
-  box-shadow:0 2px 9px rgba(23,31,99,.30);line-height:0;opacity:1}
-.card-photo .card-qr img{display:block;width:46px;height:46px;image-rendering:crisp-edges}
+  box-shadow:0 2px 9px rgba(23,31,99,.30);opacity:1;
+  display:flex;align-items:center;justify-content:center;width:auto;height:auto;line-height:0}
+.card-photo .card-qr img{display:block;width:48px;height:48px;margin:0}
 </style>
 </head>
 <body>
@@ -1387,7 +1387,7 @@ const source = serverMode ? SEARCH_RESULTS : filtered;
 const pageItems = serverMode ? source : source.slice(0, window.visibleCount);
 grid.innerHTML = pageItems.map((l,i)=>{
 const qrTarget = location.origin + location.pathname + '?listing=' + encodeURIComponent(l.ListingKey);
-const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=1&color=1B3670&bgcolor=FFFFFF&data=' + encodeURIComponent(qrTarget);
+const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=192x192&margin=0&color=1B3670&bgcolor=FFFFFF&qzone=1&data=' + encodeURIComponent(qrTarget);
 return `
 <div class="card">
 <div class="card-photo" style="background:${PHOTO_TONES[i%PHOTO_TONES.length]}; cursor:pointer;" onclick="openListingDetail('${l.ListingKey}')">
