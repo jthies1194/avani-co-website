@@ -547,6 +547,10 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .detail-remarks{margin:18px 0 0;font-size:16px;line-height:1.8;color:#41496E;
   max-height:190px;overflow-y:auto}
 .detail-extra{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--grey)}
+
+.card-photo .card-qr{z-index:5;background:#fff;padding:5px;border-radius:3px;
+  box-shadow:0 2px 10px rgba(23,31,99,.28);line-height:0}
+.card-photo .card-qr img{display:block;width:64px;height:64px}
 </style>
 </head>
 <body>
@@ -1334,6 +1338,7 @@ let ALL_LISTINGS = [];
 async function renderListings(){
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
+if(typeof populateCityOptions==='function') populateCityOptions();
 const city = document.getElementById('f-city').value.trim().toLowerCase();
 const beds = parseInt(document.getElementById('f-beds').value)||0;
 const price = parseInt(document.getElementById('f-price').value)||Infinity;
@@ -1396,15 +1401,28 @@ maybeAutoOpenListingFromURL(filtered);
 
 }
 
-function maybeAutoOpenListingFromURL(listings){
+async function maybeAutoOpenListingFromURL(listings){
 if(window.__autoOpenedListing) return;
 const params = new URLSearchParams(location.search);
 const key = params.get('listing');
 if(!key) return;
-const match = listings.find(l => l.ListingKey === key);
+let match = listings.find(l => l.ListingKey === key);
+if(!match){
+// Not in the cached batch — pull this one listing directly (printed QR codes).
+try{
+const res = await fetch('/api/listing/' + encodeURIComponent(key));
+if(res.ok){
+const d = await res.json();
+const row = (d.value || [])[0];
+if(row){ match = normalizeListing(row); ALL_LISTINGS.push(match); }
+}
+}catch(e){}
+}
 if(match){
 window.__autoOpenedListing = true;
 openListingDetail(match.ListingKey);
+}else if(typeof showToast === 'function'){
+showToast("That listing is no longer available \u2014 it may have sold or been withdrawn.");
 }
 }
 
@@ -2291,6 +2309,7 @@ document.getElementById('activity-searches').innerHTML = searches.length
 const favKeys = c.favorites || [];
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
+if(typeof populateCityOptions==='function') populateCityOptions();
 const favs = favKeys.map(key => ALL_LISTINGS.find(l=>l.ListingKey===key)).filter(Boolean);
 document.getElementById('activity-favorites').innerHTML = favs.length
 ? favs.map(l=>`<div class="fav-mini-card">${escapeHtml(l.UnparsedAddress)} — $${l.ListPrice.toLocaleString()}</div>`).join('')
@@ -3475,6 +3494,50 @@ function searchTown(name){
     window.scrollTo({top: Math.max(0, grid.getBoundingClientRect().top + pageYOffset - off), behavior:'smooth'});
   }
   if(typeof showToast === 'function') showToast('Showing homes in ' + name);
+}
+</script>
+<script>
+/* Price preset chips — this handler was lost during the design merge. */
+(function(){
+  function init(){
+    const lo = document.getElementById('pmin'), hi = document.getElementById('pmax');
+    const btns = [...document.querySelectorAll('.price-quick button')];
+    if(!lo || !hi || !btns.length) return;
+    const money = v => v ? '$' + Number(String(v).replace(/[^0-9]/g,'')).toLocaleString() : '';
+    btns.forEach(b => b.addEventListener('click', () => {
+      btns.forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      lo.value = money(b.dataset.lo);
+      hi.value = money(b.dataset.hi);
+      window.visibleCount = 24;
+      if(typeof runSearch === 'function') runSearch();
+    }));
+    [lo,hi].forEach(el => {
+      el.addEventListener('input', () => btns.forEach(x => x.classList.remove('on')));
+      el.addEventListener('blur', () => { if(el.value) el.value = money(el.value); });
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+<script>
+/* Build the "Where" suggestions from the live feed rather than a hardcoded list,
+   so it stays accurate and never suggests a town with no listings. */
+function populateCityOptions(){
+  const dl = document.getElementById('city-options');
+  if(!dl || !Array.isArray(ALL_LISTINGS) || !ALL_LISTINGS.length) return;
+  const counts = {};
+  ALL_LISTINGS.forEach(l => {
+    const c = (l.City || '').trim();
+    if(c) counts[c] = (counts[c] || 0) + 1;
+  });
+  const cities = Object.keys(counts).sort((a,b) => a.localeCompare(b));
+  if(!cities.length) return;
+  dl.innerHTML = cities.map(c =>
+    `<option value="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c]})</option>`).join('');
+  const inp = document.getElementById('f-city');
+  if(inp) inp.placeholder = cities.length + ' cities available — start typing';
 }
 </script>
 </body>
