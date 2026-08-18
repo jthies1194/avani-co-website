@@ -655,7 +655,10 @@ async function isBrokerAccount(id) {
 
 // Broker issues a bypass code for an admin.
 app.post('/api/admin/bypass', async (req, res) => {
-  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
+  // Only the qualifying broker may issue a code — an admin issuing their own
+  // would defeat the protection entirely.
+  {const sess = await getSession(req);
+   if (!sess || sess.role !== 'broker') return res.status(403).json({ error: 'Only the broker can issue a bypass code.' });}
   const { hours, singleUse } = req.body || {};
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const rec = {
@@ -671,7 +674,8 @@ app.post('/api/admin/bypass', async (req, res) => {
 });
 
 app.post('/api/admin/bypass/revoke', async (req, res) => {
-  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
+  {const sess = await getSession(req);
+   if (!sess || sess.role !== 'broker') return res.status(403).json({ error: 'Only the broker can revoke a bypass code.' });}
   await setSetting('settings:adminBypass', { code: null, revokedAt: new Date().toISOString() });
   res.json({ ok: true });
 });
