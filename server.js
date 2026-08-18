@@ -340,6 +340,37 @@ app.post('/api/client/signup', async (req, res) => {
     const { error } = await supabase.from('clients').insert({ id, name, email: normalizedEmail, password_hash, favorites: [], saved_searches: [] });
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true, client: { id, name, email: normalizedEmail, favorites: [], savedSearches: [] } });
+
+    // Welcome email — sent after responding so a mail hiccup can never block signup.
+    if (mailer) {
+      const first = String(name || '').trim().split(/\s+/)[0] || 'there';
+      mailer.sendMail({
+        to: normalizedEmail,
+        subject: 'Welcome to Avani & Co. Real Estate',
+        text: `Hi ${first},
+
+Thanks for creating an account at bamacoast.com.
+
+You can now:
+  - Save homes to your favorites
+  - Save searches and pick up where you left off
+  - Browse the full Gulf Coast MLS
+
+Just click "Client Login" at the top of the site any time.
+
+If you'd like help from a real person, call or text us at 251-229-3216 — we cover Baldwin County,
+Mobile County, and the Perdido Key and Pensacola corridor.
+
+Welcome aboard,
+Avani & Co. Real Estate
+251-229-3216
+bamacoast.com`,
+      })
+      .then(() => console.log(`[client welcome email] sent to ${normalizedEmail}`))
+      .catch(e => console.error(`[client welcome email] FAILED for ${normalizedEmail}:`, e.message));
+    } else {
+      console.warn('[client welcome email] SKIPPED — mailer not configured.');
+    }
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
