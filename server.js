@@ -116,6 +116,14 @@ app.delete('/api/kv/:key', async (req, res) => {
 });
 
 // ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
+// Gulf Coast MLS covers well beyond Avani's service area (listings as far as
+// Montgomery and Atmore). Restrict to the counties actually served.
+const SERVICE_COUNTIES = ['Baldwin', 'Mobile', 'Escambia', 'Santa Rosa'];
+function serviceAreaClause() {
+  return '(' + SERVICE_COUNTIES.map(c => `CountyOrParish eq '${c}'`).join(' or ') + ')';
+}
+const STATUS_CLAUSE = "(StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending')";
+
 let listingsCache = { data: null, at: 0 };
 // TODO: once you have the exact Bridge "Dataset" resource name for GCMLS,
 // confirm this URL shape against Bridge's docs — it may need adjusting.
@@ -155,6 +163,7 @@ app.get('/api/search', async (req, res) => {
 
   const parts = [];
   const status = (q.status || '').trim();
+  parts.push(serviceAreaClause());
   if (status) {
     parts.push(`StandardStatus eq '${esc(status)}'`);
   } else {
@@ -218,25 +227,36 @@ app.get('/api/listings', async (req, res) => {
   try {
     const all = [];
     let totalAvailable = null;
+    let useCounty = true;
+
     for (let skip = 0; skip < WANT; skip += PAGE) {
+      const filter = STATUS_CLAUSE + (useCounty ? ' and ' + serviceAreaClause() : '');
       const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
         + `?access_token=${encodeURIComponent(token)}`
+        + `&$filter=${encodeURIComponent(filter)}`
+        + `&$orderby=ModificationTimestamp desc`
         + `&$top=${PAGE}&$skip=${skip}`
-        + (skip === 0 ? '&$count=true' : '')
-        + `&$filter=${encodeURIComponent("StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending'")}`
-        + `&$orderby=ModificationTimestamp desc`;
+        + (skip === 0 ? '&$count=true' : '');
       const r = await fetch(url);
       if (!r.ok) {
         const text = await r.text().catch(() => '');
-        if (all.length) break; // keep whatever we already have
+        if (useCounty && skip === 0) {
+          // this dataset may not expose CountyOrParish — fall back to everything
+          console.warn('[listings] county filter rejected, retrying without it:', text.slice(0, 200));
+          useCounty = false;
+          skip -= PAGE;
+          continue;
+        }
+        if (all.length) break;
         return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
       }
       const json = await r.json();
       if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
       const rows = json.value || [];
       all.push(...rows);
-      if (rows.length < PAGE) break; // reached the end of the feed
+      if (rows.length < PAGE) break;
     }
+
     listingsCache = { data: all, at: Date.now(), totalAvailable };
     console.log(`[listings] fetched ${all.length} of ${totalAvailable == null ? '?' : totalAvailable} active listings from ${dataset}`);
     res.json({ value: all, count: all.length, totalAvailable, cached: false });
