@@ -2473,7 +2473,21 @@ list.innerHTML = agents.map(a => `
 <div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}</div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
 </div>
-${(a.id===currentAgent.id || a.role==='broker' || brokerIdentity) ? (a.role==='broker' && a.id!==currentAgent.id ? '<span class="agent-role-tag">protected</span>' : '') : `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button><button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and licence details">Details</button><button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+${(function(){
+  const isSelf = a.id === currentAgent.id;
+  const isBrokerRow = a.role === 'broker';
+  const previewing = !!brokerIdentity;
+  if(isSelf) return '';
+  if(isBrokerRow) return '<span class="agent-role-tag">protected</span>';
+  // While previewing, read-only actions stay available; destructive ones don't.
+  const safe = `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button>`
+    + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and license details">Details</button>`;
+  if(previewing) return safe + '<span class="agent-role-tag" title="Return to your own view to manage accounts">preview</span>';
+  return safe
+    + `<button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button>`
+    + `<button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button>`
+    + `<button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">\u2715</button>`;
+})()}
 </div>
 `).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
 
@@ -5372,7 +5386,9 @@ function renderAgentSwitcher(){
   const box = document.getElementById('agent-switcher');
   if(!box) return;
   if(!isAdminOrOwner() && !brokerIdentity){ box.innerHTML = ''; return; }
-  const agents = (cdData.agents || []).filter(a => a.role !== 'broker');
+  // you can't preview yourself, and the broker account isn't previewable
+  const agents = (cdData.agents || [])
+    .filter(a => a.role !== 'broker' && a.id !== currentAgent.id && a.active !== false);
   if(brokerIdentity){
     box.innerHTML = `<button class="switch-back" onclick="returnToBrokerView()">&#8592; Back to my view</button>`;
     return;
@@ -5382,7 +5398,7 @@ function renderAgentSwitcher(){
     <label class="switch-wrap">
       <span>View as</span>
       <select onchange="if(this.value) viewAsAgent(this.value); this.selectedIndex=0;">
-        <option value="">Me (${escapeHtml((currentAgent.name||'').split(' ')[0])})</option>
+        <option value="">Me &mdash; ${escapeHtml((currentAgent.name||'').split(' ')[0])}</option>
         ${agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('')}
       </select>
     </label>`;
