@@ -1179,6 +1179,7 @@ showToast("If that email has an account, a reset link has been sent.");
 
 function unlockCRM(){
 saveAgentSession(currentAgent);
+resetIdleTimer();
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
 document.getElementById('agents-panel').style.display = currentAgent.role === 'broker' ? 'block' : 'none';
@@ -1192,7 +1193,36 @@ loadPendingReviews();
 loadClosedDeals();
 if(currentAgent.role === 'broker') loadAgents();
 }
+/* --- Auto sign-out after 30 minutes of inactivity --- */
+const IDLE_LIMIT_MS = 30 * 60 * 1000;
+const IDLE_WARN_MS  = 2 * 60 * 1000;   // warn 2 minutes before
+let idleTimer = null, idleWarnTimer = null;
+
+function clearIdleTimers(){
+if(idleTimer) clearTimeout(idleTimer);
+if(idleWarnTimer) clearTimeout(idleWarnTimer);
+idleTimer = null; idleWarnTimer = null;
+}
+
+function resetIdleTimer(){
+if(!currentAgent) return;
+clearIdleTimers();
+idleWarnTimer = setTimeout(()=>{
+if(currentAgent) showToast("You'll be signed out in 2 minutes — move the mouse to stay in.");
+}, IDLE_LIMIT_MS - IDLE_WARN_MS);
+idleTimer = setTimeout(()=>{
+if(!currentAgent) return;
+logoutAgent();
+showToast("Signed out after 30 minutes of inactivity.");
+}, IDLE_LIMIT_MS);
+}
+
+['mousemove','mousedown','keydown','touchstart','scroll','click'].forEach(evt=>{
+document.addEventListener(evt, ()=>{ if(currentAgent) resetIdleTimer(); }, {passive:true});
+});
+
 function logoutAgent(){
+clearIdleTimers();
 clearAgentSession();
 currentAgent = null;
 document.getElementById('crm-main').style.display='none';
@@ -1339,7 +1369,7 @@ tbody.innerHTML = shown.map(l=>`
 <td><span class="lead-source">${l.source}${l.mlsKey?(' · '+l.mlsKey):''}</span></td>
 <td class="lead-msg">${escapeHtml(l.message||'')}</td>
 <td>${currentAgent.role==='broker'
-  ? `<select class="stage-select" onchange="updateLeadAgent('${l.id}',this.value)"><option value="">Unassigned</option>${agents.map(a=>`<option value="${a.id}" ${a.id===l.assignedAgentId?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}</select>`
+  ? `<select class="stage-select" id="assign-sel-${l.id}" onchange="stageAssignChange('${l.id}')"><option value="">Unassigned</option>${agents.map(a=>`<option value="${a.id}" ${a.id===l.assignedAgentId?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}</select><div id="assign-save-${l.id}" style="display:${pendingAssignments[l.id]!==undefined?'block':'none'}; margin-top:6px;"><button class="btn-sm" style="background:var(--marsh); color:var(--sand-light); border:none; font-weight:700;" onclick="saveLeadAgent('${l.id}')">Save &amp; notify</button></div>`
   : escapeHtml(agentName(l.assignedAgentId))}</td>
 <td><select class="stage-select" onchange="updateStage('${l.id}',this.value)">${STAGES.map(s=>`<option ${s===l.stage?'selected':''}>${s}</option>`).join('')}</select></td>
 <td><input class="notes-input" value="${escapeHtml(l.notes||'')}" onchange="updateNotes('${l.id}',this.value)" placeholder="Add note..."></td>
@@ -1350,21 +1380,41 @@ tbody.innerHTML = shown.map(l=>`
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(iso){ const d=new Date(iso); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 
-async function updateLeadAgent(id, agentId){
+let pendingAssignments = {};
+
+/* Picking a name only stages the change — nothing saves until "Save & notify" is clicked. */
+function stageAssignChange(id){
+const sel = document.getElementById('assign-sel-'+id);
+const btn = document.getElementById('assign-save-'+id);
+if(!sel || !btn) return;
+pendingAssignments[id] = sel.value;
+btn.style.display = 'block';
+}
+
+async function saveLeadAgent(id){
+const sel = document.getElementById('assign-sel-'+id);
+if(!sel) return;
+const agentId = sel.value;
 const lead = await storeGet('lead:'+id);
-if(!lead) return;
+if(!lead){ showToast("Couldn't find that lead."); return; }
+
 const previousAgentId = lead.assignedAgentId || '';
 lead.assignedAgentId = agentId || '';
 await storeSet('lead:'+id, lead);
-loadLeads();
+delete pendingAssignments[id];
 
-// Unassigning, or re-picking the same agent — nothing to notify.
-if(!agentId || agentId === previousAgentId){
-if(!agentId) showToast("Lead unassigned.");
+if(!agentId){
+showToast("Saved — lead is now unassigned.");
+loadLeads();
+return;
+}
+if(agentId === previousAgentId){
+showToast("Saved — no change to who it's assigned to.");
+loadLeads();
 return;
 }
 
-showToast("Assigned — notifying agent...");
+showToast("Saved — notifying agent...");
 try{
 const res = await fetch('/api/notify-assignment', {
 method:'POST',
@@ -1373,17 +1423,20 @@ body: JSON.stringify({ agentId, lead })
 });
 const data = await res.json().catch(()=>({}));
 if(res.ok && data.ok && !data.skipped){
-showToast(`Assigned to ${data.agentName || 'agent'} — email sent.`);
+showToast(`Saved and emailed ${data.agentName || 'the agent'}.`);
 }else if(data.skipped === 'agent-locked'){
-showToast("Assigned. That agent's login is locked, so no email was sent.");
+showToast("Saved. That agent's login is locked, so no email was sent.");
 }else{
-showToast("Assigned and saved, but the email didn't send.");
+showToast("Saved, but the email didn't send: " + (data.error || 'unknown error'));
+console.error('[assign notify] failed:', data);
 }
 }catch(e){
-// The assignment itself already saved — only the email failed.
-showToast("Assigned and saved, but the email didn't send.");
+showToast("Saved, but the email didn't send.");
+console.error('[assign notify] failed:', e);
 }
+loadLeads();
 }
+
 async function updateStage(id, stage){
 const lead = await storeGet('lead:'+id);
 if(!lead) return;
