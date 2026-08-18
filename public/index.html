@@ -186,15 +186,30 @@ header.stuck nav .tel{color:var(--gold)}
 /* ---------- hero ---------- */
 .hero-v2{position:relative;min-height:700px;height:100vh;display:flex;align-items:center;
   justify-content:center;text-align:center;overflow:hidden;background:var(--blue-deep);
-  padding-top:230px;padding-bottom:130px}
+  padding-top:230px;padding-bottom:150px}
 /* Anchored bottom-left so the photographer's credit is never cropped, at any
    screen width. The slow zoom scales from that same corner, so the credit
    stays pinned in place while the rest of the frame drifts. */
 .hero-media{position:absolute;inset:0;
-  background:url('assets/hero.jpg') left bottom / cover no-repeat;
-  transform-origin:bottom left;
-  animation:breathe 38s ease-in-out infinite alternate}
-@keyframes breathe{from{transform:scale(1.00)}to{transform:scale(1.06)}}
+  background:url('assets/hero.jpg') center 40% / cover no-repeat;
+  transform-origin:center 40%;
+  animation:breathe 40s ease-in-out infinite alternate}
+@keyframes breathe{from{transform:scale(1.00)}to{transform:scale(1.05)}}
+
+/* Photographer credit, set as live text so it stays sharp and legible at any
+   size and can never be cropped or covered. */
+.photo-credit{position:absolute;left:40px;bottom:34px;z-index:7;display:flex;align-items:center;gap:13px;
+  text-shadow:0 1px 12px rgba(0,0,0,.55)}
+.photo-credit::before{content:'';width:2px;height:38px;background:var(--gold);opacity:.95}
+.photo-credit span{display:block;font-family:'Cormorant Garamond',serif;color:var(--gold-pale);
+  font-size:15px;letter-spacing:.28em;line-height:1.5;text-transform:uppercase}
+.photo-credit span.b{font-size:12.5px;letter-spacing:.24em;opacity:.9}
+@media(max-width:820px){
+  .photo-credit{left:22px;bottom:22px;gap:9px}
+  .photo-credit span{font-size:11.5px;letter-spacing:.2em}
+  .photo-credit span.b{font-size:9.5px}
+  .photo-credit::before{height:28px}
+}
 .hero-veil{position:absolute;inset:0;
   background:linear-gradient(180deg,rgba(23,31,99,.58) 0%,rgba(23,31,99,.22) 40%,rgba(23,31,99,.30) 100%)}
 /* darken only behind the headline block, leaving the credit corner clear */
@@ -214,7 +229,7 @@ header.stuck nav .tel{color:var(--gold)}
 @keyframes pulse{0%,100%{opacity:.3;height:26px}50%{opacity:1;height:44px}}
 
 /* ---------- search ---------- */
-.search{position:relative;z-index:20;max-width:1140px;margin:-64px auto 0;background:var(--ivory);
+.search{position:relative;z-index:20;max-width:1140px;margin:-34px auto 0;background:var(--ivory);
   box-shadow:0 34px 80px rgba(23,31,99,.14);padding:34px 38px;
   display:flex;gap:26px;flex-wrap:wrap;align-items:flex-end}
 .search .f{flex:1;min-width:150px}
@@ -600,6 +615,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <p class="rv in d2">A boutique brokerage covering Baldwin County, Mobile County, and the Perdido Key and Pensacola corridor.</p>
     <a href="#listings" class="btn btn-light rv in d3">Explore Properties</a>
   </div>
+  <div class="photo-credit"><div><span>Zayde Albiyati</span><span class="b">Salt Air Media</span></div></div>
   <div class="scroll-cue">Scroll</div>
 </section>
 
