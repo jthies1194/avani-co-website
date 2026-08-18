@@ -689,10 +689,61 @@ app.get('/api/my-outbound-ip', async (req, res) => {
   }
 });
 
+// ---------- MLS data (Bridge Data Output / Gulf Coast MLS) ----------
+const BRIDGE_TOKEN   = process.env.BRIDGE_TOKEN;
+const BRIDGE_DATASET = process.env.BRIDGE_DATASET || 'gcmls2';
+const BRIDGE_BASE    = 'https://api.bridgedataoutput.com/api/v2';
+
+async function bridgeGet(path, params = {}) {
+  if (!BRIDGE_TOKEN) throw new Error('BRIDGE_TOKEN is not set.');
+  const url = new URL(`${BRIDGE_BASE}/${path}`);
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') url.searchParams.set(k, v); });
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` },
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Bridge ${res.status}: ${text.slice(0, 400)}`);
+  try { return JSON.parse(text); } catch { throw new Error(`Bridge returned non-JSON: ${text.slice(0, 200)}`); }
+}
+
+// Read-only probe. Pulls ONE listing and reports what the feed actually contains,
+// so we can see the real field names before wiring anything to the public site.
+app.get('/api/mls-test', async (req, res) => {
+  try {
+    const data = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, { $top: 1 });
+    const rows = data.value || [];
+    const one = rows[0] || {};
+    const fields = Object.keys(one).sort();
+
+    // the fields the website currently expects
+    const needed = ['ListingKey','ListPrice','BedroomsTotal','BathroomsTotalInteger',
+                    'LivingArea','UnparsedAddress','City','StandardStatus',
+                    'PropertyType','ListingId','Media','PhotosCount','ModificationTimestamp'];
+    const present = needed.filter(f => f in one);
+    const missing = needed.filter(f => !(f in one));
+
+    res.json({
+      ok: true,
+      dataset: BRIDGE_DATASET,
+      returned: rows.length,
+      totalFields: fields.length,
+      sitePresent: present,
+      siteMissing: missing,
+      allFields: fields,
+      sample: one,
+    });
+  } catch (e) {
+    console.error('[mls-test] FAILED:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     database: !!supabase,
+    mlsConfigured: !!process.env.BRIDGE_TOKEN,
+    mlsDataset: process.env.BRIDGE_DATASET || 'gcmls2',
     mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
     emailConfigured: !!mailer,
     aiConfigured: !!ANTHROPIC_API_KEY,
