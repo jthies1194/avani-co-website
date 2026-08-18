@@ -2088,6 +2088,47 @@ async function sendLeadNotification(lead){
   }catch(err){ console.error("Lead email notification failed", err); }
 }
 
+
+/* ---------- attach the session token to every API call ----------
+   Wrapping fetch keeps this in one place rather than touching dozens of call
+   sites, and guarantees nothing is missed. */
+(function(){
+  const realFetch = window.fetch.bind(window);
+  window.AUTH_TOKEN = '';
+  try{
+    window.AUTH_TOKEN = sessionStorage.getItem('authToken') || localStorage.getItem('authToken') || '';
+  }catch(e){}
+
+  window.setAuthToken = function(t, remember){
+    window.AUTH_TOKEN = t || '';
+    try{
+      sessionStorage.removeItem('authToken');
+      localStorage.removeItem('authToken');
+      if(t) (remember ? localStorage : sessionStorage).setItem('authToken', t);
+    }catch(e){}
+  };
+
+  window.fetch = function(url, opts){
+    opts = opts || {};
+    const u = String(url || '');
+    if(u.startsWith('/api/') && window.AUTH_TOKEN){
+      opts.headers = Object.assign({}, opts.headers || {}, {
+        'Authorization': 'Bearer ' + window.AUTH_TOKEN
+      });
+    }
+    return realFetch(url, opts).then(res => {
+      // an expired session should return you to the sign-in screen, not fail silently
+      if(res.status === 401 && u.startsWith('/api/kv') && window.AUTH_TOKEN){
+        window.setAuthToken('');
+        try{ clearAgentSession(); currentAgent = null;
+          document.getElementById('crm-main').style.display='none'; initCRM();
+          showToast("Your session expired \u2014 please sign in again."); }catch(e){}
+      }
+      return res;
+    });
+  };
+})();
+
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -2146,6 +2187,15 @@ function setRememberDevice(on){
    Runs in the background so restoring a session still feels instant. */
 async function validateAgentSession(saved){
 try{
+// no server session means the token expired or was revoked
+const sres = await fetch('/api/session');
+if(!sres.ok){
+clearAgentSession(); setAuthToken(''); currentAgent = null;
+document.getElementById('crm-main').style.display='none';
+initCRM();
+showToast("Please sign in again.");
+return;
+}
 const res = await fetch('/api/agent/list');
 const data = await res.json();
 const found = (data.agents || []).find(x => x.id === saved.id);
@@ -2271,13 +2321,15 @@ try{
 const res = await fetch('/api/agent/setup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email,password,setupKey})});
 const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't create account."); return; }
+if(data.token) setAuthToken(data.token, false);
 currentAgent = data.agent;
 unlockCRM();
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 
 async function handleAgentLogin(){
-try{ setRememberDevice(!!(document.getElementById('gate-remember')||{}).checked); }catch(e){}
+const rememberMe = !!(document.getElementById('gate-remember')||{}).checked;
+try{ setRememberDevice(rememberMe); }catch(e){}
 const email = document.getElementById('gate-email').value.trim();
 const password = document.getElementById('gate-password').value;
 if(!email || !password) return;
@@ -2285,6 +2337,7 @@ try{
 const res = await fetch('/api/agent/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email,password})});
 const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't log in."); return; }
+if(data.token) setAuthToken(data.token, rememberMe);
 currentAgent = data.agent;
 unlockCRM();
 }catch(e){ showToast("Something went wrong — please try again."); }
@@ -2394,6 +2447,8 @@ document.addEventListener(evt, ()=>{ if(currentAgent) resetIdleTimer(); }, {pass
 });
 
 function logoutAgent(){
+try{ fetch('/api/agent/logout', {method:'POST'}); }catch(e){}
+try{ setAuthToken(''); }catch(e){}
 clearIdleTimers();
 clearAgentSession();
 brokerIdentity = null;
