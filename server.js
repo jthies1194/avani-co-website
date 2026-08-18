@@ -289,7 +289,6 @@ app.post('/api/agent/forgot-password', async (req, res) => {
       if (mailer) {
         const resetUrl = `${req.protocol}://${req.get('host')}/?reset=${token}`;
         await mailer.sendMail({
-          from: `"Avani & Co. Website" <${process.env.GMAIL_USER}>`,
           to: data.email,
           subject: 'Reset your Avani & Co. CRM password',
           text: `Hi ${data.name},\n\nSomeone requested a password reset for your Avani & Co. CRM account. If this was you, set a new password here (link expires in 1 hour):\n\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
@@ -387,7 +386,6 @@ app.post('/api/agent/create', async (req, res) => {
       const loginUrl = `${req.protocol}://${req.get('host')}/`;
       try {
         await mailer.sendMail({
-          from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
           to: normalizedEmail,
           subject: 'Your Avani & Co. CRM login',
           text: `Hi ${name},\n\nYou've been added to the Avani & Co. Real Estate CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\nAvani & Co. Real Estate`,
@@ -399,7 +397,7 @@ app.post('/api/agent/create', async (req, res) => {
         emailStatus = 'failed: ' + mailErr.message;
       }
     } else {
-      console.warn(`[agent welcome email] SKIPPED for ${normalizedEmail} — mailer is not configured (GMAIL_USER/GMAIL_APP_PASSWORD missing).`);
+      console.warn(`[agent welcome email] SKIPPED for ${normalizedEmail} — mailer is not configured (RESEND_API_KEY missing).`);
     }
     res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' }, emailStatus });
   } catch (e) {
@@ -439,7 +437,6 @@ app.post('/api/agent/:id/reset-password', async (req, res) => {
     if (mailer) {
       try {
         await mailer.sendMail({
-          from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
           to: data.email,
           subject: 'Your Avani & Co. CRM password was reset',
           text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\nAvani & Co. Real Estate`,
@@ -470,15 +467,33 @@ app.delete('/api/agent/:id', async (req, res) => {
   }
 });
 
+
+// Where lead alerts go. NOTIFY_EMAIL wins; otherwise fall back to whoever the
+// broker is in the agents table, so alerts keep working without extra config.
+let _notifyCache = null, _notifyCachedAt = 0;
+async function resolveNotifyAddress() {
+  if (process.env.NOTIFY_EMAIL) return process.env.NOTIFY_EMAIL;
+  if (_notifyCache && Date.now() - _notifyCachedAt < 5 * 60 * 1000) return _notifyCache;
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.from('agents').select('email,role').eq('role', 'broker').limit(1).maybeSingle();
+    if (data && data.email) { _notifyCache = data.email; _notifyCachedAt = Date.now(); return data.email; }
+  } catch (e) { console.error('[lead notification] broker lookup failed:', e.message); }
+  return null;
+}
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
-    return res.status(503).json({ error: 'Email not configured yet. Set GMAIL_USER and GMAIL_APP_PASSWORD in the hosting environment variables.' });
+    return res.status(503).json({ error: 'Email is not configured yet — set RESEND_API_KEY in the hosting environment variables.' });
   }
-  const notifyTo = process.env.NOTIFY_EMAIL || process.env.GMAIL_USER;
+  const notifyTo = await resolveNotifyAddress();
+  if (!notifyTo) {
+    console.error('[lead notification] FAILED — no destination address. Set NOTIFY_EMAIL, or make sure a broker exists in the agents table.');
+    return res.status(500).json({ error: 'No notification address configured.' });
+  }
   const { name, email, phone, message, source, listingLabel } = req.body || {};
   try {
     await mailer.sendMail({
-      from: `"Avani & Co. Website" <${process.env.GMAIL_USER}>`,
       to: notifyTo,
       subject: `New lead: ${name || 'Unknown'} (${source || 'website'})`,
       text: [
@@ -490,9 +505,10 @@ app.post('/api/notify-lead', async (req, res) => {
         `Message: ${message || ''}`,
       ].filter(Boolean).join('\n'),
     });
-    res.json({ ok: true });
+    console.log(`[lead notification] sent to ${notifyTo} for lead: ${name || 'unknown'} (${source || 'website'})`);
+    res.json({ ok: true, notified: notifyTo });
   } catch (e) {
-    console.error('[POST /api/notify-lead] failed:', e.message);
+    console.error('[lead notification] FAILED:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -624,7 +640,6 @@ app.post('/api/request-review', async (req, res) => {
   const siteReviewUrl = `${req.protocol}://${req.get('host')}/?leaveReview=1${agentId ? '&agent=' + encodeURIComponent(agentId) : ''}`;
   try {
     await mailer.sendMail({
-      from: `"Avani & Co. Real Estate" <${process.env.GMAIL_USER}>`,
       to: toEmail,
       subject: 'Would you mind leaving us a quick review?',
       text: `Hi ${toName || 'there'},\n\nThank you so much for working with ${agentName || 'Avani & Co. Real Estate'}! If you have a minute, we'd really appreciate a quick review — it helps other buyers and sellers in the area find us.\n\n${reviewLink ? `Leave a Google review: ${reviewLink}\n\n` : ''}Or leave a review directly on our site: ${siteReviewUrl}\n\nThank you again,\nJimmy Thies\nAvani & Co. Real Estate`,
