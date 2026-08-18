@@ -566,10 +566,11 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   max-height:190px;overflow-y:auto}
 .detail-extra{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--grey)}
 
-.card-photo .card-qr{z-index:5;background:rgba(255,255,255,.94);padding:4px;border-radius:3px;
-  box-shadow:0 2px 8px rgba(23,31,99,.22);line-height:0;opacity:.55;transition:opacity .3s,transform .3s}
-.card-photo .card-qr img{display:block;width:38px;height:38px}
-.card:hover .card-qr{opacity:1;transform:scale(1.12)}
+/* Always fully opaque — a QR is scanned with a phone pointed at the screen,
+   so it can't depend on hover (the cursor would be sitting on top of it). */
+.card-photo .card-qr{z-index:5;background:#fff;padding:5px;border-radius:2px;
+  box-shadow:0 2px 9px rgba(23,31,99,.30);line-height:0;opacity:1}
+.card-photo .card-qr img{display:block;width:46px;height:46px;image-rendering:crisp-edges}
 </style>
 </head>
 <body>
@@ -1386,7 +1387,7 @@ const source = serverMode ? SEARCH_RESULTS : filtered;
 const pageItems = serverMode ? source : source.slice(0, window.visibleCount);
 grid.innerHTML = pageItems.map((l,i)=>{
 const qrTarget = location.origin + location.pathname + '?listing=' + encodeURIComponent(l.ListingKey);
-const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=90x90&margin=0&color=2E3CB0&data=' + encodeURIComponent(qrTarget);
+const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=1&color=1B3670&bgcolor=FFFFFF&data=' + encodeURIComponent(qrTarget);
 return `
 <div class="card">
 <div class="card-photo" style="background:${PHOTO_TONES[i%PHOTO_TONES.length]}; cursor:pointer;" onclick="openListingDetail('${l.ListingKey}')">
