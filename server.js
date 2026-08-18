@@ -119,6 +119,29 @@ app.delete('/api/kv/:key', async (req, res) => {
 let listingsCache = { data: null, at: 0 };
 // TODO: once you have the exact Bridge "Dataset" resource name for GCMLS,
 // confirm this URL shape against Bridge's docs — it may need adjusting.
+// Fetch a single listing by key — printed QR codes must keep working even after
+// a listing falls outside the batch we cache for the homepage.
+app.get('/api/listing/:key', async (req, res) => {
+  const token = process.env.BRIDGE_SERVER_TOKEN;
+  const dataset = process.env.BRIDGE_DATASET;
+  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+  const key = String(req.params.key || '').slice(0, 128);
+  try {
+    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+      + `?access_token=${encodeURIComponent(token)}`
+      + `&$filter=${encodeURIComponent(`ListingKey eq '${key.replace(/'/g, "''")}'`)}&$top=1`;
+    const r = await fetch(url);
+    if (!r.ok) return res.status(502).json({ error: `MLS API error ${r.status}` });
+    const json = await r.json();
+    const one = (json.value || [])[0];
+    if (!one) return res.status(404).json({ error: 'Listing not found.' });
+    res.json({ value: [one] });
+  } catch (e) {
+    console.error('[listing lookup] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/listings', async (req, res) => {
   const token = process.env.BRIDGE_SERVER_TOKEN;
   const dataset = process.env.BRIDGE_DATASET;
@@ -134,15 +157,17 @@ app.get('/api/listings', async (req, res) => {
   const PAGE = 200;
 
   if (listingsCache.data && Date.now() - listingsCache.at < 10 * 60 * 1000 && !req.query.fresh) {
-    return res.json({ value: listingsCache.data, cached: true, count: listingsCache.data.length });
+    return res.json({ value: listingsCache.data, cached: true, count: listingsCache.data.length, totalAvailable: listingsCache.totalAvailable });
   }
 
   try {
     const all = [];
+    let totalAvailable = null;
     for (let skip = 0; skip < WANT; skip += PAGE) {
       const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
         + `?access_token=${encodeURIComponent(token)}`
         + `&$top=${PAGE}&$skip=${skip}`
+        + (skip === 0 ? '&$count=true' : '')
         + `&$filter=${encodeURIComponent("StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending'")}`
         + `&$orderby=ModificationTimestamp desc`;
       const r = await fetch(url);
@@ -152,13 +177,14 @@ app.get('/api/listings', async (req, res) => {
         return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
       }
       const json = await r.json();
+      if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
       const rows = json.value || [];
       all.push(...rows);
       if (rows.length < PAGE) break; // reached the end of the feed
     }
-    listingsCache = { data: all, at: Date.now() };
-    console.log(`[listings] fetched ${all.length} active listings from ${dataset}`);
-    res.json({ value: all, count: all.length, cached: false });
+    listingsCache = { data: all, at: Date.now(), totalAvailable };
+    console.log(`[listings] fetched ${all.length} of ${totalAvailable == null ? '?' : totalAvailable} active listings from ${dataset}`);
+    res.json({ value: all, count: all.length, totalAvailable, cached: false });
   } catch (e) {
     console.error('[listings] FAILED:', e.message);
     res.status(500).json({ error: e.message });
