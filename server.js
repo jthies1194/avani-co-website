@@ -46,8 +46,79 @@ function requireSupabase(res) {
 }
 
 // GET a single key -> { key, value } or 404
+// ---------- server-side sessions ----------
+// Until now every /api/kv call was unauthenticated: anyone who knew the URL
+// could read every lead, commission and agent profile. Sessions fix that, and
+// let the server enforce who may see what rather than trusting the browser.
+const SESSION_HOURS = 12;
+
+function newToken() {
+  return 'sess_' + Date.now().toString(36) + '_' +
+    Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('');
+}
+
+async function createSession(agent) {
+  const token = newToken();
+  const rec = {
+    agentId: agent.id, role: agent.role || 'agent', name: agent.name || '',
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + SESSION_HOURS * 3600 * 1000).toISOString(),
+  };
+  await setSetting('session:' + token, rec);
+  return { token, expiresAt: rec.expiresAt };
+}
+
+async function getSession(req) {
+  const hdr = req.headers.authorization || '';
+  const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
+  if (!token) return null;
+  const rec = await getSetting('session:' + token);
+  if (!rec || !rec.agentId) return null;
+  if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) return null;
+  return rec;
+}
+
+function isStaff(sess) { return sess && (sess.role === 'broker' || sess.role === 'admin'); }
+
+async function requireSession(req, res) {
+  const sess = await getSession(req);
+  if (!sess) {
+    res.status(401).json({ error: 'Sign in to access this.' });
+    return null;
+  }
+  return sess;
+}
+
+/* What an agent may touch. Staff (broker/admin) are unrestricted. */
+function keyAllowedForAgent(key, sess, write) {
+  const k = String(key || '');
+  // their own profile only
+  if (k.startsWith('agentProfile:')) return k === 'agentProfile:' + sess.agentId;
+  // plans and plan history are read-only to agents
+  if (k === 'settings:agentPlans' || k === 'settings:agentPlanHistory') return !write;
+  // the official ledger is broker-written; agents read a filtered copy
+  if (k === 'settings:closedDeals') return !write;
+  // admin machinery is off limits
+  if (k === 'settings:adminRequests' || k === 'settings:adminBypass') return false;
+  if (k.startsWith('session:')) return false;
+  return true;
+}
+
+/* Trim shared arrays down to the requesting agent's own rows. */
+function scopeValueForAgent(key, value, sess) {
+  if (!Array.isArray(value)) return value;
+  if (key === 'settings:closedDeals' || key === 'settings:expenses' || key === 'settings:dealSubmissions') {
+    return value.filter(v => v && v.agentId === sess.agentId);
+  }
+  return value;
+}
+
 app.get('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
   try {
     const { data, error } = await supabase
       .from(KV_TABLE)
@@ -56,7 +127,8 @@ app.get('/api/kv/:key', async (req, res) => {
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'not found' });
-    res.json({ key: req.params.key, value: data.value });
+    const value = isStaff(sess) ? data.value : scopeValueForAgent(req.params.key, data.value, sess);
+    res.json({ key: req.params.key, value });
   } catch (e) {
     console.error('[GET /api/kv/:key] failed:', e, 'cause:', e.cause);
     res.status(500).json({ error: e.message, cause: e.cause ? String(e.cause) : null });
@@ -66,6 +138,13 @@ app.get('/api/kv/:key', async (req, res) => {
 // LIST keys by prefix -> { keys: [...] }
 app.get('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) {
+    const prefix = (req.query.prefix || '').toString();
+    if (prefix.startsWith('session:') || prefix.startsWith('agentProfile:')) {
+      return res.status(403).json({ error: 'Not permitted.' });
+    }
+  }
   try {
     const prefix = (req.query.prefix || '').toString();
     // escape % and _ so a prefix like "lead:" doesn't accidentally wildcard-match
@@ -85,6 +164,11 @@ app.get('/api/kv', async (req, res) => {
 // SET (upsert) a key -> { ok: true }
 app.post('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess) && !keyAllowedForAgent((req.body || {}).key, sess, true)) {
+    console.warn(`[security] agent ${sess.agentId} blocked writing ${(req.body||{}).key}`);
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
   try {
     const { key, value } = req.body || {};
     if (!key) return res.status(400).json({ error: 'key is required' });
@@ -102,6 +186,10 @@ app.post('/api/kv', async (req, res) => {
 // DELETE a key -> { ok: true }
 app.delete('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, true)) {
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
   try {
     const { error } = await supabase
       .from(KV_TABLE)
@@ -434,7 +522,8 @@ app.post('/api/agent/setup', async (req, res) => {
     const password_hash = hashPassword(password);
     const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, role: 'broker' });
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: '', role: 'broker' } });
+    const sess = await createSession({ id, name, role: 'broker' });
+    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: '', role: 'broker' }, token: sess.token, expiresAt: sess.expiresAt });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -483,6 +572,19 @@ app.post('/api/agent/reset-password', async (req, res) => {
   }
 });
 
+app.post('/api/agent/logout', async (req, res) => {
+  const hdr = req.headers.authorization || '';
+  const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
+  if (token) { try { await supabase.from('kv_store').delete().eq('key', 'session:' + token); } catch (e) {} }
+  res.json({ ok: true });
+});
+
+app.get('/api/session', async (req, res) => {
+  const sess = await getSession(req);
+  if (!sess) return res.status(401).json({ error: 'No session.' });
+  res.json({ ok: true, agentId: sess.agentId, role: sess.role, name: sess.name, expiresAt: sess.expiresAt });
+});
+
 app.post('/api/agent/login', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { email, password } = req.body || {};
@@ -493,7 +595,8 @@ app.post('/api/agent/login', async (req, res) => {
     if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
     if (data.active === false) return res.status(403).json({ error: 'This account has been deactivated. Contact your broker.' });
     await supabase.from('agents').update({ last_login: new Date().toISOString() }).eq('id', data.id);
-    res.json({ ok: true, agent: agentPublic(data) });
+    const sess = await createSession(data);
+    res.json({ ok: true, agent: agentPublic(data), token: sess.token, expiresAt: sess.expiresAt });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -552,6 +655,7 @@ async function isBrokerAccount(id) {
 
 // Broker issues a bypass code for an admin.
 app.post('/api/admin/bypass', async (req, res) => {
+  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
   const { hours, singleUse } = req.body || {};
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const rec = {
@@ -567,6 +671,7 @@ app.post('/api/admin/bypass', async (req, res) => {
 });
 
 app.post('/api/admin/bypass/revoke', async (req, res) => {
+  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
   await setSetting('settings:adminBypass', { code: null, revokedAt: new Date().toISOString() });
   res.json({ ok: true });
 });
@@ -608,6 +713,7 @@ app.post('/api/agent/:id/review-link', async (req, res) => {
 });
 
 app.get('/api/agent/list', async (req, res) => {
+  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
   if (!requireSupabase(res)) return;
   try {
     const { data, error } = await supabase.from('agents').select('id,name,email,phone,role,review_link,active,last_login,created_at').order('name');
@@ -619,6 +725,7 @@ app.get('/api/agent/list', async (req, res) => {
 });
 
 app.post('/api/agent/create', async (req, res) => {
+  {const sess = await getSession(req); if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });}
   if (!requireSupabase(res)) return;
   const { name, email, phone, role } = req.body || {};
   const defaultPassword = process.env.DEFAULT_AGENT_PASSWORD;
