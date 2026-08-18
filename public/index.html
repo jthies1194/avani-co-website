@@ -604,14 +604,14 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     </datalist>
   </div>
   <div class="f"><label for="f-beds">Beds</label>
-    <select id="f-beds"><option value="">Any beds</option><option value="1">1+ bed</option><option value="2">2+ beds</option><option value="3">3+ beds</option><option value="4">4+ beds</option></select>
+    <select id="f-beds" onchange="runSearch()"><option value="">Any beds</option><option value="1">1+ bed</option><option value="2">2+ beds</option><option value="3">3+ beds</option><option value="4">4+ beds</option></select>
   </div>
   <div class="f f-price">
     <label for="pmin">Price range</label>
     <div class="price-pair">
-      <input id="pmin" inputmode="numeric" placeholder="No min" aria-label="Minimum price">
+      <input id="pmin" inputmode="numeric" onchange="runSearch()" placeholder="No min" aria-label="Minimum price">
       <span class="dash">&ndash;</span>
-      <input id="pmax" inputmode="numeric" placeholder="No max" aria-label="Maximum price">
+      <input id="pmax" inputmode="numeric" onchange="runSearch()" placeholder="No max" aria-label="Maximum price">
     </div>
     <div class="price-quick">
       <button type="button" data-lo="" data-hi="400000">Under $400k</button>
@@ -623,7 +623,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <input type="hidden" id="f-price-min">
   </div>
   <div class="f"><label for="f-status">Status</label>
-    <select id="f-status"><option value="">Any status</option><option value="Active">Active</option><option value="Pending">Pending</option><option value="Sold">Sold</option></select>
+    <select id="f-status" onchange="runSearch()"><option value="">Any status</option><option value="Active">Active</option><option value="Active Under Contract">Under contract</option><option value="Pending">Pending</option></select>
   </div>
   <button class="btn" onclick="runSearch()">Search</button>
 </div>
@@ -683,35 +683,35 @@ Call Jimmy · 251-229-3216
       <div class="band"><span class="band-dot" style="--dot:#A6AEE6"></span>
         <div><h3>Gulf &amp; Beaches</h3><span>Beachfront &amp; island</span></div>
         <div class="towns">
-          <a href="#">Gulf Shores</a><span class="sep">/</span><a href="#">Orange Beach</a><span class="sep">/</span><a href="#">Fort Morgan</a><span class="sep">/</span><a href="#">Ono Island</a><span class="sep">/</span><a href="#">Perdido Beach</a><span class="sep">/</span><a href="#">Bon Secour</a><span class="sep">/</span><a href="#">Dauphin Island</a><span class="sep">/</span><a href="#">Laguna Key</a>
+          <a href="#listings" onclick="searchTown('Gulf Shores');return false;">Gulf Shores</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Orange Beach');return false;">Orange Beach</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Fort Morgan');return false;">Fort Morgan</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Ono Island');return false;">Ono Island</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Perdido Beach');return false;">Perdido Beach</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Bon Secour');return false;">Bon Secour</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Dauphin Island');return false;">Dauphin Island</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Laguna Key');return false;">Laguna Key</a>
         </div>
       </div>
 
       <div class="band"><span class="band-dot" style="--dot:#BCC2E6"></span>
         <div><h3>Eastern Shore</h3><span>Mobile Bay</span></div>
         <div class="towns">
-          <a href="#">Fairhope</a><span class="sep">/</span><a href="#">Daphne</a><span class="sep">/</span><a href="#">Spanish Fort</a><span class="sep">/</span><a href="#">Point Clear</a><span class="sep">/</span><a href="#">Montrose</a><span class="sep">/</span><a href="#">Magnolia Springs</a><span class="sep">/</span><a href="#">Barnwell</a><span class="sep">/</span><a href="#">Belforest</a><span class="sep">/</span><a href="#">Battles Wharf</a><span class="sep">/</span><a href="#">Malbis</a>
+          <a href="#listings" onclick="searchTown('Fairhope');return false;">Fairhope</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Daphne');return false;">Daphne</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Spanish Fort');return false;">Spanish Fort</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Point Clear');return false;">Point Clear</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Montrose');return false;">Montrose</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Magnolia Springs');return false;">Magnolia Springs</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Barnwell');return false;">Barnwell</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Belforest');return false;">Belforest</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Battles Wharf');return false;">Battles Wharf</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Malbis');return false;">Malbis</a>
         </div>
       </div>
 
       <div class="band"><span class="band-dot" style="--dot:#D6D6DE"></span>
         <div><h3>Inland Baldwin</h3><span>Towns &amp; farmland</span></div>
         <div class="towns">
-          <a href="#">Foley</a><span class="sep">/</span><a href="#">Robertsdale</a><span class="sep">/</span><a href="#">Loxley</a><span class="sep">/</span><a href="#">Summerdale</a><span class="sep">/</span><a href="#">Silverhill</a><span class="sep">/</span><a href="#">Elberta</a><span class="sep">/</span><a href="#">Bay Minette</a><span class="sep">/</span><a href="#">Stapleton</a><span class="sep">/</span><a href="#">Seminole</a><span class="sep">/</span><a href="#">Lillian</a><span class="sep">/</span><a href="#">Josephine</a><span class="sep">/</span><a href="#">Rosinton</a><span class="sep">/</span><a href="#">Bromley</a><span class="sep">/</span><a href="#">Miflin</a>
+          <a href="#listings" onclick="searchTown('Foley');return false;">Foley</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Robertsdale');return false;">Robertsdale</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Loxley');return false;">Loxley</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Summerdale');return false;">Summerdale</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Silverhill');return false;">Silverhill</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Elberta');return false;">Elberta</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Bay Minette');return false;">Bay Minette</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Stapleton');return false;">Stapleton</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Seminole');return false;">Seminole</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Lillian');return false;">Lillian</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Josephine');return false;">Josephine</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Rosinton');return false;">Rosinton</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Bromley');return false;">Bromley</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Miflin');return false;">Miflin</a>
         </div>
       </div>
 
       <div class="band"><span class="band-dot" style="--dot:#E6C381"></span>
         <div><h3>Mobile County</h3><span>City &amp; delta</span></div>
         <div class="towns">
-          <a href="#">Mobile</a><span class="sep">/</span><a href="#">Saraland</a><span class="sep">/</span><a href="#">Satsuma</a><span class="sep">/</span><a href="#">Semmes</a><span class="sep">/</span><a href="#">Chickasaw</a><span class="sep">/</span><a href="#">Prichard</a><span class="sep">/</span><a href="#">Creola</a><span class="sep">/</span><a href="#">Citronelle</a><span class="sep">/</span><a href="#">Mount Vernon</a><span class="sep">/</span><a href="#">Bayou La Batre</a><span class="sep">/</span><a href="#">Theodore</a><span class="sep">/</span><a href="#">Tillmans Corner</a><span class="sep">/</span><a href="#">Grand Bay</a><span class="sep">/</span><a href="#">Irvington</a><span class="sep">/</span><a href="#">Wilmer</a><span class="sep">/</span><a href="#">Eight Mile</a><span class="sep">/</span><a href="#">Axis</a><span class="sep">/</span><a href="#">Chunchula</a><span class="sep">/</span><a href="#">St. Elmo</a><span class="sep">/</span><a href="#">Coden</a><span class="sep">/</span><a href="#">Calvert</a>
+          <a href="#listings" onclick="searchTown('Mobile');return false;">Mobile</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Saraland');return false;">Saraland</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Satsuma');return false;">Satsuma</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Semmes');return false;">Semmes</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Chickasaw');return false;">Chickasaw</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Prichard');return false;">Prichard</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Creola');return false;">Creola</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Citronelle');return false;">Citronelle</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Mount Vernon');return false;">Mount Vernon</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Bayou La Batre');return false;">Bayou La Batre</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Theodore');return false;">Theodore</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Tillmans Corner');return false;">Tillmans Corner</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Grand Bay');return false;">Grand Bay</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Irvington');return false;">Irvington</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Wilmer');return false;">Wilmer</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Eight Mile');return false;">Eight Mile</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Axis');return false;">Axis</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Chunchula');return false;">Chunchula</a><span class="sep">/</span><a href="#listings" onclick="searchTown('St. Elmo');return false;">St. Elmo</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Coden');return false;">Coden</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Calvert');return false;">Calvert</a>
         </div>
       </div>
 
       <div class="band"><span class="band-dot" style="--dot:#C89B4E"></span>
         <div><h3>Northwest Florida</h3><span>Escambia &amp; Santa Rosa</span></div>
         <div class="towns">
-          <a href="#">Perdido Key</a><span class="sep">/</span><a href="#">Innerarity Point</a><span class="sep">/</span><a href="#">Pensacola</a><span class="sep">/</span><a href="#">Pensacola Beach</a><span class="sep">/</span><a href="#">Gulf Breeze</a><span class="sep">/</span><a href="#">Navarre</a><span class="sep">/</span><a href="#">Navarre Beach</a><span class="sep">/</span><a href="#">Cantonment</a><span class="sep">/</span><a href="#">Molino</a><span class="sep">/</span><a href="#">Beulah</a><span class="sep">/</span><a href="#">Bellview</a><span class="sep">/</span><a href="#">Myrtle Grove</a><span class="sep">/</span><a href="#">Warrington</a><span class="sep">/</span><a href="#">Gonzalez</a><span class="sep">/</span><a href="#">Ferry Pass</a><span class="sep">/</span><a href="#">Brent</a><span class="sep">/</span><a href="#">Pace</a><span class="sep">/</span><a href="#">Milton</a><span class="sep">/</span><a href="#">Jay</a><span class="sep">/</span><a href="#">Century</a>
+          <a href="#listings" onclick="searchTown('Perdido Key');return false;">Perdido Key</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Innerarity Point');return false;">Innerarity Point</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Pensacola');return false;">Pensacola</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Pensacola Beach');return false;">Pensacola Beach</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Gulf Breeze');return false;">Gulf Breeze</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Navarre');return false;">Navarre</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Navarre Beach');return false;">Navarre Beach</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Cantonment');return false;">Cantonment</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Molino');return false;">Molino</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Beulah');return false;">Beulah</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Bellview');return false;">Bellview</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Myrtle Grove');return false;">Myrtle Grove</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Warrington');return false;">Warrington</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Gonzalez');return false;">Gonzalez</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Ferry Pass');return false;">Ferry Pass</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Brent');return false;">Brent</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Pace');return false;">Pace</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Milton');return false;">Milton</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Jay');return false;">Jay</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Century');return false;">Century</a>
         </div>
       </div>
     </div>
@@ -3459,6 +3459,23 @@ document.addEventListener('keydown', e => {
   if(e.key === 'ArrowLeft') galleryStep(-1);
   if(e.key === 'ArrowRight') galleryStep(1);
 });
+</script>
+<script>
+/* Clicking a town in the Communities list searches that town. */
+function searchTown(name){
+  const city = document.getElementById('f-city');
+  if(city) city.value = name;
+  const st = document.getElementById('f-status'); if(st) st.value = '';
+  window.visibleCount = 24;
+  if(typeof runSearch === 'function') runSearch();
+  const grid = document.getElementById('listings') || document.getElementById('listing-grid');
+  if(grid){
+    const bar = document.querySelector('.utility'), hdr = document.getElementById('hdr');
+    const off = (bar?bar.offsetHeight:0) + (hdr?hdr.offsetHeight:0) + 24;
+    window.scrollTo({top: Math.max(0, grid.getBoundingClientRect().top + pageYOffset - off), behavior:'smooth'});
+  }
+  if(typeof showToast === 'function') showToast('Showing homes in ' + name);
+}
 </script>
 </body>
 </html>
