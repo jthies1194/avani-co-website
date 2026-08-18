@@ -95,7 +95,7 @@ function keyAllowedForAgent(key, sess, write) {
   // their own profile only
   if (k.startsWith('agentProfile:')) return k === 'agentProfile:' + sess.agentId;
   // plans and plan history are read-only to agents
-  if (k === 'settings:agentPlans' || k === 'settings:agentPlanHistory') return !write;
+  if (k === 'settings:agentPlans' || k === 'settings:agentPlanHistory') return !write;  // staff bypass this check entirely
   // the official ledger is broker-written; agents read a filtered copy
   if (k === 'settings:closedDeals') return !write;
   // admin machinery is off limits
@@ -825,6 +825,48 @@ app.post('/api/agent/:id/reset-password', async (req, res) => {
       console.warn(`[agent reset-password email] SKIPPED for ${data.email} — mailer is not configured.`);
     }
     res.json({ ok: true, emailStatus });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Edit an agent's account: name, email, phone, role. Staff only, and the
+// broker's own record stays untouchable without a bypass code.
+app.patch('/api/agent/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await getSession(req);
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });
+
+  const id = req.params.id;
+  const { name, email, phone, role } = req.body || {};
+
+  if (await isBrokerAccount(id) && sess.role !== 'broker') {
+    if (!(await bypassCodeValid((req.body || {}).bypassCode))) {
+      return res.status(403).json({ error: 'The broker account is protected. Request approval or use a bypass code.' });
+    }
+  }
+  // only the broker may hand out broker or admin rights
+  if (role && sess.role !== 'broker' && normalizeRole(role) !== 'agent') {
+    return res.status(403).json({ error: 'Only the broker can grant admin or broker access.' });
+  }
+
+  const patch = {};
+  if (typeof name === 'string' && name.trim()) patch.name = name.trim();
+  if (typeof phone === 'string') patch.phone = phone.trim();
+  if (typeof email === 'string' && email.trim()) {
+    const normalized = email.trim().toLowerCase();
+    const { data: clash } = await supabase.from('agents').select('id').eq('email', normalized).maybeSingle();
+    if (clash && clash.id !== id) return res.status(409).json({ error: 'Another account already uses that email.' });
+    patch.email = normalized;
+  }
+  if (role) patch.role = normalizeRole(role);
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nothing to update.' });
+
+  try {
+    const { error } = await supabase.from('agents').update(patch).eq('id', id);
+    if (error) return res.status(500).json({ error: error.message });
+    console.log(`[agent update] ${sess.name} updated ${id}: ${Object.keys(patch).join(', ')}`);
+    res.json({ ok: true, updated: Object.keys(patch) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
