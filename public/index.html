@@ -141,9 +141,9 @@ a{color:inherit;text-decoration:none}
   transform-origin:left;transition:transform .5s cubic-bezier(.6,.05,.2,1);z-index:-1}
 .btn:hover::before{transform:scaleX(1)}
 .btn:hover{color:var(--ivory)}
-.btn-light{border-color:var(--line-light);color:var(--ivory)}
-.btn-light::before{background:var(--gold)}
-.btn-light:hover{color:var(--blue-ink);border-color:var(--gold)}
+.btn-light{border-color:var(--gold);color:var(--blue-ink);background:var(--gold);font-weight:600}
+.btn-light::before{background:#fff}
+.btn-light:hover{color:var(--blue-ink);border-color:#fff}
 
 /* --- scroll reveal --- */
 .rv{opacity:0;transform:translateY(38px);transition:opacity 1.1s cubic-bezier(.2,.7,.2,1),transform 1.1s cubic-bezier(.2,.7,.2,1)}
@@ -210,14 +210,20 @@ header.stuck nav .tel{color:var(--gold)}
   .photo-credit::before{height:28px}
 }
 .hero-veil{position:absolute;inset:0;
-  background:linear-gradient(180deg,rgba(23,31,99,.58) 0%,rgba(23,31,99,.22) 40%,rgba(23,31,99,.30) 100%)}
+  background:linear-gradient(180deg,rgba(10,18,52,.52) 0%,rgba(10,18,52,.34) 45%,rgba(10,18,52,.50) 100%)}
 /* darken only behind the headline block, leaving the credit corner clear */
 .hero-veil::after{content:'';position:absolute;left:0;right:0;top:0;height:62%;
   background:linear-gradient(180deg,rgba(23,31,99,.34),transparent)}
 .hero-inner{position:relative;z-index:5;padding:0 48px;max-width:1060px;width:100%}
-.hero-v2 h1{font-size:clamp(52px,9vw,132px);color:var(--ivory);margin:24px 0 0;
-  text-shadow:0 4px 44px rgba(23,31,99,.34)}
-.hero-v2 h1 em{font-style:italic;color:var(--gold-pale)}
+.hero-copy{position:relative;display:inline-block;padding:38px 46px;border-radius:4px;
+  background:linear-gradient(180deg,rgba(12,20,58,.62),rgba(12,20,58,.44));
+  backdrop-filter:blur(2px);max-width:940px}
+.hero-v2 h1{font-size:clamp(44px,6.6vw,92px);color:#fff !important;margin:16px 0 0;
+  line-height:1.05;letter-spacing:-.01em;font-weight:400;
+  text-shadow:0 2px 18px rgba(8,14,40,.55)}
+.hero-v2 h1 .accent{color:var(--gold);font-style:normal}
+.hero-v2 .eyebrow{color:#fff !important;font-weight:600;letter-spacing:.26em;
+  text-shadow:0 1px 10px rgba(8,14,40,.6)}
 .hero-v2 .eyebrow{color:rgba(255,255,255,9.00)}
 .hero-v2 p{color:#ffffff;font-size:20px;max-width:48ch;margin:30px auto 42px;
   text-shadow:0 1px 20px rgba(23,31,99,.5)}
@@ -741,6 +747,12 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .side-picker button[data-side="both"].on{background:var(--coral);border-color:var(--coral);color:#3A2A08}
 .double-note{font-size:13px;color:#8A5B12;background:#FBF3E2;border-radius:4px;padding:9px 12px}
 .double-total{font-size:14.5px;color:var(--ink);margin-top:10px}
+
+.admin-box{background:var(--sand);border:1px solid var(--line);border-left:3px solid var(--coral);
+  border-radius:4px;padding:20px;margin-top:22px}
+.admin-box h4{margin:0 0 6px;font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:500;color:var(--marsh)}
+.req-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:#fff;border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-top:8px;font-size:14.5px}
 </style>
 </head>
 <body>
@@ -781,10 +793,13 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="hero-media"></div>
   <div class="hero-veil"></div>
   <div class="hero-inner">
-    <div class="eyebrow rv in">Coastal Alabama &amp; Northwest Florida</div>
-    <h1 class="rv in d1">Every address<br>on this <em>coast</em>.</h1>
-    <p class="rv in d2">A boutique brokerage covering Baldwin County, Mobile County, and the Perdido Key and Pensacola corridor.</p>
-    <a href="#listings" class="btn btn-light rv in d3">Explore Properties</a>
+    <div class="hero-copy rv in">
+      <div class="eyebrow">Coastal Alabama &amp; Northwest Florida</div>
+      <h1>Find your place<br>on the <span class="accent">Gulf</span>.</h1>
+      <p>Search every active listing from Gulf Shores to Perdido Key &mdash;
+         with a brokerage small enough to answer the phone.</p>
+      <a href="#listings" class="btn btn-light" id="hero-cta">Search homes</a>
+    </div>
   </div>
   <div class="photo-credit"><div><span>Zayde Albiyati</span><span class="b">Salt Air Media</span></div></div>
   <div class="scroll-cue">Scroll</div>
@@ -1236,6 +1251,7 @@ Call Jimmy · 251-229-3216
 <p>Add agents at your brokerage so they can log in and manage their own leads. Each agent only sees leads assigned to them — you (as broker) see everything and can assign leads to whoever should follow up.</p>
 <div class="agent-list" id="agent-list"></div>
 <div id="agent-profile-box"></div>
+<div id="admin-requests"></div>
 <button class="btn-sm primary" style="margin-top:14px;" onclick="openAgentModal()">+ Add agent</button>
 </div>
 </div></div>
@@ -1545,6 +1561,15 @@ async function renderListings(){
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
 if(typeof populateCityOptions==='function') populateCityOptions();
+(function(){
+  const cta = document.getElementById('hero-cta');
+  if(cta && typeof LISTINGS_ARE_LIVE !== 'undefined' && LISTINGS_ARE_LIVE && ALL_LISTINGS.length){
+    fetch('/api/listings').then(r=>r.json()).then(d=>{
+      const n = d.totalAvailable || d.count;
+      if(n) cta.textContent = 'Search ' + Number(n).toLocaleString() + ' homes';
+    }).catch(()=>{});
+  }
+})();
 const city = document.getElementById('f-city').value.trim().toLowerCase();
 const beds = parseInt(document.getElementById('f-beds').value)||0;
 const price = parseInt(document.getElementById('f-price').value)||Infinity;
@@ -2307,7 +2332,7 @@ list.innerHTML = agents.map(a => `
 <div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}</div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
 </div>
-${a.id===currentAgent.id ? '' : `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button><button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and licence details">Details</button><button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
+${(a.id===currentAgent.id || a.role==='broker' || brokerIdentity) ? (a.role==='broker' && a.id!==currentAgent.id ? '<span class="agent-role-tag">protected</span>' : '') : `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button><button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and licence details">Details</button><button class="btn-sm" style="margin-right:8px;" onclick="toggleAgentActive('${a.id}',${a.active===false})">${a.active===false ? 'Unlock' : 'Lock'}</button><button class="btn-sm" style="margin-right:8px;" onclick="resetAgentPassword('${a.id}','${escapeHtml(a.name)}')" title="Reset their password">Reset password</button><button class="del-btn" onclick="deleteAgent('${a.id}')" title="Remove agent">✕</button>`}
 </div>
 `).join('') || '<div class="agent-row"><div class="meta">No agents added yet.</div></div>';
 
@@ -2350,6 +2375,7 @@ loadAgents();
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function toggleAgentActive(id, makeActive){
+if(!(await guardAgentAction(id, makeActive ? 'unlocked' : 'locked out'))) return;
 try{
 await fetch(`/api/agent/${id}/set-active`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({active: makeActive})});
 showToast(makeActive ? "Agent unlocked." : "Agent locked out.");
@@ -2357,6 +2383,7 @@ loadAgents();
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function resetAgentPassword(id, name){
+if(!(await guardAgentAction(id, 'password-reset'))) return;
 try{
 const res = await fetch(`/api/agent/${id}/reset-password`, {method:'POST'});
 const data = await res.json();
@@ -2367,8 +2394,9 @@ else showToast(`${name}'s password was reset, but email isn't configured yet.`);
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
 async function deleteAgent(id){
+if(!(await guardAgentAction(id, 'removed'))) return;
 try{
-await fetch('/api/agent/' + id, {method:'DELETE'});
+await fetch('/api/agent/' + id + (ADMIN_BYPASS ? '?bypassCode=' + encodeURIComponent(ADMIN_BYPASS) : ''), {method:'DELETE'});
 }catch(e){}
 showToast("Agent removed.");
 loadAgents();
@@ -2541,6 +2569,15 @@ const favKeys = c.favorites || [];
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
 if(typeof populateCityOptions==='function') populateCityOptions();
+(function(){
+  const cta = document.getElementById('hero-cta');
+  if(cta && typeof LISTINGS_ARE_LIVE !== 'undefined' && LISTINGS_ARE_LIVE && ALL_LISTINGS.length){
+    fetch('/api/listings').then(r=>r.json()).then(d=>{
+      const n = d.totalAvailable || d.count;
+      if(n) cta.textContent = 'Search ' + Number(n).toLocaleString() + ' homes';
+    }).catch(()=>{});
+  }
+})();
 const favs = favKeys.map(key => ALL_LISTINGS.find(l=>l.ListingKey===key)).filter(Boolean);
 document.getElementById('activity-favorites').innerHTML = favs.length
 ? favs.map(l=>`<div class="fav-mini-card">${escapeHtml(l.UnparsedAddress)} — $${l.ListPrice.toLocaleString()}</div>`).join('')
@@ -4362,14 +4399,14 @@ const CRM_SECTIONS = [
 let crmSection = 'sec-today';
 
 function allowedSections(){
-  const isBroker = currentAgent && currentAgent.role === 'broker';
-  return CRM_SECTIONS.filter(sc => (!sc.brokerOnly || isBroker) && (!sc.agentOnly || !isBroker));
+  const staff = isAdminOrOwner();
+  return CRM_SECTIONS.filter(sc => (!sc.brokerOnly || staff) && (!sc.agentOnly || !staff));
 }
 
 function renderCrmNav(){
   const nav = document.getElementById('crm-nav');
   if(!nav || !currentAgent) return;
-  const isBroker = currentAgent.role === 'broker';
+  const isBroker = isAdminOrOwner();
   // A section the current role can't see must never stay open — otherwise
   // switching to an agent view leaves broker content on screen.
   const allowed = allowedSections().map(sc => sc.id);
@@ -4399,7 +4436,7 @@ function showCrmSection(id){
   try{
     if(id === 'sec-commissions') loadClosedDeals();
     if(id === 'sec-expenses')    loadExpenses();
-    if(id === 'sec-agents')      loadAgents();
+    if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
     if(id === 'sec-myprofile') renderMyProfileSection();
     if(id === 'sec-today') renderDashboard();
@@ -4898,6 +4935,143 @@ function calcSides(manual){
       : '';
   }
   if(typeof calcReferral === 'function') calcReferral();
+}
+</script>
+<script>
+/* ---------- destructive-action guards ----------
+   A broker account can't be locked, deleted or password-reset from the CRM,
+   and nothing destructive is allowed while previewing as someone else. */
+async function guardAgentAction(id, what){
+  if(brokerIdentity){
+    showToast("You're previewing as another agent \u2014 return to your own view first.");
+    return false;
+  }
+  if(!isAdminOrOwner()){
+    showToast("Only the broker or an admin can do that.");
+    return false;
+  }
+  if(currentAgent.id === id){
+    showToast("You can't " + what + " your own account.");
+    return false;
+  }
+  const target = (cdData.agents || []).find(a => a.id === id);
+  if(target && target.role === 'broker'){
+    if(isOwner()){
+      showToast("The qualifying broker account can't be " + what + ".");
+      return false;
+    }
+    // an admin: offer the two legitimate routes
+    const choice = confirm("The broker's account is protected.\n\nOK = enter a bypass code\nCancel = send an approval request");
+    if(choice) return await promptBypass();
+    await requestBrokerApproval(id, what);
+    return false;
+  }
+  return true;
+}
+</script>
+<script>
+/* ---------- roles ----------
+   broker (owner) > admin (full CRM, but the broker's own account is protected)
+   > agent. Only the broker can change roles. */
+function isOwner(){ return currentAgent && currentAgent.role === 'broker'; }
+function isAdminOrOwner(){ return currentAgent && (currentAgent.role === 'broker' || currentAgent.role === 'admin'); }
+
+let ADMIN_BYPASS = '';
+
+/* An admin asks the broker for permission to act on the broker's own account. */
+async function requestBrokerApproval(targetId, action){
+  const reason = prompt("Why do you need to " + action + " the broker account?\n\nThe broker will see this request.");
+  if(reason === null) return;
+  const reqs = await storeGet('settings:adminRequests') || [];
+  reqs.push({
+    id: 'req_' + Date.now(),
+    requestedBy: currentAgent.name, requestedById: currentAgent.id,
+    action, targetId, reason: (reason||'').trim(),
+    status: 'pending', createdAt: new Date().toISOString(),
+  });
+  await storeSet('settings:adminRequests', reqs);
+  showToast("Request sent to the broker.");
+  if(typeof renderCrmNav === 'function') renderCrmNav();
+}
+
+async function promptBypass(){
+  const code = prompt("Enter the bypass code the broker gave you:");
+  if(!code) return false;
+  try{
+    const res = await fetch('/api/admin/bypass/check', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ code: code.trim() })
+    });
+    const d = await res.json();
+    if(d.ok){ ADMIN_BYPASS = code.trim(); showToast("Bypass accepted."); return true; }
+  }catch(e){}
+  showToast("That code isn't valid or has expired.");
+  return false;
+}
+
+/* Broker-side: issue, show and revoke bypass codes. */
+async function issueBypassCode(){
+  const hours = Number(prompt("How many hours should the code stay valid?", "24")) || 24;
+  try{
+    const res = await fetch('/api/admin/bypass', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ hours, singleUse: true })
+    });
+    const d = await res.json();
+    if(d.ok){
+      alert("Bypass code: " + d.code +
+            "\n\nSingle use, valid until " + new Date(d.expiresAt).toLocaleString() +
+            ".\nGive this to your admin directly — anyone with it can act on your account once.");
+      renderAdminRequests();
+    }else{
+      showToast(d.error || "Couldn't create a code.");
+    }
+  }catch(e){ showToast("Couldn't reach the server."); }
+}
+async function revokeBypassCode(){
+  try{
+    await fetch('/api/admin/bypass/revoke', {method:'POST'});
+    showToast("Bypass code revoked.");
+  }catch(e){}
+}
+
+async function renderAdminRequests(){
+  const el = document.getElementById('admin-requests');
+  if(!el || !isOwner()) return;
+  const reqs = (await storeGet('settings:adminRequests')) || [];
+  const pending = reqs.filter(r => r.status === 'pending');
+  el.innerHTML = `
+    <div class="admin-box">
+      <h4>Admin access</h4>
+      <p class="dash-empty">Admins can run the whole CRM. Your own account is protected \u2014 they must
+        ask you, or use a one-time bypass code.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button class="btn-sm primary" onclick="issueBypassCode()">Issue a bypass code</button>
+        <button class="btn-sm" onclick="revokeBypassCode()">Revoke code</button>
+      </div>
+      ${pending.length ? `<div style="margin-top:16px;">
+        <div class="field-label">Pending requests</div>
+        ${pending.map(r => `<div class="req-row">
+          <div><strong>${escapeHtml(r.requestedBy)}</strong> wants to <strong>${escapeHtml(r.action)}</strong> your account
+            <div class="dl-meta">${escapeHtml(r.reason || 'No reason given')} \u00b7 ${new Date(r.createdAt).toLocaleString()}</div></div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-sm primary" onclick="resolveRequest('${r.id}','approved')">Approve</button>
+            <button class="btn-sm" onclick="resolveRequest('${r.id}','denied')">Deny</button>
+          </div>
+        </div>`).join('')}
+      </div>` : '<p class="dash-empty" style="margin-top:12px;">No pending requests.</p>'}
+    </div>`;
+}
+
+async function resolveRequest(id, status){
+  const reqs = (await storeGet('settings:adminRequests')) || [];
+  const r = reqs.find(x => x.id === id);
+  if(!r) return;
+  r.status = status;
+  r.resolvedAt = new Date().toISOString();
+  await storeSet('settings:adminRequests', reqs);
+  showToast(status === 'approved' ? "Approved \u2014 issue a bypass code so they can proceed." : "Request denied.");
+  renderAdminRequests();
 }
 </script>
 </body>
