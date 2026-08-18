@@ -187,16 +187,19 @@ header.stuck nav .tel{color:var(--gold)}
 .hero-v2{position:relative;min-height:700px;height:100vh;display:flex;align-items:center;
   justify-content:center;text-align:center;overflow:hidden;background:var(--blue-deep);
   padding-top:230px;padding-bottom:130px}
-.hero-media{position:absolute;inset:-6%;
-  background:linear-gradient(176deg,#5C68CC 0%,#2E3CB0 24%,#4E5CC0 46%,#A8B4DC 68%,#DCD6C4 88%,#F1E8D6 100%);
-  animation:breathe 30s ease-in-out infinite alternate}
-@keyframes breathe{from{transform:scale(1.02)}to{transform:scale(1.13)}}
-.hero-media::before{content:'';position:absolute;left:0;right:0;top:48%;bottom:0;
-  background:linear-gradient(180deg,rgba(46,60,176,.44),rgba(46,60,176,0) 62%)}
-.hero-media::after{content:'';position:absolute;left:0;right:0;top:48%;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent)}
+/* Anchored bottom-left so the photographer's credit is never cropped, at any
+   screen width. The slow zoom scales from that same corner, so the credit
+   stays pinned in place while the rest of the frame drifts. */
+.hero-media{position:absolute;inset:0;
+  background:url('assets/hero.jpg') left bottom / cover no-repeat;
+  transform-origin:bottom left;
+  animation:breathe 38s ease-in-out infinite alternate}
+@keyframes breathe{from{transform:scale(1.00)}to{transform:scale(1.06)}}
 .hero-veil{position:absolute;inset:0;
-  background:linear-gradient(180deg,rgba(23,31,99,.5) 0%,rgba(23,31,99,.13) 44%,rgba(23,31,99,.44) 100%)}
+  background:linear-gradient(180deg,rgba(23,31,99,.58) 0%,rgba(23,31,99,.22) 40%,rgba(23,31,99,.30) 100%)}
+/* darken only behind the headline block, leaving the credit corner clear */
+.hero-veil::after{content:'';position:absolute;left:0;right:0;top:0;height:62%;
+  background:linear-gradient(180deg,rgba(23,31,99,.34),transparent)}
 .hero-inner{position:relative;z-index:5;padding:0 48px;max-width:1060px;width:100%}
 .hero-v2 h1{font-size:clamp(52px,9vw,132px);color:var(--ivory);margin:24px 0 0;
   text-shadow:0 4px 44px rgba(23,31,99,.34)}
@@ -548,9 +551,10 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   max-height:190px;overflow-y:auto}
 .detail-extra{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--grey)}
 
-.card-photo .card-qr{z-index:5;background:#fff;padding:5px;border-radius:3px;
-  box-shadow:0 2px 10px rgba(23,31,99,.28);line-height:0}
-.card-photo .card-qr img{display:block;width:64px;height:64px}
+.card-photo .card-qr{z-index:5;background:rgba(255,255,255,.94);padding:4px;border-radius:3px;
+  box-shadow:0 2px 8px rgba(23,31,99,.22);line-height:0;opacity:.55;transition:opacity .3s,transform .3s}
+.card-photo .card-qr img{display:block;width:38px;height:38px}
+.card:hover .card-qr{opacity:1;transform:scale(1.12)}
 </style>
 </head>
 <body>
