@@ -629,6 +629,17 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .wi-table td{padding:8px;border-bottom:1px solid var(--line)}
 .wi-table .r{text-align:right}
 .whatif-note{font-size:11.5px;color:var(--driftwood);margin:12px 0 0}
+
+#profile-gate-overlay{position:fixed;inset:0;z-index:400;background:rgba(23,31,99,.72);
+  display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
+#profile-gate-overlay.active{display:flex}
+#profile-gate-overlay .box{background:#fff;max-width:660px;width:100%;padding:32px;border-radius:4px;
+  box-shadow:0 30px 80px rgba(23,31,99,.3)}
+#profile-gate-overlay h3{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500;
+  color:var(--marsh);margin:0 0 6px}
+#profile-gate-overlay .sub{font-size:15px;color:var(--driftwood);margin:0 0 18px;line-height:1.7}
+.profile-missing{color:#8A4B12;font-size:13.5px;margin-bottom:12px}
+.profile-missing:empty{display:none}
 </style>
 </head>
 <body>
@@ -982,6 +993,7 @@ Call Jimmy · 251-229-3216
 <div id="gate-content"></div>
 </div>
 
+<div id="profile-gate-overlay"><div class="box"><div id="profile-gate-body"></div></div></div>
 <div id="crm-main" class="crm-wrap" style="display:none;">
 <div id="impersonation-banner" style="display:none; background:var(--marsh); color:var(--sand-light); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:13px; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
 <span id="impersonation-text"></span>
@@ -1061,6 +1073,7 @@ Call Jimmy · 251-229-3216
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-myprofile"></div>
 <div class="crm-sec" id="sec-password"><div class="setup-panel" id="change-password-panel">
 <div class="setup-head" onclick="toggleChangePasswordPanel()">
 <h3>🔑 Change my password</h3>
@@ -2128,6 +2141,7 @@ document.getElementById('crm-signed-in-as').textContent = brokerIdentity
 renderImpersonationBanner();
 if(typeof renderCrmNav === 'function'){ renderCrmNav(); showCrmSection(crmSection); }
 if(typeof loadCelebrations === 'function') loadCelebrations();
+if(typeof checkProfileGate === 'function') checkProfileGate();
 loadLeads();
 loadEmailConfigIntoForm();
 loadViewLimitSetting();
@@ -3918,27 +3932,13 @@ function statsFor(l){
 async function openAgentProfile(agentId){
   const a = (cdData.agents||[]).find(x=>x.id===agentId) || {};
   const p = (await storeGet('agentProfile:'+agentId)) || {};
-  const f = (k,label,type,ph) => `<div><div class="field-label">${label}</div><input type="${type||'text'}" id="ap-${k}" value="${escapeHtml(p[k]||'')}" placeholder="${ph||''}"></div>`;
+  const missing = missingProfileFields(p);
   const box = document.getElementById('agent-profile-box');
   box.innerHTML = `<div style="border:1px solid var(--line);border-radius:4px;padding:14px;margin-top:12px;">
-    <div style="font-weight:600;color:var(--marsh);margin-bottom:10px;">${escapeHtml(a.name||'Agent')} \u2014 details</div>
-    <div class="setup-grid">
-      ${f('startDate','Joined the brokerage','date')}
-      ${f('phone','Mobile phone','tel','251-000-0000')}
-      ${f('personalEmail','Personal email','email')}
-      ${f('address','Home address')}
-      ${f('city','City')}
-      ${f('state','State')}
-      ${f('zip','ZIP')}
-      ${f('license','Real estate license #')}
-      ${f('licenseExp','License expires','date')}
-      ${f('dob','Date of birth','date')}
-      ${f('emergencyName','Emergency contact')}
-      ${f('emergencyPhone','Emergency phone','tel')}
-      ${f('w9','W-9 on file (date)','date')}
-    </div>
-    <div style="margin-top:10px;"><div class="field-label">Notes</div>
-      <input id="ap-notes" value="${escapeHtml(p.notes||'')}" placeholder="Anything else worth keeping"></div>
+    <div style="font-weight:600;color:var(--marsh);margin-bottom:4px;">${escapeHtml(a.name||'Agent')} \u2014 details</div>
+    <div style="font-size:12.5px;margin-bottom:10px;color:${missing.length?'#8A4B12':'var(--driftwood)'};">
+      ${missing.length ? '\u26A0 Incomplete \u2014 still needed: ' + missing.join(', ') : '\u2705 Profile complete'}</div>
+    ${profileFormHtml(agentId, p, {brokerOnly:true})}
     <button class="btn-sm primary" style="margin-top:10px;" onclick="saveAgentProfile('${agentId}')">Save details</button>
     <p style="font-size:11.5px;color:var(--driftwood);margin-top:8px;">Only you can see this. Never store full Social Security numbers here \u2014 keep those on the signed W-9 itself.</p>
   </div>`;
@@ -4202,6 +4202,7 @@ const CRM_SECTIONS = [
   { id:'sec-agents',      label:'Agents',      icon:'\u263A', brokerOnly:true },
   { id:'sec-reviews',     label:'Reviews',     icon:'\u2605', brokerOnly:true },
   { id:'sec-setup',       label:'Settings',    icon:'\u2699', brokerOnly:true },
+  { id:'sec-myprofile',   label:'My details',  icon:'\u2637', agentOnly:true },
   { id:'sec-password',    label:'My password', icon:'\u26BF' },
 ];
 let crmSection = 'sec-leads';
@@ -4211,7 +4212,7 @@ function renderCrmNav(){
   if(!nav || !currentAgent) return;
   const isBroker = currentAgent.role === 'broker';
   nav.innerHTML = CRM_SECTIONS
-    .filter(sc => !sc.brokerOnly || isBroker)
+    .filter(sc => (!sc.brokerOnly || isBroker) && (!sc.agentOnly || !isBroker))
     .map(sc => {
       const n = sc.badge ? sc.badge() : 0;
       return `<button class="${crmSection===sc.id?'on':''}" onclick="showCrmSection('${sc.id}')">
@@ -4229,6 +4230,7 @@ function showCrmSection(id){
     if(id === 'sec-expenses')    loadExpenses();
     if(id === 'sec-agents')      loadAgents();
     if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
+    if(id === 'sec-myprofile') renderMyProfileSection();
   }catch(e){}
   const main = document.getElementById('crm-main');
   if(main) window.scrollTo({top: Math.max(0, main.offsetTop - 40), behavior:'smooth'});
@@ -4409,6 +4411,109 @@ function applyPlanType(agentId){
    everything the agent pays the brokerage in a year. */
 function capContribution(calc, plan){
   return calc.brokerage + (plan.feesCountTowardCap ? (plan.transactionFee + plan.eoFee) : 0);
+}
+</script>
+<script>
+/* ---------- agent profile completion ----------
+   Agents fill this in themselves on first login. Everything is required except
+   the W-9 date (the broker records that once the form is signed) and notes. */
+const PROFILE_REQUIRED = [
+  ['phone','Mobile phone'], ['personalEmail','Personal email'],
+  ['address','Home address'], ['city','City'], ['state','State'], ['zip','ZIP'],
+  ['license','Real estate license #'], ['licenseExp','License expiry'],
+  ['dob','Date of birth'],
+  ['emergencyName','Emergency contact'], ['emergencyPhone','Emergency phone'],
+];
+
+function missingProfileFields(p){
+  p = p || {};
+  return PROFILE_REQUIRED.filter(([k]) => !String(p[k] || '').trim()).map(([,label]) => label);
+}
+
+function profileFormHtml(agentId, p, opts){
+  opts = opts || {};
+  const req = new Set(PROFILE_REQUIRED.map(x => x[0]));
+  const f = (k, label, type, ph) => `<div><div class="field-label">${label}${req.has(k)?' <span style="color:var(--coral)">*</span>':''}</div>
+    <input type="${type||'text'}" id="ap-${k}" value="${escapeHtml((p||{})[k]||'')}" placeholder="${ph||''}"></div>`;
+  return `<div class="setup-grid">
+      ${opts.brokerOnly ? f('startDate','Joined the brokerage','date') : ''}
+      ${f('phone','Mobile phone','tel','251-000-0000')}
+      ${f('personalEmail','Personal email','email')}
+      ${f('address','Home address')}
+      ${f('city','City')}
+      ${f('state','State')}
+      ${f('zip','ZIP')}
+      ${f('license','Real estate license #')}
+      ${f('licenseExp','License expires','date')}
+      ${f('dob','Date of birth','date')}
+      ${f('emergencyName','Emergency contact')}
+      ${f('emergencyPhone','Emergency phone','tel')}
+      ${f('w9','W-9 on file (date) \u2014 optional','date')}
+    </div>
+    <div style="margin-top:10px;"><div class="field-label">Notes (optional)</div>
+      <input id="ap-notes" value="${escapeHtml((p||{}).notes||'')}" placeholder="Anything else worth keeping"></div>`;
+}
+
+async function saveMyProfile(agentId, gated){
+  const keys = ['startDate','phone','personalEmail','address','city','state','zip','license','licenseExp','dob','emergencyName','emergencyPhone','w9','notes'];
+  const p = {};
+  keys.forEach(k => { const el = document.getElementById('ap-'+k); if(el) p[k] = el.value.trim(); });
+  const existing = (await storeGet('agentProfile:'+agentId)) || {};
+  const merged = Object.assign({}, existing, p);
+  const missing = missingProfileFields(merged);
+  if(missing.length){
+    const box = document.getElementById('profile-missing');
+    if(box) box.innerHTML = `\u26A0 Still needed: ${missing.join(', ')}`;
+    showToast("Please complete the required fields.");
+    return;
+  }
+  merged.completedAt = merged.completedAt || new Date().toISOString();
+  await storeSet('agentProfile:'+agentId, merged);
+  showToast("Details saved \u2014 thank you.");
+  if(gated){
+    const ov = document.getElementById('profile-gate-overlay');
+    if(ov) ov.classList.remove('active');
+    loadLeads();
+  }else{
+    loadAgents();
+  }
+}
+
+/* Blocks the CRM on first login until the agent has filled this in. */
+async function checkProfileGate(){
+  if(!currentAgent || currentAgent.role === 'broker' || brokerIdentity) return;
+  let p = null;
+  try{ p = await storeGet('agentProfile:'+currentAgent.id); }catch(e){}
+  const missing = missingProfileFields(p);
+  if(!missing.length) return;
+  const ov = document.getElementById('profile-gate-overlay');
+  const body = document.getElementById('profile-gate-body');
+  if(!ov || !body) return;
+  body.innerHTML = `
+    <h3>Welcome${currentAgent.name?', '+escapeHtml(currentAgent.name.split(' ')[0]):''}</h3>
+    <p class="sub">Before you get started, we need a few details on file. This is the information the
+       brokerage is required to keep for you \u2014 it's only visible to the broker.</p>
+    <div id="profile-missing" class="profile-missing"></div>
+    ${profileFormHtml(currentAgent.id, p)}
+    <button class="btn-sm primary" style="width:100%; margin-top:14px;"
+      onclick="saveMyProfile('${currentAgent.id}', true)">Save and continue</button>
+    <p style="font-size:11.5px;color:var(--driftwood);margin-top:10px;">
+      Fields marked <span style="color:var(--coral)">*</span> are required. The W-9 date is optional \u2014
+      your broker will record it once your W-9 is signed.</p>`;
+  ov.classList.add('active');
+}
+</script>
+<script>
+async function renderMyProfileSection(){
+  const el = document.getElementById('sec-myprofile');
+  if(!el || !currentAgent) return;
+  const p = (await storeGet('agentProfile:'+currentAgent.id)) || {};
+  const missing = missingProfileFields(p);
+  el.innerHTML = `<h3 style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;color:var(--marsh);margin:0 0 4px;">My details</h3>
+    <p style="font-size:14px;color:var(--driftwood);margin:0 0 14px;">Keep this current \u2014 the brokerage is required to hold it. Only the broker can see it.</p>
+    <div id="profile-missing" class="profile-missing">${missing.length?'\u26A0 Still needed: '+missing.join(', '):''}</div>
+    ${profileFormHtml(currentAgent.id, p)}
+    <button class="btn-sm primary" style="margin-top:12px;" onclick="saveMyProfile('${currentAgent.id}', false)">Save my details</button>`;
 }
 </script>
 </body>
