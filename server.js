@@ -499,9 +499,93 @@ app.post('/api/agent/login', async (req, res) => {
   }
 });
 
+// The qualifying broker must always be able to get in. Locking or deleting that
+// account would leave the brokerage with no way to administer the CRM, so it's
+// refused at the server rather than only hidden in the interface.
+// Roles: broker (one owner) > admin (full CRM, restricted around the broker) > agent.
+function normalizeRole(r) {
+  const v = String(r || '').toLowerCase();
+  if (v === 'broker') return 'broker';
+  if (v === 'admin') return 'admin';
+  return 'agent';
+}
+
+/* ---------- admin approval + bypass ----------
+   An admin can do everything except touch the broker's own account. To do that
+   they either request approval, or use a bypass code the broker has issued. */
+async function getSetting(key) {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.from('kv_store').select('value').eq('key', key).maybeSingle();
+    return data ? data.value : null;
+  } catch (e) { return null; }
+}
+async function setSetting(key, value) {
+  if (!supabase) return false;
+  try {
+    await supabase.from('kv_store').upsert({ key, value }, { onConflict: 'key' });
+    return true;
+  } catch (e) { return false; }
+}
+
+async function bypassCodeValid(code) {
+  if (!code) return false;
+  const rec = await getSetting('settings:adminBypass');
+  if (!rec || !rec.code) return false;
+  if (String(rec.code) !== String(code).trim()) return false;
+  if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) return false;
+  if (rec.singleUse && rec.usedAt) return false;
+  if (rec.singleUse) {
+    rec.usedAt = new Date().toISOString();
+    await setSetting('settings:adminBypass', rec);
+  }
+  return true;
+}
+
+async function isBrokerAccount(id) {
+  if (!supabase || !id) return false;
+  try {
+    const { data } = await supabase.from('agents').select('role').eq('id', id).maybeSingle();
+    return !!(data && data.role === 'broker');
+  } catch (e) { return false; }
+}
+
+// Broker issues a bypass code for an admin.
+app.post('/api/admin/bypass', async (req, res) => {
+  const { hours, singleUse } = req.body || {};
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const rec = {
+    code,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + (Number(hours) || 24) * 3600 * 1000).toISOString(),
+    singleUse: singleUse !== false,
+    usedAt: null,
+  };
+  const ok = await setSetting('settings:adminBypass', rec);
+  if (!ok) return res.status(500).json({ error: 'Could not save the code.' });
+  res.json({ ok: true, code, expiresAt: rec.expiresAt, singleUse: rec.singleUse });
+});
+
+app.post('/api/admin/bypass/revoke', async (req, res) => {
+  await setSetting('settings:adminBypass', { code: null, revokedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/bypass/check', async (req, res) => {
+  const ok = await bypassCodeValid((req.body || {}).code);
+  res.json({ ok });
+});
+
 app.post('/api/agent/:id/set-active', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { active } = req.body || {};
+  if (!active && await isBrokerAccount(req.params.id)) {
+    if (!(await bypassCodeValid((req.body || {}).bypassCode))) {
+      console.warn(`[security] refused attempt to lock broker account ${req.params.id}`);
+      return res.status(403).json({ error: "The broker account is protected. Request approval or use a bypass code." });
+    }
+    console.warn(`[security] broker account ${req.params.id} locked using a bypass code`);
+  }
   try {
     const { error } = await supabase.from('agents').update({ active: !!active }).eq('id', req.params.id);
     if (error) return res.status(500).json({ error: error.message });
@@ -546,7 +630,7 @@ app.post('/api/agent/create', async (req, res) => {
     if (existing) return res.status(409).json({ error: 'An agent with that email already exists.' });
     const id = 'agent_' + Date.now();
     const password_hash = hashPassword(defaultPassword);
-    const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' });
+    const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: normalizeRole(role) });
     if (error) return res.status(500).json({ error: error.message });
     let emailStatus = 'skipped';
     if (mailer) {
@@ -566,7 +650,7 @@ app.post('/api/agent/create', async (req, res) => {
     } else {
       console.warn(`[agent welcome email] SKIPPED for ${normalizedEmail} — mailer is not configured (RESEND_API_KEY missing).`);
     }
-    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: role === 'broker' ? 'broker' : 'agent' }, emailStatus });
+    res.json({ ok: true, agent: { id, name, email: normalizedEmail, phone: phone || '', role: normalizeRole(role) }, emailStatus });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -624,6 +708,13 @@ app.post('/api/agent/:id/reset-password', async (req, res) => {
 });
 
 app.delete('/api/agent/:id', async (req, res) => {
+  if (await isBrokerAccount(req.params.id)) {
+    if (!(await bypassCodeValid((req.query || {}).bypassCode))) {
+      console.warn(`[security] refused attempt to delete broker account ${req.params.id}`);
+      return res.status(403).json({ error: "The broker account is protected. Request approval or use a bypass code." });
+    }
+    console.warn(`[security] broker account ${req.params.id} deleted using a bypass code`);
+  }
   if (!requireSupabase(res)) return;
   try {
     const { error } = await supabase.from('agents').delete().eq('id', req.params.id);
