@@ -142,6 +142,61 @@ app.get('/api/listing/:key', async (req, res) => {
   }
 });
 
+// Server-side search. Sends the filters to Bridge so results cover all ~3,800
+// active listings instead of only the batch we cache for the homepage.
+app.get('/api/search', async (req, res) => {
+  const token = process.env.BRIDGE_SERVER_TOKEN;
+  const dataset = process.env.BRIDGE_DATASET;
+  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const q = req.query || {};
+  const esc = v => String(v).replace(/'/g, "''");
+  const num = v => { const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10); return isNaN(n) ? null : n; };
+
+  const parts = [];
+  const status = (q.status || '').trim();
+  if (status) {
+    parts.push(`StandardStatus eq '${esc(status)}'`);
+  } else {
+    parts.push(`(StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending')`);
+  }
+  if (q.city && q.city.trim()) {
+    const c = esc(q.city.trim());
+    // match the city OR anywhere in the street address, same as the old client-side behaviour
+    parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}'))`);
+  }
+  const beds = num(q.beds);   if (beds)  parts.push(`BedroomsTotal ge ${beds}`);
+  const min  = num(q.min);    if (min)   parts.push(`ListPrice ge ${min}`);
+  const max  = num(q.max);    if (max)   parts.push(`ListPrice le ${max}`);
+
+  const top  = Math.min(num(q.top) || 24, 200);
+  const skip = num(q.skip) || 0;
+
+  const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+    + `?access_token=${encodeURIComponent(token)}`
+    + `&$filter=${encodeURIComponent(parts.join(' and '))}`
+    + `&$orderby=ModificationTimestamp desc`
+    + `&$top=${top}&$skip=${skip}&$count=true`;
+
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      console.error(`[search] Bridge ${r.status}: ${text.slice(0, 300)}`);
+      return res.status(502).json({ error: `MLS search error ${r.status}`, detail: text.slice(0, 300) });
+    }
+    const json = await r.json();
+    res.json({
+      value: json.value || [],
+      total: json['@odata.count'] != null ? json['@odata.count'] : null,
+      top, skip,
+    });
+  } catch (e) {
+    console.error('[search] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/listings', async (req, res) => {
   const token = process.env.BRIDGE_SERVER_TOKEN;
   const dataset = process.env.BRIDGE_DATASET;
