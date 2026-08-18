@@ -535,6 +535,18 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .card-photo .status-badge,.card-photo .card-qr,.card-photo .fav-btn,.card-photo .price-tag{z-index:3}
 .card-photo::after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
   background:linear-gradient(to top,rgba(23,31,99,.45),transparent 42%)}
+
+#detail-photo{position:relative;overflow:hidden}
+.gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:4;background:rgba(255,255,255,.92);
+  border:none;width:44px;height:44px;font-size:26px;line-height:1;color:var(--blue-ink);cursor:pointer;
+  transition:.25s;border-radius:50%}
+.gal-nav:hover{background:#fff}
+.gal-nav.prev{left:14px}.gal-nav.next{right:14px}
+.gal-count{position:absolute;bottom:14px;right:14px;z-index:4;background:rgba(23,31,99,.82);color:#fff;
+  font-size:12.5px;letter-spacing:.06em;padding:6px 12px;border-radius:2px}
+.detail-remarks{margin:18px 0 0;font-size:16px;line-height:1.8;color:#41496E;
+  max-height:190px;overflow-y:auto}
+.detail-extra{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--grey)}
 </style>
 </head>
 <body>
@@ -1245,6 +1257,11 @@ function normalizeListing(r){
     PropertyType: r.PropertyType || '',
     photo:       photos[0] || '',
     photos:      photos,
+    PublicRemarks: r.PublicRemarks || r.PublicRemarksExtended || '',
+    YearBuilt: r.YearBuilt || '',
+    LotSizeAcres: r.LotSizeAcres || '',
+    SubdivisionName: r.SubdivisionName || '',
+    PropertySubType: r.PropertySubType || '',
     ListOfficeName: r.ListOfficeName || '',
     ListAgentFullName: r.ListAgentFullName || '',
     ModificationTimestamp: r.ModificationTimestamp || '',
@@ -1330,7 +1347,9 @@ const filtered = ALL_LISTINGS.filter(l =>
 );
 document.getElementById('listing-count').textContent = filtered.length + (filtered.length===1?" home":" homes");
 const grid = document.getElementById('listing-grid');
-grid.innerHTML = filtered.map((l,i)=>{
+if(typeof visibleCount === 'undefined') window.visibleCount = 24;
+const pageItems = filtered.slice(0, window.visibleCount);
+grid.innerHTML = pageItems.map((l,i)=>{
 const qrTarget = location.origin + location.pathname + '?listing=' + encodeURIComponent(l.ListingKey);
 const qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=90x90&margin=0&color=2E3CB0&data=' + encodeURIComponent(qrTarget);
 return `
@@ -1350,7 +1369,7 @@ ${l.photo ? `<img class="card-img" src="${l.photo}" alt="${escapeHtml(l.Unparsed
 <div class="card-stats">
 <span>${l.BedroomsTotal} bd</span><span>${l.BathroomsTotalInteger} ba</span><span>${l.LivingArea.toLocaleString()} sqft</span>
 </div>
-<div class="card-mls">MLS# ${l.ListingKey}</div>
+<div class="card-mls">MLS# ${l.ListingId || l.ListingKey}</div>
 <button class="card-cta" onclick="openLeadModal('listing','${l.ListingKey}','${l.UnparsedAddress.replace(/'/g,"")}, ${l.City}')">Request info</button>
 </div>
 </div>
@@ -1360,6 +1379,21 @@ ${l.photo ? `<img class="card-img" src="${l.photo}" alt="${escapeHtml(l.Unparsed
 <p style="font-size:13px;">This site is currently showing placeholder listings from just a handful of cities while we finish connecting the real MLS feed — once that's live, this search will cover every active property in the area.</p>
 </div>`;
 maybeAutoOpenListingFromURL(filtered);
+// Load-more control — 600 cards at once is unusable
+(function(){
+  let more = document.getElementById('load-more-wrap');
+  if(!more){
+    more = document.createElement('div');
+    more.id = 'load-more-wrap';
+    more.style.cssText = 'text-align:center;margin:34px auto 0;max-width:1180px;';
+    grid.parentNode.insertBefore(more, grid.nextSibling);
+  }
+  const left = filtered.length - pageItems.length;
+  more.innerHTML = left > 0
+    ? `<button class="btn" onclick="window.visibleCount += 24; renderListings();">Show more homes <span style="opacity:.7">(${left} more)</span></button>`
+    : (filtered.length > 24 ? '<p style="color:var(--grey);font-size:14.5px;">That\'s all ' + filtered.length + ' homes.</p>' : '');
+})();
+
 }
 
 function maybeAutoOpenListingFromURL(listings){
@@ -1412,13 +1446,30 @@ return;
 
 markListingViewed(key);
 currentDetailListing = listing;
-document.getElementById('detail-photo').style.background = PHOTO_TONES[Math.abs(key.length)%PHOTO_TONES.length];
-document.getElementById('detail-photo').innerHTML = HOUSE_ICON;
+renderDetailGallery(listing, key);
 document.getElementById('detail-price').textContent = '$' + listing.ListPrice.toLocaleString();
 document.getElementById('detail-address').textContent = listing.UnparsedAddress;
 document.getElementById('detail-loc').textContent = listing.City + ', AL · ' + listing.StandardStatus;
 document.getElementById('detail-stats').innerHTML = `<span>${listing.BedroomsTotal} bd</span><span>${listing.BathroomsTotalInteger} ba</span><span>${listing.LivingArea.toLocaleString()} sqft</span>`;
-document.getElementById('detail-mls').textContent = 'MLS# ' + listing.ListingKey;
+document.getElementById('detail-mls').textContent = 'MLS# ' + (listing.ListingId || listing.ListingKey);
+(function(){
+  const stats = document.getElementById('detail-stats');
+  let extra = document.getElementById('detail-extra');
+  if(!extra){ extra = document.createElement('div'); extra.id='detail-extra'; extra.className='detail-extra';
+    stats.parentNode.insertBefore(extra, stats.nextSibling); }
+  const bits = [];
+  if(listing.PropertySubType) bits.push(escapeHtml(listing.PropertySubType));
+  if(listing.YearBuilt) bits.push('Built ' + listing.YearBuilt);
+  if(listing.LotSizeAcres) bits.push(listing.LotSizeAcres + ' acres');
+  if(listing.SubdivisionName) bits.push(escapeHtml(listing.SubdivisionName));
+  extra.innerHTML = bits.map(b => '<span>' + b + '</span>').join('');
+
+  let rem = document.getElementById('detail-remarks');
+  if(!rem){ rem = document.createElement('p'); rem.id='detail-remarks'; rem.className='detail-remarks';
+    extra.parentNode.insertBefore(rem, extra.nextSibling); }
+  rem.textContent = listing.PublicRemarks || '';
+  rem.style.display = listing.PublicRemarks ? 'block' : 'none';
+})();
 document.getElementById('detail-contact-btn').onclick = function(){
 closeDetailModal();
 openLeadModal('listing', listing.ListingKey, listing.UnparsedAddress.replace(/'/g,"") + ", " + listing.City);
@@ -3191,6 +3242,7 @@ addEventListener('scroll', () => {
 /* Bridges the new min/max boxes to the existing renderListings() filter */
 function priceNum(v){ const n = parseInt(String(v||'').replace(/[^0-9]/g,''),10); return isNaN(n)?'':n; }
 function runSearch(){
+  window.visibleCount = 24;
   const lo = priceNum(document.getElementById('pmin').value);
   const hi = priceNum(document.getElementById('pmax').value);
   document.getElementById('f-price').value = hi === '' ? '' : hi;
@@ -3371,6 +3423,42 @@ function updateMlsNotice(){
     el.innerHTML = '<strong>Note:</strong> showing sample data. <span style="opacity:.8">Feed check \u2014 ' + (window.LISTINGS_DEBUG || '?') + '</span>';
   }
 }
+</script>
+<script>
+/* Photo gallery for the listing detail modal. */
+let galleryPhotos = [], galleryIndex = 0;
+function renderDetailGallery(listing, key){
+  const box = document.getElementById('detail-photo');
+  galleryPhotos = (listing.photos && listing.photos.length) ? listing.photos : [];
+  galleryIndex = 0;
+  if(!galleryPhotos.length){
+    box.style.background = PHOTO_TONES[Math.abs(key.length)%PHOTO_TONES.length];
+    box.innerHTML = HOUSE_ICON;
+    return;
+  }
+  box.style.background = '#0F1633';
+  box.innerHTML = `
+    <img id="gallery-img" src="${galleryPhotos[0]}" alt="${escapeHtml(listing.UnparsedAddress||'')}"
+         style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+    ${galleryPhotos.length > 1 ? `
+      <button class="gal-nav prev" onclick="event.stopPropagation();galleryStep(-1)" aria-label="Previous photo">&#8249;</button>
+      <button class="gal-nav next" onclick="event.stopPropagation();galleryStep(1)" aria-label="Next photo">&#8250;</button>
+      <div class="gal-count" id="gallery-count">1 / ${galleryPhotos.length}</div>` : ''}
+  `;
+}
+function galleryStep(d){
+  if(!galleryPhotos.length) return;
+  galleryIndex = (galleryIndex + d + galleryPhotos.length) % galleryPhotos.length;
+  const img = document.getElementById('gallery-img');
+  const cnt = document.getElementById('gallery-count');
+  if(img) img.src = galleryPhotos[galleryIndex];
+  if(cnt) cnt.textContent = (galleryIndex+1) + ' / ' + galleryPhotos.length;
+}
+document.addEventListener('keydown', e => {
+  if(!document.querySelector('#detail-modal-overlay.active')) return;
+  if(e.key === 'ArrowLeft') galleryStep(-1);
+  if(e.key === 'ArrowRight') galleryStep(1);
+});
 </script>
 </body>
 </html>
