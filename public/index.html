@@ -617,7 +617,7 @@ Call Jimmy · 251-229-3216
 </a>
 </div>
 <div class="placeholder-note">
-<span id="mls-notice"><strong>Note:</strong> the listings below are sample data, not live MLS.</span></strong> the listings below are sample data, not live MLS. Once your BCMLS / Gulf Coast Mobile Assn IDX or RESO Web API credentials are wired in, this section pulls real, current listings automatically — see the <strong>Data Connection</strong> panel in the Agent CRM tab for how.
+<span id="mls-notice"><strong>Note:</strong> the listings below are sample data, not live MLS.</span>
 </div>
 <div class="client-bar" id="client-bar">
   <div class="who" id="cb-who"></div>
@@ -1201,17 +1201,20 @@ let LISTINGS_ARE_LIVE = false;
 /* Pulls real listings from the Bridge/Gulf Coast MLS feed via our own server.
    Falls back to the sample set if the feed is unavailable, so the site never
    renders an empty page. */
+window.LISTINGS_DEBUG = 'not run yet';
 async function fetchListings(){
   try{
     const res = await fetch('/api/listings');
     const data = await res.json();
-    if(data && data.mock){ LISTINGS_ARE_LIVE = false; return MOCK_LISTINGS; }
-    const rows = (data && data.value) || [];
+    window.LISTINGS_DEBUG = 'status ' + res.status + ' | keys: ' + Object.keys(data || {}).join(',');
+    if(data && data.mock){ LISTINGS_ARE_LIVE = false; window.LISTINGS_DEBUG += ' | server says mock (token/dataset missing)'; return MOCK_LISTINGS; }
+    const rows = (data && (data.value || data.bundle || data.Property)) || [];
+    window.LISTINGS_DEBUG += ' | rows: ' + rows.length;
     if(!rows.length){ LISTINGS_ARE_LIVE = false; return MOCK_LISTINGS; }
     LISTINGS_ARE_LIVE = true;
     return rows.map(normalizeListing);
   }catch(e){
-    console.error('[listings] falling back to sample data:', e);
+    window.LISTINGS_DEBUG = 'threw: ' + e.message;
     LISTINGS_ARE_LIVE = false;
     return MOCK_LISTINGS;
   }
@@ -3357,7 +3360,7 @@ function updateMlsNotice(){
       + 'Listings may be from other brokerages. Equal Housing Opportunity.';
     if(box) box.style.opacity = '.9';
   }else{
-    el.innerHTML = '<strong>Note:</strong> the listings below are sample data, not live MLS.';
+    el.innerHTML = '<strong>Note:</strong> showing sample data. <span style="opacity:.8">Feed check \u2014 ' + (window.LISTINGS_DEBUG || '?') + '</span>';
   }
 }
 </script>
