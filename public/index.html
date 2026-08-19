@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v100">
+<meta name="build" content="index-v101">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -916,6 +916,10 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .mypage-qr img{width:150px;height:150px;flex-shrink:0}
 .mypage-qr p{font-size:14.5px;color:var(--driftwood);margin:6px 0 12px;line-height:1.65;max-width:52ch}
 @media(max-width:700px){.mypage-qr{flex-direction:column}}
+
+.alerts-box{background:var(--sand);border:1px solid var(--line);border-radius:4px;padding:18px;margin-top:18px}
+.alert-row{display:flex;align-items:center;gap:10px;font-size:15.5px;color:var(--ink);cursor:pointer}
+.alert-row input{width:auto;margin:0}
 </style>
 </head>
 <body>
@@ -2263,6 +2267,7 @@ async function sendLeadNotification(lead){
       body: JSON.stringify({
         name: lead.name, email: lead.email, phone: lead.phone,
         message: lead.message, source: lead.source, listingLabel: lead.listingLabel,
+        assignedAgentId: lead.assignedAgentId || '',
       }),
     });
     // Silently ignore failures/503 here — the lead is already safely saved either way,
@@ -2311,7 +2316,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v100';
+window.BUILD = 'index-v101';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4915,7 +4920,7 @@ function showCrmSection(id){
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
     if(id === 'sec-myprofile') renderMyProfileSection();
-    if(id === 'sec-mypage') renderMyPageSection();
+    if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
     if(id === 'sec-today') renderDashboard();
   }catch(e){}
   const main = document.getElementById('crm-main');
@@ -5989,6 +5994,7 @@ function initials(name){
 function renderAgentProfile(a){
   fixHeaderForProfile();
   setAgentReferral(a);
+  setTimeout(() => { try{ showReferralBar(); }catch(e){} }, 50);
   const host = document.getElementById('agent-profile-view');
   const site = document.getElementById('view-site');
   const crm  = document.getElementById('view-crm');
@@ -6010,7 +6016,7 @@ function renderAgentProfile(a){
         <div class="ap-qr">
           <img src="https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=0&qzone=1&color=1B3670&bgcolor=FFFFFF&data=${encodeURIComponent(location.origin + '/' + a.slug)}"
                alt="Scan for ${escapeHtml(a.name)}" loading="lazy">
-          <span>Scan to reach ${escapeHtml((a.name||'').split(' ')[0])}</span>
+          <span>Scan for ${escapeHtml((a.name||'').split(' ')[0])}<br>listings &amp; contact</span>
         </div>
         <div class="ap-intro">
           <div class="eyebrow">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
@@ -6156,6 +6162,19 @@ async function renderMyPageSection(){
       <p style="font-size:12.5px;color:var(--driftwood);margin:6px 0 0;">
         Write it the way you'd say it. Where you're from, what you know, why someone should call you.</p>
     </div>
+    <div class="alerts-box">
+      <div class="field-label">How you hear about your leads</div>
+      <label class="alert-row"><input type="checkbox" id="mp-emailalerts" checked>
+        Email me the moment a lead comes in</label>
+      <div style="margin-top:10px;"><div class="field-label">Text alerts (optional)</div>
+        <input id="mp-sms" placeholder="2512292643@vtext.com">
+        <p style="font-size:12.5px;color:var(--driftwood);margin:6px 0 0;">
+          Your carrier can forward email to your phone as a text, free. Use your number followed by:
+          <strong>@vtext.com</strong> (Verizon), <strong>@txt.att.net</strong> (AT&amp;T),
+          <strong>@tmomail.net</strong> (T-Mobile). Leave blank for email only.</p>
+      </div>
+      <button class="btn-sm" style="margin-top:12px;" onclick="saveMyAlerts()">Save alert settings</button>
+    </div>
     <button class="btn-sm primary" style="margin-top:14px;" onclick="saveMyPage()">Save my page</button>
     <p style="font-size:12.5px;color:var(--driftwood);margin-top:10px;">
       No photo yet? Your initials show in brand colours until you add one.
@@ -6270,6 +6289,31 @@ function showReferralBar(){
       anything you send goes to them, not a call centre.</span>
     <a href="/${escapeHtml(r.slug)}">Their page</a>
     <button onclick="if(confirm('Stop working with ' + ${JSON.stringify(r.name)} + '? Future enquiries would go to the brokerage instead.')){ clearAgentReferral(); showReferralBar(); }" title="Browse without an agent">&times;</button>`;
+}
+</script>
+<script>
+async function loadMyAlerts(){
+  try{
+    const res = await fetch('/api/agent/' + currentAgent.id + '/alerts');
+    if(!res.ok) return;
+    const d = await res.json();
+    const cb = document.getElementById('mp-emailalerts');
+    const sms = document.getElementById('mp-sms');
+    if(cb) cb.checked = d.emailAlerts !== false;
+    if(sms) sms.value = d.smsAddress || '';
+  }catch(e){}
+}
+async function saveMyAlerts(){
+  const cb = document.getElementById('mp-emailalerts');
+  const sms = document.getElementById('mp-sms');
+  try{
+    const res = await fetch('/api/agent/' + currentAgent.id + '/alerts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ emailAlerts: !!(cb && cb.checked), smsAddress: (sms && sms.value) || '' })
+    });
+    if(res.ok) showToast("Alert settings saved.");
+    else showToast("Couldn't save alerts.");
+  }catch(e){ showToast("Couldn't reach the server."); }
 }
 </script>
 </body>
