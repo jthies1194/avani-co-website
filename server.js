@@ -1357,6 +1357,8 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
+    serverVersion: 'v43',
+    routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
     mlsDataset: process.env.BRIDGE_DATASET || 'gcmls2',
