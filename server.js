@@ -330,6 +330,17 @@ app.get('/api/search', async (req, res) => {
     // match the city OR anywhere in the street address, same as the old client-side behaviour
     parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}'))`);
   }
+  // property type — the feed uses Residential, Land, Commercial Sale, Commercial Lease
+  const ptype = String(q.ptype || '').trim();
+  if (ptype === 'lease') {
+    parts.push(`(PropertyType eq 'Commercial Lease' or PropertyType eq 'Residential Lease')`);
+  } else if (ptype === 'commercial') {
+    parts.push(`(PropertyType eq 'Commercial Sale' or PropertyType eq 'Commercial Lease')`);
+  } else if (ptype === 'land') {
+    parts.push(`PropertyType eq 'Land'`);
+  } else if (ptype === 'residential') {
+    parts.push(`PropertyType eq 'Residential'`);
+  }
   const beds = num(q.beds);   if (beds)  parts.push(`BedroomsTotal ge ${beds}`);
   const min  = num(q.min);    if (min)   parts.push(`ListPrice ge ${min}`);
   const max  = num(q.max);    if (max)   parts.push(`ListPrice le ${max}`);
