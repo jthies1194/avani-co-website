@@ -1357,7 +1357,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v43',
+    serverVersion: 'v44',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
@@ -1415,8 +1415,77 @@ app.get('/api/mock-listings', (req, res) => {
   res.json({ value: MOCK_LISTINGS });
 });
 
+// ---------- agent profile pages ----------
+// Clean URLs like /christinathies. These have to work when someone lands on
+// them directly from a business card or a text — not only via a click.
+function slugify(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+app.get('/api/agent/by-slug/:slug', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const { data } = await supabase.from('agents')
+      .select('id,name,email,phone,role,active').order('name');
+    const match = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(req.params.slug));
+    if (!match) return res.status(404).json({ error: 'No agent by that name.' });
+    const profile = await getSetting('agentPublic:' + match.id) || {};
+    res.json({ ok: true, agent: {
+      id: match.id, name: match.name, email: match.email, phone: match.phone,
+      role: match.role, slug: slugify(match.name),
+      bio: profile.bio || '', photo: profile.photo || '', title: profile.title || '',
+      specialties: profile.specialties || '', languages: profile.languages || '',
+      facebook: profile.facebook || '', instagram: profile.instagram || '',
+    }});
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/agent/directory', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  try {
+    const { data } = await supabase.from('agents')
+      .select('id,name,email,phone,role,active').order('name');
+    const rows = (data || []).filter(a => a.active !== false);
+    const out = [];
+    for (const a of rows) {
+      const p = await getSetting('agentPublic:' + a.id) || {};
+      out.push({ id: a.id, name: a.name, email: a.email, phone: a.phone, role: a.role,
+                 slug: slugify(a.name), title: p.title || '', photo: p.photo || '',
+                 bio: (p.bio || '').slice(0, 180) });
+    }
+    res.json({ ok: true, agents: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// An agent edits their own public profile; staff can edit anyone's.
+app.post('/api/agent/:id/public-profile', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.agentId !== req.params.id && !isStaff(sess)) {
+    return res.status(403).json({ error: 'You can only edit your own profile.' });
+  }
+  const b = req.body || {};
+  const clean = v => String(v || '').slice(0, 4000);
+  const profile = {
+    title: clean(b.title), bio: clean(b.bio), photo: clean(b.photo),
+    specialties: clean(b.specialties), languages: clean(b.languages),
+    facebook: clean(b.facebook), instagram: clean(b.instagram),
+    updatedAt: new Date().toISOString(),
+  };
+  const ok = await setSetting('agentPublic:' + req.params.id, profile);
+  if (!ok) return res.status(500).json({ error: 'Could not save.' });
+  res.json({ ok: true, profile });
+});
+
 // ---------- static site ----------
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Anything that isn't a file or an API call is treated as an agent slug and
+// handed to the app, which resolves it client-side.
+app.get('/:slug', (req, res, next) => {
+  const slug = req.params.slug || '';
+  if (slug.startsWith('api') || slug.includes('.')) return next();
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {
