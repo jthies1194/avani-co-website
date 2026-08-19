@@ -3338,7 +3338,16 @@ desk:a.desk+x.r.totals.deskFees, volume:a.volume+x.r.totals.volume,
 deals:a.deals+x.r.rows.length
 }), {gci:0,brokerage:0,agentNet:0,fees:0,desk:0,volume:0,deals:0});
 
+const yearIsClosed = isYearClosed(cdYear);
+const closeRec = closedYearRecord(cdYear);
 return yearSelector()
++ (isOwner() ? `<div class="year-close ${yearIsClosed?'locked':''}">
+${yearIsClosed
+  ? `<div><strong>&#128274; ${cdYear} is closed.</strong> Locked on ${new Date(closeRec.closedAt).toLocaleDateString()} by ${escapeHtml(closeRec.closedBy||'')}. These figures are final.</div>
+     <button class="btn-sm" onclick="reopenYear(${cdYear})">Reopen ${cdYear}</button>`
+  : `<div><strong>${cdYear} is open.</strong> Close it once every closing is entered and reconciled &mdash; that locks the numbers you file from.</div>
+     <button class="btn-sm primary" onclick="closeOutYear(${cdYear})">Close out ${cdYear}</button>`}
+</div>` : (yearIsClosed ? `<div class="year-close locked"><div><strong>&#128274; ${cdYear} is closed.</strong> These figures are final.</div></div>` : ''))
 + `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
 ${statBox('Sales volume', fmtMoney(g.volume))}
 ${statBox('Gross commission', fmtMoney(g.gci))}
@@ -5044,6 +5053,7 @@ function greeting(){
 async function renderDashboard(){
   const el = document.getElementById('sec-today');
   if(!el || !currentAgent) return;
+  await ensureCommissionData();
   const isBroker = isAdminOrOwner();
   const first = (currentAgent.name || '').split(' ')[0] || '';
 
@@ -5649,6 +5659,31 @@ function printYearEndPackage(){
      <p style="margin-top:26px;font-size:12px;color:#5A6288;">
        Prepared from the Avani &amp; Co. CRM. This is a summary for accounting use and is not a tax filing.
        Referral fees of $600 or more generally require a Form 1099-NEC.</p>`);
+}
+</script>
+<script>
+/* The dashboard reads commission data that only loaded when you opened the
+   Commissions tab, so Today could show zeroes. Make sure it's there first. */
+async function ensureCommissionData(){
+  try{
+    if(!cdData.deals || !cdData.deals.length){
+      cdData.deals = await storeGet('settings:closedDeals') || [];
+    }
+    if(!cdData.plans || !Object.keys(cdData.plans).length){
+      cdData.plans = await storeGet('settings:agentPlans') || {};
+      cdData.planHistory = await storeGet('settings:agentPlanHistory') || {};
+    }
+    if(!cdData.agents || !cdData.agents.length){
+      if(isAdminOrOwner()){
+        const res = await fetch('/api/agent/list');
+        const d = await res.json();
+        cdData.agents = d.agents || [];
+      }else if(currentAgent){
+        cdData.agents = [currentAgent];
+      }
+    }
+    if(!CLOSED_YEARS.length) await loadClosedYears();
+  }catch(e){}
 }
 </script>
 </body>
