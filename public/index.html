@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v95">
+<meta name="build" content="index-v96">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -832,8 +832,13 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 
 /* ---------- agent profile page ---------- */
 #agent-profile-view{padding-top:0}
-.ap-hero{background:linear-gradient(135deg,var(--blue),var(--blue-deep));color:#fff;
-  padding:230px 48px 70px}
+.ap-hero{position:relative;background:linear-gradient(135deg,var(--blue),var(--blue-deep));
+  color:#fff;padding:210px 48px 70px}
+.ap-home{position:absolute;top:190px;left:48px;font-size:13.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--gold-pale);border-bottom:1px solid transparent;
+  padding-bottom:2px;transition:.25s}
+.ap-home:hover{color:#fff;border-bottom-color:var(--gold)}
+@media(max-width:900px){.ap-home{top:158px;left:24px;font-size:12px}}
 .ap-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;
   gap:46px;align-items:center}
 .ap-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:3px;
@@ -2275,7 +2280,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v95';
+window.BUILD = 'index-v96';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5945,6 +5950,7 @@ function initials(name){
 }
 
 function renderAgentProfile(a){
+  fixHeaderForProfile();
   const host = document.getElementById('agent-profile-view');
   const site = document.getElementById('view-site');
   const crm  = document.getElementById('view-crm');
@@ -5956,6 +5962,7 @@ function renderAgentProfile(a){
   const tel = (a.phone || '').replace(/[^0-9]/g, '');
   host.innerHTML = `
     <section class="ap-hero">
+      <a class="ap-home" href="/">&larr; Avani &amp; Co. &mdash; all listings</a>
       <div class="ap-inner">
         <div class="ap-photo">
           ${a.photo
@@ -6117,6 +6124,26 @@ async function saveMyPage(){
     if(!res.ok){ showToast(d.error || "Couldn't save."); return; }
     showToast("Your page is updated.");
   }catch(e){ showToast("Couldn't reach the server."); }
+}
+</script>
+<script>
+/* On a profile page the header's in-page anchors point at sections that aren't
+   rendered, which leaves visitors stranded. Send them home instead. */
+function fixHeaderForProfile(){
+  document.querySelectorAll('#hdr nav a[href^="#"]').forEach(a => {
+    const target = a.getAttribute('href');
+    a.setAttribute('href', '/' + target);
+  });
+  const mark = document.querySelector('#hdr .mark');
+  if(mark){
+    mark.onclick = () => { location.href = '/'; };
+    mark.style.cursor = 'pointer';
+    mark.title = 'Back to Avani & Co.';
+  }
+  document.querySelectorAll('.utility a[href^="#"]').forEach(a => {
+    const t = a.getAttribute('href');
+    if(t && t !== '#') a.setAttribute('href', '/' + t);
+  });
 }
 </script>
 </body>
