@@ -558,7 +558,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .saved-add:hover{background:var(--gold-deep);color:#fff;border-color:var(--gold-deep)}
 
 /* anchor targets must clear the fixed strip + header, or a jump looks like nothing happened */
-#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
+#listings,#communities,#market,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
 @media(max-width:1080px){#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:160px}}
 
 .card-photo{position:relative;overflow:hidden}
@@ -805,6 +805,29 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   .ptype-tabs::-webkit-scrollbar{display:none}
   .ptype-tabs button{flex:0 0 auto;padding:9px 16px;font-size:14px}
 }
+
+#market{padding-top:40px}
+.market-loading{text-align:center;color:var(--grey);font-size:16px;padding:30px 0}
+.mkt-top{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:30px}
+.mkt-stat{background:#fff;border:1px solid var(--line);border-top:3px solid var(--gold);
+  border-radius:3px;padding:22px 24px}
+.mkt-stat .l{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-deep)}
+.mkt-stat .n{font-family:'Cormorant Garamond',serif;font-size:42px;line-height:1.05;
+  color:var(--blue-ink);margin-top:8px}
+.mkt-stat .s{font-size:13px;color:var(--grey);margin-top:6px;line-height:1.5}
+.mkt-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:#fff}
+.mkt-table{width:100%;border-collapse:collapse;font-size:15.5px}
+.mkt-table th{text-align:left;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--gold-deep);padding:14px 18px;border-bottom:1px solid var(--line);font-weight:500}
+.mkt-table td{padding:15px 18px;border-bottom:1px solid var(--line)}
+.mkt-table tr:last-child td{border-bottom:none}
+.mkt-table tbody tr{cursor:pointer;transition:background .2s}
+.mkt-table tbody tr:hover{background:var(--sand)}
+.mkt-table tbody tr:hover .mkt-city{color:var(--gold-deep)}
+.mkt-table .r{text-align:right;font-variant-numeric:tabular-nums}
+.mkt-city{font-family:'Cormorant Garamond',serif;font-size:21px;color:var(--blue)}
+.mkt-note{font-size:13px;color:var(--grey);margin:16px 0 0;line-height:1.7;max-width:76ch}
+@media(max-width:820px){.mkt-stat .n{font-size:34px}}
 </style>
 </head>
 <body>
@@ -831,6 +854,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <nav>
     <a href="#listings">Properties</a>
     <a href="#communities">Communities</a>
+    <a href="#market">Market</a>
     <a href="#about">About</a>
     <a href="#value">Home Value</a>
     <a href="tel:2512293216" class="tel">251.229.3216</a>
@@ -987,6 +1011,17 @@ Call Jimmy · 251-229-3216
     <div class="no-hits" id="noHits" style="display:none">No community by that name — try another spelling, or call 251-229-3216.</div>
   </div>
 </section>
+
+<section class="sect-v2 wrap" id="market">
+  <div class="sec-head center rv">
+    <div class="eyebrow">The Numbers</div>
+    <span class="flourish center" role="presentation"></span>
+    <h2>Baldwin County Market</h2>
+    <p>Live from the MLS, updated continuously. What's actually on the market right now, and what it costs.</p>
+  </div>
+  <div id="market-stats" class="rv"><p class="market-loading">Loading current market data&hellip;</p></div>
+</section>
+
 <section class="about" id="about">
   <div class="about-grid">
     <div class="about-photo rv">
@@ -1633,6 +1668,7 @@ async function renderListings(){
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
 if(typeof populateCityOptions==='function') populateCityOptions();
+if(typeof loadMarketStats==='function') loadMarketStats();
 (function(){
   const cta = document.getElementById('hero-cta');
   if(cta && typeof LISTINGS_ARE_LIVE !== 'undefined' && LISTINGS_ARE_LIVE && ALL_LISTINGS.length){
@@ -2769,6 +2805,7 @@ const favKeys = c.favorites || [];
 if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
 if(typeof populateCityOptions==='function') populateCityOptions();
+if(typeof loadMarketStats==='function') loadMarketStats();
 (function(){
   const cta = document.getElementById('hero-cta');
   if(cta && typeof LISTINGS_ARE_LIVE !== 'undefined' && LISTINGS_ARE_LIVE && ALL_LISTINGS.length){
@@ -5744,6 +5781,57 @@ function setPropertyType(t){
     const off = (bar?bar.offsetHeight:0) + (hdr?hdr.offsetHeight:0) + 24;
     window.scrollTo({top: Math.max(0, grid.getBoundingClientRect().top + pageYOffset - off), behavior:'smooth'});
   }
+}
+</script>
+<script>
+/* Market statistics, computed from our own MLS feed rather than republished
+   from an association report. */
+async function loadMarketStats(){
+  const el = document.getElementById('market-stats');
+  if(!el) return;
+  try{
+    const res = await fetch('/api/market-stats');
+    const d = await res.json();
+    if(!res.ok || !d.ok) throw new Error(d.error || 'unavailable');
+    const o = d.overall;
+    const cities = Object.entries(d.byCity).sort((a,b) => b[1].count - a[1].count);
+
+    el.innerHTML = `
+      <div class="mkt-top">
+        ${mktStat('Homes for sale', o.count.toLocaleString(), 'Active listings in Baldwin County')}
+        ${mktStat('Median price', fmtMoney(o.median), 'Half list above, half below')}
+        ${mktStat('Price per sq ft', o.pricePerSqft ? '$' + o.pricePerSqft : '\u2014', 'Median, homes with square footage')}
+        ${mktStat('New this week', o.new7.toLocaleString(), o.new30.toLocaleString() + ' in the last 30 days')}
+      </div>
+
+      ${cities.length ? `<div class="mkt-table-wrap">
+        <table class="mkt-table">
+          <thead><tr><th>Community</th><th class="r">For sale</th><th class="r">Median price</th>
+            <th class="r">$/sq ft</th><th class="r">New in 30 days</th></tr></thead>
+          <tbody>${cities.map(([city,c]) => `<tr onclick="searchTown('${city.replace(/'/g,"\\'")}')">
+            <td><span class="mkt-city">${escapeHtml(city)}</span></td>
+            <td class="r">${c.count.toLocaleString()}</td>
+            <td class="r">${fmtMoney(c.median)}</td>
+            <td class="r">${c.pricePerSqft ? '$' + c.pricePerSqft : '\u2014'}</td>
+            <td class="r">${c.new30.toLocaleString()}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>` : ''}
+
+      <p class="mkt-note">
+        ${escapeHtml(d.basis)} Data courtesy of ${escapeHtml(d.source)}.
+        Updated ${new Date(d.generatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}.
+        Information is deemed reliable but not guaranteed.
+      </p>
+      <p class="mkt-note">Looking for sold comparables or a valuation on a specific property?
+        <a href="#contact" style="color:var(--gold-deep);text-decoration:underline;">Ask us</a> &mdash;
+        that takes a broker, not a chart.</p>`;
+  }catch(e){
+    el.innerHTML = '<p class="market-loading">Market data is unavailable just now. Call 251-229-3216 and we\'ll walk you through it.</p>';
+  }
+}
+function mktStat(label, value, sub){
+  return `<div class="mkt-stat"><div class="l">${label}</div><div class="n">${value}</div><div class="s">${sub}</div></div>`;
 }
 </script>
 </body>
