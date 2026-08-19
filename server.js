@@ -1506,7 +1506,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v48',
+    serverVersion: 'v49',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
@@ -1567,6 +1567,46 @@ app.get('/api/mock-listings', (req, res) => {
 // ---------- agent profile pages ----------
 // Clean URLs like /christinathies. These have to work when someone lands on
 // them directly from a business card or a text — not only via a click.
+/* ---------- license compliance ----------
+   An agent's public page must never imply they can practice where they aren't
+   licensed. This is the broker's exposure, so it is enforced server-side and
+   the wording is generated from the license record rather than typed freely. */
+const STATE_NAMES = { AL: 'Alabama', FL: 'Florida' };
+
+// Words that imply practicing in a given state.
+const STATE_TERMS = {
+  FL: ['florida', ' fl ', 'perdido key', 'pensacola', 'escambia', 'santa rosa',
+       'gulf breeze', 'navarre', 'innerarity', 'panhandle'],
+  AL: ['alabama', ' al ', 'baldwin', 'mobile county', 'gulf shores', 'orange beach',
+       'fairhope', 'daphne', 'foley', 'fort morgan', 'ono island'],
+};
+
+function licensedStatesOf(profile) {
+  const list = Array.isArray(profile && profile.licensedStates) ? profile.licensedStates : [];
+  return list.filter(x => STATE_NAMES[x]);
+}
+
+/* Returns the states a piece of text implies, that the agent isn't licensed in. */
+function unlicensedClaims(text, licensed) {
+  const t = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ') + ' ';
+  const bad = [];
+  Object.entries(STATE_TERMS).forEach(([code, terms]) => {
+    if (licensed.includes(code)) return;
+    const hit = terms.find(term => t.includes(term.trim().length <= 3 ? term : term.trim()));
+    if (hit) bad.push({ state: code, name: STATE_NAMES[code], term: hit.trim() });
+  });
+  return bad;
+}
+
+/* The service-area sentence, built from the license record. */
+function serviceAreaSentence(licensed) {
+  const parts = [];
+  if (licensed.includes('AL')) parts.push('Baldwin and Mobile County, Alabama');
+  if (licensed.includes('FL')) parts.push('the Perdido Key and Pensacola corridor in Florida');
+  if (!parts.length) return '';
+  return parts.join(' and ');
+}
+
 function slugify(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
@@ -1588,6 +1628,9 @@ app.get('/api/agent/by-slug/:slug', async (req, res) => {
       bio: profile.bio || '', photo: profile.photo || '', title: profile.title || '',
       specialties: profile.specialties || '', languages: profile.languages || '',
       facebook: profile.facebook || '', instagram: profile.instagram || '',
+      licensedStates: licensedStatesOf(profile),
+      licenseNumbers: profile.licenseNumbers || {},
+      serviceArea: serviceAreaSentence(licensedStatesOf(profile)),
     }});
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1604,6 +1647,7 @@ app.get('/api/agent/directory', async (req, res) => {
       out.push({ id: a.id, name: a.name, email: p.publicEmail || a.email,
                  phone: p.publicPhone || a.phone || '251-229-3216', role: a.role,
                  slug: slugify(a.name), title: p.title || '', photo: p.photo || '',
+                 licensedStates: licensedStatesOf(p),
                  bio: (p.bio || '').slice(0, 180) });
     }
     res.json({ ok: true, agents: out });
@@ -1618,9 +1662,32 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   }
   const b = req.body || {};
   const clean = v => String(v || '').slice(0, 4000);
+
+  // Only the broker or an admin sets which states an agent is licensed in —
+  // an agent must not be able to grant themselves a licence.
+  const existing = await getSetting('agentPublic:' + req.params.id) || {};
+  const licensed = isStaff(sess)
+    ? (Array.isArray(b.licensedStates) ? b.licensedStates.filter(x => STATE_NAMES[x]) : licensedStatesOf(existing))
+    : licensedStatesOf(existing);
+
+  const claims = unlicensedClaims(
+    [clean(b.bio), clean(b.title), clean(b.specialties)].join(' '), licensed);
+  if (claims.length) {
+    const c = claims[0];
+    console.warn(`[license] blocked profile for ${req.params.id}: mentions ${c.term} without a ${c.name} licence`);
+    return res.status(422).json({
+      error: `This mentions "${c.term}" but there is no ${c.name} license on file for this agent. ` +
+             `Remove the reference, or ask the broker to add the ${c.name} license first.`,
+      state: c.state, term: c.term,
+    });
+  }
+
   const profile = {
     title: clean(b.title), bio: clean(b.bio), photo: clean(b.photo),
     publicPhone: clean(b.publicPhone), publicEmail: clean(b.publicEmail),
+    licensedStates: licensed,
+    licenseNumbers: isStaff(sess) ? (b.licenseNumbers || existing.licenseNumbers || {})
+                                  : (existing.licenseNumbers || {}),
     specialties: clean(b.specialties), languages: clean(b.languages),
     facebook: clean(b.facebook), instagram: clean(b.instagram),
     updatedAt: new Date().toISOString(),
