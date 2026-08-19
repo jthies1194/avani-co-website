@@ -1530,7 +1530,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v50',
+    serverVersion: 'v51',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
@@ -1686,6 +1686,13 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   }
   const b = req.body || {};
   const clean = v => String(v || '').slice(0, 4000);
+  // photos arrive as a resized data URI — bigger allowance, still bounded
+  const cleanPhoto = v => {
+    const t = String(v || '');
+    if (t.length > 900000) return '';
+    if (t && !/^(https?:\/\/|data:image\/(jpeg|png|webp);base64,)/.test(t)) return '';
+    return t;
+  };
 
   // Only the broker or an admin sets which states an agent is licensed in —
   // an agent must not be able to grant themselves a licence.
@@ -1707,7 +1714,7 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   }
 
   const profile = {
-    title: clean(b.title), bio: clean(b.bio), photo: clean(b.photo),
+    title: clean(b.title), bio: clean(b.bio), photo: cleanPhoto(b.photo),
     publicPhone: clean(b.publicPhone), publicEmail: clean(b.publicEmail),
     licensedStates: licensed,
     licenseNumbers: isStaff(sess) ? (b.licenseNumbers || existing.licenseNumbers || {})
