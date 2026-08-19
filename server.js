@@ -92,6 +92,17 @@ async function requireSession(req, res) {
 /* What an agent may touch. Staff (broker/admin) are unrestricted. */
 /* Admins handle commissions, expenses and accounts — not leads. Client contact
    details are deliberately out of their reach so they can't be passed around. */
+/* Public visitors have no session, but they must still be able to submit a
+   lead and read the handful of settings the public site needs. Anything else
+   stays behind authentication. */
+function publicWriteAllowed(key) {
+  return String(key || '').startsWith('lead:');
+}
+const PUBLIC_READ_KEYS = ['settings:viewLimit', 'settings:testimonials', 'settings:reviewLink'];
+function publicReadAllowed(key) {
+  return PUBLIC_READ_KEYS.includes(String(key || ''));
+}
+
 function adminBlocked(key) {
   const k = String(key || '');
   return k.startsWith('lead:') || k === 'settings:leadArchive';
@@ -122,11 +133,16 @@ function scopeValueForAgent(key, value, sess) {
 
 app.get('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const sess = await requireSession(req, res); if (!sess) return;
-  if (sess.role === 'admin' && adminBlocked(req.params.key)) {
+  const sess = await getSession(req);
+  if (!sess) {
+    if (!publicReadAllowed(req.params.key)) {
+      return res.status(401).json({ error: 'Sign in to access this.' });
+    }
+  }
+  if (sess && sess.role === 'admin' && adminBlocked(req.params.key)) {
     return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
   }
-  if (!isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
+  if (sess && !isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
     return res.status(403).json({ error: 'Not permitted.' });
   }
   try {
@@ -137,7 +153,7 @@ app.get('/api/kv/:key', async (req, res) => {
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'not found' });
-    const value = isStaff(sess) ? data.value : scopeValueForAgent(req.params.key, data.value, sess);
+    const value = (!sess || isStaff(sess)) ? data.value : scopeValueForAgent(req.params.key, data.value, sess);
     res.json({ key: req.params.key, value });
   } catch (e) {
     console.error('[GET /api/kv/:key] failed:', e, 'cause:', e.cause);
@@ -177,12 +193,18 @@ app.get('/api/kv', async (req, res) => {
 // SET (upsert) a key -> { ok: true }
 app.post('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const sess = await requireSession(req, res); if (!sess) return;
-  if (sess.role === 'admin' && adminBlocked((req.body || {}).key)) {
+  const sess = await getSession(req);
+  if (!sess) {
+    // a visitor submitting an enquiry — leads only, nothing else
+    if (!publicWriteAllowed((req.body || {}).key)) {
+      return res.status(401).json({ error: 'Sign in to access this.' });
+    }
+  }
+  if (sess && sess.role === 'admin' && adminBlocked((req.body || {}).key)) {
     console.warn(`[security] admin ${sess.agentId} blocked from writing a lead`);
     return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
   }
-  if (!isStaff(sess) && !keyAllowedForAgent((req.body || {}).key, sess, true)) {
+  if (sess && !isStaff(sess) && !keyAllowedForAgent((req.body || {}).key, sess, true)) {
     console.warn(`[security] agent ${sess.agentId} blocked writing ${(req.body||{}).key}`);
     return res.status(403).json({ error: 'Not permitted.' });
   }
@@ -1098,6 +1120,25 @@ async function resolveNotifyAddress() {
   return null;
 }
 
+// Each agent chooses how they hear about their leads.
+app.get('/api/agent/:id/alerts', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.agentId !== req.params.id && !isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });
+  const p = await getSetting('agentAlerts:' + req.params.id) || {};
+  res.json({ ok: true, emailAlerts: p.emailAlerts !== false, smsAddress: p.smsAddress || '' });
+});
+
+app.post('/api/agent/:id/alerts', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.agentId !== req.params.id && !isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });
+  const b = req.body || {};
+  await setSetting('agentAlerts:' + req.params.id, {
+    emailAlerts: b.emailAlerts !== false,
+    smsAddress: String(b.smsAddress || '').trim().slice(0, 120),
+  });
+  res.json({ ok: true });
+});
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email is not configured yet — set RESEND_API_KEY in the hosting environment variables.' });
@@ -1122,6 +1163,43 @@ app.post('/api/notify-lead', async (req, res) => {
       ].filter(Boolean).join('\n'),
     });
     console.log(`[lead notification] sent to ${notifyTo} for lead: ${name || 'unknown'} (${source || 'website'})`);
+
+    // The assigned agent gets their own copy — a lead sitting only in the
+    // broker's inbox is a lead nobody is calling.
+    const assignedId = (req.body || {}).assignedAgentId;
+    if (assignedId) {
+      try {
+        const { data: ag } = await supabase.from('agents')
+          .select('id,name,email,active').eq('id', assignedId).maybeSingle();
+        if (ag && ag.email && ag.active !== false && ag.email !== notifyTo) {
+          const prof = await getSetting('agentAlerts:' + ag.id) || {};
+          if (prof.emailAlerts !== false) {
+            const extra = prof.smsAddress ? [ag.email, prof.smsAddress] : [ag.email];
+            for (const to of extra) {
+              await mailer.sendMail({
+                to,
+                subject: `New lead: ${name || 'Unknown'}`,
+                text: `${name || 'Someone'} just enquired through bamacoast.com.
+
+Name:  ${name || '(not provided)'}
+Email: ${email || '(not provided)'}
+Phone: ${phone || '(not provided)'}
+Source: ${source || 'website'}
+${listingLabel ? 'Listing: ' + listingLabel + '\n' : ''}
+Message:
+${message || '(none)'}
+
+Call them before someone else does.
+bamacoast.com`,
+              });
+            }
+            console.log(`[lead notification] agent copy sent to ${extra.join(', ')}`);
+          }
+        }
+      } catch (e) {
+        console.error('[lead notification] agent copy FAILED:', e.message);
+      }
+    }
     res.json({ ok: true, notified: notifyTo });
   } catch (e) {
     console.error('[lead notification] FAILED:', e.message);
@@ -1357,7 +1435,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v45',
+    serverVersion: 'v46',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
