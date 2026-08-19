@@ -224,13 +224,16 @@ app.delete('/api/kv/:key', async (req, res) => {
 });
 
 // ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
+// What the public homepage shows by default: genuinely available listings.
+// Pending and under-contract are still searchable via the Status filter.
+const ACTIVE_ONLY = "StandardStatus eq 'Active'";
 const STATUS_CLAUSE = "(StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending')";
 
 // Avani's market is the Baldwin County coast. The raw feed is newest-first,
 // which buries beach listings under Mobile County volume — so we pull Baldwin
 // explicitly, then rank what comes back by how close it is to home.
 const BEACH_CITIES = ['gulf shores','orange beach','fort morgan','perdido beach','ono island',
-                      'bon secour','perdido key','dauphin island','gulf highlands','laguna key'];
+                      'bon secour','perdido key','gulf highlands','laguna key'];
 const EASTERN_SHORE = ['fairhope','daphne','spanish fort','point clear','montrose','magnolia springs',
                        'barnwell','belforest','battles wharf','malbis'];
 
@@ -323,7 +326,7 @@ app.get('/api/search', async (req, res) => {
   if (status) {
     parts.push(`StandardStatus eq '${esc(status)}'`);
   } else {
-    parts.push(`(StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending')`);
+    parts.push(ACTIVE_ONLY);   // default to what's genuinely for sale
   }
   if (q.city && q.city.trim()) {
     const c = esc(q.city.trim());
@@ -423,7 +426,7 @@ app.get('/api/listings', async (req, res) => {
 
     try {
       // 1. Baldwin County first — this is the market the site is built around
-      const baldwinFilter = STATUS_CLAUSE + " and contains(CountyOrParish,'Baldwin')";
+      const baldwinFilter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
       for (let skip = 0; skip < 400; skip += PAGE) {
         const json = await fetchPage(baldwinFilter, skip, false);
         const rows = json.value || [];
@@ -439,7 +442,7 @@ app.get('/api/listings', async (req, res) => {
     for (let skip = 0; skip < WANT; skip += PAGE) {
       let json;
       try {
-        json = await fetchPage(STATUS_CLAUSE, skip, skip === 0);
+        json = await fetchPage(ACTIVE_ONLY, skip, skip === 0);
       } catch (e) {
         if (all.length) break;
         return res.status(502).json({ error: e.message, detail: e.detail });
