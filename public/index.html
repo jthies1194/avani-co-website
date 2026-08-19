@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="build" content="index-v95">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -828,6 +829,62 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .mkt-city{font-family:'Cormorant Garamond',serif;font-size:21px;color:var(--blue)}
 .mkt-note{font-size:13px;color:var(--grey);margin:16px 0 0;line-height:1.7;max-width:76ch}
 @media(max-width:820px){.mkt-stat .n{font-size:34px}}
+
+/* ---------- agent profile page ---------- */
+#agent-profile-view{padding-top:0}
+.ap-hero{background:linear-gradient(135deg,var(--blue),var(--blue-deep));color:#fff;
+  padding:230px 48px 70px}
+.ap-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;
+  gap:46px;align-items:center}
+.ap-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:3px;
+  box-shadow:0 24px 60px rgba(10,18,52,.4)}
+.ap-initials{width:100%;aspect-ratio:3/4;border-radius:3px;background:rgba(255,255,255,.12);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Cormorant Garamond',serif;font-size:76px;color:var(--gold-pale)}
+.ap-initials.small{aspect-ratio:1;font-size:36px;background:var(--sand);color:var(--blue)}
+.ap-intro h1{font-family:'Cormorant Garamond',serif;font-size:clamp(38px,5.4vw,64px);
+  font-weight:400;margin:10px 0 0;color:#fff}
+.ap-firm{color:rgba(255,255,255,.82);font-size:16px;margin:10px 0 0}
+.ap-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}
+.ap-body{display:grid;grid-template-columns:1.25fr 1fr;gap:48px;align-items:start}
+.ap-about p{font-size:18px;line-height:1.85;color:#41496E;margin:0 0 18px}
+.ap-meta{font-size:15px;color:var(--grey);padding:9px 0;border-top:1px solid var(--line)}
+.ap-meta strong{color:var(--blue-ink);margin-right:8px}
+.ap-card{background:var(--sand);border:1px solid var(--line);border-radius:4px;padding:30px}
+.ap-card h3{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;
+  color:var(--blue);margin:0 0 18px}
+.ap-card .fr{margin-bottom:16px}
+.ap-card label{display:block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--gold-deep);margin-bottom:7px}
+.ap-card input,.ap-card textarea{width:100%;border:1px solid var(--line);background:#fff;
+  padding:13px 15px;font-family:'Jost',sans-serif;font-size:16px;color:var(--blue-ink)}
+.ap-card textarea{min-height:110px;resize:vertical}
+.ap-small{font-size:13px;color:var(--grey);margin:12px 0 0}
+.ap-back{text-align:center;margin-top:50px}
+.ap-back a{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-deep)}
+
+/* ---------- directory ---------- */
+.dir-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:26px;
+  max-width:1000px;margin:0 auto}
+.dir-card{background:#fff;border:1px solid var(--line);border-radius:4px;padding:22px;
+  text-align:center;transition:.3s;display:block}
+.dir-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(23,31,99,.12);
+  border-color:var(--gold)}
+.dir-photo img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:3px}
+.dir-name{font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--blue);margin-top:16px}
+.dir-title{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-deep);margin-top:5px}
+.dir-contact{font-size:15px;color:var(--grey);margin-top:9px}
+@media(max-width:900px){
+  .ap-hero{padding:190px 24px 50px}
+  .ap-inner{grid-template-columns:1fr;gap:28px}
+  .ap-photo{max-width:220px}
+  .ap-body{grid-template-columns:1fr;gap:30px}
+}
+
+.mypage-url{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  background:var(--sand);border:1px solid var(--line);border-radius:4px;padding:14px 18px}
+.mypage-url a{font-size:17px;color:var(--marsh);word-break:break-all}
+#sec-mypage{max-width:900px}
 </style>
 </head>
 <body>
@@ -1037,6 +1094,17 @@ Call Jimmy · 251-229-3216
     </div>
   </div>
 </section>
+
+<section class="sect-v2 wrap" id="team">
+  <div class="sec-head center rv">
+    <div class="eyebrow">Who You'll Work With</div>
+    <span class="flourish center" role="presentation"></span>
+    <h2>Meet the team</h2>
+    <p>Every agent here lives and works on this coast. Pick the person you'd like to hear from.</p>
+  </div>
+  <div id="agent-directory" class="dir-grid rv"></div>
+</section>
+
 <section class="letter" id="story">
   <div class="letter-inner">
     <div class="eyebrow rv">From the Founders</div>
@@ -1201,6 +1269,7 @@ Call Jimmy · 251-229-3216
 </div>
 
 <!-- ============ CRM ============ -->
+<div id="agent-profile-view" style="display:none;"></div>
 <div id="view-crm" class="view">
 
 <div id="crm-gate" class="crm-gate">
@@ -1291,6 +1360,7 @@ Call Jimmy · 251-229-3216
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-mypage"></div>
 <div class="crm-sec" id="sec-myprofile"></div>
 <div class="crm-sec" id="sec-password"><div class="setup-panel" id="change-password-panel">
 <div class="setup-head" onclick="toggleChangePasswordPanel()">
@@ -1669,6 +1739,7 @@ if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
 if(typeof populateCityOptions==='function') populateCityOptions();
 if(typeof loadMarketStats==='function') loadMarketStats();
+if(typeof loadAgentDirectory==='function') loadAgentDirectory();
 (function(){
   const cta = document.getElementById('hero-cta');
   if(cta && typeof LISTINGS_ARE_LIVE !== 'undefined' && LISTINGS_ARE_LIVE && ALL_LISTINGS.length){
@@ -2204,6 +2275,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
+window.BUILD = 'index-v95';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -2806,6 +2878,7 @@ if(ALL_LISTINGS.length===0) ALL_LISTINGS = await fetchListings();
 if(typeof updateMlsNotice==='function') updateMlsNotice();
 if(typeof populateCityOptions==='function') populateCityOptions();
 if(typeof loadMarketStats==='function') loadMarketStats();
+if(typeof loadAgentDirectory==='function') loadAgentDirectory();
 (function(){
   const cta = document.getElementById('hero-cta');
   if(cta && typeof LISTINGS_ARE_LIVE !== 'undefined' && LISTINGS_ARE_LIVE && ALL_LISTINGS.length){
@@ -4154,6 +4227,9 @@ let clientFilter = 'all';
 document.addEventListener('DOMContentLoaded', () => {
   try{ refreshClientBar(); }catch(e){}
   // /#crm or /#commissions opens the CRM directly
+  if(typeof maybeShowAgentProfile === 'function'){
+    maybeShowAgentProfile().then(shown => { if(shown) return; });
+  }
   const h = (location.hash || '').replace('#','');
   if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile'].includes(h)){
     try{
@@ -4493,7 +4569,8 @@ async function saveAgentProfile(agentId){
 function printReport(title, bodyHtml){
   const w = window.open('', '_blank');
   if(!w){ showToast("Allow pop-ups to print this report."); return; }
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${title}</title>
   <style>
     body{font-family:Georgia,'Times New Roman',serif;color:#171F63;margin:40px;line-height:1.6}
     h1{font-size:22px;margin:0 0 4px}
@@ -4744,6 +4821,7 @@ const CRM_SECTIONS = [
   { id:'sec-agents',      label:'Agents',      icon:'\u263A', brokerOnly:true },
   { id:'sec-reviews',     label:'Reviews',     icon:'\u2605', brokerOnly:true },
   { id:'sec-setup',       label:'Settings',    icon:'\u2699', brokerOnly:true },
+  { id:'sec-mypage',      label:'My page',     icon:'\u2318' },
   { id:'sec-myprofile',   label:'My details',  icon:'\u2637', agentOnly:true },
   { id:'sec-password',    label:'My password', icon:'\u26BF' },
 ];
@@ -4795,6 +4873,7 @@ function showCrmSection(id){
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
     if(id === 'sec-myprofile') renderMyProfileSection();
+    if(id === 'sec-mypage') renderMyPageSection();
     if(id === 'sec-today') renderDashboard();
   }catch(e){}
   const main = document.getElementById('crm-main');
@@ -5089,6 +5168,7 @@ const SECTION_META = {
   'sec-agents':     { eyebrow:'Your team',  title:'Agents',           blurb:'Add agents, set their commission plans, keep their details on file, and preview the CRM as they see it.' },
   'sec-reviews':    { eyebrow:'Approvals',  title:'Pending reviews',  blurb:'Deals your agents submitted. Nothing counts toward the official ledger until you approve it.' },
   'sec-setup':      { eyebrow:'Setup',      title:'Data & notifications', blurb:'MLS connection, lead alerts, and the settings that drive the public site.' },
+  'sec-mypage':     { eyebrow:'Your public page', title:'My page', blurb:'This is what a client sees when you share your link. Keep it current \u2014 it is often the first impression.' },
   'sec-myprofile':  { eyebrow:'Your file',  title:'My details',       blurb:'The information the brokerage is required to hold for you. Only the broker can see it.' },
   'sec-password':   { eyebrow:'Security',   title:'My password',      blurb:'Change the password you use to sign in to this CRM.' },
 };
@@ -5832,6 +5912,211 @@ async function loadMarketStats(){
 }
 function mktStat(label, value, sub){
   return `<div class="mkt-stat"><div class="l">${label}</div><div class="n">${value}</div><div class="s">${sub}</div></div>`;
+}
+</script>
+<script>
+/* ---------- agent profile pages ----------
+   /christinathies resolves to a full profile. The lead form on the page assigns
+   straight to that agent, so a shared link routes business to them. */
+let PROFILE_AGENT = null;
+
+function agentSlugFromPath(){
+  const p = (location.pathname || '/').replace(/^\/+|\/+$/g, '');
+  if (!p || p.includes('.') || p.startsWith('api')) return '';
+  return p.toLowerCase();
+}
+
+async function maybeShowAgentProfile(){
+  const slug = agentSlugFromPath();
+  if (!slug) return false;
+  try {
+    const res = await fetch('/api/agent/by-slug/' + encodeURIComponent(slug));
+    if (!res.ok) return false;
+    const d = await res.json();
+    if (!d.ok || !d.agent) return false;
+    PROFILE_AGENT = d.agent;
+    renderAgentProfile(d.agent);
+    return true;
+  } catch (e) { return false; }
+}
+
+function initials(name){
+  return String(name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+}
+
+function renderAgentProfile(a){
+  const host = document.getElementById('agent-profile-view');
+  const site = document.getElementById('view-site');
+  const crm  = document.getElementById('view-crm');
+  if (!host) return;
+  if (site) site.style.display = 'none';
+  if (crm)  crm.style.display  = 'none';
+  host.style.display = 'block';
+
+  const tel = (a.phone || '').replace(/[^0-9]/g, '');
+  host.innerHTML = `
+    <section class="ap-hero">
+      <div class="ap-inner">
+        <div class="ap-photo">
+          ${a.photo
+            ? `<img src="${escapeHtml(a.photo)}" alt="${escapeHtml(a.name)}">`
+            : `<div class="ap-initials">${initials(a.name)}</div>`}
+        </div>
+        <div class="ap-intro">
+          <div class="eyebrow">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
+          <h1>${escapeHtml(a.name)}</h1>
+          <p class="ap-firm">Avani &amp; Co. Real Estate &middot; Southern Sands</p>
+          <div class="ap-actions">
+            ${tel ? `<a class="btn btn-light" href="tel:${tel}">Call ${escapeHtml(a.phone)}</a>` : ''}
+            <a class="btn" href="#ap-contact" style="border-color:rgba(255,255,255,.6);color:#fff;">Send a message</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sect-v2 wrap">
+      <div class="ap-body">
+        <div class="ap-about">
+          <div class="eyebrow">About</div>
+          <span class="flourish" role="presentation"></span>
+          <p>${a.bio
+              ? escapeHtml(a.bio).replace(/\n/g, '</p><p>')
+              : `${escapeHtml((a.name || '').split(' ')[0])} works with buyers and sellers across Baldwin
+                 County, Mobile County, and the Perdido Key and Pensacola corridor.`}</p>
+          ${a.specialties ? `<div class="ap-meta"><strong>Specialties</strong> ${escapeHtml(a.specialties)}</div>` : ''}
+          ${a.languages ? `<div class="ap-meta"><strong>Languages</strong> ${escapeHtml(a.languages)}</div>` : ''}
+        </div>
+
+        <div class="ap-card" id="ap-contact">
+          <h3>Get in touch with ${escapeHtml((a.name || '').split(' ')[0])}</h3>
+          <div class="fr"><label for="ap-name">Name</label><input id="ap-name" autocomplete="name"></div>
+          <div class="fr"><label for="ap-phone">Phone</label><input id="ap-phone" autocomplete="tel"></div>
+          <div class="fr"><label for="ap-email">Email</label><input id="ap-email" type="email" autocomplete="email"></div>
+          <div class="fr"><label for="ap-msg">How can they help?</label>
+            <textarea id="ap-msg" placeholder="Buying, selling, or just looking around?"></textarea></div>
+          <button class="btn" style="width:100%;" onclick="submitAgentLead()">Send</button>
+          <p class="ap-small">Goes straight to ${escapeHtml((a.name || '').split(' ')[0])} &mdash; no call centre in between.</p>
+        </div>
+      </div>
+
+      <div class="ap-back">
+        <a href="/">&larr; See all Avani &amp; Co. listings</a>
+      </div>
+    </section>`;
+}
+
+async function submitAgentLead(){
+  const a = PROFILE_AGENT;
+  if (!a) return;
+  const g = id => (document.getElementById(id) || {}).value || '';
+  const name = g('ap-name').trim(), email = g('ap-email').trim(), phone = g('ap-phone').trim();
+  if (!name || (!email && !phone)) {
+    showToast('Please add your name and either an email or a phone number.');
+    return;
+  }
+  const lead = {
+    id: 'lead_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    name, email, phone,
+    message: 'From ' + a.name + "'s page. " + (g('ap-msg').trim() || ''),
+    source: 'agent-page', mlsKey: '', listingLabel: '', stage: 'New', notes: '',
+    assignedAgentId: a.id,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await storeSet('lead:' + lead.id, lead);
+    if (typeof sendLeadNotification === 'function') sendLeadNotification(lead);
+    ['ap-name','ap-phone','ap-email','ap-msg'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    showToast('Sent \u2014 ' + (a.name || '').split(' ')[0] + ' will be in touch.');
+  } catch (e) {
+    showToast('Something went wrong \u2014 please call 251-229-3216.');
+  }
+}
+
+/* ---------- directory ---------- */
+async function loadAgentDirectory(){
+  const el = document.getElementById('agent-directory');
+  if (!el) return;
+  try {
+    const res = await fetch('/api/agent/directory');
+    const d = await res.json();
+    const agents = (d.agents || []);
+    if (!agents.length) { el.innerHTML = ''; return; }
+    el.innerHTML = agents.map(a => `
+      <a class="dir-card" href="/${a.slug}">
+        <div class="dir-photo">${a.photo
+          ? `<img src="${escapeHtml(a.photo)}" alt="${escapeHtml(a.name)}">`
+          : `<div class="ap-initials small">${initials(a.name)}</div>`}</div>
+        <div class="dir-name">${escapeHtml(a.name)}</div>
+        <div class="dir-title">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
+        ${a.phone ? `<div class="dir-contact">${escapeHtml(a.phone)}</div>` : ''}
+      </a>`).join('');
+  } catch (e) { el.innerHTML = ''; }
+}
+
+</script>
+<script>
+/* Agents edit their own public page from the CRM. */
+async function renderMyPageSection(){
+  const el = document.getElementById('sec-mypage');
+  if(!el || !currentAgent) return;
+  let p = {};
+  try{
+    const res = await fetch('/api/agent/by-slug/' + encodeURIComponent(publicSlug(currentAgent.name)));
+    if(res.ok){ const d = await res.json(); if(d.ok) p = d.agent; }
+  }catch(e){}
+  const url = location.origin + '/' + publicSlug(currentAgent.name);
+  el.innerHTML = `
+    <div class="mypage-url">
+      <div>
+        <div class="field-label">Your page</div>
+        <a href="${url}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
+      </div>
+      <button class="btn-sm" onclick="copyMyPageUrl('${escapeHtml(url)}')">Copy link</button>
+    </div>
+    <div class="setup-grid" style="margin-top:16px;">
+      <div><div class="field-label">Title</div>
+        <input id="mp-title" value="${escapeHtml(p.title||'')}" placeholder="REALTOR\u00AE"></div>
+      <div><div class="field-label">Photo URL</div>
+        <input id="mp-photo" value="${escapeHtml(p.photo||'')}" placeholder="https://\u2026"></div>
+      <div><div class="field-label">Specialties</div>
+        <input id="mp-specialties" value="${escapeHtml(p.specialties||'')}" placeholder="Waterfront, first-time buyers, condos"></div>
+      <div><div class="field-label">Languages</div>
+        <input id="mp-languages" value="${escapeHtml(p.languages||'')}" placeholder="English, Spanish"></div>
+    </div>
+    <div style="margin-top:14px;"><div class="field-label">About you</div>
+      <textarea id="mp-bio" rows="7" style="width:100%;border:1px solid var(--line);padding:12px;
+        font-family:'Jost',sans-serif;font-size:15.5px;">${escapeHtml(p.bio||'')}</textarea>
+      <p style="font-size:12.5px;color:var(--driftwood);margin:6px 0 0;">
+        Write it the way you'd say it. Where you're from, what you know, why someone should call you.</p>
+    </div>
+    <button class="btn-sm primary" style="margin-top:14px;" onclick="saveMyPage()">Save my page</button>
+    <p style="font-size:12.5px;color:var(--driftwood);margin-top:10px;">
+      No photo yet? Your initials show in brand colours until you add one.</p>`;
+}
+
+function publicSlug(name){ return String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,''); }
+
+function copyMyPageUrl(url){
+  try{ navigator.clipboard.writeText(url); showToast("Link copied."); }
+  catch(e){ showToast(url); }
+}
+
+async function saveMyPage(){
+  const g = id => (document.getElementById(id)||{}).value || '';
+  try{
+    const res = await fetch('/api/agent/' + currentAgent.id + '/public-profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        title: g('mp-title'), photo: g('mp-photo'), bio: g('mp-bio'),
+        specialties: g('mp-specialties'), languages: g('mp-languages'),
+      })
+    });
+    const d = await res.json();
+    if(!res.ok){ showToast(d.error || "Couldn't save."); return; }
+    showToast("Your page is updated.");
+  }catch(e){ showToast("Couldn't reach the server."); }
 }
 </script>
 </body>
