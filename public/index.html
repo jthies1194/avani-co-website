@@ -2135,6 +2135,9 @@ let currentAgent = null;
    only hoist within their own <script> block, and these are used throughout. */
 function isOwner(){ return !!(currentAgent && currentAgent.role === 'broker'); }
 function isAdminOrOwner(){ return !!(currentAgent && (currentAgent.role === 'broker' || currentAgent.role === 'admin')); }
+/* Admins run the business side but never see leads. */
+function isAdminOnly(){ return !!(currentAgent && currentAgent.role === 'admin'); }
+function canSeeLeads(){ return !!currentAgent && currentAgent.role !== 'admin'; }
 
 /* --- Keep broker/agent signed in across page navigation --- */
 const AGENT_SESSION_KEY = 'agentSession';
@@ -2567,6 +2570,7 @@ wrap.innerHTML = ['all',...STAGES].map(s=>`<button class="${currentFilterStage==
 function setStageFilter(s){ currentFilterStage=s; initStageFilters(); loadLeads(); }
 
 async function loadLeads(){
+if(!canSeeLeads()){ DASH_LEADS = []; window.__leadCount = 0; return; }
 const keys = await storeListKeys('lead:');
 let leads = [];
 for(const k of keys){
@@ -2642,6 +2646,7 @@ btn.style.display = 'block';
 }
 
 async function saveLeadAgent(id){
+if(!canSeeLeads()){ showToast("Admin accounts don't manage leads."); return; }
 const sel = document.getElementById('assign-sel-'+id);
 if(!sel) return;
 const agentId = sel.value;
@@ -4634,7 +4639,7 @@ function referralLedgerHtml(year){
    scrolling past everything else. Now it's proper tabs. */
 const CRM_SECTIONS = [
   { id:'sec-today',       label:'Today',       icon:'\u25C9' },
-  { id:'sec-leads',       label:'Leads',       icon:'\u2709', badge:() => (window.__leadCount || 0) },
+  { id:'sec-leads',       label:'Leads',       icon:'\u2709', badge:() => (window.__leadCount || 0), noAdmin:true },
   { id:'sec-commissions', label:'Commissions', icon:'\u0024' },
   { id:'sec-expenses',    label:'Expenses',    icon:'\u2338' },
   { id:'sec-agents',      label:'Agents',      icon:'\u263A', brokerOnly:true },
@@ -4647,7 +4652,10 @@ let crmSection = 'sec-today';
 
 function allowedSections(){
   const staff = isAdminOrOwner();
-  return CRM_SECTIONS.filter(sc => (!sc.brokerOnly || staff) && (!sc.agentOnly || !staff));
+  return CRM_SECTIONS.filter(sc =>
+    (!sc.brokerOnly || staff) &&
+    (!sc.agentOnly || !staff) &&
+    (!sc.noAdmin || canSeeLeads()));
 }
 
 function renderCrmNav(){
@@ -5077,14 +5085,16 @@ async function renderDashboard(){
     </div>
 
     <div class="dash-cards">
-      ${card('urgent', newLeads.length, 'New leads', newLeads.length ? 'Reach out today' : 'All caught up', "goToLeads('New')")}
-      ${card('warn', stale.length, 'Going cold', stale.length ? 'No contact in 7+ days' : 'Nothing stalling', "goToLeads('all')")}
-      ${isBroker ? card('info', unassigned.length, 'Unassigned', unassigned.length ? 'Needs an agent' : 'All assigned', "goToLeads('all')") : ''}
-      ${card('calm', thisWeek.length, 'New this week', 'Last 7 days', "goToLeads('all')")}
+      ${!canSeeLeads() ? '' : card('urgent', newLeads.length, 'New leads', newLeads.length ? 'Reach out today' : 'All caught up', "goToLeads('New')")}
+      ${!canSeeLeads() ? '' : card('warn', stale.length, 'Going cold', stale.length ? 'No contact in 7+ days' : 'Nothing stalling', "goToLeads('all')")}
+      ${(isBroker && canSeeLeads()) ? card('info', unassigned.length, 'Unassigned', unassigned.length ? 'Needs an agent' : 'All assigned', "goToLeads('all')") : ''}
+      ${!canSeeLeads() ? '' : card('calm', thisWeek.length, 'New this week', 'Last 7 days', "goToLeads('all')")}
+      ${canSeeLeads() ? '' : card('info', (cdData.agents||[]).length, 'Agents', 'Manage the team', "showCrmSection('sec-agents')")}
+      ${canSeeLeads() ? '' : card('calm', (cdData.subs||[]).filter(x=>x.status==='pending').length, 'Pending deals', 'Awaiting review', "showCrmSection('sec-reviews')")}
     </div>
 
     <div class="dash-actions">
-      <button class="da" onclick="openLeadModal('manual')"><span>+</span> Add a lead</button>
+      ${canSeeLeads() ? `<button class="da" onclick="openLeadModal('manual')"><span>+</span> Add a lead</button>` : ''}
       <button class="da" onclick="showCrmSection('sec-commissions')"><span>$</span> Log a closing</button>
       <button class="da" onclick="showCrmSection('sec-expenses')"><span>&#8942;</span> Log an expense</button>
       <button class="da" onclick="switchView('site')"><span>&#8981;</span> Search the MLS</button>
@@ -5092,8 +5102,12 @@ async function renderDashboard(){
     </div>
 
     <div class="dash-split">
-      <div class="dash-panel">
-        <h4>Needs a call</h4>
+      ${!canSeeLeads() ? `<div class="dash-panel">
+        <h4>Admin access</h4>
+        <p class="dash-empty">You handle commissions, expenses and accounts. Client leads are kept with the
+        agents who own them, so contact details stay where they belong.</p>
+      </div>` : `<div class="dash-panel">
+        <h4>Needs a call</h4>`}
         ${(newLeads.concat(stale)).slice(0,6).map(l => `
           <div class="dash-lead" onclick="openLeadDetail && openLeadDetail('${l.id}')">
             <div>
@@ -5104,7 +5118,7 @@ async function renderDashboard(){
             <span class="dl-stage">${escapeHtml(l.stage || 'New')}</span>
           </div>`).join('') || '<p class="dash-empty">No one waiting. Nice work.</p>'}
         ${(newLeads.length + stale.length) > 6 ? `<button class="btn-sm" style="margin-top:10px;" onclick="goToLeads('all')">See all ${newLeads.length + stale.length}</button>` : ''}
-      </div>
+      ${canSeeLeads() ? '</div>' : ''}
 
       <div class="dash-panel">
         <h4>Set your goal</h4>
@@ -5130,6 +5144,7 @@ function saveGoal(){
 }
 
 function goToLeads(stage){
+  if(!canSeeLeads()) return;
   showCrmSection('sec-leads');
   if(stage && stage !== 'all'){
     currentFilterStage = stage;
