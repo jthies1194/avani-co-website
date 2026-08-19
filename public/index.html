@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v98">
+<meta name="build" content="index-v100">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -839,7 +839,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   padding-bottom:2px;transition:.25s}
 .ap-home:hover{color:#fff;border-bottom-color:var(--gold)}
 @media(max-width:900px){.ap-home{top:158px;left:24px;font-size:12px}}
-.ap-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;
+.ap-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:260px 1fr auto;
   gap:46px;align-items:center}
 .ap-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:3px;
   box-shadow:0 24px 60px rgba(10,18,52,.4)}
@@ -882,6 +882,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 @media(max-width:900px){
   .ap-hero{padding:190px 24px 50px}
   .ap-inner{grid-template-columns:1fr;gap:28px}
+  .ap-qr{order:4}
   .ap-photo{max-width:220px}
   .ap-body{grid-template-columns:1fr;gap:30px}
 }
@@ -890,6 +891,31 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   background:var(--sand);border:1px solid var(--line);border-radius:4px;padding:14px 18px}
 .mypage-url a{font-size:17px;color:var(--marsh);word-break:break-all}
 #sec-mypage{max-width:900px}
+
+#referral-bar{position:fixed;left:0;right:0;bottom:0;z-index:130;display:none;
+  align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;
+  background:var(--blue-ink);color:#fff;padding:13px 20px;font-size:15px}
+#referral-bar a{color:var(--gold);border-bottom:1px solid var(--gold);padding-bottom:1px}
+#referral-bar button{background:none;border:none;color:rgba(255,255,255,.7);
+  font-size:22px;line-height:1;cursor:pointer;padding:0 4px}
+#referral-bar button:hover{color:#fff}
+@media(max-width:700px){#referral-bar{font-size:13.5px;gap:10px;padding:11px 14px}}
+
+.ap-qr{order:3;background:#fff;padding:12px;border-radius:4px;text-align:center;
+  align-self:start;justify-self:end;box-shadow:0 14px 40px rgba(10,18,52,.34)}
+.ap-qr img{width:132px;height:132px;display:block}
+.ap-qr span{display:block;margin-top:8px;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--blue-ink);max-width:132px;line-height:1.4}
+@media(max-width:900px){
+  .ap-qr{justify-self:start;margin-top:6px}
+  .ap-qr img{width:112px;height:112px}
+}
+
+.mypage-qr{display:flex;gap:20px;align-items:flex-start;background:#fff;border:1px solid var(--line);
+  border-radius:4px;padding:18px;margin-top:14px}
+.mypage-qr img{width:150px;height:150px;flex-shrink:0}
+.mypage-qr p{font-size:14.5px;color:var(--driftwood);margin:6px 0 12px;line-height:1.65;max-width:52ch}
+@media(max-width:700px){.mypage-qr{flex-direction:column}}
 </style>
 </head>
 <body>
@@ -1274,6 +1300,7 @@ Call Jimmy · 251-229-3216
 </div>
 
 <!-- ============ CRM ============ -->
+<div id="referral-bar" style="display:none;"></div>
 <div id="agent-profile-view" style="display:none;"></div>
 <div id="view-crm" class="view">
 
@@ -1996,6 +2023,8 @@ clientId: currentClient.id,
 createdAt: new Date().toISOString(),
 };
 lead.assignedAgentId = lead.assignedAgentId || await defaultAssigneeId();
+{const _r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+ if(_r && _r.id){ lead.referredBy = _r.name; lead.referredById = _r.id; }}
 storeSet('lead:'+lead.id, lead);
 sendLeadNotification(lead);
 closeAccountGate();
@@ -2206,6 +2235,8 @@ assignedAgentId,
 createdAt: new Date().toISOString(),
 };
 lead.assignedAgentId = lead.assignedAgentId || await defaultAssigneeId();
+{const _r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+ if(_r && _r.id){ lead.referredBy = _r.name; lead.referredById = _r.id; }}
 const ok = await storeSet('lead:'+lead.id, lead);
 closeLeadModal();
 if(ok){
@@ -2280,7 +2311,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v98';
+window.BUILD = 'index-v100';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -2772,7 +2803,7 @@ tbody.innerHTML = shown.map(l=>`
 <tr>
 <td><div class="lead-name">${escapeHtml(l.name||'—')}</div><div class="lead-contact">${fmtDate(l.createdAt)}</div></td>
 <td class="lead-contact">${escapeHtml(l.email||'')}<br>${escapeHtml(l.phone||'')}</td>
-<td><span class="lead-source">${l.source}${l.mlsKey?(' · '+l.mlsKey):''}</span></td>
+<td><span class="lead-source">${l.source}${l.mlsKey?(' \u00b7 '+l.mlsKey):''}</span>${l.referredBy?`<div style="font-size:11px;color:var(--coral);margin-top:4px;">via ${escapeHtml(l.referredBy)}</div>`:''}</td>
 <td class="lead-msg">${escapeHtml(l.message||'')}</td>
 <td>${currentAgent.role==='broker'
   ? `<select class="stage-select" id="assign-sel-${l.id}" onchange="stageAssignChange('${l.id}')"><option value="">Unassigned</option>${agents.map(a=>`<option value="${a.id}" ${a.id===l.assignedAgentId?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}</select><div id="assign-save-${l.id}" style="display:${pendingAssignments[l.id]!==undefined?'block':'none'}; margin-top:6px;"><button class="btn-sm" style="background:var(--marsh); color:var(--sand-light); border:none; font-weight:700;" onclick="saveLeadAgent('${l.id}')">Save &amp; notify</button></div>`
@@ -4232,6 +4263,7 @@ let clientFilter = 'all';
 document.addEventListener('DOMContentLoaded', () => {
   try{ refreshClientBar(); }catch(e){}
   // /#crm or /#commissions opens the CRM directly
+  if(typeof resolveAgentFromQuery === 'function') resolveAgentFromQuery().then(()=>{ try{ showReferralBar(); }catch(e){} });
   if(typeof maybeShowAgentProfile === 'function'){
     maybeShowAgentProfile().then(shown => { if(shown) return; });
   }
@@ -4317,6 +4349,8 @@ function applySavedSearch(i){
 /* Public leads default to the broker rather than sitting Unassigned. */
 let _brokerId = null;
 async function defaultAssigneeId(){
+  const ref = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+  if(ref && ref.id) return ref.id;
   if(_brokerId) return _brokerId;
   try{
     const res = await fetch('/api/agent/list');
@@ -5954,6 +5988,7 @@ function initials(name){
 
 function renderAgentProfile(a){
   fixHeaderForProfile();
+  setAgentReferral(a);
   const host = document.getElementById('agent-profile-view');
   const site = document.getElementById('view-site');
   const crm  = document.getElementById('view-crm');
@@ -5972,6 +6007,11 @@ function renderAgentProfile(a){
             ? `<img src="${escapeHtml(a.photo)}" alt="${escapeHtml(a.name)}">`
             : `<div class="ap-initials">${initials(a.name)}</div>`}
         </div>
+        <div class="ap-qr">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=0&qzone=1&color=1B3670&bgcolor=FFFFFF&data=${encodeURIComponent(location.origin + '/' + a.slug)}"
+               alt="Scan for ${escapeHtml(a.name)}" loading="lazy">
+          <span>Scan to reach ${escapeHtml((a.name||'').split(' ')[0])}</span>
+        </div>
         <div class="ap-intro">
           <div class="eyebrow">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
           <h1>${escapeHtml(a.name)}</h1>
@@ -5980,6 +6020,7 @@ function renderAgentProfile(a){
             ${tel ? `<a class="btn btn-light" href="tel:${tel}">Call ${escapeHtml(a.phone)}</a>` : ''}
             ${a.email ? `<a class="btn" href="mailto:${escapeHtml(a.email)}" style="border-color:rgba(255,255,255,.6);color:#fff;">Email</a>` : ''}
             <a class="btn" href="#ap-contact" style="border-color:rgba(255,255,255,.6);color:#fff;">Send a message</a>
+            <a class="btn btn-light" href="/?agent=${escapeHtml(a.slug)}#listings">Browse listings</a>
           </div>
         </div>
       </div>
@@ -6011,7 +6052,7 @@ function renderAgentProfile(a){
       </div>
 
       <div class="ap-back">
-        <a href="/">&larr; See all Avani &amp; Co. listings</a>
+        <a href="/?agent=${escapeHtml(a.slug)}#listings">Browse listings with ${escapeHtml((a.name||'').split(' ')[0])} &rarr;</a>
       </div>
     </section>`;
 }
@@ -6085,6 +6126,15 @@ async function renderMyPageSection(){
         <a href="${url}" target="_blank" rel="noopener">${escapeHtml(url)}</a>
       </div>
       <button class="btn-sm" onclick="copyMyPageUrl('${escapeHtml(url)}')">Copy link</button>
+    </div>
+    <div class="mypage-qr">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=520x520&margin=0&qzone=1&color=1B3670&bgcolor=FFFFFF&data=${encodeURIComponent(url)}" alt="Your QR code">
+      <div>
+        <div class="field-label">Your QR code</div>
+        <p>Show this from your phone and anyone can scan it to land on your page &mdash;
+           any enquiry they send comes to you. Print it on a card, a sign rider, or a flyer.</p>
+        <a class="btn-sm" href="https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&margin=0&qzone=1&color=1B3670&bgcolor=FFFFFF&data=${encodeURIComponent(url)}" target="_blank" rel="noopener">Download for print</a>
+      </div>
     </div>
     <div class="setup-grid" style="margin-top:16px;">
       <div><div class="field-label">Title</div>
@@ -6167,6 +6217,59 @@ function fixHeaderForProfile(){
       a.setAttribute('href', '/#client-login');
     }
   });
+}
+</script>
+<script>
+/* ---------- agent attribution ----------
+   If someone arrives via an agent's page or QR code, every lead they create
+   from then on belongs to that agent — not just the form on the profile. */
+/* Attribution does not expire. If someone came through an agent's link, that
+   agent keeps them until the visitor says otherwise or arrives through someone
+   else. A timer would quietly hand an agent's contact back to the brokerage,
+   which is not a defensible way to treat the people who brought the business. */
+function setAgentReferral(a){
+  try{
+    localStorage.setItem('agentReferral', JSON.stringify({
+      id: a.id, name: a.name, slug: a.slug, at: Date.now()
+    }));
+  }catch(e){}
+}
+function getAgentReferral(){
+  try{
+    const raw = localStorage.getItem('agentReferral') || sessionStorage.getItem('agentReferral');
+    const r = JSON.parse(raw || 'null');
+    return (r && r.id) ? r : null;
+  }catch(e){ return null; }
+}
+function clearAgentReferral(){
+  try{
+    localStorage.removeItem('agentReferral');
+    sessionStorage.removeItem('agentReferral');
+  }catch(e){}
+}
+
+/* Resolve ?agent=slug when someone clicks through from a profile. */
+async function resolveAgentFromQuery(){
+  const slug = new URLSearchParams(location.search).get('agent');
+  if(!slug) return;
+  try{
+    const res = await fetch('/api/agent/by-slug/' + encodeURIComponent(slug));
+    if(!res.ok) return;
+    const d = await res.json();
+    if(d.ok && d.agent){ setAgentReferral(d.agent); showReferralBar(); }
+  }catch(e){}
+}
+
+function showReferralBar(){
+  const r = getAgentReferral();
+  const bar = document.getElementById('referral-bar');
+  if(!bar) return;
+  if(!r){ bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = `<span>You're working with <strong>${escapeHtml(r.name)}</strong> &mdash;
+      anything you send goes to them, not a call centre.</span>
+    <a href="/${escapeHtml(r.slug)}">Their page</a>
+    <button onclick="if(confirm('Stop working with ' + ${JSON.stringify(r.name)} + '? Future enquiries would go to the brokerage instead.')){ clearAgentReferral(); showReferralBar(); }" title="Browse without an agent">&times;</button>`;
 }
 </script>
 </body>
