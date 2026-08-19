@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v112">
+<meta name="build" content="index-v113">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1688,6 +1688,8 @@ Call Jimmy · 251-229-3216
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-marketing"></div>
+<div class="crm-sec" id="sec-resources"></div>
 <div class="crm-sec" id="sec-mypage"></div>
 <div class="crm-sec" id="sec-myprofile"></div>
 <div class="crm-sec" id="sec-password"><div class="setup-panel" id="change-password-panel">
@@ -2629,7 +2631,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v112';
+window.BUILD = 'index-v113';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3987,6 +3989,14 @@ html += `<h4 style="margin:20px 0 8px; font-size:13px;">Log a closed deal (offic
 </div>
 <input id="cd-refamt" type="number" placeholder="Referral amount ($)" oninput="markRefEdited()">
 <input id="cd-refein" placeholder="Their EIN / Tax ID (from W-9)">
+<label id="cd-w9-wrap" style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;
+  line-height:1.45;color:var(--driftwood);grid-column:1/-1;padding:8px 10px;
+  background:#FBF6EA;border-left:3px solid #E6C381;border-radius:0 6px 6px 0;cursor:pointer">
+  <input type="checkbox" id="cd-w9" style="margin-top:2px;flex:0 0 auto">
+  <span><strong>Is there a W-9 on file for them?</strong> A referral of $600 or more
+  generally needs a 1099-NEC, and the W-9 is where the EIN and the correct legal name
+  come from. Chasing it after the money moves is much harder.</span>
+</label>
 <input id="cd-refdate" type="date" title="Date paid or received">
 <input id="cd-refnotes" placeholder="Referral notes (agreement #, contact, terms)" style="grid-column:1/-1;">
 </div>
@@ -4250,10 +4260,23 @@ const refType = (document.getElementById('cd-reftype')||{}).value || 'pct';
 const refPct  = (document.getElementById('cd-refpct')||{}).value || '';
 const refDir  = (document.getElementById('cd-refdir')||{}).value || '';
 const refEin  = (document.getElementById('cd-refein')||{}).value || '';
+// A referral without a W-9 is a 1099 problem later, so confirm it now rather
+// than at tax time. Only asked when there is actually a referral to report.
+const refW9 = !!(document.getElementById('cd-w9')||{}).checked;
+if((parseFloat(refAmt) > 0 || refName.trim()) && !refW9){
+  const go = confirm('No W-9 confirmed for this referral.\n\n'
+    + 'At $600 or more you will need one to file the 1099-NEC, and the EIN and legal '
+    + 'name both come off it.\n\nSave anyway and collect the W-9 later?');
+  if(!go){
+    const el = document.getElementById('cd-w9-wrap');
+    if(el){ el.style.outline = '2px solid #B4232A'; el.scrollIntoView({behavior:'smooth', block:'center'}); }
+    return;
+  }
+}
 const refNotes= (document.getElementById('cd-refnotes')||{}).value || '';
 const dealNotes=(document.getElementById('cd-notes')||{}).value || '';
 list.push({ id:'deal_'+Date.now(), address, price, closeDate, gci, commission:gci,
-referralTo: refName.trim(), referralAmount: refAmt, referralDate: refDate,
+referralTo: refName.trim(), referralAmount: refAmt, referralDate: refDate, referralW9: refW9,
 side: (document.getElementById('cd-side')||{}).value || '',
 listSideAmount: (document.getElementById('cd-listamt')||{}).value || '',
 buySideAmount: (document.getElementById('cd-buyamt')||{}).value || '',
@@ -4589,7 +4612,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(h === 'client-login'){
     setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
   }
-  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage'].includes(h)){
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources'].includes(h)){
     try{
       switchView('crm');
       if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
@@ -5193,6 +5216,8 @@ const CRM_SECTIONS = [
   { id:'sec-agents',      label:'Agents',      icon:'\u263A', brokerOnly:true },
   { id:'sec-reviews',     label:'Reviews',     icon:'\u2605', brokerOnly:true },
   { id:'sec-setup',       label:'Settings',    icon:'\u2699', brokerOnly:true },
+  { id:'sec-marketing',   label:'Marketing',   icon:'\u2726' },
+  { id:'sec-resources',   label:'Resources',   icon:'\u2630' },
   { id:'sec-mypage',      label:'My page',     icon:'\u2318' },
   { id:'sec-myprofile',   label:'My details',  icon:'\u2637', agentOnly:true },
   { id:'sec-password',    label:'My password', icon:'\u26BF' },
@@ -5246,6 +5271,8 @@ function showCrmSection(id){
     if(id === 'sec-reviews' && typeof loadPendingReviews === 'function') loadPendingReviews();
     if(id === 'sec-myprofile') renderMyProfileSection();
     if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
+    if(id === 'sec-marketing' && typeof renderMarketingSection === 'function') renderMarketingSection();
+    if(id === 'sec-resources' && typeof renderResourcesSection === 'function') renderResourcesSection();
     if(id === 'sec-today') renderDashboard();
   }catch(e){}
   const main = document.getElementById('crm-main');
@@ -6302,7 +6329,19 @@ async function maybeShowAgentProfile(){
   const slug = agentSlugFromPath();
   if (!slug) return false;
   try {
-    const res = await fetch('/api/agent/by-slug/' + encodeURIComponent(slug));
+    // A scan from printed material arrives with ?src= — record it so the broker can
+  // see which piece actually pulled. Fire and forget; never block the page.
+  try{
+    const qp = new URLSearchParams(location.search);
+    const src = qp.get('src');
+    if(src){
+      fetch('/api/marketing/scan', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ slug, src, campaign: qp.get('c') || '' })
+      }).catch(()=>{});
+    }
+  }catch(e){}
+  const res = await fetch('/api/agent/by-slug/' + encodeURIComponent(slug));
     if (!res.ok) return false;
     const d = await res.json();
     if (!d.ok || !d.agent) return false;
@@ -6973,5 +7012,1154 @@ function removeMyPhoto(){
   showToast("Photo cleared \u2014 press Save my page to confirm.");
 }
 </script>
+<style>
+/* ---------- marketing studio ---------- */
+#mkStudio{position:fixed;inset:0;z-index:9000;background:var(--paper,#fff);display:none;
+  flex-direction:column;overflow:hidden}
+#mkStudio.on{display:flex}
+.mk-bar{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid rgba(27,32,67,.12);
+  background:#fff;flex:0 0 auto;flex-wrap:wrap}
+.mk-bar h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:23px;font-weight:500;color:#1B2043}
+.mk-bar .sp{flex:1}
+.mk-body{flex:1;display:flex;min-height:0;overflow:hidden}
+.mk-side{width:330px;flex:0 0 330px;border-right:1px solid rgba(27,32,67,.12);overflow:auto;padding:18px;background:#FAFAFD}
+.mk-stage{flex:1;overflow:auto;padding:26px;display:flex;flex-direction:column;align-items:center;gap:16px;
+  background:repeating-conic-gradient(#EFEFF4 0% 25%, #F7F7FB 0% 50%) 50%/22px 22px}
+.mk-canvas-wrap{background:#fff;box-shadow:0 6px 26px rgba(27,32,67,.16);max-width:100%}
+.mk-canvas-wrap canvas{display:block;max-width:100%;height:auto}
+.mk-cap{font-size:12.5px;color:rgba(27,32,67,.6);text-align:center}
+.mk-field{margin-bottom:13px}
+.mk-field label{display:block;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:rgba(27,32,67,.62);margin-bottom:5px}
+.mk-field input,.mk-field select,.mk-field textarea{width:100%;padding:9px 10px;border:1px solid rgba(27,32,67,.2);
+  border-radius:7px;font:inherit;font-size:14px;background:#fff;color:#1B2043}
+.mk-tpl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.mk-tpl button{padding:10px 8px;border:1.5px solid rgba(27,32,67,.18);background:#fff;border-radius:8px;
+  cursor:pointer;font-size:12.5px;line-height:1.3;color:#1B2043;text-align:left}
+.mk-tpl button.on{border-color:#2E3CB0;background:#EEF0FB;font-weight:600}
+.mk-note{font-size:12px;line-height:1.5;color:rgba(27,32,67,.66);background:#F0F1F8;border-left:3px solid #E6C381;
+  padding:9px 11px;border-radius:0 6px 6px 0;margin-bottom:15px}
+.mk-projects{margin-top:6px}
+.mk-proj{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(27,32,67,.14);
+  border-radius:7px;margin-bottom:7px;background:#fff;font-size:13px}
+.mk-proj .nm{flex:1;cursor:pointer;color:#2E3CB0;font-weight:500}
+.mk-proj .mt{font-size:11.5px;color:rgba(27,32,67,.5)}
+.mk-proj button{border:none;background:none;cursor:pointer;font-size:15px;opacity:.5;padding:2px 4px}
+.mk-proj button:hover{opacity:1}
+@media(max-width:860px){
+  .mk-body{flex-direction:column}
+  .mk-side{width:auto;flex:0 0 auto;border-right:none;border-bottom:1px solid rgba(27,32,67,.12);max-height:46vh}
+}
+</style>
+
+<div id="mkStudio">
+  <div class="mk-bar">
+    <h3>Marketing studio</h3>
+    <span class="sp"></span>
+    <button class="btn ghost" onclick="mkSaveProject()">Save project</button>
+    <button class="btn ghost" onclick="mkDownload('png')">Download PNG</button>
+    <button class="btn ghost" onclick="mkDownload('pdf')">Download PDF</button>
+    <button class="btn ghost" onclick="mkShare()">Share</button>
+    <button class="btn" onclick="mkClose()">Done</button>
+  </div>
+  <div class="mk-body">
+    <div class="mk-side" id="mkSide"></div>
+    <div class="mk-stage" id="mkStage"></div>
+  </div>
+</div>
+
+<script>
+/* ================= marketing studio =================
+   Renders print-ready material in the browser. Two rules are load-bearing:
+
+   1. AREC 790-X-3-.16 — the brokerage name must be set at a font size equal to
+      or larger than any other text or logo on the piece. That is computed in
+      code from the largest other element and there is deliberately no control
+      to override it. Do not add one.
+   2. Projects store the recipe, not the rendered image. Re-rendering on open
+      keeps the database small and means a template fix improves every past
+      project. Agent photos are already data URIs; do not put artwork there too.
+*/
+/* ---------- studio state ---------- */
+let mkState = { tpl: 'card-front', projectId: null, name: '', fields: {} };
+let mkProjects = [];
+
+function mkDefaults(){
+  const a = (typeof currentAgent === 'object' && currentAgent) ? currentAgent : {};
+  const p = window.__myPublicProfile || {};
+  return {
+    agentName: a.name || '',
+    title: p.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'),
+    phone: p.publicPhone || a.phone || '251-229-3216',
+    email: p.publicEmail || a.email || '',
+    licenseLine: mkLicenseLine(p),
+    headline: 'Thinking of selling?',
+    tagline: 'Gulf Shores \u00b7 Orange Beach \u00b7 Baldwin County',
+    scanLine: AvaniTemplates.SCAN_LINES[0],
+    campaign: '',
+  };
+}
+
+/* Built from the license record, never typed. Same principle as the service-area
+   sentence on the agent page — a card claiming a state the agent isn't licensed
+   in is the broker's exposure. */
+function mkLicenseLine(p){
+  const NAMES = { AL:'Alabama', FL:'Florida' };
+  const states = (p && Array.isArray(p.licensedStates)) ? p.licensedStates.filter(c => NAMES[c]) : [];
+  if(!states.length) return '';
+  const nums = (p && p.licenseNumbers) || {};
+  return 'Licensed in ' + states.map(c => NAMES[c] + (nums[c] ? ' #' + nums[c] : '')).join(' and ');
+}
+
+function mkQrUrl(){
+  const slug = (typeof publicSlug === 'function' && currentAgent)
+    ? publicSlug(currentAgent.name) : '';
+  const src = mkState.tpl.startsWith('card') ? 'card' : 'rider';
+  const c = (mkState.fields.campaign || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
+  return location.origin + '/' + slug + '?src=' + src + (c ? '&c=' + c : '');
+}
+
+/* ---------- render ---------- */
+function mkRender(){
+  const stage = document.getElementById('mkStage');
+  if(!stage) return;
+  const t = AvaniTemplates.TEMPLATES[mkState.tpl];
+  if(!t){ stage.innerHTML = ''; return; }
+
+  const spec = Object.assign({}, mkState.fields, { qrUrl: mkQrUrl() });
+
+  // measure first, then draw at the real size
+  const probe = document.createElement('canvas').getContext('2d');
+  let dims;
+  try { dims = t.draw(probe, spec, t.dpi, AvaniQR); }
+  catch(e){
+    stage.innerHTML = '<div class="mk-cap" style="color:#B4232A">Could not render: ' + escapeHtml(e.message) + '</div>';
+    return;
+  }
+
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(dims.W); cv.height = Math.round(dims.H);
+  t.draw(cv.getContext('2d'), spec, t.dpi, AvaniQR);
+  window.__mkCanvas = cv;
+
+  stage.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'mk-canvas-wrap';
+  // display width capped so a 24in rider doesn't blow out the stage
+  cv.style.width = Math.min(dims.W, 820) + 'px';
+  wrap.appendChild(cv);
+  stage.appendChild(wrap);
+
+  const cap = document.createElement('div');
+  cap.className = 'mk-cap';
+  cap.textContent = t.label + ' \u00b7 ' + t.size + ' \u00b7 ' + cv.width + '\u00d7' + cv.height + 'px at ' + t.dpi + ' dpi';
+  stage.appendChild(cap);
+
+  const note = document.createElement('div');
+  note.className = 'mk-cap';
+  note.style.maxWidth = '520px';
+  note.textContent = 'Scans go to ' + mkQrUrl();
+  stage.appendChild(note);
+}
+
+/* ---------- side panel ---------- */
+function mkSide(){
+  const el = document.getElementById('mkSide');
+  if(!el) return;
+  const f = mkState.fields;
+  const tplBtns = Object.entries(AvaniTemplates.TEMPLATES).map(([id, t]) =>
+    `<button class="${mkState.tpl===id?'on':''}" onclick="mkPick('${id}')">${escapeHtml(t.label)}</button>`
+  ).join('');
+
+  const scanOpts = AvaniTemplates.SCAN_LINES.map(l =>
+    `<option${f.scanLine===l?' selected':''}>${escapeHtml(l)}</option>`).join('');
+
+  const isCard = mkState.tpl.startsWith('card');
+  const isBack = mkState.tpl === 'card-back';
+
+  el.innerHTML = `
+    <div class="mk-tpl">${tplBtns}</div>
+    <div class="mk-note">The brokerage name is sized automatically so it is never smaller
+      than anything else on the piece. Alabama license law requires that, and it is
+      the broker's exposure — so it is not editable.</div>
+
+    <div class="mk-field"><label>Project name</label>
+      <input id="mkName" value="${escapeHtml(mkState.name)}" placeholder="e.g. Christina cards 2026"></div>
+
+    ${isBack ? '' : `
+    <div class="mk-field"><label>Your name</label>
+      <input id="f_agentName" value="${escapeHtml(f.agentName||'')}"></div>
+    <div class="mk-field"><label>Title</label>
+      <input id="f_title" value="${escapeHtml(f.title||'')}"></div>`}
+
+    ${isCard && !isBack ? `
+    <div class="mk-field"><label>Phone</label>
+      <input id="f_phone" value="${escapeHtml(f.phone||'')}"></div>
+    <div class="mk-field"><label>Email</label>
+      <input id="f_email" value="${escapeHtml(f.email||'')}"></div>` : ''}
+
+    ${!isCard ? `
+    <div class="mk-field"><label>Headline</label>
+      <input id="f_headline" value="${escapeHtml(f.headline||'')}"></div>
+    <div class="mk-field"><label>Phone</label>
+      <input id="f_phone" value="${escapeHtml(f.phone||'')}"></div>` : ''}
+
+    ${isBack ? `
+    <div class="mk-field"><label>Tagline</label>
+      <input id="f_tagline" value="${escapeHtml(f.tagline||'')}"></div>` : ''}
+
+    ${isBack ? '' : `
+    <div class="mk-field"><label>Scan line</label>
+      <select id="f_scanLine">${scanOpts}<option value="">(none)</option></select></div>
+    <div class="mk-field"><label>Campaign tag <span style="font-weight:400;text-transform:none;opacity:.7">— shows which piece pulled</span></label>
+      <input id="f_campaign" value="${escapeHtml(f.campaign||'')}" placeholder="e.g. spring26"></div>`}
+
+    ${isBack || !f.licenseLine ? '' : `
+    <div class="mk-field"><label>License line</label>
+      <input value="${escapeHtml(f.licenseLine)}" disabled
+        style="background:#F0F1F8;color:rgba(27,32,67,.6)">
+      <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-top:4px">
+        From your license record. Ask the broker to change it.</div></div>`}
+  `;
+
+  el.querySelectorAll('input[id^="f_"], select[id^="f_"]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      mkState.fields[inp.id.slice(2)] = inp.value;
+      mkRender();
+    });
+  });
+  const nm = document.getElementById('mkName');
+  if(nm) nm.addEventListener('input', () => { mkState.name = nm.value; });
+}
+
+function mkPick(id){
+  mkState.tpl = id;
+  mkSide(); mkRender();
+}
+
+/* ---------- open / close ---------- */
+function mkOpen(project){
+  if(project){
+    mkState = {
+      tpl: project.tpl || 'card-front',
+      projectId: project.id,
+      name: project.name || '',
+      fields: Object.assign(mkDefaults(), project.fields || {}),
+    };
+  } else {
+    mkState = { tpl: 'card-front', projectId: null, name: '', fields: mkDefaults() };
+  }
+  document.getElementById('mkStudio').classList.add('on');
+  document.body.style.overflow = 'hidden';
+  mkSide(); mkRender();
+}
+
+function mkClose(){
+  document.getElementById('mkStudio').classList.remove('on');
+  document.body.style.overflow = '';
+  if(typeof renderMarketingSection === 'function') renderMarketingSection();
+}
+
+/* ---------- projects ---------- */
+function mkProjectKey(agentId, id){ return 'marketing:' + agentId + ':' + id; }
+
+async function mkSaveProject(){
+  if(!currentAgent){ alert('Sign in first.'); return; }
+  if(!mkState.name.trim()){
+    const nm = prompt('Name this project so you can find it again:', 'My ' + AvaniTemplates.TEMPLATES[mkState.tpl].label);
+    if(!nm) return;
+    mkState.name = nm;
+    const el = document.getElementById('mkName'); if(el) el.value = nm;
+  }
+  const id = mkState.projectId || ('mk_' + Date.now());
+  // the recipe, not the artwork — see the note at the top of this module
+  const rec = {
+    id, name: mkState.name.trim(), tpl: mkState.tpl,
+    fields: mkState.fields,
+    agentId: currentAgent.id, agentName: currentAgent.name,
+    updatedAt: new Date().toISOString(),
+  };
+  try{
+    const ok = await storeSet(mkProjectKey(currentAgent.id, id), rec);
+    if(!ok) throw new Error('the server refused the save');
+    mkState.projectId = id;
+    alert('Project saved.');
+  }catch(e){ alert('Could not save: ' + e.message); }
+}
+
+async function mkLoadProjects(agentId){
+  const out = [];
+  try{
+    const keys = await storeListKeys('marketing:' + agentId + ':');
+    for(const k of (keys || [])){
+      const v = await storeGet(k);
+      if(v) out.push(v);
+    }
+  }catch(e){ console.error('marketing project load failed', e); }
+  return out.sort((a,b) => String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+}
+
+async function mkDeleteProject(id){
+  if(!confirm('Delete this project? The artwork you already downloaded is unaffected.')) return;
+  try{
+    await storeDelete(mkProjectKey(currentAgent.id, id));
+    renderMarketingSection();
+  }catch(e){ alert('Could not delete: ' + e.message); }
+}
+
+async function mkDuplicate(p){
+  const copy = Object.assign({}, p, { id: null, name: (p.name || 'Project') + ' copy' });
+  mkOpen(Object.assign({}, copy, { id: undefined }));
+  mkState.projectId = null;
+}
+
+/* ---------- export ---------- */
+function mkFileBase(){
+  const nm = (mkState.name || AvaniTemplates.TEMPLATES[mkState.tpl].label).replace(/[^A-Za-z0-9]+/g,'-');
+  return nm.replace(/^-|-$/g,'').toLowerCase() || 'marketing';
+}
+
+function mkDownload(kind){
+  const cv = window.__mkCanvas;
+  if(!cv){ alert('Nothing to download yet.'); return; }
+  if(kind === 'png'){
+    cv.toBlob(b => mkSaveBlob(b, mkFileBase() + '.png'), 'image/png');
+    return;
+  }
+  // PDF: embed the rendered bitmap as a JPEG XObject. Sign shops and card
+  // printers accept this; it keeps the physical dimensions exact.
+  const t = AvaniTemplates.TEMPLATES[mkState.tpl];
+  const jpeg = cv.toDataURL('image/jpeg', 0.95).split(',')[1];
+  const bytes = atob(jpeg);
+  const wPt = cv.width / t.dpi * 72, hPt = cv.height / t.dpi * 72;
+
+  const objs = [];
+  objs[1] = '<</Type/Catalog/Pages 2 0 R>>';
+  objs[2] = '<</Type/Pages/Kids[3 0 R]/Count 1>>';
+  objs[3] = `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${wPt.toFixed(2)} ${hPt.toFixed(2)}]`
+          + `/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>`;
+  const content = `q ${wPt.toFixed(2)} 0 0 ${hPt.toFixed(2)} 0 0 cm /Im0 Do Q`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  const push = (num, body, stream) => {
+    offsets[num] = pdf.length;
+    pdf += num + ' 0 obj\n' + body + '\n';
+    if(stream != null) pdf += 'stream\n' + stream + '\nendstream\n';
+    pdf += 'endobj\n';
+  };
+  push(1, objs[1]); push(2, objs[2]); push(3, objs[3]);
+  push(4, `<</Type/XObject/Subtype/Image/Width ${cv.width}/Height ${cv.height}`
+        + `/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${bytes.length}>>`, bytes);
+  push(5, `<</Length ${content.length}>>`, content);
+
+  const xref = pdf.length;
+  pdf += 'xref\n0 6\n0000000000 65535 f \n';
+  for(let i = 1; i <= 5; i++) pdf += String(offsets[i]).padStart(10,'0') + ' 00000 n \n';
+  pdf += `trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
+
+  const buf = new Uint8Array(pdf.length);
+  for(let i = 0; i < pdf.length; i++) buf[i] = pdf.charCodeAt(i) & 0xFF;
+  mkSaveBlob(new Blob([buf], { type:'application/pdf' }), mkFileBase() + '.pdf');
+}
+
+function mkSaveBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* ---------- share ---------- */
+async function mkShare(){
+  const cv = window.__mkCanvas;
+  if(!cv) return;
+  const url = mkQrUrl();
+  cv.toBlob(async blob => {
+    const file = new File([blob], mkFileBase() + '.png', { type:'image/png' });
+    // Phones can hand the image straight to Instagram or Facebook. Desktop
+    // browsers mostly can't, so fall back to a share link plus the download.
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      try{
+        await navigator.share({ files:[file], text:'Find me at ' + url });
+        return;
+      }catch(e){ if(e && e.name === 'AbortError') return; }
+    }
+    const pick = confirm('Your browser can\'t hand the image to an app directly.\n\n'
+      + 'OK — download the image and open Facebook to post it.\n'
+      + 'Cancel — just download the image.');
+    mkDownload('png');
+    if(pick) window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url), '_blank');
+  }, 'image/png');
+}
+
+/* ---------- CRM section ---------- */
+async function renderMarketingSection(){
+  const el = document.getElementById('sec-marketing');
+  if(!el || !currentAgent) return;
+  const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
+
+  el.innerHTML = `<div class="card"><div style="padding:18px">
+      <p style="margin:0 0 14px;color:rgba(27,32,67,.72);max-width:640px">
+        Business cards and yard sign riders, print-ready, with a QR code that brings
+        every scan back to you. Save a project and pick it up later instead of
+        rebuilding it.</p>
+      <button class="btn" onclick="mkOpen()">New piece</button>
+    </div></div>
+    <div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 12px;font-size:16px">Saved projects</h3>
+      <div id="mkList" class="mk-projects">Loading…</div>
+    </div></div>`;
+
+  const list = document.getElementById('mkList');
+  const mine = await mkLoadProjects(currentAgent.id);
+  mkProjects = mine;
+
+  const rows = mine.map(p => `
+    <div class="mk-proj">
+      <span class="nm" onclick="mkOpenById('${p.id}')">${escapeHtml(p.name || 'Untitled')}</span>
+      <span class="mt">${escapeHtml((AvaniTemplates.TEMPLATES[p.tpl]||{}).label || p.tpl)}</span>
+      <button title="Duplicate" onclick="mkDupById('${p.id}')">\u29C9</button>
+      <button title="Delete" onclick="mkDeleteProject('${p.id}')">\u2715</button>
+    </div>`).join('');
+
+  list.innerHTML = rows || '<div style="color:rgba(27,32,67,.55);font-size:13.5px">Nothing saved yet.</div>';
+
+  if(staff){
+    const note = document.createElement('div');
+    note.style.cssText = 'margin-top:14px;font-size:12.5px;color:rgba(27,32,67,.6)';
+    note.textContent = 'As broker you can also open any agent\u2019s saved projects from their profile.';
+    list.parentNode.appendChild(note);
+  }
+}
+
+function mkOpenById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkOpen(p); }
+function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDuplicate(p); }
+
+</script>
+
+<script>
+/* Minimal byte-mode QR encoder — no external service, no CORS, canvas-safe.
+   Printed materials must not depend on a third-party image host being up, and a
+   cross-origin QR image taints the canvas so toDataURL() throws on export.
+   Supports versions 1-10, error correction level M (recovers ~15%, the usual
+   choice for print where a scuff shouldn't kill the code). */
+(function(global){
+  'use strict';
+
+  // ---- Galois field tables for Reed-Solomon ----
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (function(){
+    let x = 1;
+    for(let i = 0; i < 255; i++){
+      EXP[i] = x; LOG[x] = i;
+      x <<= 1; if(x & 0x100) x ^= 0x11D;
+    }
+    for(let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  })();
+  const gmul = (a,b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  function rsGenerator(deg){
+    let poly = [1];
+    for(let i = 0; i < deg; i++){
+      const next = new Array(poly.length + 1).fill(0);
+      for(let j = 0; j < poly.length; j++){
+        next[j]     ^= gmul(poly[j], 1);
+        next[j + 1] ^= gmul(poly[j], EXP[i]);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function rsEncode(data, ecLen){
+    const gen = rsGenerator(ecLen);
+    const res = new Array(ecLen).fill(0);
+    for(const byte of data){
+      const factor = byte ^ res[0];
+      res.shift(); res.push(0);
+      for(let i = 0; i < ecLen; i++) res[i] ^= gmul(gen[i + 1], factor);
+    }
+    return res;
+  }
+
+  // ---- capacity tables, EC level M, versions 1-10 ----
+  // [totalCodewords, ecPerBlock, group1Blocks, g1Data, group2Blocks, g2Data]
+  const VERSIONS = {
+    1:[26,10,1,16,0,0],   2:[44,16,1,28,0,0],   3:[70,26,1,44,0,0],
+    4:[100,18,2,32,0,0],  5:[134,24,2,43,0,0],  6:[172,16,4,27,0,0],
+    7:[196,18,4,31,0,0],  8:[242,22,2,38,2,39], 9:[292,22,3,36,2,37],
+    10:[346,26,4,43,1,44]
+  };
+  const ALIGN = {
+    1:[], 2:[6,18], 3:[6,22], 4:[6,26], 5:[6,30],
+    6:[6,34], 7:[6,22,38], 8:[6,24,42], 9:[6,26,46], 10:[6,28,50]
+  };
+
+  function capacityOf(v){
+    const [total, ecPer, g1, g1d, g2, g2d] = VERSIONS[v];
+    return g1 * g1d + g2 * g2d;
+  }
+
+  function pickVersion(byteLen){
+    for(let v = 1; v <= 10; v++){
+      // 4 bits mode + 8 or 16 bits length + payload
+      const lenBits = v < 10 ? 8 : 16;
+      const need = Math.ceil((4 + lenBits + byteLen * 8) / 8);
+      if(need <= capacityOf(v)) return v;
+    }
+    throw new Error('QR payload too long for version 10 — shorten the URL.');
+  }
+
+  // ---- bit stream ----
+  function buildData(text, version){
+    const bytes = [];
+    for(const ch of unescape(encodeURIComponent(text))) bytes.push(ch.charCodeAt(0));
+    const lenBits = version < 10 ? 8 : 16;
+    const bits = [];
+    const push = (val, n) => { for(let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+
+    push(4, 4);                 // byte mode
+    push(bytes.length, lenBits);
+    bytes.forEach(b => push(b, 8));
+
+    const cap = capacityOf(version) * 8;
+    push(0, Math.min(4, cap - bits.length));      // terminator
+    while(bits.length % 8) bits.push(0);          // pad to byte boundary
+
+    const out = [];
+    for(let i = 0; i < bits.length; i += 8){
+      let b = 0;
+      for(let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+      out.push(b);
+    }
+    const pads = [0xEC, 0x11];
+    let k = 0;
+    while(out.length < capacityOf(version)) out.push(pads[k++ % 2]);
+    return out;
+  }
+
+  function interleave(data, version){
+    const [total, ecPer, g1, g1d, g2, g2d] = VERSIONS[version];
+    const blocks = [], ecBlocks = [];
+    let pos = 0;
+    for(let i = 0; i < g1; i++){ blocks.push(data.slice(pos, pos + g1d)); pos += g1d; }
+    for(let i = 0; i < g2; i++){ blocks.push(data.slice(pos, pos + g2d)); pos += g2d; }
+    blocks.forEach(b => ecBlocks.push(rsEncode(b, ecPer)));
+
+    const out = [];
+    const maxData = Math.max(g1d, g2d);
+    for(let i = 0; i < maxData; i++)
+      for(const b of blocks) if(i < b.length) out.push(b[i]);
+    for(let i = 0; i < ecPer; i++)
+      for(const b of ecBlocks) out.push(b[i]);
+    return out;
+  }
+
+  // ---- matrix ----
+  function makeMatrix(version){
+    const size = version * 4 + 17;
+    const m = Array.from({length: size}, () => new Array(size).fill(null));
+
+    const finder = (r, c) => {
+      for(let i = -1; i <= 7; i++) for(let j = -1; j <= 7; j++){
+        const rr = r + i, cc = c + j;
+        if(rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
+        const on = (i >= 0 && i <= 6 && (j === 0 || j === 6)) ||
+                   (j >= 0 && j <= 6 && (i === 0 || i === 6)) ||
+                   (i >= 2 && i <= 4 && j >= 2 && j <= 4);
+        m[rr][cc] = on ? 1 : 0;
+      }
+    };
+    finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+
+    for(let i = 8; i < size - 8; i++){
+      const v = i % 2 === 0 ? 1 : 0;
+      if(m[6][i] === null) m[6][i] = v;
+      if(m[i][6] === null) m[i][6] = v;
+    }
+
+    const centers = ALIGN[version];
+    for(const r of centers) for(const c of centers){
+      if(m[r][c] !== null) continue;
+      for(let i = -2; i <= 2; i++) for(let j = -2; j <= 2; j++){
+        const on = Math.max(Math.abs(i), Math.abs(j)) !== 1;
+        m[r + i][c + j] = on ? 1 : 0;
+      }
+    }
+
+    m[size - 8][8] = 1;  // dark module
+    return m;
+  }
+
+  function reserveFormat(m, size){
+    const res = [];
+    for(let i = 0; i < 9; i++){
+      if(m[8][i] === null){ m[8][i] = 0; res.push([8, i]); }
+      if(m[i][8] === null){ m[i][8] = 0; res.push([i, 8]); }
+    }
+    for(let i = size - 8; i < size; i++){
+      if(m[8][i] === null){ m[8][i] = 0; res.push([8, i]); }
+      if(m[i][8] === null){ m[i][8] = 0; res.push([i, 8]); }
+    }
+    return res;
+  }
+
+  function placeData(m, bytes, size){
+    const bits = [];
+    bytes.forEach(b => { for(let i = 7; i >= 0; i--) bits.push((b >> i) & 1); });
+    let idx = 0, up = true;
+    for(let col = size - 1; col > 0; col -= 2){
+      if(col === 6) col--;
+      const rows = up ? [...Array(size).keys()].reverse() : [...Array(size).keys()];
+      for(const row of rows){
+        for(let c = 0; c < 2; c++){
+          const cc = col - c;
+          if(m[row][cc] !== null) continue;
+          m[row][cc] = idx < bits.length ? bits[idx] : 0;
+          idx++;
+        }
+      }
+      up = !up;
+    }
+  }
+
+  const MASKS = [
+    (r,c) => (r + c) % 2 === 0,
+    (r,c) => r % 2 === 0,
+    (r,c) => c % 3 === 0,
+    (r,c) => (r + c) % 3 === 0,
+    (r,c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r,c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+    (r,c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+    (r,c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
+  ];
+
+  function penalty(m, size){
+    let p = 0;
+    // runs of 5+
+    for(let i = 0; i < size; i++){
+      for(const line of [m[i], m.map(r => r[i])]){
+        let run = 1;
+        for(let j = 1; j < size; j++){
+          if(line[j] === line[j-1]) run++;
+          else { if(run >= 5) p += 3 + (run - 5); run = 1; }
+        }
+        if(run >= 5) p += 3 + (run - 5);
+      }
+    }
+    // 2x2 blocks
+    for(let r = 0; r < size - 1; r++) for(let c = 0; c < size - 1; c++)
+      if(m[r][c] === m[r][c+1] && m[r][c] === m[r+1][c] && m[r][c] === m[r+1][c+1]) p += 3;
+    // dark ratio
+    let dark = 0;
+    for(let r = 0; r < size; r++) for(let c = 0; c < size; c++) if(m[r][c]) dark++;
+    const pct = dark * 100 / (size * size);
+    p += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return p;
+  }
+
+  const FORMAT_BITS = [
+    0x5412,0x5125,0x5E7C,0x5B4B,0x45F9,0x40CE,0x4F97,0x4AA0
+  ]; // EC level M, masks 0-7
+
+  function encode(text){
+    const bytes = [];
+    for(const ch of unescape(encodeURIComponent(text))) bytes.push(ch.charCodeAt(0));
+    const version = pickVersion(bytes.length);
+    const size = version * 4 + 17;
+    const data = interleave(buildData(text, version), version);
+
+    let best = null, bestScore = Infinity;
+    for(let mask = 0; mask < 8; mask++){
+      const m = makeMatrix(version);
+      const reserved = reserveFormat(m, size);
+      const reservedSet = new Set(reserved.map(([r,c]) => r + ':' + c));
+      placeData(m, data, size);
+      // apply mask to data modules only
+      const mm = m.map(row => row.slice());
+      for(let r = 0; r < size; r++) for(let c = 0; c < size; c++){
+        if(reservedSet.has(r + ':' + c)) continue;
+        if(isFunctionModule(r, c, size, version)) continue;
+        if(MASKS[mask](r, c)) mm[r][c] ^= 1;
+      }
+      // write format bits
+      const fmt = FORMAT_BITS[mask];
+      for(let i = 0; i < 15; i++){
+        const bit = (fmt >> (14 - i)) & 1;
+        if(i < 6) { mm[8][i] = bit; }
+        else if(i === 6) { mm[8][7] = bit; }
+        else if(i === 7) { mm[8][8] = bit; }
+        else if(i === 8) { mm[7][8] = bit; }
+        else { mm[14 - i][8] = bit; }
+      }
+      for(let i = 0; i < 15; i++){
+        const bit = (fmt >> i) & 1;
+        if(i < 8) mm[size - 1 - i][8] = bit;
+        else mm[8][size - 15 + i] = bit;
+      }
+      mm[size - 8][8] = 1;
+      const score = penalty(mm, size);
+      if(score < bestScore){ bestScore = score; best = mm; }
+    }
+    return best;
+  }
+
+  function isFunctionModule(r, c, size, version){
+    if(r <= 8 && c <= 8) return true;
+    if(r <= 8 && c >= size - 8) return true;
+    if(r >= size - 8 && c <= 8) return true;
+    if(r === 6 || c === 6) return true;
+    const centers = ALIGN[version];
+    for(const ar of centers) for(const ac of centers){
+      if(Math.abs(r - ar) <= 2 && Math.abs(c - ac) <= 2) return true;
+    }
+    return false;
+  }
+
+  /* Draw onto a canvas context. quiet zone is in modules (4 is the spec minimum
+     and printers do enforce it — a QR with no margin often will not scan). */
+  function draw(ctx, text, x, y, sizePx, opts){
+    opts = opts || {};
+    const dark = opts.dark || '#000', light = opts.light || '#fff', quiet = opts.quiet == null ? 4 : opts.quiet;
+    const m = encode(text);
+    const n = m.length;
+    const total = n + quiet * 2;
+    const px = sizePx / total;
+    ctx.fillStyle = light;
+    ctx.fillRect(x, y, sizePx, sizePx);
+    ctx.fillStyle = dark;
+    for(let r = 0; r < n; r++) for(let c = 0; c < n; c++){
+      if(!m[r][c]) continue;
+      // ceil avoids hairline gaps between modules at fractional scales
+      ctx.fillRect(x + (c + quiet) * px, y + (r + quiet) * px, Math.ceil(px), Math.ceil(px));
+    }
+    return m.length;
+  }
+
+  global.AvaniQR = { encode, draw };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ---------- marketing material renderers ----------
+   Every template draws to a canvas at print resolution so the same code produces
+   the on-screen preview and the downloadable file.
+
+   AREC 790-X-3-.16: the brokerage name must be set at a font size equal to or
+   larger than any other text or logo on the piece. That is enforced here in code
+   — BROKERAGE_PT is computed from the largest other element on the layout and an
+   agent cannot override it. Do not add a control that lets them.                */
+(function(global){
+  'use strict';
+
+  const BRAND = {
+    blue:  '#2E3CB0',
+    gold:  '#E6C381',
+    ink:   '#1B2043',
+    paper: '#FFFFFF',
+    mist:  '#F4F5FA',
+  };
+
+  const BROKERAGE_NAME = 'Avani & Co Real Estate Southern Sands';
+
+  /* Scan-me lines. Kept short — a rider is read from a moving car and a card is
+     read at arm's length. */
+  const SCAN_LINES = [
+    "Don't waste paper — scan me",
+    'In a hurry? Scan me, look later',
+    'Scan for photos, price and more',
+    'Scan me — every listing, live',
+    'Scan to see inside',
+  ];
+
+  // ---------- helpers ----------
+  function fitText(ctx, text, maxWidth, startPx, font, minPx){
+    let px = startPx;
+    do {
+      ctx.font = font.replace('%SIZE%', px);
+      if(ctx.measureText(text).width <= maxWidth) break;
+      px -= 1;
+    } while(px > (minPx || 8));
+    return px;
+  }
+
+  function wrapLines(ctx, text, maxWidth){
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = []; let line = '';
+    for(const w of words){
+      const test = line ? line + ' ' + w : w;
+      if(ctx.measureText(test).width > maxWidth && line){ lines.push(line); line = w; }
+      else line = test;
+    }
+    if(line) lines.push(line);
+    return lines;
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /* The compliance rule, in one place. Returns the point size the brokerage name
+     must use, given every other text size on the piece. */
+  function brokeragePt(otherSizes){
+    const largest = Math.max.apply(null, otherSizes.concat([0]));
+    return Math.ceil(largest);   // equal to the largest other element, never less
+  }
+
+  // ================= BUSINESS CARD =================
+  // 3.5 x 2 in. Bleed 0.125 in each side -> 3.75 x 2.25 trim box.
+  const CARD = { w: 3.5, h: 2.0, bleed: 0.125 };
+
+  function drawBusinessCardFront(ctx, spec, dpi, QR){
+    const bl = CARD.bleed * dpi;
+    const W = (CARD.w + CARD.bleed * 2) * dpi;
+    const H = (CARD.h + CARD.bleed * 2) * dpi;
+    const safe = 0.14 * dpi;                 // keep type this far inside the trim
+    const L = bl + safe, R = W - bl - safe;
+    const T = bl + safe, B = H - bl - safe;
+
+    ctx.fillStyle = BRAND.paper;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = BRAND.gold;
+    ctx.fillRect(bl, bl, 0.05 * dpi, H - bl * 2);
+
+    const textL = L + 0.09 * dpi;
+    const qs    = 0.60 * dpi;                // QR block, bottom right
+    const qx    = R - qs, qy = B - qs;
+
+    const agentPt   = 0.135 * dpi;
+    const titlePt   = 0.068 * dpi;
+    const contactPt = 0.066 * dpi;
+    const licPt     = 0.052 * dpi;
+    const firmPt    = brokeragePt([agentPt, titlePt, contactPt, licPt]);
+
+    ctx.textBaseline = 'top';
+
+    // --- brokerage name leads, largest text on the card by rule ---
+    ctx.fillStyle = BRAND.blue;
+    ctx.font = `600 ${firmPt}px Georgia, serif`;
+    const firmLines = wrapLines(ctx, BROKERAGE_NAME, R - textL);
+    let y = T;
+    firmLines.forEach(line => { ctx.fillText(line, textL, y); y += firmPt * 1.1; });
+
+    // --- agent sits just under it ---
+    y += 0.07 * dpi;
+    ctx.fillStyle = BRAND.ink;
+    ctx.font = `500 ${agentPt}px Georgia, serif`;
+    ctx.fillText(spec.agentName || '', textL, y);
+    y += agentPt * 1.1;
+
+    if(spec.title){
+      ctx.fillStyle = 'rgba(27,32,67,.68)';
+      ctx.font = `${titlePt}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.title, textL, y);
+    }
+
+    // --- contact block anchored to the bottom, level with the QR ---
+    const contact = [spec.phone, spec.email, 'bamacoast.com'].filter(Boolean);
+    const licH = spec.licenseLine ? licPt * 1.5 : 0;
+    let cy = B - licH - contact.length * contactPt * 1.32;
+    ctx.fillStyle = BRAND.ink;
+    ctx.font = `${contactPt}px Helvetica, Arial, sans-serif`;
+    contact.forEach(line => { ctx.fillText(line, textL, cy); cy += contactPt * 1.32; });
+
+    if(spec.licenseLine){
+      ctx.fillStyle = 'rgba(27,32,67,.58)';
+      ctx.font = `${licPt}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.licenseLine, textL, B - licPt * 1.05);
+    }
+
+    // --- QR ---
+    if(spec.qrUrl && QR){
+      QR.draw(ctx, spec.qrUrl, qx, qy, qs, { dark: BRAND.blue, light: '#fff', quiet: 2 });
+      if(spec.scanLine){
+        ctx.fillStyle = 'rgba(27,32,67,.68)';
+        const sp = 0.048 * dpi;
+        ctx.font = `${sp}px Helvetica, Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        const sl = fitText(ctx, spec.scanLine, qs + 0.25 * dpi, sp,
+                           '%SIZE%px Helvetica, Arial, sans-serif', 0.032 * dpi);
+        ctx.font = `${sl}px Helvetica, Arial, sans-serif`;
+        ctx.fillText(spec.scanLine, qx + qs / 2, qy - sl * 1.6);
+        ctx.textAlign = 'left';
+      }
+    }
+    return { W, H };
+  }
+
+  function drawBusinessCardBack(ctx, spec, dpi, QR){
+    const bl = CARD.bleed * dpi;
+    const W = (CARD.w + CARD.bleed * 2) * dpi;
+    const H = (CARD.h + CARD.bleed * 2) * dpi;
+
+    ctx.fillStyle = BRAND.blue;
+    ctx.fillRect(0, 0, W, H);
+
+    const firmPt = 0.16 * dpi;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `600 ${firmPt}px Georgia, serif`;
+    const lines = wrapLines(ctx, BROKERAGE_NAME, W - 0.7 * dpi);
+    const blockH = lines.length * firmPt * 1.15;
+    let y = H / 2 - blockH / 2 + firmPt * 0.55;
+    lines.forEach(l => { ctx.fillText(l, W / 2, y); y += firmPt * 1.15; });
+
+    ctx.fillStyle = BRAND.gold;
+    ctx.font = `${0.062 * dpi}px Helvetica, Arial, sans-serif`;
+    ctx.fillText(spec.tagline || 'Gulf Shores · Orange Beach · Baldwin County',
+                 W / 2, y + 0.06 * dpi);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    return { W, H };
+  }
+
+  // ================= YARD SIGN RIDER =================
+  // 6 x 24 in. Read from a moving car, so 100 dpi is ample and keeps the file
+  // manageable — a 300 dpi rider is 1800 x 7200 and most browsers choke.
+  const RIDER = { w: 24, h: 6 };
+
+  function drawYardRider(ctx, spec, dpi, QR){
+    const W = RIDER.w * dpi, H = RIDER.h * dpi;
+    const pad = 0.42 * dpi;
+    const bar = 0.15 * dpi;
+
+    ctx.fillStyle = BRAND.blue;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = BRAND.gold;
+    ctx.fillRect(0, 0, W, bar);
+    ctx.fillRect(0, H - bar, W, bar);
+
+    // --- QR panel, right side, fully inside the gold bars ---
+    const panelPad = 0.12 * dpi;
+    const qs = H - (bar + pad) * 2 - panelPad * 2;
+    const qx = W - pad - qs, qy = (H - qs) / 2;
+    if(spec.qrUrl && QR){
+      ctx.fillStyle = '#fff';
+      roundRect(ctx, qx - panelPad, qy - panelPad,
+                qs + panelPad * 2, qs + panelPad * 2, 0.1 * dpi);
+      ctx.fill();
+      QR.draw(ctx, spec.qrUrl, qx, qy, qs, { dark: BRAND.blue, light: '#fff', quiet: 2 });
+    }
+
+    // --- scan line sits to the LEFT of the panel, vertically centred ---
+    let textRight = qx - panelPad - 0.35 * dpi;
+    if(spec.scanLine){
+      const sp = 0.26 * dpi;
+      ctx.font = `600 ${sp}px Helvetica, Arial, sans-serif`;
+      ctx.fillStyle = BRAND.gold;
+      ctx.save();
+      ctx.translate(textRight - sp * 0.4, H / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(spec.scanLine, 0, 0);
+      ctx.restore();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      textRight -= sp * 1.5;
+    }
+
+    const innerW = textRight - pad;
+
+    const headlinePt = 0.90 * dpi;
+    const agentPt    = 0.52 * dpi;
+    const firmPt     = brokeragePt([headlinePt, agentPt]);
+
+    // measure the stack so it can be vertically centred
+    ctx.font = `600 ${firmPt}px Georgia, serif`;
+    const fp = fitText(ctx, BROKERAGE_NAME, innerW, firmPt,
+                       '600 %SIZE%px Georgia, serif', 0.34 * dpi);
+    const headline = spec.headline || '';
+    ctx.font = `600 ${headlinePt}px Helvetica, Arial, sans-serif`;
+    const hp = headline ? fitText(ctx, headline, innerW, agentPt,
+                       '600 %SIZE%px Helvetica, Arial, sans-serif', 0.24 * dpi) : 0;
+    const line3 = [spec.agentName, spec.phone].filter(Boolean).join('   \u00b7   ');
+    const ap = line3 ? fitText(ctx, line3, innerW, agentPt * 0.86,
+                       '%SIZE%px Helvetica, Arial, sans-serif', 0.2 * dpi) : 0;
+
+    const stackH = fp * 1.16 + (hp ? hp * 1.28 : 0) + (ap ? ap * 1.2 : 0);
+    let y = (H - stackH) / 2;
+
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#fff';
+    ctx.font = `600 ${fp}px Georgia, serif`;
+    ctx.fillText(BROKERAGE_NAME, pad, y);
+    y += fp * 1.16;
+
+    if(hp){
+      ctx.fillStyle = BRAND.gold;
+      ctx.font = `600 ${hp}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(headline, pad, y);
+      y += hp * 1.28;
+    }
+    if(ap){
+      ctx.fillStyle = 'rgba(255,255,255,.94)';
+      ctx.font = `${ap}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(line3, pad, y);
+    }
+    return { W, H };
+  }
+
+  // ---------- registry ----------
+  const TEMPLATES = {
+    'card-front': { label: 'Business card — front', dpi: 300, draw: drawBusinessCardFront,
+                    size: '3.5 × 2 in + bleed' },
+    'card-back':  { label: 'Business card — back',  dpi: 300, draw: drawBusinessCardBack,
+                    size: '3.5 × 2 in + bleed' },
+    'rider':      { label: 'Yard sign rider',       dpi: 100, draw: drawYardRider,
+                    size: '24 × 6 in' },
+  };
+
+  global.AvaniTemplates = { TEMPLATES, BRAND, BROKERAGE_NAME, SCAN_LINES, brokeragePt };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<style>
+.rs-group{margin-bottom:24px}
+.rs-group h3{margin:0 0 4px;font-size:15px;font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:500;color:#1B2043}
+.rs-group .sub{font-size:12.5px;color:rgba(27,32,67,.58);margin:0 0 11px}
+.rs-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:10px}
+.rs-link{display:block;padding:12px 14px;border:1px solid rgba(27,32,67,.14);border-radius:9px;
+  background:#fff;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
+.rs-link:hover{border-color:#2E3CB0;transform:translateY(-1px)}
+.rs-link .t{font-weight:600;font-size:14px;color:#2E3CB0;margin-bottom:3px;display:flex;
+  align-items:center;justify-content:space-between;gap:8px}
+.rs-link .d{font-size:12.5px;line-height:1.45;color:rgba(27,32,67,.66)}
+.rs-link .warn{font-size:11px;color:#9A6B15;background:#FBF3E2;padding:1px 6px;border-radius:4px;
+  font-weight:600;white-space:nowrap}
+.rs-admin{margin-top:8px;padding:14px;background:#F4F5FA;border-radius:9px;font-size:13px}
+.rs-admin input{padding:7px 9px;border:1px solid rgba(27,32,67,.2);border-radius:6px;font:inherit;font-size:13px}
+.rs-row{display:flex;gap:7px;margin-bottom:7px;flex-wrap:wrap}
+.rs-row input:nth-child(1){flex:1 1 140px}
+.rs-row input:nth-child(2){flex:2 1 200px}
+</style>
+<script>
+/* ---------- agent resources ----------
+   Links agents need daily. Defaults live in code, but the broker can add, edit
+   and remove entries without a deploy — a dead link should be a text edit, not
+   a release. Anything I could not verify is flagged in the interface rather
+   than quietly sending an agent to the wrong site. */
+const RESOURCE_DEFAULTS = [
+  { group:'Association & MLS', items:[
+    { t:'Baldwin REALTORS\u00AE', u:'https://www.baldwinrealtors.com',
+      d:'Baldwin County association \u00b7 Robertsdale \u00b7 251-947-3777' },
+    { t:'Mobile Area Association of REALTORS\u00AE', u:'https://www.mobilerealtors.com',
+      d:'Operates Gulf Coast MLS, our current feed', check:true },
+    { t:'Alabama Association of REALTORS\u00AE', u:'https://www.alabamarealtors.com',
+      d:'Legal helpdesk, forms library, statewide advocacy' },
+    { t:'Alabama Real Estate Commission', u:'https://arec.alabama.gov',
+      d:'License lookup, renewals, rules and advertising law' },
+    { t:'Matrix (MLS login)', u:'', d:'Add your MLS Matrix login URL', check:true },
+  ]},
+  { group:'Transaction platforms', items:[
+    { t:'Dotloop', u:'https://www.dotloop.com', d:'Transaction management and e-sign' },
+    { t:'DocuSign', u:'https://www.docusign.com', d:'Electronic signature' },
+    { t:'SkySlope', u:'https://www.skyslope.com', d:'Transaction management and broker review' },
+  ]},
+  { group:'Education & compliance', items:[
+    { t:'AREC continuing education', u:'https://arec.alabama.gov/pages/licensing/Education.aspx',
+      d:'CE requirements and approved providers', check:true },
+    { t:'NAR Code of Ethics', u:'https://www.nar.realtor/about-nar/governing-documents/code-of-ethics',
+      d:'Required ethics training cycle', check:true },
+  ]},
+];
+
+async function renderResourcesSection(){
+  const el = document.getElementById('sec-resources');
+  if(!el) return;
+  const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
+
+  let custom = [];
+  try{ custom = (await storeGet('settings:resourceLinks')) || []; }catch(e){}
+  if(!Array.isArray(custom)) custom = [];
+
+  const groups = RESOURCE_DEFAULTS.map(g => ({
+    group: g.group,
+    items: g.items.concat(custom.filter(c => c.group === g.group)),
+  }));
+  const extra = custom.filter(c => !RESOURCE_DEFAULTS.some(g => g.group === c.group));
+  if(extra.length) groups.push({ group:'Brokerage', items: extra });
+
+  const card = g => `
+    <div class="rs-group">
+      <h3>${escapeHtml(g.group)}</h3>
+      <div class="rs-links">
+        ${g.items.map(i => i.u
+          ? `<a class="rs-link" href="${escapeHtml(i.u)}" target="_blank" rel="noopener">
+               <div class="t">${escapeHtml(i.t)}${i.check?'<span class="warn">confirm</span>':''}</div>
+               <div class="d">${escapeHtml(i.d||'')}</div></a>`
+          : `<div class="rs-link" style="opacity:.62;cursor:default">
+               <div class="t">${escapeHtml(i.t)}<span class="warn">needs URL</span></div>
+               <div class="d">${escapeHtml(i.d||'')}</div></div>`
+        ).join('')}
+      </div>
+    </div>`;
+
+  el.innerHTML = `<div class="card"><div style="padding:18px">
+      ${groups.map(card).join('')}
+      ${staff ? `<div class="rs-admin">
+        <div style="font-weight:600;margin-bottom:8px">Add a link</div>
+        <div class="rs-row">
+          <input id="rsGroup" placeholder="Group (e.g. Brokerage)" list="rsGroups">
+          <datalist id="rsGroups">${groups.map(g=>`<option>${escapeHtml(g.group)}</option>`).join('')}</datalist>
+          <input id="rsTitle" placeholder="Name">
+        </div>
+        <div class="rs-row">
+          <input id="rsUrl" placeholder="https://…" style="flex:2 1 240px">
+          <input id="rsDesc" placeholder="Short description" style="flex:2 1 200px">
+        </div>
+        <button class="btn ghost" onclick="rsAdd()">Add link</button>
+        ${custom.length ? `<div style="margin-top:12px">
+          <div style="font-weight:600;margin-bottom:6px">Links you added</div>
+          ${custom.map((c,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px">
+            <span style="flex:1">${escapeHtml(c.t)} <span style="opacity:.55">\u00b7 ${escapeHtml(c.group||'')}</span></span>
+            <button class="btn ghost" style="padding:3px 9px;font-size:12px" onclick="rsRemove(${i})">Remove</button>
+          </div>`).join('')}</div>` : ''}
+        <div style="margin-top:11px;font-size:12px;color:rgba(27,32,67,.6)">
+          Entries marked <span class="warn">confirm</span> are addresses I could not verify.
+          Check them, then replace with a link of your own so the flag goes away.</div>
+      </div>` : ''}
+    </div></div>`;
+}
+
+async function rsAdd(){
+  const g = (document.getElementById('rsGroup')||{}).value || '';
+  const t = (document.getElementById('rsTitle')||{}).value || '';
+  const u = (document.getElementById('rsUrl')||{}).value || '';
+  const d = (document.getElementById('rsDesc')||{}).value || '';
+  if(!t.trim() || !u.trim()){ alert('A name and a URL are both needed.'); return; }
+  let url = u.trim();
+  if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  let custom = [];
+  try{ custom = (await storeGet('settings:resourceLinks')) || []; }catch(e){}
+  if(!Array.isArray(custom)) custom = [];
+  custom.push({ group: g.trim() || 'Brokerage', t: t.trim(), u: url, d: d.trim() });
+  const ok = await storeSet('settings:resourceLinks', custom);
+  if(!ok){ alert('Could not save.'); return; }
+  renderResourcesSection();
+}
+
+async function rsRemove(i){
+  let custom = [];
+  try{ custom = (await storeGet('settings:resourceLinks')) || []; }catch(e){}
+  if(!Array.isArray(custom)) return;
+  custom.splice(i,1);
+  await storeSet('settings:resourceLinks', custom);
+  renderResourcesSection();
+}
+</script>
+
 </body>
 </html>
