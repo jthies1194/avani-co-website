@@ -19,9 +19,18 @@
 // works around this in most cases.
 require('dns').setDefaultResultOrder('ipv4first');
 
+const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+
+// ---------- brokerage identity ----------
+// The trade name exactly as licensed with the Alabama Real Estate Commission.
+// AREC Rule 790-X-3-.16 requires this name, not an abbreviation, on advertising.
+// The LLC below is the legal entity and belongs only in a copyright notice.
+const BROKERAGE_NAME = 'Avani & Co Real Estate Southern Sands';
+const BROKERAGE_LEGAL_ENTITY = 'Avani & Co Real Estate LLC';
+const BROKERAGE_PHONE = '251-229-3216';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -80,6 +89,44 @@ async function getSession(req) {
 
 function isStaff(sess) { return sess && (sess.role === 'broker' || sess.role === 'admin'); }
 
+/* Client accounts get their own tokens, entirely separate from agent sessions.
+   Before this, a client id was the only credential and ids are millisecond
+   timestamps — so anyone could walk the range and read every client's name,
+   email, favorites and saved searches. */
+const CLIENT_SESSION_DAYS = 30;
+
+async function createClientSession(clientId) {
+  const token = 'cli_' + Date.now().toString(36) + '_' +
+    crypto.randomBytes(18).toString('hex');
+  await setSetting('clientSession:' + token, {
+    clientId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + CLIENT_SESSION_DAYS * 86400 * 1000).toISOString(),
+  });
+  return token;
+}
+
+async function getClientSession(req) {
+  const hdr = req.headers.authorization || '';
+  const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
+  if (!token || !token.startsWith('cli_')) return null;
+  const rec = await getSetting('clientSession:' + token);
+  if (!rec || !rec.clientId) return null;
+  if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) return null;
+  return rec;
+}
+
+/* A client may only touch their own record. Staff may look, for support. */
+async function requireClientSelf(req, res, id) {
+  const cs = await getClientSession(req);
+  if (cs && cs.clientId === id) return true;
+  const sess = await getSession(req);
+  if (isStaff(sess)) return true;
+  console.warn(`[security] blocked unauthenticated access to client ${id}`);
+  res.status(403).json({ error: 'Not permitted.' });
+  return false;
+}
+
 async function requireSession(req, res) {
   const sess = await getSession(req);
   if (!sess) {
@@ -118,7 +165,19 @@ function keyAllowedForAgent(key, sess, write) {
   if (k === 'settings:closedDeals') return !write;
   // admin machinery is off limits
   if (k === 'settings:adminRequests' || k === 'settings:adminBypass') return false;
-  if (k.startsWith('session:')) return false;
+  if (k.startsWith('session:') || k.startsWith('clientSession:')) return false;
+  // Anything not named above was previously readable by any signed-in agent —
+  // including settings:leadArchive, the entire archived lead history. Shared
+  // keys are now allowlisted, so a new key is private until it is listed.
+  const AGENT_READABLE = new Set([
+    'settings:viewLimit', 'settings:testimonials', 'settings:reviewLink',
+    'settings:agentPlans', 'settings:agentPlanHistory', 'settings:closedDeals',
+    'settings:expenses', 'settings:dealSubmissions', 'settings:officeCalendar',
+  ]);
+  if (k.startsWith('settings:')) return AGENT_READABLE.has(k) && !write;
+  if (k.startsWith('lead:')) return true;                 // ownership checked separately
+  if (k.startsWith('agentAlerts:')) return k === 'agentAlerts:' + sess.agentId;
+  if (k.startsWith('agentPublic:')) return true;          // public profile data
   return true;
 }
 
@@ -143,6 +202,10 @@ app.get('/api/kv/:key', async (req, res) => {
     return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
   }
   if (sess && !isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
+  if (String(req.params.key || '').match(/^(session|clientSession):/)) {
+    console.warn(`[security] blocked direct read of a session token`);
     return res.status(403).json({ error: 'Not permitted.' });
   }
   try {
@@ -182,6 +245,13 @@ app.get('/api/kv', async (req, res) => {
       return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
     }
     if (!isStaff(sess) && (prefix.startsWith('session:') || prefix.startsWith('agentProfile:'))) {
+      return res.status(403).json({ error: 'Not permitted.' });
+    }
+    // Nobody lists session tokens, staff included. An admin who could enumerate
+    // these could read one and assume the broker's session, defeating every
+    // broker-account protection below.
+    if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')) {
+      console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from listing session tokens`);
       return res.status(403).json({ error: 'Not permitted.' });
     }
   }
@@ -610,7 +680,7 @@ app.get('/api/listings', async (req, res) => {
 // the connection). Resend sends over regular HTTPS instead, which works
 // fine here — same as our Supabase and Anthropic API calls.
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM = 'Avani & Co. Real Estate <notify@mail.bamacoast.com>';
+const RESEND_FROM = `${BROKERAGE_NAME} <notify@mail.bamacoast.com>`;
 let mailer = null;
 if (RESEND_API_KEY) {
   mailer = {
@@ -637,7 +707,6 @@ if (RESEND_API_KEY) {
 // ---------- Client accounts (favorites + saved searches) ----------
 // Kept in a separate 'clients' table (never exposed via /api/kv) since it
 // holds password hashes — real credentials deserve real, dedicated handling.
-const crypto = require('crypto');
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -666,14 +735,15 @@ app.post('/api/client/signup', async (req, res) => {
     const password_hash = hashPassword(password);
     const { error } = await supabase.from('clients').insert({ id, name, email: normalizedEmail, password_hash, favorites: [], saved_searches: [] });
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, client: { id, name, email: normalizedEmail, favorites: [], savedSearches: [] } });
+    const token = await createClientSession(id);
+    res.json({ ok: true, token, client: { id, name, email: normalizedEmail, favorites: [], savedSearches: [] } });
 
     // Welcome email — sent after responding so a mail hiccup can never block signup.
     if (mailer) {
       const first = String(name || '').trim().split(/\s+/)[0] || 'there';
       mailer.sendMail({
         to: normalizedEmail,
-        subject: 'Welcome to Avani & Co. Real Estate',
+        subject: `Welcome to ${BROKERAGE_NAME}`,
         text: `Hi ${first},
 
 Thanks for creating an account at bamacoast.com.
@@ -685,12 +755,11 @@ You can now:
 
 Just click "Client Login" at the top of the site any time.
 
-If you'd like help from a real person, call or text us at 251-229-3216 — we cover Baldwin County,
-Mobile County, and the Perdido Key and Pensacola corridor.
+If you'd like help from a real person, call or text us at ${BROKERAGE_PHONE}.
 
 Welcome aboard,
-Avani & Co. Real Estate
-251-229-3216
+${BROKERAGE_NAME}
+${BROKERAGE_PHONE}
 bamacoast.com`,
       })
       .then(() => console.log(`[client welcome email] sent to ${normalizedEmail}`))
@@ -712,7 +781,8 @@ app.post('/api/client/login', async (req, res) => {
     if (error || !data) return res.status(401).json({ error: 'No account found with that email.' });
     if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
     await supabase.from('clients').update({ last_login: new Date().toISOString() }).eq('id', data.id);
-    res.json({ ok: true, client: clientPublic(data) });
+    const token = await createClientSession(data.id);
+    res.json({ ok: true, token, client: clientPublic(data) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -720,6 +790,7 @@ app.post('/api/client/login', async (req, res) => {
 
 app.get('/api/client/:id', async (req, res) => {
   if (!requireSupabase(res)) return;
+  if (!(await requireClientSelf(req, res, req.params.id))) return;
   const { data, error } = await supabase.from('clients').select('*').eq('id', req.params.id).maybeSingle();
   if (error || !data) return res.status(404).json({ error: 'Account not found.' });
   res.json({ ok: true, client: clientPublic(data) });
@@ -727,6 +798,7 @@ app.get('/api/client/:id', async (req, res) => {
 
 app.post('/api/client/:id/favorites', async (req, res) => {
   if (!requireSupabase(res)) return;
+  if (!(await requireClientSelf(req, res, req.params.id))) return;
   const { favorites } = req.body || {};
   const { error } = await supabase.from('clients').update({ favorites: favorites || [] }).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
@@ -735,6 +807,7 @@ app.post('/api/client/:id/favorites', async (req, res) => {
 
 app.post('/api/client/:id/saved-searches', async (req, res) => {
   if (!requireSupabase(res)) return;
+  if (!(await requireClientSelf(req, res, req.params.id))) return;
   const { savedSearches } = req.body || {};
   const { error } = await supabase.from('clients').update({ saved_searches: savedSearches || [] }).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
@@ -785,8 +858,8 @@ app.post('/api/agent/forgot-password', async (req, res) => {
         const resetUrl = `${req.protocol}://${req.get('host')}/?reset=${token}`;
         await mailer.sendMail({
           to: data.email,
-          subject: 'Reset your Avani & Co. CRM password',
-          text: `Hi ${data.name},\n\nSomeone requested a password reset for your Avani & Co. CRM account. If this was you, set a new password here (link expires in 1 hour):\n\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
+          subject: `Reset your ${BROKERAGE_NAME} CRM password`,
+          text: `Hi ${data.name},\n\nSomeone requested a password reset for your ${BROKERAGE_NAME} CRM account. If this was you, set a new password here (link expires in 1 hour):\n\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
         }).catch(() => {});
       }
     }
@@ -925,6 +998,11 @@ app.post('/api/admin/bypass/check', async (req, res) => {
 });
 
 app.post('/api/agent/:id/set-active', async (req, res) => {
+  {const sess = await getSession(req);
+   if (!isStaff(sess)) {
+     console.warn(`[security] unauthenticated attempt to lock/unlock agent ${req.params.id}`);
+     return res.status(403).json({ error: 'Not permitted.' });
+   }}
   if (!requireSupabase(res)) return;
   const { active } = req.body || {};
   if (!active && await isBrokerAccount(req.params.id)) {
@@ -944,6 +1022,10 @@ app.post('/api/agent/:id/set-active', async (req, res) => {
 });
 
 app.post('/api/agent/:id/review-link', async (req, res) => {
+  {const sess = await requireSession(req, res); if (!sess) return;
+   if (sess.agentId !== req.params.id && !isStaff(sess)) {
+     return res.status(403).json({ error: 'You can only set your own review link.' });
+   }}
   if (!requireSupabase(res)) return;
   const { reviewLink } = req.body || {};
   try {
@@ -1000,8 +1082,8 @@ app.post('/api/agent/create', async (req, res) => {
       try {
         await mailer.sendMail({
           to: normalizedEmail,
-          subject: 'Your Avani & Co. CRM login',
-          text: `Hi ${name},\n\nYou've been added to the Avani & Co. Real Estate CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\nAvani & Co. Real Estate`,
+          subject: `Your ${BROKERAGE_NAME} CRM login`,
+          text: `Hi ${name},\n\nYou've been added to the ${BROKERAGE_NAME} CRM. Here's how to log in:\n\n${loginUrl}\nClick "Agent Login"\n\nUsername (email): ${normalizedEmail}\nTemporary password: ${defaultPassword}\n\nOnce you're in, we recommend changing your password to something only you know — you'll find that option once logged in.\n\nWelcome aboard,\n${BROKERAGE_NAME}`,
         });
         console.log(`[agent welcome email] sent successfully to ${normalizedEmail}`);
         emailStatus = 'sent';
@@ -1039,6 +1121,18 @@ app.post('/api/agent/:id/change-password', async (req, res) => {
 // never loses the ability to manage agent accounts, no matter what an
 // agent changes their own password to.
 app.post('/api/agent/:id/reset-password', async (req, res) => {
+  {const sess = await getSession(req);
+   if (!isStaff(sess)) {
+     console.warn(`[security] unauthenticated password-reset attempt on agent ${req.params.id}`);
+     return res.status(403).json({ error: 'Not permitted.' });
+   }
+   // an admin must not be able to reset the broker's password and take the account
+   if (sess.role !== 'broker' && await isBrokerAccount(req.params.id)) {
+     if (!(await bypassCodeValid((req.body || {}).bypassCode))) {
+       console.warn(`[security] admin ${sess.agentId} blocked resetting the broker password`);
+       return res.status(403).json({ error: 'The broker account is protected. Request approval or use a bypass code.' });
+     }
+   }}
   if (!requireSupabase(res)) return;
   const defaultPassword = process.env.DEFAULT_AGENT_PASSWORD;
   if (!defaultPassword) return res.status(503).json({ error: 'DEFAULT_AGENT_PASSWORD is not set up yet.' });
@@ -1051,8 +1145,8 @@ app.post('/api/agent/:id/reset-password', async (req, res) => {
       try {
         await mailer.sendMail({
           to: data.email,
-          subject: 'Your Avani & Co. CRM password was reset',
-          text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\nAvani & Co. Real Estate`,
+          subject: `Your ${BROKERAGE_NAME} CRM password was reset`,
+          text: `Hi ${data.name},\n\nYour CRM password was reset by your broker. Your temporary password is: ${defaultPassword}\n\nPlease log in and change it to something only you know.\n\n${BROKERAGE_NAME}`,
         });
         console.log(`[agent reset-password email] sent successfully to ${data.email}`);
         emailStatus = 'sent';
@@ -1112,6 +1206,11 @@ app.patch('/api/agent/:id', async (req, res) => {
 });
 
 app.delete('/api/agent/:id', async (req, res) => {
+  {const sess = await getSession(req);
+   if (!isStaff(sess)) {
+     console.warn(`[security] unauthenticated attempt to delete agent ${req.params.id}`);
+     return res.status(403).json({ error: 'Not permitted.' });
+   }}
   if (await isBrokerAccount(req.params.id)) {
     if (!(await bypassCodeValid((req.query || {}).bypassCode))) {
       console.warn(`[security] refused attempt to delete broker account ${req.params.id}`);
@@ -1380,7 +1479,9 @@ async function callClaude(system, messages, maxTokens = 500) {
   return (json.content || []).map(b => b.text || '').join('');
 }
 
-const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for Avani & Co. Real Estate, a boutique brokerage serving Mobile & Baldwin County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne, Mobile). Broker: Jimmy Thies, phone 251-229-3216.
+const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for ${BROKERAGE_NAME}, a boutique brokerage licensed in Alabama and Florida, serving Baldwin and Mobile County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne, Mobile) and the Perdido Key and Pensacola corridor in Florida. Broker: Jimmy Thies, phone ${BROKERAGE_PHONE}.
+
+Always refer to the brokerage by its full name, "${BROKERAGE_NAME}" — never an abbreviation. Alabama license law requires the company name to appear as licensed.
 
 Your main goal is to get the visitor's NAME and EMAIL (or phone) early, then gather the details a real agent would need. Ask ONE question at a time, in natural conversation.
 
@@ -1397,7 +1498,9 @@ If they seem to be SELLING: ask for the property address (or at least the city/a
 
 If they're unsure what they want, or their answers are vague, gently suggest: "Would it help to just send a quick message to Jimmy directly? He can set up a time to talk through it." and encourage them to use the "leave your contact info" option.
 
-You do NOT have access to live MLS listings right now (the site shows sample data) — if asked about specific homes, say so honestly and encourage them to browse Featured Listings.
+The site shows live MLS listings from Gulf Coast MLS, so visitors can search real inventory themselves. You cannot see those listings from this conversation, so never quote a specific price, address, or availability — point them to the search on the site instead, or offer to have an agent pull exactly what they need.
+
+Never state who pays commission or say representation is free. Commissions are negotiable, are not set by law, and are covered in a written buyer agreement signed before touring. If asked how agents are paid, say exactly that and offer to connect them with Jimmy.
 
 Keep replies short (2-4 sentences), warm, and conversational — never robotic or like a form. Never invent specific property details, prices, or availability. Once you've learned useful qualifying details (timeline, pre-approval status, or seller address/value/timeline), naturally suggest they leave their contact info so a real agent can follow up with exactly what they need.`;
 
@@ -1431,7 +1534,7 @@ app.post('/api/request-review', async (req, res) => {
     await mailer.sendMail({
       to: toEmail,
       subject: 'Would you mind leaving us a quick review?',
-      text: `Hi ${toName || 'there'},\n\nThank you so much for working with ${agentName || 'Avani & Co. Real Estate'}! If you have a minute, we'd really appreciate a quick review — it helps other buyers and sellers in the area find us.\n\n${reviewLink ? `Leave a Google review: ${reviewLink}\n\n` : ''}Or leave a review directly on our site: ${siteReviewUrl}\n\nThank you again,\nJimmy Thies\nAvani & Co. Real Estate`,
+      text: `Hi ${toName || 'there'},\n\nThank you so much for working with ${agentName || BROKERAGE_NAME}! If you have a minute, we'd really appreciate a quick review — it helps other buyers and sellers in the area find us.\n\n${reviewLink ? `Leave a Google review: ${reviewLink}\n\n` : ''}Or leave a review directly on our site: ${siteReviewUrl}\n\nThank you again,\nJimmy Thies\n${BROKERAGE_NAME}`,
     });
     res.json({ ok: true });
   } catch (e) {
@@ -1446,7 +1549,7 @@ app.post('/api/draft-reply', async (req, res) => {
   }
   const { name, message, source, listingLabel } = req.body || {};
   try {
-    const prompt = `Draft a warm, professional, concise reply (as Jimmy Thies, Broker/Owner of Avani & Co. Real Estate) to a lead named "${name || 'there'}" who submitted this via the website (source: ${source || 'website'}${listingLabel ? ', re: ' + listingLabel : ''}):\n\n"${message || '(no message provided)'}"\n\nKeep it to 3-5 sentences. Sign off as Jimmy. Do not include a subject line, just the message body.`;
+    const prompt = `Draft a warm, professional, concise reply (as Jimmy Thies, Broker/Owner of ${BROKERAGE_NAME}) to a lead named "${name || 'there'}" who submitted this via the website (source: ${source || 'website'}${listingLabel ? ', re: ' + listingLabel : ''}):\n\n"${message || '(no message provided)'}"\n\nKeep it to 3-5 sentences. Sign off as Jimmy. Do not include a subject line, just the message body.`;
     const draft = await callClaude('You draft real estate lead follow-up emails. Be warm, concise, and professional.', [{ role: 'user', content: prompt }], 350);
     res.json({ draft });
   } catch (e) {
@@ -1479,7 +1582,9 @@ app.get('/api/my-outbound-ip', async (req, res) => {
 });
 
 // ---------- MLS data (Bridge Data Output / Gulf Coast MLS) ----------
-const BRIDGE_TOKEN   = process.env.BRIDGE_TOKEN;
+// The live secret is BRIDGE_SERVER_TOKEN. This read BRIDGE_TOKEN, which is not
+// set on this deployment, so /api/mls-test always failed with "not set".
+const BRIDGE_TOKEN   = process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN;
 const BRIDGE_DATASET = process.env.BRIDGE_DATASET || 'gcmls2';
 const BRIDGE_BASE    = 'https://api.bridgedataoutput.com/api/v2';
 
@@ -1530,10 +1635,10 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v51',
+    serverVersion: 'v52',
     routes: ['market-stats','mls-fields','search','listings'],
+    brokerage: BROKERAGE_NAME,
     database: !!supabase,
-    mlsConfigured: !!process.env.BRIDGE_TOKEN,
     mlsDataset: process.env.BRIDGE_DATASET || 'gcmls2',
     mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
     emailConfigured: !!mailer,
@@ -1566,8 +1671,12 @@ app.get('/', (req, res, next) => {
   const listing = MOCK_LISTINGS.find(l => l.ListingKey === listingKey);
   if (!listing) return next();
 
-  const title = `${listing.UnparsedAddress}, ${listing.City} — $${listing.ListPrice.toLocaleString()}`;
-  const desc = `${listing.BedroomsTotal} bd · ${listing.BathroomsTotalInteger} ba · ${listing.LivingArea.toLocaleString()} sqft — Avani & Co. Real Estate, Southern Sands`;
+  // Social platforms render og:title large and bold and og:description in small
+  // grey text. With the brokerage name only in the description it was displayed
+  // smaller than every other element of the card, which is the opposite of what
+  // AREC 790-X-3-.16 requires. It leads the title now.
+  const title = `${BROKERAGE_NAME} — ${listing.UnparsedAddress}, ${listing.City} · $${listing.ListPrice.toLocaleString()}`;
+  const desc = `${listing.BedroomsTotal} bd · ${listing.BathroomsTotalInteger} ba · ${listing.LivingArea.toLocaleString()} sqft`;
   const pageUrl = `${req.protocol}://${req.get('host')}/?listing=${encodeURIComponent(listingKey)}`;
   const imageUrl = `${req.protocol}://${req.get('host')}/assets/logo.png`;
 
@@ -1629,6 +1738,41 @@ function serviceAreaSentence(licensed) {
   if (licensed.includes('FL')) parts.push('the Perdido Key and Pensacola corridor in Florida');
   if (!parts.length) return '';
   return parts.join(' and ');
+}
+
+/* AREC Rule 790-X-3-.16, Advertising Teams: a team name must include "team" or
+   "group", and must not use terms suggesting it is a real estate company in its
+   own right. The title field is free text, so an agent can otherwise publish
+   "Coastal Properties LLC" and it goes straight to a public page. */
+const COMPANY_TERMS = [
+  'corporation', 'corp', 'incorporated', 'inc',
+  'limited liability company', 'llc', 'l.l.c',
+  'partnership', 'llp', 'lp',
+  'company', 'co.', 'enterprise', 'enterprises', 'business',
+  'realty', 'brokerage', 'real estate group inc',
+];
+const TEAM_WORDS = ['team', 'group'];
+
+/* Returns a problem description, or null when the title is acceptable. */
+function teamNameProblem(title) {
+  const raw = String(title || '').trim();
+  if (!raw) return null;
+  const t = ' ' + raw.toLowerCase().replace(/[^a-z0-9. ]/g, ' ').replace(/\s+/g, ' ') + ' ';
+
+  // The brokerage's own name is always fine — that is the required attribution.
+  if (raw.toLowerCase().includes(BROKERAGE_NAME.toLowerCase())) return null;
+
+  const hit = COMPANY_TERMS.find(term => t.includes(' ' + term + ' '));
+  if (hit) {
+    return `"${raw}" uses the word "${hit.trim()}", which suggests this is a separate real estate company. ` +
+           `AREC does not permit team or title names that could lead the public to think a team is its own brokerage.`;
+  }
+  // If it reads like a named team, it has to say so.
+  const looksLikeTeam = /\bthe\b/.test(t) || /\b(partners|associates|collective|realtors)\b/.test(t);
+  if (looksLikeTeam && !TEAM_WORDS.some(w => t.includes(' ' + w + ' '))) {
+    return `"${raw}" reads as a team name but does not include the word "team" or "group", which AREC requires.`;
+  }
+  return null;
 }
 
 function slugify(name) {
@@ -1700,6 +1844,12 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   const licensed = isStaff(sess)
     ? (Array.isArray(b.licensedStates) ? b.licensedStates.filter(x => STATE_NAMES[x]) : licensedStatesOf(existing))
     : licensedStatesOf(existing);
+
+  const teamIssue = teamNameProblem(b.title);
+  if (teamIssue) {
+    console.warn(`[license] blocked profile for ${req.params.id}: team name — ${teamIssue}`);
+    return res.status(422).json({ error: teamIssue, field: 'title' });
+  }
 
   const claims = unlicensedClaims(
     [clean(b.bio), clean(b.title), clean(b.specialties)].join(' '), licensed);
