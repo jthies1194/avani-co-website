@@ -195,7 +195,7 @@ app.post('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await getSession(req);
   if (!sess) {
-    // a visitor submitting an enquiry — leads only, nothing else
+    // a visitor submitting an inquiry — leads only, nothing else
     if (!publicWriteAllowed((req.body || {}).key)) {
       return res.status(401).json({ error: 'Sign in to access this.' });
     }
@@ -352,7 +352,7 @@ app.get('/api/search', async (req, res) => {
   }
   if (q.city && q.city.trim()) {
     const c = esc(q.city.trim());
-    // match the city OR anywhere in the street address, same as the old client-side behaviour
+    // match the city OR anywhere in the street address, same as the old client-side behavior
     parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}'))`);
   }
   // property type — the feed uses Residential, Land, Commercial Sale, Commercial Lease
@@ -1139,6 +1139,63 @@ app.post('/api/agent/:id/alerts', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Agent-to-agent lead transfer. Agents cover for each other — out of office,
+// wrong end of the county — and the receiving agent should get it as if it
+// just came in, knowing who passed it over.
+app.post('/api/lead/transfer', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin') return res.status(403).json({ error: 'Admin accounts do not handle leads.' });
+  const { toAgentId, lead, note } = req.body || {};
+  if (!toAgentId || !lead) return res.status(400).json({ error: 'Missing details.' });
+
+  // an agent may only pass on a lead that is actually theirs
+  if (!isStaff(sess) && lead.assignedAgentId && lead.assignedAgentId !== sess.agentId) {
+    return res.status(403).json({ error: "That lead isn't assigned to you." });
+  }
+  if (!mailer) return res.json({ ok: true, emailed: false });
+
+  try {
+    const { data: to } = await supabase.from('agents')
+      .select('id,name,email,active').eq('id', toAgentId).maybeSingle();
+    if (!to) return res.status(404).json({ error: 'Agent not found.' });
+    if (to.active === false) return res.status(400).json({ error: 'That agent is locked out.' });
+
+    const L = lead;
+    const from = sess.name || 'A colleague';
+    await mailer.sendMail({
+      to: to.email,
+      subject: `${from} passed you a lead: ${L.name || 'Unknown'}`,
+      text: `${from} has handed this lead to you.
+
+${note ? 'Their note: ' + note + '\n\n' : ''}Name:  ${L.name || '(not provided)'}
+Email: ${L.email || '(not provided)'}
+Phone: ${L.phone || '(not provided)'}
+Source: ${L.source || 'website'}
+${L.listingLabel ? 'Listing: ' + L.listingLabel + '\n' : ''}
+What they said:
+${L.message || '(nothing)'}
+
+It's yours now — log in at bamacoast.com to work it.`,
+    });
+
+    const prof = await getSetting('agentAlerts:' + to.id) || {};
+    if (prof.smsAddress) {
+      try {
+        await mailer.sendMail({
+          to: prof.smsAddress,
+          subject: 'New lead',
+          text: `${from} passed you a lead: ${L.name || 'Unknown'} ${L.phone || L.email || ''}`.slice(0, 150),
+        });
+      } catch (e) { console.warn('[transfer] sms copy failed:', e.message); }
+    }
+    console.log(`[lead transfer] ${from} -> ${to.name} (${L.name || 'unknown'})`);
+    res.json({ ok: true, emailed: true, toName: to.name });
+  } catch (e) {
+    console.error('[lead transfer] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email is not configured yet — set RESEND_API_KEY in the hosting environment variables.' });
@@ -1174,12 +1231,26 @@ app.post('/api/notify-lead', async (req, res) => {
         if (ag && ag.email && ag.active !== false && ag.email !== notifyTo) {
           const prof = await getSetting('agentAlerts:' + ag.id) || {};
           if (prof.emailAlerts !== false) {
-            const extra = prof.smsAddress ? [ag.email, prof.smsAddress] : [ag.email];
+            if (prof.smsAddress) {
+              // Carrier email-to-text gateways drop long or formatted messages,
+              // so this one is deliberately short and plain.
+              try {
+                await mailer.sendMail({
+                  to: prof.smsAddress,
+                  subject: 'New lead',
+                  text: `${name || 'New lead'} ${phone || email || ''} - ${source || 'website'}`.slice(0, 140),
+                });
+                console.log(`[lead notification] text sent to ${prof.smsAddress}`);
+              } catch (e) {
+                console.warn(`[lead notification] text FAILED to ${prof.smsAddress}: ${e.message}`);
+              }
+            }
+            const extra = [ag.email];
             for (const to of extra) {
               await mailer.sendMail({
                 to,
                 subject: `New lead: ${name || 'Unknown'}`,
-                text: `${name || 'Someone'} just enquired through bamacoast.com.
+                text: `${name || 'Someone'} just inquired through bamacoast.com.
 
 Name:  ${name || '(not provided)'}
 Email: ${email || '(not provided)'}
@@ -1435,7 +1506,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v46',
+    serverVersion: 'v48',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
