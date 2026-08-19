@@ -226,6 +226,33 @@ app.delete('/api/kv/:key', async (req, res) => {
 // ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
 const STATUS_CLAUSE = "(StandardStatus eq 'Active' or StandardStatus eq 'Active Under Contract' or StandardStatus eq 'Pending')";
 
+// Avani's market is the Baldwin County coast. The raw feed is newest-first,
+// which buries beach listings under Mobile County volume — so we pull Baldwin
+// explicitly, then rank what comes back by how close it is to home.
+const BEACH_CITIES = ['gulf shores','orange beach','fort morgan','perdido beach','ono island',
+                      'bon secour','perdido key','dauphin island','gulf highlands','laguna key'];
+const EASTERN_SHORE = ['fairhope','daphne','spanish fort','point clear','montrose','magnolia springs',
+                       'barnwell','belforest','battles wharf','malbis'];
+
+function marketRank(row) {
+  const city = String(row.City || '').toLowerCase().trim();
+  const county = String(row.CountyOrParish || '').toLowerCase();
+  if (BEACH_CITIES.includes(city)) return 0;          // the beach first
+  if (EASTERN_SHORE.includes(city)) return 1;         // then the bay
+  if (county.startsWith('baldwin')) return 2;         // rest of Baldwin
+  if (county.startsWith('escambia') || county.startsWith('santa rosa')) return 3;  // NW Florida
+  if (county.startsWith('mobile')) return 4;          // Mobile County
+  return 5;                                            // everywhere else
+}
+
+function sortByMarket(rows) {
+  return rows.slice().sort((a, b) => {
+    const r = marketRank(a) - marketRank(b);
+    if (r !== 0) return r;
+    return new Date(b.ModificationTimestamp || 0) - new Date(a.ModificationTimestamp || 0);
+  });
+}
+
 let listingsCache = { data: null, at: 0 };
 // TODO: once you have the exact Bridge "Dataset" resource name for GCMLS,
 // confirm this URL shape against Bridge's docs — it may need adjusting.
@@ -324,8 +351,11 @@ app.get('/api/search', async (req, res) => {
       return res.status(502).json({ error: `MLS search error ${r.status}`, detail: text.slice(0, 300) });
     }
     const json = await r.json();
+    const rows = json.value || [];
+    // with no city specified, rank by market so the beach leads
+    const ordered = (q.city && q.city.trim()) ? rows : sortByMarket(rows);
     res.json({
-      value: json.value || [],
+      value: ordered,
       total: json['@odata.count'] != null ? json['@odata.count'] : null,
       top, skip,
     });
@@ -356,31 +386,65 @@ app.get('/api/listings', async (req, res) => {
   try {
     const all = [];
     let totalAvailable = null;
+    const seen = new Set();
 
-    for (let skip = 0; skip < WANT; skip += PAGE) {
-      const filter = STATUS_CLAUSE;
+    const fetchPage = async (filter, skip, wantCount) => {
       const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
         + `?access_token=${encodeURIComponent(token)}`
         + `&$filter=${encodeURIComponent(filter)}`
         + `&$orderby=ModificationTimestamp desc`
         + `&$top=${PAGE}&$skip=${skip}`
-        + (skip === 0 ? '&$count=true' : '');
+        + (wantCount ? '&$count=true' : '');
       const r = await fetch(url);
       if (!r.ok) {
         const text = await r.text().catch(() => '');
-        if (all.length) break;
-        return res.status(502).json({ error: `MLS API error ${r.status}`, detail: text.slice(0, 500) });
+        throw Object.assign(new Error(`MLS API error ${r.status}`), { detail: text.slice(0, 400), status: r.status });
       }
-      const json = await r.json();
-      const rows = json.value || [];
+      return r.json();
+    };
+
+    const collect = (rows) => {
+      for (const row of rows) {
+        const k = row.ListingKey || row.ListingId;
+        if (k && !seen.has(k)) { seen.add(k); all.push(row); }
+      }
+    };
+
+    try {
+      // 1. Baldwin County first — this is the market the site is built around
+      const baldwinFilter = STATUS_CLAUSE + " and contains(CountyOrParish,'Baldwin')";
+      for (let skip = 0; skip < 400; skip += PAGE) {
+        const json = await fetchPage(baldwinFilter, skip, false);
+        const rows = json.value || [];
+        collect(rows);
+        if (rows.length < PAGE) break;
+      }
+      console.log(`[listings] Baldwin County: ${all.length}`);
+    } catch (e) {
+      console.warn('[listings] Baldwin-first query failed, falling back:', e.message);
+    }
+
+    // 2. Top up with the rest of the feed
+    for (let skip = 0; skip < WANT; skip += PAGE) {
+      let json;
+      try {
+        json = await fetchPage(STATUS_CLAUSE, skip, skip === 0);
+      } catch (e) {
+        if (all.length) break;
+        return res.status(502).json({ error: e.message, detail: e.detail });
+      }
       if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
-      all.push(...rows);
+      const rows = json.value || [];
+      collect(rows);
       if (rows.length < PAGE) break;
     }
 
-    listingsCache = { data: all, at: Date.now(), totalAvailable };
-    console.log(`[listings] fetched ${all.length} of ${totalAvailable == null ? '?' : totalAvailable} active listings from ${dataset}`);
-    res.json({ value: all, count: all.length, totalAvailable, cached: false });
+    const ordered = sortByMarket(all);
+    listingsCache = { data: ordered, at: Date.now(), totalAvailable };
+    const beach = ordered.filter(r => marketRank(r) === 0).length;
+    const baldwin = ordered.filter(r => marketRank(r) <= 2).length;
+    console.log(`[listings] ${ordered.length} of ${totalAvailable == null ? '?' : totalAvailable} active \u2014 ${beach} beach, ${baldwin} Baldwin, sorted market-first`);
+    res.json({ value: ordered, count: ordered.length, totalAvailable, beach, baldwin, cached: false });
   } catch (e) {
     console.error('[listings] FAILED:', e.message);
     res.status(500).json({ error: e.message });
