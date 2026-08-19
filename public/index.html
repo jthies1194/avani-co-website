@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v111">
+<meta name="build" content="index-v112">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -872,9 +872,14 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   display:flex;align-items:center;justify-content:center;
   font-family:'Cormorant Garamond',serif;font-size:76px;color:var(--gold-pale)}
 .ap-initials.small{aspect-ratio:1;font-size:36px;background:var(--sand);color:var(--blue)}
-.ap-intro h1{font-family:'Cormorant Garamond',serif;font-size:clamp(38px,5.4vw,64px);
-  font-weight:400;margin:10px 0 0;color:#fff}
-.ap-firm{color:rgba(255,255,255,.82);font-size:16px;margin:10px 0 0}
+/* AREC 790-X-3-.16 — the qualifying broker's company name must be set at a font
+   size equal to or larger than any other text or logo in the advertisement, and
+   situated to gain the attention of consumers. .ap-firm therefore leads the hero
+   and must stay the largest type on this page. Do not shrink it below .ap-intro h1. */
+.ap-firm{font-family:'Cormorant Garamond',serif;font-size:clamp(48px,5.6vw,66px);
+  font-weight:400;line-height:1.06;letter-spacing:.005em;margin:0;color:#fff}
+.ap-intro h1{font-family:'Cormorant Garamond',serif;font-size:clamp(26px,3.2vw,38px);
+  font-weight:400;margin:14px 0 0;color:rgba(255,255,255,.93)}
 .ap-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}
 .ap-body{display:grid;grid-template-columns:1.25fr 1fr;gap:48px;align-items:start}
 .ap-about p{font-size:18px;line-height:1.85;color:#41496E;margin:0 0 18px}
@@ -2306,6 +2311,7 @@ const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't create account."); return; }
 currentClient = data.client;
 localStorage.setItem('clientId', currentClient.id);
+window.setClientToken(data.token || '');
 updateClientLoginLabel();
 const lead = {
 id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
@@ -2334,6 +2340,7 @@ const data = await res.json();
 if(!res.ok){ showToast(data.error || "Couldn't log in."); return; }
 currentClient = data.client;
 localStorage.setItem('clientId', currentClient.id);
+window.setClientToken(data.token || '');
 updateClientLoginLabel();
 closeAccountGate();
 showToast(`Welcome back, ${currentClient.name.split(' ')[0]}!`);
@@ -2342,6 +2349,7 @@ renderListings();
 }
 function logoutClient(){
 currentClient = null;
+window.setClientToken('');
 if(window.refreshClientBar) setTimeout(window.refreshClientBar, 0);
 localStorage.removeItem('clientId');
 updateClientLoginLabel();
@@ -2583,12 +2591,29 @@ async function sendLeadNotification(lead){
     }catch(e){}
   };
 
+  // Client accounts carry their own token, separate from an agent session.
+  // Without it the server has no way to tell one client from another, and the
+  // account routes fall back to trusting a guessable id from the browser.
+  try{ window.CLIENT_TOKEN = localStorage.getItem('clientToken') || ''; }catch(e){ window.CLIENT_TOKEN = ''; }
+  window.setClientToken = function(t){
+    window.CLIENT_TOKEN = t || '';
+    try{
+      if(t) localStorage.setItem('clientToken', t);
+      else localStorage.removeItem('clientToken');
+    }catch(e){}
+  };
+
   window.fetch = function(url, opts){
     opts = opts || {};
     const u = String(url || '');
     if(u.startsWith('/api/') && window.AUTH_TOKEN){
       opts.headers = Object.assign({}, opts.headers || {}, {
         'Authorization': 'Bearer ' + window.AUTH_TOKEN
+      });
+    } else if(u.startsWith('/api/client/') && window.CLIENT_TOKEN){
+      // an agent session always wins; this only applies to public visitors
+      opts.headers = Object.assign({}, opts.headers || {}, {
+        'Authorization': 'Bearer ' + window.CLIENT_TOKEN
       });
     }
     return realFetch(url, opts).then(res => {
@@ -2604,7 +2629,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v111';
+window.BUILD = 'index-v112';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6306,7 +6331,7 @@ function renderAgentProfile(a){
   const tel = (a.phone || '').replace(/[^0-9]/g, '');
   host.innerHTML = `
     <section class="ap-hero">
-      <a class="ap-home" href="/">&larr; Avani &amp; Co. &mdash; all listings</a>
+      <a class="ap-home" href="/">&larr; Avani &amp; Co Real Estate Southern Sands &mdash; all listings</a>
       <div class="ap-inner">
         <div class="ap-photo">
           ${a.photo
@@ -6319,9 +6344,9 @@ function renderAgentProfile(a){
           <span>Scan to reach<br>${escapeHtml(a.name)}</span>
         </div>
         <div class="ap-intro">
+          <p class="ap-firm">Avani &amp; Co Real Estate Southern Sands</p>
           <div class="eyebrow">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
           <h1>${escapeHtml(a.name)}</h1>
-          <p class="ap-firm">Avani &amp; Co. Real Estate &middot; Southern Sands</p>
           <div class="ap-actions">
             ${tel ? `<a class="btn btn-light" href="tel:${tel}">Call ${escapeHtml(a.phone)}</a>` : ''}
             ${a.email ? `<a class="btn" href="mailto:${escapeHtml(a.email)}" style="border-color:rgba(255,255,255,.6);color:#fff;">Email</a>` : ''}
