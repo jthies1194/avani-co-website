@@ -2481,6 +2481,7 @@ ${(function(){
   if(isBrokerRow) return '<span class="agent-role-tag">protected</span>';
   // While previewing, read-only actions stay available; destructive ones don't.
   const safe = `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button>`
+    + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentEdit('${a.id}')" title="Name, email, phone, role">Edit</button>`
     + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and license details">Details</button>`;
   if(previewing) return safe + '<span class="agent-role-tag" title="Return to your own view to manage accounts">preview</span>';
   return safe
@@ -5423,6 +5424,52 @@ window.addEventListener('popstate', (e) => {
     }
   }finally{ suppressHistory = false; }
 });
+</script>
+<script>
+/* Edit an agent's account details — name, email, phone, role. */
+async function openAgentEdit(agentId){
+  const a = (cdData.agents || []).find(x => x.id === agentId);
+  if(!a){ showToast("Couldn't find that agent."); return; }
+  const box = document.getElementById('agent-profile-box');
+  const canSetRole = isOwner();
+  box.innerHTML = `<div style="border:1px solid var(--line);border-radius:4px;padding:16px;margin-top:12px;">
+    <div style="font-weight:600;color:var(--marsh);margin-bottom:10px;">Edit account \u2014 ${escapeHtml(a.name||'')}</div>
+    <div class="setup-grid">
+      <div><div class="field-label">Full name</div><input id="ae-name" value="${escapeHtml(a.name||'')}"></div>
+      <div><div class="field-label">Email (their login)</div><input id="ae-email" type="email" value="${escapeHtml(a.email||'')}"></div>
+      <div><div class="field-label">Phone</div><input id="ae-phone" value="${escapeHtml(a.phone||'')}"></div>
+      <div><div class="field-label">Role</div>
+        <select id="ae-role" ${canSetRole?'':'disabled'}>
+          <option value="agent"${a.role==='agent'?' selected':''}>Agent</option>
+          <option value="admin"${a.role==='admin'?' selected':''}>Admin</option>
+          <option value="broker"${a.role==='broker'?' selected':''}>Broker</option>
+        </select>
+        ${canSetRole?'':'<p style="font-size:11.5px;color:var(--driftwood);margin:5px 0 0;">Only the broker can change roles.</p>'}
+      </div>
+    </div>
+    <button class="btn-sm primary" style="margin-top:12px;" onclick="saveAgentEdit('${agentId}')">Save account</button>
+    <button class="btn-sm" style="margin-top:12px;margin-left:8px;" onclick="openAgentProfile('${agentId}')">Contact &amp; license details</button>
+    <p style="font-size:11.5px;color:var(--driftwood);margin-top:8px;">Changing the email changes the address they sign in with.</p>
+  </div>`;
+  box.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+async function saveAgentEdit(agentId){
+  const g = id => (document.getElementById(id) || {}).value || '';
+  const body = { name: g('ae-name').trim(), email: g('ae-email').trim(), phone: g('ae-phone').trim() };
+  if(isOwner()) body.role = g('ae-role');
+  if(!body.name || !body.email){ showToast("Name and email are both required."); return; }
+  try{
+    const res = await fetch('/api/agent/' + agentId, {
+      method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await res.json();
+    if(!res.ok){ showToast(d.error || "Couldn't save."); return; }
+    showToast("Account updated.");
+    loadAgents();
+    if(typeof loadClosedDeals === 'function') loadClosedDeals();
+  }catch(e){ showToast("Couldn't reach the server."); }
+}
 </script>
 </body>
 </html>
