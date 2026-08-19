@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v97">
+<meta name="build" content="index-v98">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2280,7 +2280,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v97';
+window.BUILD = 'index-v98';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4236,7 +4236,10 @@ document.addEventListener('DOMContentLoaded', () => {
     maybeShowAgentProfile().then(shown => { if(shown) return; });
   }
   const h = (location.hash || '').replace('#','');
-  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile'].includes(h)){
+  if(h === 'client-login'){
+    setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
+  }
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage'].includes(h)){
     try{
       switchView('crm');
       if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
@@ -6150,6 +6153,19 @@ function fixHeaderForProfile(){
   document.querySelectorAll('.utility a[href^="#"]').forEach(a => {
     const t = a.getAttribute('href');
     if(t && t !== '#') a.setAttribute('href', '/' + t);
+  });
+  // These try to swap views underneath the profile page, which is layered on
+  // top — so send the visitor to the main site instead.
+  document.querySelectorAll('.utility a, #hdr .nav-agent').forEach(a => {
+    const txt = (a.textContent || '').toLowerCase();
+    if(txt.includes('agent login')){
+      a.onclick = e => { e.preventDefault(); location.href = '/#crm'; };
+      a.setAttribute('href', '/#crm');
+    }
+    if(txt.includes('client login')){
+      a.onclick = e => { e.preventDefault(); location.href = '/#client-login'; };
+      a.setAttribute('href', '/#client-login');
+    }
   });
 }
 </script>
