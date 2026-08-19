@@ -1357,7 +1357,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v44',
+    serverVersion: 'v45',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
@@ -1430,8 +1430,11 @@ app.get('/api/agent/by-slug/:slug', async (req, res) => {
     const match = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(req.params.slug));
     if (!match) return res.status(404).json({ error: 'No agent by that name.' });
     const profile = await getSetting('agentPublic:' + match.id) || {};
+    const publicPhone = profile.publicPhone || match.phone || '251-229-3216';
+    const publicEmail = profile.publicEmail || match.email || '';
     res.json({ ok: true, agent: {
-      id: match.id, name: match.name, email: match.email, phone: match.phone,
+      id: match.id, name: match.name, email: publicEmail, phone: publicPhone,
+      phoneIsBrokerage: !(profile.publicPhone || match.phone),
       role: match.role, slug: slugify(match.name),
       bio: profile.bio || '', photo: profile.photo || '', title: profile.title || '',
       specialties: profile.specialties || '', languages: profile.languages || '',
@@ -1449,7 +1452,8 @@ app.get('/api/agent/directory', async (req, res) => {
     const out = [];
     for (const a of rows) {
       const p = await getSetting('agentPublic:' + a.id) || {};
-      out.push({ id: a.id, name: a.name, email: a.email, phone: a.phone, role: a.role,
+      out.push({ id: a.id, name: a.name, email: p.publicEmail || a.email,
+                 phone: p.publicPhone || a.phone || '251-229-3216', role: a.role,
                  slug: slugify(a.name), title: p.title || '', photo: p.photo || '',
                  bio: (p.bio || '').slice(0, 180) });
     }
@@ -1467,6 +1471,7 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   const clean = v => String(v || '').slice(0, 4000);
   const profile = {
     title: clean(b.title), bio: clean(b.bio), photo: clean(b.photo),
+    publicPhone: clean(b.publicPhone), publicEmail: clean(b.publicEmail),
     specialties: clean(b.specialties), languages: clean(b.languages),
     facebook: clean(b.facebook), instagram: clean(b.instagram),
     updatedAt: new Date().toISOString(),
