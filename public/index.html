@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v96">
+<meta name="build" content="index-v97">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2280,7 +2280,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v96';
+window.BUILD = 'index-v97';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5975,6 +5975,7 @@ function renderAgentProfile(a){
           <p class="ap-firm">Avani &amp; Co. Real Estate &middot; Southern Sands</p>
           <div class="ap-actions">
             ${tel ? `<a class="btn btn-light" href="tel:${tel}">Call ${escapeHtml(a.phone)}</a>` : ''}
+            ${a.email ? `<a class="btn" href="mailto:${escapeHtml(a.email)}" style="border-color:rgba(255,255,255,.6);color:#fff;">Email</a>` : ''}
             <a class="btn" href="#ap-contact" style="border-color:rgba(255,255,255,.6);color:#fff;">Send a message</a>
           </div>
         </div>
@@ -6087,6 +6088,10 @@ async function renderMyPageSection(){
         <input id="mp-title" value="${escapeHtml(p.title||'')}" placeholder="REALTOR\u00AE"></div>
       <div><div class="field-label">Photo URL</div>
         <input id="mp-photo" value="${escapeHtml(p.photo||'')}" placeholder="https://\u2026"></div>
+      <div><div class="field-label">Phone shown publicly</div>
+        <input id="mp-phone" value="${escapeHtml(p.phoneIsBrokerage ? '' : (p.phone||''))}" placeholder="251-229-3216 (brokerage line if blank)"></div>
+      <div><div class="field-label">Email shown publicly</div>
+        <input id="mp-email" value="${escapeHtml(p.email||'')}" placeholder="you@bamacoast.com"></div>
       <div><div class="field-label">Specialties</div>
         <input id="mp-specialties" value="${escapeHtml(p.specialties||'')}" placeholder="Waterfront, first-time buyers, condos"></div>
       <div><div class="field-label">Languages</div>
@@ -6100,7 +6105,8 @@ async function renderMyPageSection(){
     </div>
     <button class="btn-sm primary" style="margin-top:14px;" onclick="saveMyPage()">Save my page</button>
     <p style="font-size:12.5px;color:var(--driftwood);margin-top:10px;">
-      No photo yet? Your initials show in brand colours until you add one.</p>`;
+      No photo yet? Your initials show in brand colours until you add one.
+      Leave the phone blank and the brokerage line (251-229-3216) is used instead of your mobile.</p>`;
 }
 
 function publicSlug(name){ return String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,''); }
@@ -6117,6 +6123,7 @@ async function saveMyPage(){
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         title: g('mp-title'), photo: g('mp-photo'), bio: g('mp-bio'),
+        publicPhone: g('mp-phone'), publicEmail: g('mp-email'),
         specialties: g('mp-specialties'), languages: g('mp-languages'),
       })
     });
