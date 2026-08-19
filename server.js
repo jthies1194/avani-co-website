@@ -90,6 +90,13 @@ async function requireSession(req, res) {
 }
 
 /* What an agent may touch. Staff (broker/admin) are unrestricted. */
+/* Admins handle commissions, expenses and accounts — not leads. Client contact
+   details are deliberately out of their reach so they can't be passed around. */
+function adminBlocked(key) {
+  const k = String(key || '');
+  return k.startsWith('lead:') || k === 'settings:leadArchive';
+}
+
 function keyAllowedForAgent(key, sess, write) {
   const k = String(key || '');
   // their own profile only
@@ -116,6 +123,9 @@ function scopeValueForAgent(key, value, sess) {
 app.get('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin' && adminBlocked(req.params.key)) {
+    return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+  }
   if (!isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
     return res.status(403).json({ error: 'Not permitted.' });
   }
@@ -139,9 +149,12 @@ app.get('/api/kv/:key', async (req, res) => {
 app.get('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
-  if (!isStaff(sess)) {
+  {
     const prefix = (req.query.prefix || '').toString();
-    if (prefix.startsWith('session:') || prefix.startsWith('agentProfile:')) {
+    if (sess.role === 'admin' && adminBlocked(prefix)) {
+      return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+    }
+    if (!isStaff(sess) && (prefix.startsWith('session:') || prefix.startsWith('agentProfile:'))) {
       return res.status(403).json({ error: 'Not permitted.' });
     }
   }
@@ -165,6 +178,10 @@ app.get('/api/kv', async (req, res) => {
 app.post('/api/kv', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin' && adminBlocked((req.body || {}).key)) {
+    console.warn(`[security] admin ${sess.agentId} blocked from writing a lead`);
+    return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+  }
   if (!isStaff(sess) && !keyAllowedForAgent((req.body || {}).key, sess, true)) {
     console.warn(`[security] agent ${sess.agentId} blocked writing ${(req.body||{}).key}`);
     return res.status(403).json({ error: 'Not permitted.' });
@@ -187,6 +204,9 @@ app.post('/api/kv', async (req, res) => {
 app.delete('/api/kv/:key', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin' && adminBlocked(req.params.key)) {
+    return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+  }
   if (!isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, true)) {
     return res.status(403).json({ error: 'Not permitted.' });
   }
