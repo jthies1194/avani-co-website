@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v101">
+<meta name="build" content="index-v104">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -224,7 +224,7 @@ header.stuck nav .tel{color:var(--gold)}
   text-shadow:0 2px 18px rgba(8,14,40,.55)}
 .hero-v2 h1 .accent{color:var(--gold);font-style:normal}
 /* "your" leans in without competing with the gold — italic carries the stress,
-   colour stays on the place name. */
+   color stays on the place name. */
 .hero-v2 h1 .yours{font-style:italic;font-weight:400;letter-spacing:.005em;
   padding-right:.04em}
 .hero-v2 .eyebrow{color:#fff !important;font-weight:600;letter-spacing:.26em;
@@ -920,6 +920,48 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .alerts-box{background:var(--sand);border:1px solid var(--line);border-radius:4px;padding:18px;margin-top:18px}
 .alert-row{display:flex;align-items:center;gap:10px;font-size:15.5px;color:var(--ink);cursor:pointer}
 .alert-row input{width:auto;margin:0}
+
+.ref-change{background:none;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:30px;
+  padding:6px 14px;font-family:'Jost',sans-serif;font-size:13.5px;cursor:pointer;transition:.25s}
+.ref-change:hover{background:#fff;color:var(--blue-ink)}
+.ref-x{background:none;border:none;color:rgba(255,255,255,.6);font-size:20px;cursor:pointer;padding:0 4px}
+#agent-choice-overlay{position:fixed;inset:0;z-index:300;background:rgba(23,31,99,.7);
+  display:none;align-items:center;justify-content:center;padding:24px}
+#agent-choice-overlay.active{display:flex}
+#agent-choice-overlay .box{background:#fff;max-width:520px;width:100%;padding:30px;border-radius:4px}
+#agent-choice-overlay h3{font-family:'Cormorant Garamond',serif;font-size:27px;font-weight:500;
+  color:var(--blue);margin:0 0 6px}
+#agent-choice-overlay .sub{font-size:15px;color:var(--grey);margin:0 0 18px;line-height:1.65}
+.choice-row{display:block;width:100%;text-align:left;background:var(--sand);border:1px solid var(--line);
+  border-radius:4px;padding:14px 16px;margin-bottom:9px;cursor:pointer;transition:.25s;font-family:'Jost',sans-serif}
+.choice-row:hover{border-color:var(--gold);background:#fff}
+.choice-row.plain{background:#fff}
+.cr-name{display:block;font-size:17px;color:var(--blue-ink)}
+.cr-title{display:block;font-size:13px;color:var(--grey);margin-top:3px}
+
+#transfer-overlay{position:fixed;inset:0;z-index:300;background:rgba(23,31,99,.7);
+  display:none;align-items:center;justify-content:center;padding:24px}
+#transfer-overlay.active{display:flex}
+#transfer-overlay .box{background:#fff;max-width:440px;width:100%;padding:28px;border-radius:4px}
+#transfer-overlay h3{font-family:'Cormorant Garamond',serif;font-size:25px;font-weight:500;
+  color:var(--marsh);margin:0 0 6px}
+#transfer-overlay .sub{font-size:14.5px;color:var(--driftwood);margin:0 0 16px;line-height:1.6}
+#transfer-overlay select,#transfer-overlay input{width:100%;border:1px solid var(--line);
+  padding:11px 12px;font-family:'Jost',sans-serif;font-size:15px}
+.icon-btn{background:none;border:none;color:var(--marsh);font-size:17px;cursor:pointer;
+  padding:2px 6px;transition:.2s}
+.icon-btn:hover{color:var(--coral)}
+
+.ap-license{margin-top:22px;padding:14px 16px;background:var(--sand);border-left:3px solid var(--gold);
+  border-radius:3px;font-size:15px;color:var(--blue-ink)}
+.ap-license.warn{border-left-color:#C97A3C;background:#FBF3E2;color:#7A4A12}
+.ap-license-note{font-size:14px;color:var(--grey);margin-top:7px;line-height:1.6}
+.dir-license{font-size:12px;color:var(--grey);margin-top:6px}
+
+.license-box{background:#FBF7EE;border:1px solid var(--line);border-left:3px solid var(--coral);
+  border-radius:4px;padding:16px;margin-top:14px}
+.lic-row{display:flex;align-items:center;gap:9px;font-size:15.5px;color:var(--ink);cursor:pointer}
+.lic-row input{width:auto;margin:0}
 </style>
 </head>
 <body>
@@ -1305,6 +1347,8 @@ Call Jimmy · 251-229-3216
 
 <!-- ============ CRM ============ -->
 <div id="referral-bar" style="display:none;"></div>
+<div id="transfer-overlay"><div class="box"><div id="transfer-body"></div></div></div>
+<div id="agent-choice-overlay"><div class="box"><div id="agent-choice-body"></div></div></div>
 <div id="agent-profile-view" style="display:none;"></div>
 <div id="view-crm" class="view">
 
@@ -2316,7 +2360,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v101';
+window.BUILD = 'index-v104';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -2808,7 +2852,7 @@ tbody.innerHTML = shown.map(l=>`
 <tr>
 <td><div class="lead-name">${escapeHtml(l.name||'—')}</div><div class="lead-contact">${fmtDate(l.createdAt)}</div></td>
 <td class="lead-contact">${escapeHtml(l.email||'')}<br>${escapeHtml(l.phone||'')}</td>
-<td><span class="lead-source">${l.source}${l.mlsKey?(' \u00b7 '+l.mlsKey):''}</span>${l.referredBy?`<div style="font-size:11px;color:var(--coral);margin-top:4px;">via ${escapeHtml(l.referredBy)}</div>`:''}</td>
+<td><span class="lead-source">${l.source}${l.mlsKey?(' \u00b7 '+l.mlsKey):''}</span>${l.referredBy?`<div style="font-size:11px;color:var(--coral);margin-top:4px;">via ${escapeHtml(l.referredBy)}</div>`:''}${l.transferredFrom?`<div style="font-size:11px;color:var(--marsh);margin-top:3px;">\u21c4 passed on by ${escapeHtml(l.transferredFrom)}</div>`:''}</td>
 <td class="lead-msg">${escapeHtml(l.message||'')}</td>
 <td>${currentAgent.role==='broker'
   ? `<select class="stage-select" id="assign-sel-${l.id}" onchange="stageAssignChange('${l.id}')"><option value="">Unassigned</option>${agents.map(a=>`<option value="${a.id}" ${a.id===l.assignedAgentId?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}</select><div id="assign-save-${l.id}" style="display:${pendingAssignments[l.id]!==undefined?'block':'none'}; margin-top:6px;"><button class="btn-sm" style="background:var(--marsh); color:var(--sand-light); border:none; font-weight:700;" onclick="saveLeadAgent('${l.id}')">Save &amp; notify</button></div>`
@@ -4597,10 +4641,22 @@ async function openAgentProfile(agentId){
     <div style="font-size:12.5px;margin-bottom:10px;color:${missing.length?'#8A4B12':'var(--driftwood)'};">
       ${missing.length ? '\u26A0 Incomplete \u2014 still needed: ' + missing.join(', ') : '\u2705 Profile complete'}</div>
     ${profileFormHtml(agentId, p, {brokerOnly:true})}
+    <div class="license-box" id="license-box-${agentId}">
+      <div class="field-label">Licensed to practice in <span style="color:var(--coral)">*</span></div>
+      <p style="font-size:12.5px;color:var(--driftwood);margin:4px 0 10px;">
+        This controls what their public page may say. An agent cannot set this themselves.
+        Getting it wrong is the brokerage's liability, not theirs.</p>
+      <label class="lic-row"><input type="checkbox" id="lic-AL-${agentId}"> Alabama</label>
+      <input id="licnum-AL-${agentId}" placeholder="AL license #" style="margin:6px 0 12px;">
+      <label class="lic-row"><input type="checkbox" id="lic-FL-${agentId}"> Florida</label>
+      <input id="licnum-FL-${agentId}" placeholder="FL license #" style="margin:6px 0 0;">
+      <button class="btn-sm primary" style="margin-top:12px;" onclick="saveAgentLicense('${agentId}')">Save licensing</button>
+    </div>
     <button class="btn-sm primary" style="margin-top:10px;" onclick="saveAgentProfile('${agentId}')">Save details</button>
     <p style="font-size:11.5px;color:var(--driftwood);margin-top:8px;">Only you can see this. Never store full Social Security numbers here \u2014 keep those on the signed W-9 itself.</p>
   </div>`;
   box.scrollIntoView({behavior:'smooth', block:'nearest'});
+  loadAgentLicense(agentId);
 }
 
 async function saveAgentProfile(agentId){
@@ -6016,7 +6072,7 @@ function renderAgentProfile(a){
         <div class="ap-qr">
           <img src="https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=0&qzone=1&color=1B3670&bgcolor=FFFFFF&data=${encodeURIComponent(location.origin + '/' + a.slug)}"
                alt="Scan for ${escapeHtml(a.name)}" loading="lazy">
-          <span>Scan for ${escapeHtml((a.name||'').split(' ')[0])}<br>listings &amp; contact</span>
+          <span>Scan to reach<br>${escapeHtml(a.name)}</span>
         </div>
         <div class="ap-intro">
           <div class="eyebrow">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
@@ -6039,8 +6095,9 @@ function renderAgentProfile(a){
           <span class="flourish" role="presentation"></span>
           <p>${a.bio
               ? escapeHtml(a.bio).replace(/\n/g, '</p><p>')
-              : `${escapeHtml((a.name || '').split(' ')[0])} works with buyers and sellers across Baldwin
-                 County, Mobile County, and the Perdido Key and Pensacola corridor.`}</p>
+              : `${escapeHtml((a.name || '').split(' ')[0])} works with buyers and sellers${
+                  a.serviceArea ? ' across ' + escapeHtml(a.serviceArea) : ''}.`}</p>
+          ${licenseLine(a)}
           ${a.specialties ? `<div class="ap-meta"><strong>Specialties</strong> ${escapeHtml(a.specialties)}</div>` : ''}
           ${a.languages ? `<div class="ap-meta"><strong>Languages</strong> ${escapeHtml(a.languages)}</div>` : ''}
         </div>
@@ -6053,7 +6110,7 @@ function renderAgentProfile(a){
           <div class="fr"><label for="ap-msg">How can they help?</label>
             <textarea id="ap-msg" placeholder="Buying, selling, or just looking around?"></textarea></div>
           <button class="btn" style="width:100%;" onclick="submitAgentLead()">Send</button>
-          <p class="ap-small">Goes straight to ${escapeHtml((a.name || '').split(' ')[0])} &mdash; no call centre in between.</p>
+          <p class="ap-small">Goes straight to ${escapeHtml((a.name || '').split(' ')[0])} &mdash; no call center in between.</p>
         </div>
       </div>
 
@@ -6109,6 +6166,7 @@ async function loadAgentDirectory(){
         <div class="dir-name">${escapeHtml(a.name)}</div>
         <div class="dir-title">${escapeHtml(a.title || (a.role === 'broker' ? 'Qualifying Broker' : 'REALTOR\u00AE'))}</div>
         ${a.phone ? `<div class="dir-contact">${escapeHtml(a.phone)}</div>` : ''}
+        ${(a.licensedStates||[]).length ? `<div class="dir-license">Licensed in ${(a.licensedStates||[]).map(c=>({AL:'Alabama',FL:'Florida'})[c]).join(' &amp; ')}</div>` : ''}
       </a>`).join('');
   } catch (e) { el.innerHTML = ''; }
 }
@@ -6125,6 +6183,10 @@ async function renderMyPageSection(){
     if(res.ok){ const d = await res.json(); if(d.ok) p = d.agent; }
   }catch(e){}
   const url = location.origin + '/' + publicSlug(currentAgent.name);
+  const NAMES = { AL:'Alabama', FL:'Florida' };
+  const licTxt = (p.licensedStates||[]).length
+    ? (p.licensedStates||[]).map(c => NAMES[c] + ((p.licenseNumbers||{})[c] ? ' #' + (p.licenseNumbers||{})[c] : '')).join(' and ')
+    : 'Not set \u2014 ask your broker to add this.';
   el.innerHTML = `
     <div class="mypage-url">
       <div>
@@ -6138,7 +6200,7 @@ async function renderMyPageSection(){
       <div>
         <div class="field-label">Your QR code</div>
         <p>Show this from your phone and anyone can scan it to land on your page &mdash;
-           any enquiry they send comes to you. Print it on a card, a sign rider, or a flyer.</p>
+           any inquiry they send comes to you. Print it on a card, a sign rider, or a flyer.</p>
         <a class="btn-sm" href="https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&margin=0&qzone=1&color=1B3670&bgcolor=FFFFFF&data=${encodeURIComponent(url)}" target="_blank" rel="noopener">Download for print</a>
       </div>
     </div>
@@ -6176,8 +6238,15 @@ async function renderMyPageSection(){
       <button class="btn-sm" style="margin-top:12px;" onclick="saveMyAlerts()">Save alert settings</button>
     </div>
     <button class="btn-sm primary" style="margin-top:14px;" onclick="saveMyPage()">Save my page</button>
+    <div class="license-box" style="margin-top:16px;">
+      <div class="field-label">Where you're licensed</div>
+      <p id="mp-license" style="font-size:15px;color:var(--ink);margin:6px 0 0;">${escapeHtml(licTxt)}</p>
+      <p style="font-size:12.5px;color:var(--driftwood);margin:8px 0 0;">
+        Set by the broker. Your page can only describe areas you're licensed for \u2014 if you
+        mention somewhere you aren't, saving will be refused and it will tell you why.</p>
+    </div>
     <p style="font-size:12.5px;color:var(--driftwood);margin-top:10px;">
-      No photo yet? Your initials show in brand colours until you add one.
+      No photo yet? Your initials show in brand colors until you add one.
       Leave the phone blank and the brokerage line (251-229-3216) is used instead of your mobile.</p>`;
 }
 
@@ -6200,7 +6269,11 @@ async function saveMyPage(){
       })
     });
     const d = await res.json();
-    if(!res.ok){ showToast(d.error || "Couldn't save."); return; }
+    if(!res.ok){
+      if(res.status === 422){ alert("Can't save this yet\n\n" + d.error); }
+      else showToast(d.error || "Couldn't save.");
+      return;
+    }
     showToast("Your page is updated.");
   }catch(e){ showToast("Couldn't reach the server."); }
 }
@@ -6285,10 +6358,10 @@ function showReferralBar(){
   if(!bar) return;
   if(!r){ bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
-  bar.innerHTML = `<span>You're working with <strong>${escapeHtml(r.name)}</strong> &mdash;
-      anything you send goes to them, not a call centre.</span>
-    <a href="/${escapeHtml(r.slug)}">Their page</a>
-    <button onclick="if(confirm('Stop working with ' + ${JSON.stringify(r.name)} + '? Future enquiries would go to the brokerage instead.')){ clearAgentReferral(); showReferralBar(); }" title="Browse without an agent">&times;</button>`;
+  bar.innerHTML = `<span>Your inquiries are going to <strong>${escapeHtml(r.name)}</strong>.</span>
+    <a href="/${escapeHtml(r.slug)}">About ${escapeHtml((r.name||'').split(' ')[0])}</a>
+    <button class="ref-change" onclick="offerAgentChoice()">Work with someone else</button>
+    <button class="ref-x" onclick="offerAgentChoice()" title="Change agent">&times;</button>`;
 }
 </script>
 <script>
@@ -6313,6 +6386,179 @@ async function saveMyAlerts(){
     });
     if(res.ok) showToast("Alert settings saved.");
     else showToast("Couldn't save alerts.");
+  }catch(e){ showToast("Couldn't reach the server."); }
+}
+</script>
+<script>
+/* A buyer should never feel stuck with an agent they didn't choose. */
+async function offerAgentChoice(){
+  const r = getAgentReferral();
+  let others = [];
+  try{
+    const res = await fetch('/api/agent/directory');
+    const d = await res.json();
+    others = (d.agents || []).filter(a => !r || a.id !== r.id);
+  }catch(e){}
+
+  const ov = document.getElementById('agent-choice-overlay');
+  const body = document.getElementById('agent-choice-body');
+  if(!ov || !body) return;
+  body.innerHTML = `
+    <h3>Choose who you'd like to work with</h3>
+    <p class="sub">No hard feelings either way \u2014 it's your move, and you should make it with
+       whoever you're comfortable with.</p>
+    ${others.length ? `<div class="choice-list">
+      ${others.map(a => `<button class="choice-row" onclick="pickAgent('${a.id}','${escapeHtml(a.name)}','${a.slug}')">
+        <span class="cr-name">${escapeHtml(a.name)}</span>
+        <span class="cr-title">${escapeHtml(a.title || (a.role==='broker'?'Qualifying Broker':'REALTOR\u00AE'))}</span>
+      </button>`).join('')}
+    </div>` : ''}
+    <button class="choice-row plain" onclick="pickNoAgent()">
+      <span class="cr-name">No preference</span>
+      <span class="cr-title">Send my inquiries to the brokerage and let them assign it</span>
+    </button>
+    <button class="btn-sm" style="margin-top:14px;" onclick="closeAgentChoice()">Never mind, keep things as they are</button>`;
+  ov.classList.add('active');
+}
+function closeAgentChoice(){
+  const ov = document.getElementById('agent-choice-overlay');
+  if(ov) ov.classList.remove('active');
+}
+function pickAgent(id, name, slug){
+  setAgentReferral({ id, name, slug });
+  closeAgentChoice();
+  showReferralBar();
+  showToast('You\'re now working with ' + name + '.');
+}
+function pickNoAgent(){
+  clearAgentReferral();
+  closeAgentChoice();
+  showReferralBar();
+  showToast('No problem \u2014 your inquiries will go to the brokerage.');
+}
+</script>
+<script>
+/* Pass a lead to a colleague — they get it as a fresh lead, and they know who
+   sent it. */
+async function openTransferLead(leadId){
+  const lead = await storeGet('lead:' + leadId);
+  if(!lead){ showToast("Couldn't find that lead."); return; }
+  let agents = [];
+  try{
+    const res = await fetch('/api/agent/list');
+    const d = await res.json();
+    agents = (d.agents || []).filter(a => a.id !== currentAgent.id && a.active !== false && a.role !== 'admin');
+  }catch(e){}
+  if(!agents.length){ showToast("No one else to pass it to yet."); return; }
+
+  const ov = document.getElementById('transfer-overlay');
+  const body = document.getElementById('transfer-body');
+  body.innerHTML = `
+    <h3>Pass this lead on</h3>
+    <p class="sub">${escapeHtml(lead.name || 'This lead')} goes across with everything \u2014 contact details,
+       message, source and history. They'll know it came from you.</p>
+    <div class="field-label">Send to</div>
+    <select id="tr-agent">${agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('')}</select>
+    <div class="field-label" style="margin-top:12px;">Note for them (optional)</div>
+    <input id="tr-note" placeholder="Out of town this week — they're looking in Foley">
+    <button class="btn-sm primary" style="width:100%;margin-top:14px;"
+      onclick="confirmTransfer('${leadId}')">Send it over</button>
+    <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="closeTransfer()">Cancel</button>`;
+  ov.classList.add('active');
+}
+function closeTransfer(){
+  const ov = document.getElementById('transfer-overlay');
+  if(ov) ov.classList.remove('active');
+}
+async function confirmTransfer(leadId){
+  const toId = (document.getElementById('tr-agent')||{}).value;
+  const note = (document.getElementById('tr-note')||{}).value || '';
+  const lead = await storeGet('lead:' + leadId);
+  if(!lead || !toId) return;
+
+  const fromName = currentAgent.name;
+  lead.assignedAgentId = toId;
+  lead.stage = 'New';
+  lead.transferredFrom = fromName;
+  lead.transferredAt = new Date().toISOString();
+  lead.notes = ((lead.notes ? lead.notes + ' | ' : '') + 'Passed on by ' + fromName + (note ? ': ' + note : '')).slice(0, 900);
+  await storeSet('lead:' + leadId, lead);
+
+  try{
+    const res = await fetch('/api/lead/transfer', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ toAgentId: toId, lead, note })
+    });
+    const d = await res.json();
+    showToast(res.ok ? ('Sent to ' + (d.toName || 'them') + '.') : (d.error || 'Transferred, but the alert failed.'));
+  }catch(e){ showToast('Transferred, but the alert failed.'); }
+  closeTransfer();
+  loadLeads();
+}
+</script>
+<script>
+/* Licensing shown plainly on every agent page. Where an agent is licensed is a
+   matter of public record and a legal boundary — not a detail to leave off. */
+function licenseLine(a){
+  const states = a.licensedStates || [];
+  const nums = a.licenseNumbers || {};
+  const NAME = { AL: 'Alabama', FL: 'Florida' };
+  if(!states.length){
+    return `<div class="ap-license warn">Licensing details are being updated.
+      For anything outside Alabama, call the brokerage on 251-229-3216.</div>`;
+  }
+  const parts = states.map(c => NAME[c] + (nums[c] ? ' #' + escapeHtml(nums[c]) : ''));
+  const missingFL = !states.includes('FL');
+  return `<div class="ap-license">
+      <strong>Licensed in ${parts.join(' and ')}</strong>
+      ${missingFL ? `<div class="ap-license-note">Looking in Florida? ${escapeHtml((a.name||'').split(' ')[0])}
+        can introduce you to a licensed Avani &amp; Co. agent for the Perdido Key and Pensacola area.</div>` : ''}
+    </div>`;
+}
+</script>
+<script>
+/* Licensing is broker/admin controlled. It decides what an agent's page is
+   allowed to claim, so it can't sit with the agent. */
+async function loadAgentLicense(agentId){
+  try{
+    const res = await fetch('/api/agent/list');
+    const d = await res.json();
+    const a = (d.agents||[]).find(x => x.id === agentId);
+    if(!a) return;
+    const slug = String(a.name||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    const r = await fetch('/api/agent/by-slug/' + encodeURIComponent(slug));
+    if(!r.ok) return;
+    const p = (await r.json()).agent || {};
+    (p.licensedStates||[]).forEach(c => {
+      const cb = document.getElementById('lic-' + c + '-' + agentId);
+      if(cb) cb.checked = true;
+    });
+    Object.entries(p.licenseNumbers||{}).forEach(([c,v]) => {
+      const el = document.getElementById('licnum-' + c + '-' + agentId);
+      if(el) el.value = v;
+    });
+  }catch(e){}
+}
+
+async function saveAgentLicense(agentId){
+  const states = [], nums = {};
+  ['AL','FL'].forEach(c => {
+    const cb = document.getElementById('lic-' + c + '-' + agentId);
+    const n  = document.getElementById('licnum-' + c + '-' + agentId);
+    if(cb && cb.checked){
+      states.push(c);
+      if(n && n.value.trim()) nums[c] = n.value.trim();
+    }
+  });
+  if(!states.length && !confirm("No states selected. Their page will say licensing is being updated and won't name a service area. Continue?")) return;
+  try{
+    const res = await fetch('/api/agent/' + agentId + '/public-profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ licensedStates: states, licenseNumbers: nums })
+    });
+    const d = await res.json();
+    if(!res.ok){ showToast(d.error || "Couldn't save licensing."); return; }
+    showToast("Licensing saved.");
   }catch(e){ showToast("Couldn't reach the server."); }
 }
 </script>
