@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v107">
+<meta name="build" content="index-v110">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -62,8 +62,21 @@
 .share-btn{flex:1;border:1px solid var(--line);background:var(--sand-light);color:var(--marsh);padding:9px;border-radius:4px;font-size:11.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;}
 .share-btn:hover{background:var(--marsh);color:var(--sand-light);border-color:var(--marsh);}
 .view-limit-note{font-size:11.5px;color:var(--driftwood);text-align:center;margin-top:10px;}
-.chat-fab{position:fixed;bottom:22px;right:22px;width:58px;height:58px;border-radius:50%;background:var(--marsh);color:var(--sand-light);border:none;box-shadow:0 8px 24px rgba(21,65,196,0.35);z-index:150;display:flex;align-items:center;justify-content:center;}
-.chat-fab svg{width:26px;height:26px;}
+/* Was a blue circle on a blue page — invisible. Gold, labelled, and it says
+   what it does. */
+.chat-fab{position:fixed;bottom:24px;right:24px;z-index:150;
+  display:flex;align-items:center;gap:10px;
+  background:var(--gold);color:var(--blue-ink);border:none;
+  border-radius:40px;padding:15px 24px;cursor:pointer;
+  font-family:'Jost',sans-serif;font-size:16px;font-weight:600;letter-spacing:.01em;
+  box-shadow:0 10px 30px rgba(23,31,99,.35);
+  transition:transform .25s, box-shadow .25s, background .25s}
+.chat-fab:hover{background:#F0D6A0;transform:translateY(-2px);
+  box-shadow:0 14px 38px rgba(23,31,99,.42)}
+.chat-fab::after{content:'';position:absolute;inset:-4px;border-radius:44px;
+  border:2px solid var(--gold);opacity:0;animation:fabPulse 3.2s ease-out 2s 3}
+@keyframes fabPulse{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
+.chat-fab svg{width:21px;height:21px;stroke:var(--blue-ink);flex-shrink:0}
 .chat-panel{position:fixed;bottom:90px;right:22px;width:340px;max-width:calc(100vw - 32px);height:440px;max-height:calc(100vh - 140px);background:var(--white);border-radius:8px;box-shadow:0 20px 50px rgba(21,65,196,0.25);z-index:150;display:none;flex-direction:column;overflow:hidden;border:1px solid var(--line);}
 .chat-panel.open{display:flex;}
 .chat-head{background:var(--marsh);color:var(--sand-light);padding:14px 16px;font-family:'Fraunces',serif;font-size:15px;display:flex;justify-content:space-between;align-items:center;}
@@ -475,8 +488,10 @@ header.stuck{top:52px}
   font-family:'Jost',sans-serif;font-size:15px;font-weight:500;cursor:pointer;
   box-shadow:0 14px 36px rgba(23,31,99,.34);transition:.35s}
 .chat-fab:hover{background:var(--blue-ink)}
-.chat-fab svg{width:19px;height:19px;stroke:var(--gold);fill:none;stroke-width:1.8}
-@media(max-width:600px){.chat-fab{right:14px;bottom:14px;padding:13px 18px;font-size:14px}}
+
+@media(max-width:600px){.chat-fab{right:14px;bottom:14px;padding:13px 18px;font-size:14.5px}
+  .fab-label{display:none}
+  .chat-fab{border-radius:50%;width:56px;height:56px;padding:0;justify-content:center}}
 
 .f-price{flex:1.5 1 260px}
 .price-pair{display:flex;align-items:center;gap:10px}
@@ -1030,6 +1045,15 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   .faq-q{font-size:19px}
   .faq-a p{padding-right:0}
 }
+
+.photo-upload{display:flex;gap:20px;align-items:flex-start;margin-top:6px}
+.photo-preview{width:132px;height:176px;flex-shrink:0;border-radius:3px;overflow:hidden;
+  background:var(--marsh);display:flex;align-items:center;justify-content:center}
+.photo-preview img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-preview span{font-family:'Cormorant Garamond',serif;font-size:46px;color:var(--gold-pale)}
+.photo-actions{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.photo-hint{font-size:13px;color:var(--driftwood);margin:4px 0 0;line-height:1.6;max-width:44ch}
+@media(max-width:600px){.photo-upload{flex-direction:column}}
 </style>
 </head>
 <body>
@@ -1286,7 +1310,9 @@ Call Jimmy · 251-229-3216
         <h4>Go and look</h4>
         <p>Your agent lines up showings and tells you what's wrong with each place, not just
            what's right. Expect to see plenty before something fits.</p>
-        <div class="step-why">You pay nothing for this. The seller pays commission at closing.</div></div>
+        <div class="step-why">Before we tour homes together you'll sign a written buyer agreement
+          setting out what your agent is paid and who pays it. We'll walk you through it first \u2014
+          it's a short document and there's nothing hidden in it.</div></div>
 
       <div class="step"><div class="step-n">4</div>
         <h4>Make an offer</h4>
@@ -1363,12 +1389,17 @@ Call Jimmy · 251-229-3216
            certainty.</p>
         <div class="loan-fit">Good fit: investors, downsizers, anyone competing on speed.</div></div>
     </div>
-    <p class="guide-note">Need a lender? We'll give you two or three names and you pick.
-      We don't take a fee for the introduction &mdash; that's not allowed, and it's not how we work.</p>
+    <p class="guide-note">Need a lender? We'll give you two or three names and you choose.
+      We don't accept any fee for referring you &mdash; that's prohibited under federal law
+      (RESPA), and it's not how we'd want to work anyway.</p>
   </div>
 
   <div id="guide-faq" class="guide-panel">
     <div class="faq-list" id="faq-list"></div>
+    <p class="guide-note" style="margin:26px auto 0;max-width:820px;">
+      General information only, current to the best of our knowledge and not legal, tax or lending
+      advice. <strong>Commissions are negotiable and are not set by law or by any association.</strong>
+      Your own agreement governs what is actually paid.</p>
   </div>
 
   <div id="guide-costs" class="guide-panel">
@@ -1871,7 +1902,8 @@ Call Jimmy · 251-229-3216
 
 <!-- ============ AI CHAT WIDGET ============ -->
 <button class="chat-fab" id="chat-fab" onclick="toggleChat()" title="Chat with us">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+<span class="fab-label">Ask a question</span>
 </button>
 <div class="chat-panel" id="chat-panel">
 <div class="chat-head">
@@ -2572,7 +2604,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v107';
+window.BUILD = 'index-v110';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6419,8 +6451,22 @@ async function renderMyPageSection(){
     <div class="setup-grid" style="margin-top:16px;">
       <div><div class="field-label">Title</div>
         <input id="mp-title" value="${escapeHtml(p.title||'')}" placeholder="REALTOR\u00AE"></div>
-      <div><div class="field-label">Photo URL</div>
-        <input id="mp-photo" value="${escapeHtml(p.photo||'')}" placeholder="https://\u2026"></div>
+      <div style="grid-column:1/-1;">
+        <div class="field-label">Your photo</div>
+        <div class="photo-upload">
+          <div class="photo-preview" id="mp-preview">${p.photo
+            ? `<img src="${escapeHtml(p.photo)}" alt="">`
+            : `<span>${escapeHtml((currentAgent.name||'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase())}</span>`}</div>
+          <div class="photo-actions">
+            <input type="file" id="mp-file" accept="image/*" style="display:none;" onchange="handlePhotoPick(this)">
+            <button class="btn-sm primary" onclick="document.getElementById('mp-file').click()">Choose a photo</button>
+            ${p.photo ? `<button class="btn-sm" onclick="removeMyPhoto()">Remove</button>` : ''}
+            <p class="photo-hint">A head-and-shoulders shot works best. We'll resize it for you \u2014
+              any size from your phone is fine.</p>
+          </div>
+        </div>
+        <input type="hidden" id="mp-photo" value="${escapeHtml(p.photo||'')}">
+      </div>
       <div><div class="field-label">Phone shown publicly</div>
         <input id="mp-phone" value="${escapeHtml(p.phoneIsBrokerage ? '' : (p.phone||''))}" placeholder="251-229-3216 (brokerage line if blank)"></div>
       <div><div class="field-label">Email shown publicly</div>
@@ -6777,8 +6823,10 @@ async function saveAgentLicense(agentId){
 <script>
 /* ---------- buyer guide ---------- */
 const BUYER_FAQ = [
-  ['Do I pay my agent?',
-   "No. In almost every sale here the seller pays the commission, which is split between the listing side and the buying side. You get representation, showings and negotiation without writing us a cheque. If a situation ever came up where that wasn't true, we'd tell you before you spent a minute with us."],
+  ['How is my agent paid?',
+   "Commissions are negotiable and are not set by law or by any association. Before we tour homes together you'll sign a written buyer agreement that states exactly what your agent is paid and how. In some transactions the seller offers to cover part or all of it; in others it is paid by you, or negotiated as part of your offer. We go through the numbers with you before you commit to anything, and nothing is assumed."],
+  ['Do I have to sign something before looking at houses?',
+   "Yes, and that changed recently for everyone, not just us. Buyers now sign a written agreement with their agent before touring homes. It sets out what we'll do for you, how long it runs and what we're paid. Read it, ask about anything you don't like, and change it if it doesn't suit \u2014 the terms are negotiable."],
   ['How much do I need for a down payment?',
    "Less than most people think. VA and USDA loans can be zero. FHA is 3.5%. Conventional starts around 3%. Twenty percent avoids mortgage insurance but it is not a requirement, and waiting years to save it often costs more in rent than the insurance would have."],
   ['What does pre-approval actually mean?',
@@ -6847,6 +6895,57 @@ function printBuyerGuide(){
        Avani &amp; Co. Real Estate &middot; 251-229-3216 &middot; bamacoast.com<br>
        General guidance only. Loan questions belong with a licensed lender; legal questions with
        an attorney.</p>`);
+}
+</script>
+<script>
+/* Photos are resized in the browser before saving — an untouched phone photo is
+   several megabytes and has no business going into the database. */
+function handlePhotoPick(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(!/^image\//.test(file.type)){ showToast("That doesn't look like an image."); return; }
+  showToast("Processing photo\u2026");
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      // 3:4 portrait, cropped from the centre, capped at 600x800
+      const targetW = 600, targetH = 800;
+      const scale = Math.max(targetW / img.width, targetH / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW; canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, (targetW - w) / 2, (targetH - h) / 2, w, h);
+
+      let quality = 0.82, data = canvas.toDataURL('image/jpeg', quality);
+      while(data.length > 700000 && quality > 0.4){
+        quality -= 0.1;
+        data = canvas.toDataURL('image/jpeg', quality);
+      }
+      const hidden = document.getElementById('mp-photo');
+      const prev = document.getElementById('mp-preview');
+      if(hidden) hidden.value = data;
+      if(prev) prev.innerHTML = '<img src="' + data + '" alt="">';
+      showToast("Photo ready \u2014 press Save my page to publish it.");
+    };
+    img.onerror = () => showToast("Couldn't read that image.");
+    img.src = e.target.result;
+  };
+  reader.onerror = () => showToast("Couldn't read that file.");
+  reader.readAsDataURL(file);
+}
+
+function removeMyPhoto(){
+  const hidden = document.getElementById('mp-photo');
+  const prev = document.getElementById('mp-preview');
+  if(hidden) hidden.value = '';
+  if(prev){
+    const ini = (currentAgent.name||'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+    prev.innerHTML = '<span>' + ini + '</span>';
+  }
+  showToast("Photo cleared \u2014 press Save my page to confirm.");
 }
 </script>
 </body>
