@@ -153,6 +153,17 @@ app.get('/api/kv/:key', async (req, res) => {
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'not found' });
+
+    // Individual leads are stored one per key, so array scoping doesn't cover
+    // them — an agent could otherwise read any lead by its id.
+    if (sess && !isStaff(sess) && String(req.params.key).startsWith('lead:')) {
+      const owner = data.value && data.value.assignedAgentId;
+      if (owner && owner !== sess.agentId) {
+        console.warn(`[security] agent ${sess.agentId} blocked reading lead owned by ${owner}`);
+        return res.status(403).json({ error: 'Not your lead.' });
+      }
+    }
+
     const value = (!sess || isStaff(sess)) ? data.value : scopeValueForAgent(req.params.key, data.value, sess);
     res.json({ key: req.params.key, value });
   } catch (e) {
@@ -207,6 +218,19 @@ app.post('/api/kv', async (req, res) => {
   if (sess && !isStaff(sess) && !keyAllowedForAgent((req.body || {}).key, sess, true)) {
     console.warn(`[security] agent ${sess.agentId} blocked writing ${(req.body||{}).key}`);
     return res.status(403).json({ error: 'Not permitted.' });
+  }
+  // Writing a lead: it has to already be theirs. Passing it to a colleague is
+  // allowed — that's the transfer — but taking someone else's is not.
+  if (sess && !isStaff(sess) && String((req.body || {}).key).startsWith('lead:')) {
+    try {
+      const { data: existing } = await supabase.from('kv_store')
+        .select('value').eq('key', (req.body || {}).key).maybeSingle();
+      const currentOwner = existing && existing.value && existing.value.assignedAgentId;
+      if (currentOwner && currentOwner !== sess.agentId) {
+        console.warn(`[security] agent ${sess.agentId} blocked writing a lead owned by ${currentOwner}`);
+        return res.status(403).json({ error: 'Not your lead.' });
+      }
+    } catch (e) { /* new lead, nothing to compare */ }
   }
   try {
     const { key, value } = req.body || {};
@@ -1506,7 +1530,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v49',
+    serverVersion: 'v50',
     routes: ['market-stats','mls-fields','search','listings'],
     database: !!supabase,
     mlsConfigured: !!process.env.BRIDGE_TOKEN,
