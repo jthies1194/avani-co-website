@@ -310,10 +310,16 @@ header.stuck nav .tel{color:var(--gold)}
 
 /* ---------- about (asymmetric overlap) ---------- */
 .about{position:relative;background:var(--sand);padding:130px 0}
-.about-grid{max-width:1000px;margin:0 auto;padding:0 48px;text-align:center}
+.about-grid{max-width:1200px;margin:0 auto;padding:0 48px;display:grid;
+  grid-template-columns:0.85fr 1.15fr;gap:56px;align-items:center;text-align:left}
 .about-copy{background:transparent;padding:0;position:relative;z-index:5}
+.about-photo{position:relative}
+.about-photo img{width:100%;height:auto;display:block;border-radius:3px;
+  box-shadow:0 26px 60px rgba(23,31,99,.20)}
+.about-cap{margin-top:14px;font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--gold-deep)}
 .about-copy h2{font-size:clamp(34px,4.4vw,56px);margin-top:18px}
-.about-copy p{color:#41496E;margin:0 auto 22px;font-size:18px;max-width:62ch}
+.about-copy p{color:#41496E;margin:0 0 22px;font-size:18px;max-width:58ch}
 .sig{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:29px;margin-top:38px;color:var(--blue)}
 .sig small{display:block;font-family:'Jost',sans-serif;font-style:normal;font-size:12.5px;
   letter-spacing:.14em;text-transform:uppercase;color:var(--grey);margin-top:11px}
@@ -345,7 +351,7 @@ header.stuck nav .tel{color:var(--gold)}
 
 @media(max-width:860px){
   nav{display:none}
-  .about-grid{padding:0 24px}
+  .about-grid{grid-template-columns:1fr;gap:30px;padding:0 24px;text-align:left}
   .services{grid-template-columns:repeat(2,1fr)}
   .band{grid-template-columns:1fr;gap:16px}
   .wrap,header,.hero-inner,.rail{padding-left:24px;padding-right:24px}
@@ -787,6 +793,18 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   background:var(--sand);border:1px solid var(--line);border-left:3px solid var(--coral);
   border-radius:4px;padding:14px 18px;margin-bottom:18px;font-size:14.5px}
 .year-close.locked{border-left-color:var(--marsh);background:#EFF1FA}
+
+.ptype-tabs{display:flex;gap:8px;flex-wrap:wrap;max-width:1180px;margin:0 auto 22px}
+.ptype-tabs button{background:#fff;border:1px solid var(--line);border-radius:30px;
+  padding:11px 22px;font-family:'Jost',sans-serif;font-size:15px;color:var(--ink);
+  cursor:pointer;transition:.25s}
+.ptype-tabs button:hover{border-color:var(--marsh);color:var(--marsh)}
+.ptype-tabs button.on{background:var(--marsh);border-color:var(--marsh);color:#fff;font-weight:500}
+@media(max-width:820px){
+  .ptype-tabs{margin-left:16px;margin-right:16px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .ptype-tabs::-webkit-scrollbar{display:none}
+  .ptype-tabs button{flex:0 0 auto;padding:9px 16px;font-size:14px}
+}
 </style>
 </head>
 <body>
@@ -891,6 +909,13 @@ Call Jimmy · 251-229-3216
   <button class="cb-btn out" onclick="logoutClient()">Log out</button>
 </div>
 <div class="saved-list" id="saved-list"></div>
+<div class="ptype-tabs" id="ptype-tabs">
+  <button class="on" data-ptype="" onclick="setPropertyType('')">All</button>
+  <button data-ptype="residential" onclick="setPropertyType('residential')">Homes</button>
+  <button data-ptype="land" onclick="setPropertyType('land')">Land &amp; lots</button>
+  <button data-ptype="commercial" onclick="setPropertyType('commercial')">Commercial</button>
+  <button data-ptype="lease" onclick="setPropertyType('lease')">For lease</button>
+</div>
 <div class="section-head">
 <h2>Featured listings</h2>
 <div style="display:flex; align-items:center; gap:14px;">
@@ -964,7 +989,11 @@ Call Jimmy · 251-229-3216
 </section>
 <section class="about" id="about">
   <div class="about-grid">
-    <div class="about-copy rv">
+    <div class="about-photo rv">
+      <img src="assets/team.jpg" alt="Jimmy and Christina Thies, Avani &amp; Co. Real Estate" loading="lazy">
+      <div class="about-cap">Jimmy &amp; Christina Thies &middot; Founders</div>
+    </div>
+    <div class="about-copy rv d1">
       <div class="eyebrow">The Brokerage</div>
       <h2>Built for this coast.</h2>
       <p>Avani &amp; Co. is a boutique brokerage licensed in both Alabama and Florida, covering Baldwin County, Mobile County, and the Perdido Key and Pensacola corridor.</p>
@@ -4327,13 +4356,15 @@ function currentFilters(){
 }
 function anyFilterSet(){
   const f = currentFilters();
-  return !!(f.city || f.beds || f.status || f.min || f.max);
+  return !!(f.city || f.beds || f.status || f.min || f.max ||
+            (typeof CURRENT_PTYPE !== 'undefined' && CURRENT_PTYPE));
 }
 
 async function runServerSearch(append){
   const f = currentFilters();
   if(!append){ SEARCH_SKIP = 0; SEARCH_RESULTS = []; }
   const params = new URLSearchParams({
+    ptype: (typeof CURRENT_PTYPE !== 'undefined' ? CURRENT_PTYPE : ''),
     city: f.city, beds: f.beds, status: f.status,
     min: f.min.replace(/[^0-9]/g,''), max: f.max.replace(/[^0-9]/g,''),
     top: SEARCH_PAGE, skip: SEARCH_SKIP,
@@ -4363,6 +4394,8 @@ function clearSearch(){
   ['f-city','pmin','pmax'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   ['f-beds','f-status'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.querySelectorAll('.price-quick button').forEach(b => b.classList.remove('on'));
+  CURRENT_PTYPE = '';
+  document.querySelectorAll('#ptype-tabs button').forEach(b => b.classList.toggle('on', !b.dataset.ptype));
   SEARCH_MODE = false; SEARCH_RESULTS = []; SEARCH_SKIP = 0;
   window.visibleCount = 12;
   renderListings();
@@ -5684,6 +5717,33 @@ async function ensureCommissionData(){
     }
     if(!CLOSED_YEARS.length) await loadClosedYears();
   }catch(e){}
+}
+</script>
+<script>
+/* ---------- property type tabs ----------
+   The feed carries Residential, Land, Commercial Sale and Commercial Lease.
+   Filtering runs at the MLS so a tab searches everything, not just the cached batch. */
+let CURRENT_PTYPE = '';
+
+function setPropertyType(t){
+  CURRENT_PTYPE = t;
+  document.querySelectorAll('#ptype-tabs button').forEach(b =>
+    b.classList.toggle('on', (b.dataset.ptype || '') === t));
+  window.visibleCount = 12;
+  if(t){
+    runServerSearch(false);
+  }else if(typeof anyFilterSet === 'function' && anyFilterSet()){
+    runServerSearch(false);
+  }else{
+    SEARCH_MODE = false; SEARCH_RESULTS = []; SEARCH_SKIP = 0;
+    renderListings();
+  }
+  const grid = document.getElementById('listings');
+  if(grid){
+    const bar = document.querySelector('.utility'), hdr = document.getElementById('hdr');
+    const off = (bar?bar.offsetHeight:0) + (hdr?hdr.offsetHeight:0) + 24;
+    window.scrollTo({top: Math.max(0, grid.getBoundingClientRect().top + pageYOffset - off), behavior:'smooth'});
+  }
 }
 </script>
 </body>
