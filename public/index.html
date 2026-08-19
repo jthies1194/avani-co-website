@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v104">
+<meta name="build" content="index-v105">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2360,7 +2360,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v104';
+window.BUILD = 'index-v105';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -2859,7 +2859,7 @@ tbody.innerHTML = shown.map(l=>`
   : escapeHtml(agentName(l.assignedAgentId))}</td>
 <td><select class="stage-select" onchange="updateStage('${l.id}',this.value)">${STAGES.map(s=>`<option ${s===l.stage?'selected':''}>${s}</option>`).join('')}</select></td>
 <td><input class="notes-input" value="${escapeHtml(l.notes||'')}" onchange="updateNotes('${l.id}',this.value)" placeholder="Add note..."></td>
-<td>${l.clientId ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="openClientActivityModal('${l.clientId}')" title="View their searches & favorites">👁</button>` : ''}<button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button>${l.stage==='Closed' ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="requestReview('${l.id}')" title="Request a Google review">★</button>` : ''}<button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
+<td>${l.clientId ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="openClientActivityModal('${l.clientId}')" title="View their searches & favorites">👁</button>` : ''}<button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openDraftModal('${l.id}')" title="AI draft reply">✉</button><button class="del-btn" style="color:var(--marsh); margin-right:6px;" onclick="openTransferLead('${l.id}')" title="Pass this lead to another agent">⇄</button>${l.stage==='Closed' ? `<button class="del-btn" style="color:var(--coral); margin-right:6px;" onclick="requestReview('${l.id}')" title="Request a Google review">★</button>` : ''}<button class="del-btn" onclick="deleteLead('${l.id}')" title="Delete">✕</button></td>
 </tr>
 `).join('');
 }
