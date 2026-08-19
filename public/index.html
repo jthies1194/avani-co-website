@@ -222,6 +222,10 @@ header.stuck nav .tel{color:var(--gold)}
   line-height:1.05;letter-spacing:-.01em;font-weight:400;
   text-shadow:0 2px 18px rgba(8,14,40,.55)}
 .hero-v2 h1 .accent{color:var(--gold);font-style:normal}
+/* "your" leans in without competing with the gold — italic carries the stress,
+   colour stays on the place name. */
+.hero-v2 h1 .yours{font-style:italic;font-weight:400;letter-spacing:.005em;
+  padding-right:.04em}
 .hero-v2 .eyebrow{color:#fff !important;font-weight:600;letter-spacing:.26em;
   text-shadow:0 1px 10px rgba(8,14,40,.6)}
 .hero-v2 .eyebrow{color:rgba(255,255,255,9.00)}
@@ -778,6 +782,11 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .switch-back{background:var(--coral);color:#3A2A08;border:none;border-radius:30px;
   padding:8px 16px;font-family:'Jost',sans-serif;font-size:14px;font-weight:500;cursor:pointer}
 .switch-back:hover{background:var(--gold)}
+
+.year-close{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  background:var(--sand);border:1px solid var(--line);border-left:3px solid var(--coral);
+  border-radius:4px;padding:14px 18px;margin-bottom:18px;font-size:14.5px}
+.year-close.locked{border-left-color:var(--marsh);background:#EFF1FA}
 </style>
 </head>
 <body>
@@ -820,7 +829,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="hero-inner">
     <div class="hero-copy rv in">
       <div class="eyebrow">Coastal Alabama &amp; Northwest Florida</div>
-      <h1>Find your place<br>on the <span class="accent">Gulf</span>.</h1>
+      <h1>Find <em class="yours">your</em> place<br>on the <span class="accent">Gulf</span>.</h1>
       <p>Search every active listing from Gulf Shores to Perdido Key &mdash;
          with a brokerage small enough to answer the phone.</p>
       <a href="#listings" class="btn btn-light" id="hero-cta">Search homes</a>
@@ -1240,6 +1249,7 @@ Call Jimmy · 251-229-3216
 <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
 <div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
 <button class="btn-sm" style="margin-left:auto;" onclick="printCommissions()">&#9113; Print / PDF</button>
+<button class="btn-sm" onclick="printYearEndPackage()" title="Everything your accountant needs, in one document">&#9113; Year-end package</button>
 </div>
 <div id="cd-content"></div>
 </div>
@@ -3270,6 +3280,7 @@ cdData.deals = await storeGet('settings:closedDeals') || [];
 cdData.subs  = await storeGet('settings:dealSubmissions') || [];
 cdData.plans = await storeGet('settings:agentPlans') || {};
 cdData.planHistory = await storeGet('settings:agentPlanHistory') || {};
+await loadClosedYears();
 if(isAdminOrOwner()){
 try{
 const res = await fetch('/api/agent/list');
@@ -3406,7 +3417,7 @@ ${r.rows.map(d=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${fmtMoney(d.calc.brokerage)}${d.calc.capped?` <span class="agent-role-tag" title="Capped \u2014 ${fmtMoney(d.calc.capSaved)} not charged">cap</span>`:''}${d.calc.capSaved?`<div style="font-size:11px;color:var(--marsh);">saved ${fmtMoney(d.calc.capSaved)}</div>`:''}</td>
 <td style="padding:8px;">${fmtMoney(d.calc.fees)}</td>
 <td style="padding:8px;"><strong>${fmtMoney(d.calc.agentNet)}</strong></td>
-${isBroker?`<td style="padding:8px;"><button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">\u2715</button></td>`:''}</tr>
+${isBroker?`<td style="padding:8px;">${isYearClosed(cdYear)?'<span title="Year closed" style="color:var(--driftwood);">&#128274;</span>':`<button class="del-btn" onclick="removeClosedDeal('${d.id}')" title="Remove">\u2715</button>`}</td>`:''}</tr>
 <tr id="dd-${d.id}" class="deal-detail" style="display:none;"><td colspan="${isBroker?9:8}">${dealDetailHtml(d)}</td></tr>`).join('')}
 </table></div>` : '<p style="font-size:12.5px; color:var(--driftwood);">No closed deals logged for this year yet.</p>';
 
@@ -3620,6 +3631,9 @@ if(btn) btn.textContent = isOpen ? 'Edit plan' : 'Close';
 }
 
 async function savePlan(agentId){
+{const eff = (document.getElementById('pl-eff-'+agentId)||{}).value || '';
+ const y = eff ? new Date(eff).getFullYear() : 0;
+ if(y && isYearClosed(y)){ showToast(`${y} is closed \u2014 a plan can't start in a locked year.`); return; }}
 const v = id => (document.getElementById(id+agentId)||{}).value || '';
 const eff = v('pl-eff-');
 if(!eff){ showToast("Set an effective date so we know when these terms started."); return; }
@@ -3718,6 +3732,8 @@ gciEditedManually[prefix] = false;
 }
 
 async function addClosedDeal(agentId){
+{const y = new Date((document.getElementById('cd-date')||{}).value || '').getFullYear();
+ if(y && isYearClosed(y)){ showToast(`${y} is closed. Reopen the year to add deals to it.`); return; }}
 const address = document.getElementById('cd-address').value.trim();
 const price = document.getElementById('cd-price').value;
 const closeDate = document.getElementById('cd-date').value;
@@ -3814,6 +3830,10 @@ loadClosedDeals();
 }
 
 async function removeClosedDeal(id){
+{const list = await storeGet('settings:closedDeals') || [];
+ const d = list.find(x => x.id === id);
+ const y = d ? new Date(d.closeDate).getFullYear() : 0;
+ if(y && isYearClosed(y)){ showToast(`${y} is closed \u2014 reopen the year first.`); return; }}
 if(!confirm("Remove this deal from the official ledger?")) return;
 let list = await storeGet('settings:closedDeals') || [];
 list = list.filter(d => d.id !== id);
@@ -5484,6 +5504,151 @@ async function saveAgentEdit(agentId){
     loadAgents();
     if(typeof loadClosedDeals === 'function') loadClosedDeals();
   }catch(e){ showToast("Couldn't reach the server."); }
+}
+</script>
+<script>
+/* ---------- year-end close ----------
+   Once a year is closed, its deals are locked. Without this, editing a plan or
+   removing a closing silently changes figures you've already reported. */
+let CLOSED_YEARS = [];
+
+async function loadClosedYears(){
+  try{ CLOSED_YEARS = (await storeGet('settings:closedYears')) || []; }catch(e){ CLOSED_YEARS = []; }
+  return CLOSED_YEARS;
+}
+function isYearClosed(y){ return CLOSED_YEARS.some(r => Number(r.year) === Number(y)); }
+function closedYearRecord(y){ return CLOSED_YEARS.find(r => Number(r.year) === Number(y)); }
+
+async function closeOutYear(year){
+  if(!isOwner()){ showToast("Only the broker can close a year."); return; }
+  const r = computeAllForYear(year);
+  const ok = confirm(
+    `Close out ${year}?\n\n` +
+    `${r.deals} closings \u00b7 ${fmtMoney(r.gci)} gross commission\n` +
+    `${fmtMoney(r.toBrokerage)} to the brokerage \u00b7 ${fmtMoney(r.toAgents)} paid to agents\n\n` +
+    `Deals in ${year} become read-only. You can reopen the year if something needs correcting.`
+  );
+  if(!ok) return;
+  const list = (await storeGet('settings:closedYears')) || [];
+  list.push({ year: Number(year), closedAt: new Date().toISOString(),
+              closedBy: currentAgent.name, snapshot: r });
+  await storeSet('settings:closedYears', list);
+  CLOSED_YEARS = list;
+  showToast(`${year} closed. Figures are locked.`);
+  loadClosedDeals();
+}
+
+async function reopenYear(year){
+  if(!isOwner()){ showToast("Only the broker can reopen a year."); return; }
+  if(!confirm(`Reopen ${year}? Deals become editable again \u2014 anything you change will no longer match what you have already filed.`)) return;
+  let list = (await storeGet('settings:closedYears')) || [];
+  list = list.filter(r => Number(r.year) !== Number(year));
+  await storeSet('settings:closedYears', list);
+  CLOSED_YEARS = list;
+  showToast(`${year} reopened.`);
+  loadClosedDeals();
+}
+
+function computeAllForYear(year){
+  const per = (cdData.agents || []).map(a => ({ agent:a, r: computeAgentYear(a.id, year) }));
+  return {
+    year,
+    deals: per.reduce((s,x) => s + x.r.rows.length, 0),
+    volume: per.reduce((s,x) => s + x.r.totals.volume, 0),
+    gci: per.reduce((s,x) => s + x.r.totals.gci, 0),
+    toBrokerage: per.reduce((s,x) => s + x.r.totals.brokerage + x.r.totals.fees + x.r.totals.deskFees, 0),
+    toAgents: per.reduce((s,x) => s + x.r.totals.agentNet, 0),
+    refOut: per.reduce((s,x) => s + x.r.totals.refOut, 0),
+    refIn: per.reduce((s,x) => s + x.r.totals.refIn, 0),
+    agents: per.map(x => ({ id:x.agent.id, name:x.agent.name, deals:x.r.rows.length,
+      volume:x.r.totals.volume, gci:x.r.totals.gci, net:x.r.totals.agentNet })),
+  };
+}
+</script>
+<script>
+/* ---------- year-end package ----------
+   One document covering everything an accountant asks for: what each agent was
+   paid (the 1099 figure), the referral ledger, and brokerage income. */
+function printYearEndPackage(){
+  const year = cdYear;
+  const per = (cdData.agents || []).map(a => ({ agent:a, r: computeAgentYear(a.id, year) }))
+                .filter(x => x.r.rows.length || x.r.totals.deskFees);
+  const rec = closedYearRecord(year);
+
+  const money = v => fmtMoney(v || 0);
+  const sum = f => per.reduce((s,x) => s + f(x.r.totals), 0);
+
+  const compensation = `
+    <h2 style="font-size:17px;margin:30px 0 0;">1. Agent compensation \u2014 ${year}</h2>
+    <p style="font-size:12px;color:#5A6288;margin:4px 0 0;">"Net paid to agent" is the figure to carry to each
+    agent's Form 1099-NEC. Confirm treatment with your accountant.</p>
+    <table><thead><tr>
+      <th>Agent</th><th class="num">Closings</th><th class="num">Volume</th><th class="num">Gross comm.</th>
+      <th class="num">Referrals out</th><th class="num">Brokerage split</th><th class="num">Fees</th>
+      <th class="num">Net paid to agent</th></tr></thead>
+      <tbody>${per.map(x => `<tr>
+        <td>${escapeHtml(x.agent.name)}</td>
+        <td class="num">${x.r.rows.length}</td>
+        <td class="num">${money(x.r.totals.volume)}</td>
+        <td class="num">${money(x.r.totals.gci)}</td>
+        <td class="num">${money(x.r.totals.refOut)}</td>
+        <td class="num">${money(x.r.totals.brokerage)}</td>
+        <td class="num">${money(x.r.totals.fees + x.r.totals.deskFees)}</td>
+        <td class="num"><strong>${money(x.r.totals.agentNet - x.r.totals.deskFees)}</strong></td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr><td>Totals</td>
+        <td class="num">${sum(t => 0) + per.reduce((s,x)=>s+x.r.rows.length,0)}</td>
+        <td class="num">${money(sum(t=>t.volume))}</td>
+        <td class="num">${money(sum(t=>t.gci))}</td>
+        <td class="num">${money(sum(t=>t.refOut))}</td>
+        <td class="num">${money(sum(t=>t.brokerage))}</td>
+        <td class="num">${money(sum(t=>t.fees)+sum(t=>t.deskFees))}</td>
+        <td class="num">${money(sum(t=>t.agentNet)-sum(t=>t.deskFees))}</td></tr></tfoot>
+    </table>`;
+
+  const income = `
+    <h2 style="font-size:17px;margin:30px 0 0;">2. Brokerage income \u2014 ${year}</h2>
+    <div class="totals">
+      <div>Commission splits retained: <strong>${money(sum(t=>t.brokerage))}</strong></div>
+      <div>Transaction, E&amp;O and franchise fees: <strong>${money(sum(t=>t.fees))}</strong></div>
+      <div>Desk fees: <strong>${money(sum(t=>t.deskFees))}</strong></div>
+      <div>Referral fees received: <strong>${money(sum(t=>t.refIn))}</strong></div>
+      <div style="font-size:15px;margin-top:8px;">Total brokerage income:
+        <strong>${money(sum(t=>t.brokerage) + sum(t=>t.fees) + sum(t=>t.deskFees) + sum(t=>t.refIn))}</strong></div>
+    </div>`;
+
+  const perAgentDetail = per.map(x => {
+    const t = x.r.totals;
+    return `<h3 style="font-size:15px;margin:26px 0 0;">${escapeHtml(x.agent.name)}</h3>
+      <table><thead><tr><th>Property</th><th>Closed</th><th>Side</th><th class="num">Price</th>
+        <th class="num">Gross</th><th class="num">Referral</th><th class="num">Brokerage</th>
+        <th class="num">Fees</th><th class="num">Net</th></tr></thead>
+        <tbody>${x.r.rows.map(d => `<tr>
+          <td>${escapeHtml(d.address)}</td><td>${d.closeDate}</td>
+          <td>${d.side==='both'?'Both':d.side==='buy'?'Buy':d.side==='list'?'List':'\u2014'}</td>
+          <td class="num">${money(d.price)}</td>
+          <td class="num">${money(d.calc.gci)}</td>
+          <td class="num">${d.calc.referral?(d.referralDirection==='in'?'+':'\u2212')+money(d.calc.referral):'\u2014'}</td>
+          <td class="num">${money(d.calc.brokerage)}</td>
+          <td class="num">${money(d.calc.fees)}</td>
+          <td class="num">${money(d.calc.agentNet)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="8">Net paid to ${escapeHtml((x.agent.name||'').split(' ')[0])}</td>
+          <td class="num">${money(t.agentNet - t.deskFees)}</td></tr></tfoot></table>`;
+  }).join('');
+
+  printReport(`Year-end package \u2014 ${year}`,
+    `<p style="font-size:12.5px;color:#5A6288;margin:0 0 6px;">
+       ${rec ? `Year closed ${new Date(rec.closedAt).toLocaleDateString()} by ${escapeHtml(rec.closedBy||'')}. Figures are final.`
+             : `<strong>${year} is still open</strong> \u2014 these figures may change until the year is closed out.`}
+     </p>
+     ${compensation}
+     ${income}
+     ${referralLedgerHtml(year)}
+     <h2 style="font-size:17px;margin:34px 0 0;">4. Transaction detail by agent</h2>
+     ${perAgentDetail}
+     <p style="margin-top:26px;font-size:12px;color:#5A6288;">
+       Prepared from the Avani &amp; Co. CRM. This is a summary for accounting use and is not a tax filing.
+       Referral fees of $600 or more generally require a Form 1099-NEC.</p>`);
 }
 </script>
 </body>
