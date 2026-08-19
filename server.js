@@ -379,6 +379,99 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// Market statistics computed from our own live feed. These are Avani's numbers
+// from Gulf Coast MLS data, not a republication of anyone else's report.
+// Note: the feed carries Active and Pending only — no closed sales — so this is
+// list-side inventory, not sold statistics.
+const MARKET_CITIES = ['Gulf Shores','Orange Beach','Fairhope','Daphne','Foley',
+                       'Spanish Fort','Robertsdale','Bay Minette','Elberta','Summerdale'];
+let marketCache = { data: null, at: 0 };
+
+function median(nums) {
+  if (!nums.length) return 0;
+  const a = nums.slice().sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
+}
+
+app.get('/api/market-stats', async (req, res) => {
+  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
+  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+
+  if (marketCache.data && Date.now() - marketCache.at < 30 * 60 * 1000 && !req.query.fresh) {
+    return res.json({ ...marketCache.data, cached: true });
+  }
+
+  try {
+    // pull the Baldwin market in bulk, then compute locally
+    const rows = [];
+    const PAGE = 200;
+    for (let skip = 0; skip < 1200; skip += PAGE) {
+      const filter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
+      const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+        + `?access_token=${encodeURIComponent(token)}`
+        + `&$filter=${encodeURIComponent(filter)}`
+        + `&$orderby=ModificationTimestamp desc&$top=${PAGE}&$skip=${skip}`;
+      const r = await fetch(url);
+      if (!r.ok) break;
+      const j = await r.json();
+      const v = j.value || [];
+      rows.push(...v);
+      if (v.length < PAGE) break;
+    }
+
+    const now = Date.now();
+    const daysAgo = iso => iso ? (now - new Date(iso).getTime()) / 86400000 : 9999;
+    const priced = rows.filter(r => Number(r.ListPrice) > 0);
+
+    const statsFor = subset => {
+      const prices = subset.map(r => Number(r.ListPrice)).filter(Boolean);
+      const ppsf = subset
+        .filter(r => Number(r.LivingArea) > 250 && Number(r.ListPrice) > 0)
+        .map(r => Number(r.ListPrice) / Number(r.LivingArea));
+      return {
+        count: subset.length,
+        median: median(prices),
+        average: prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0,
+        low: prices.length ? Math.min(...prices) : 0,
+        high: prices.length ? Math.max(...prices) : 0,
+        pricePerSqft: ppsf.length ? Math.round(median(ppsf)) : 0,
+        new7: subset.filter(r => daysAgo(r.OnMarketDate || r.ModificationTimestamp) <= 7).length,
+        new30: subset.filter(r => daysAgo(r.OnMarketDate || r.ModificationTimestamp) <= 30).length,
+      };
+    };
+
+    const byCity = {};
+    MARKET_CITIES.forEach(c => {
+      const subset = priced.filter(r => String(r.City || '').toLowerCase() === c.toLowerCase());
+      if (subset.length) byCity[c] = statsFor(subset);
+    });
+
+    const byType = {};
+    ['Residential', 'Land', 'Commercial Sale'].forEach(t => {
+      const subset = priced.filter(r => r.PropertyType === t);
+      if (subset.length) byType[t] = { count: subset.length, median: median(subset.map(r => Number(r.ListPrice))) };
+    });
+
+    const payload = {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      area: 'Baldwin County, Alabama',
+      source: 'Gulf Coast MLS \u2014 Mobile Area Association of REALTORS\u00AE',
+      basis: 'Active listings only. Sold data is not included in this feed.',
+      overall: statsFor(priced),
+      byCity,
+      byType,
+    };
+    marketCache = { data: payload, at: Date.now() };
+    console.log(`[market-stats] ${priced.length} active Baldwin listings, median ${payload.overall.median}`);
+    res.json(payload);
+  } catch (e) {
+    console.error('[market-stats] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/listings', async (req, res) => {
   const token = process.env.BRIDGE_SERVER_TOKEN;
   const dataset = process.env.BRIDGE_DATASET;
