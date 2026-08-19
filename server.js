@@ -273,6 +273,8 @@ app.get('/api/mls-fields', async (req, res) => {
     res.json({
       sampled: rows.length,
       hasCountyField: rows.length ? ('CountyOrParish' in rows[0]) : null,
+      propertyTypes: tally('PropertyType'),
+      propertySubTypes: tally('PropertySubType'),
       counties: tally('CountyOrParish'),
       cities: tally('City'),
       states: tally('StateOrProvince'),
