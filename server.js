@@ -173,11 +173,15 @@ function keyAllowedForAgent(key, sess, write) {
     'settings:viewLimit', 'settings:testimonials', 'settings:reviewLink',
     'settings:agentPlans', 'settings:agentPlanHistory', 'settings:closedDeals',
     'settings:expenses', 'settings:dealSubmissions', 'settings:officeCalendar',
+    'settings:resourceLinks',
   ]);
   if (k.startsWith('settings:')) return AGENT_READABLE.has(k) && !write;
   if (k.startsWith('lead:')) return true;                 // ownership checked separately
   if (k.startsWith('agentAlerts:')) return k === 'agentAlerts:' + sess.agentId;
   if (k.startsWith('agentPublic:')) return true;          // public profile data
+  // Marketing projects are per agent: marketing:<agentId>:<projectId>.
+  // Staff bypass this function entirely, which is how the broker sees all of them.
+  if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
   return true;
 }
 
@@ -1635,7 +1639,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v52',
+    serverVersion: 'v53',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -1778,6 +1782,41 @@ function teamNameProblem(title) {
 function slugify(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
+
+/* A scan from a card or a rider lands on the agent's page carrying ?src= and an
+   optional ?c= campaign tag. Recording it is what makes printed material
+   measurable — otherwise there is no way to know which piece pulled. */
+app.post('/api/marketing/scan', async (req, res) => {
+  const b = req.body || {};
+  const slug = String(b.slug || '').slice(0, 80).replace(/[^a-z0-9]/gi, '');
+  const src  = String(b.src  || '').slice(0, 24).replace(/[^a-z0-9_-]/gi, '');
+  const camp = String(b.campaign || '').slice(0, 40).replace(/[^a-z0-9_-]/gi, '');
+  if (!slug || !src) return res.json({ ok: true, skipped: true });
+  const day = new Date().toISOString().slice(0, 10);
+  const key = 'marketingScans:' + slug;
+  try {
+    const rec = (await getSetting(key)) || { slug, total: 0, byDay: {}, bySrc: {}, byCampaign: {} };
+    rec.total = (rec.total || 0) + 1;
+    rec.byDay[day] = (rec.byDay[day] || 0) + 1;
+    rec.bySrc[src] = (rec.bySrc[src] || 0) + 1;
+    if (camp) rec.byCampaign[camp] = (rec.byCampaign[camp] || 0) + 1;
+    rec.lastAt = new Date().toISOString();
+    await setSetting(key, rec);
+    console.log(`[marketing] scan ${slug} src=${src}${camp ? ' c=' + camp : ''}`);
+  } catch (e) { console.warn('[marketing] scan record failed:', e.message); }
+  res.json({ ok: true });
+});
+
+app.get('/api/marketing/scans/:slug', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const slug = String(req.params.slug || '').replace(/[^a-z0-9]/gi, '');
+  // an agent sees their own numbers; staff see anyone's
+  if (!isStaff(sess) && slugify(sess.name || '') !== slug) {
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
+  const rec = (await getSetting('marketingScans:' + slug)) || { slug, total: 0, byDay: {}, bySrc: {}, byCampaign: {} };
+  res.json({ ok: true, scans: rec });
+});
 
 app.get('/api/agent/by-slug/:slug', async (req, res) => {
   if (!requireSupabase(res)) return;
