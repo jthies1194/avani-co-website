@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v124">
+<meta name="build" content="index-v127">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1758,6 +1758,7 @@ Call Jimmy · 251-229-3216
 <div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
 <button class="btn-sm" style="margin-left:auto;" onclick="printCommissions()">&#9113; Print / PDF</button>
 <button class="btn-sm" onclick="printYearEndPackage()" title="Everything your accountant needs, in one document">&#9113; Year-end package</button>
+<button class="btn-sm" onclick="print1099Worksheet()" title="Recipient copies and the figures your accountant needs to file">&#9113; 1099 worksheet</button>
 </div>
 <div id="cd-content"></div>
 </div>
@@ -2808,7 +2809,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v124';
+window.BUILD = 'index-v127';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3165,6 +3166,7 @@ ${(function(){
   // While previewing, read-only actions stay available; destructive ones don't.
   const safe = `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button>`
     + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentEdit('${a.id}')" title="Name, email, phone, role">Edit</button>`
+    + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentHR('${a.id}','${escapeHtml(a.name).replace(/'/g,"\\'")}')" title="Address, emergency contact, W-9, taxpayer ID">File</button>`
     + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')" title="Contact and license details">Details</button>`;
   if(previewing) return safe + '<span class="agent-role-tag" title="Return to your own view to manage accounts">preview</span>';
   return safe
@@ -6326,6 +6328,128 @@ function computeAllForYear(year){
 /* ---------- year-end package ----------
    One document covering everything an accountant asks for: what each agent was
    paid (the 1099 figure), the referral ledger, and brokerage income. */
+/* ---------- 1099 worksheet ----------
+   Copy A of a 1099-NEC cannot lawfully be printed here: the IRS wants the
+   scannable red-ink original or an electronic filing, and a home-printed
+   substitute Copy A can draw a penalty. Copy B — the agent's copy — may be a
+   substitute if it follows IRS Publication 1179.
+
+   So this produces two things: the recipient copies, and a filing worksheet for
+   whoever actually submits. It is deliberately not called "print 1099s".      */
+async function print1099Worksheet(){
+  const year = cdYear;
+  const per = (cdData.agents || [])
+    .map(a => ({ agent:a, r: computeAgentYear(a.id, year) }))
+    .filter(x => (x.r.totals.netToAgent || 0) > 0);
+
+  if(!per.length){ showToast('No agent earnings recorded for ' + year + '.'); return; }
+
+  let data = null;
+  try{
+    const res = await fetch('/api/tax/1099-data', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ agentIds: per.map(x => x.agent.id) }),
+    });
+    const j = await res.json().catch(()=>({}));
+    if(!res.ok){ showToast(j.error || 'Could not load taxpayer details.'); return; }
+    data = j;
+  }catch(e){ showToast('Could not load taxpayer details.'); return; }
+
+  const byId = {};
+  (data.rows || []).forEach(r => { byId[r.agentId] = r; });
+
+  const THRESHOLD = 600;   // the usual 1099-NEC reporting floor
+  const rows = per.map(x => {
+    const hr = byId[x.agent.id] || { missing:['no file on record'] };
+    const amt = x.r.totals.netToAgent || 0;
+    return { name:x.agent.name, amt, hr, reportable: amt >= THRESHOLD };
+  }).sort((a,b) => b.amt - a.amt);
+
+  const incomplete = rows.filter(r => r.reportable && r.hr.missing && r.hr.missing.length);
+  const payer = data.payer || {};
+
+  const warn = incomplete.length ? `
+    <div style="border:2px solid #B4232A;padding:12px 14px;border-radius:6px;margin:18px 0">
+      <strong style="color:#B4232A">${incomplete.length} agent${incomplete.length===1?'':'s'} above
+      $${THRESHOLD} ${incomplete.length===1?'is':'are'} missing details you need before filing.</strong>
+      <ul style="margin:8px 0 0;padding-left:20px;font-size:13px">
+        ${incomplete.map(r => `<li>${escapeHtml(r.name)} \u2014 ${escapeHtml(r.hr.missing.join(', '))}</li>`).join('')}
+      </ul>
+      <div style="font-size:12px;color:#5A6288;margin-top:8px">
+        Fill these in under Agents \u2192 File.</div>
+    </div>` : '';
+
+  const payerBlock = `
+    <div style="border:1px solid #C9CDE4;padding:12px 14px;border-radius:6px;margin:14px 0">
+      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#5A6288">Payer</div>
+      <div style="font-size:15px;margin-top:2px">${escapeHtml(payer.name || '')}</div>
+      <div style="font-size:13px;color:#5A6288">
+        ${escapeHtml(payer.tradeName || '')} \u00b7 ${escapeHtml(payer.phone || '')}<br>
+        Payer TIN: ${payer.ein
+          ? escapeHtml(payer.ein)
+          : '<span style="color:#B4232A">not set \u2014 add BROKERAGE_EIN in the hosting environment variables</span>'}
+      </div>
+    </div>`;
+
+  const worksheet = `
+    <h2 style="font-size:17px;margin:26px 0 6px">Filing worksheet \u2014 ${year}</h2>
+    <p style="font-size:12px;color:#5A6288;margin:0 0 10px">
+      Box 1, nonemployee compensation. Agents under $${THRESHOLD} are listed for completeness
+      and are usually not reportable \u2014 confirm with your accountant.</p>
+    <table><thead><tr>
+      <th>Recipient</th><th>TIN</th><th>Address</th><th class="num">Box 1</th><th>W-9</th>
+    </tr></thead><tbody>
+      ${rows.map(r => `<tr${r.reportable?'':' style="opacity:.55"'}>
+        <td>${escapeHtml(r.hr.legalName || r.name)}${
+          r.hr.entityName ? `<br><span style="font-size:11px;color:#5A6288">${escapeHtml(r.hr.entityName)}</span>` : ''}</td>
+        <td>${r.hr.tinFormatted ? escapeHtml(r.hr.tinFormatted) : '<span style="color:#B4232A">missing</span>'}</td>
+        <td style="font-size:12px">${
+          [r.hr.address1, r.hr.address2, [r.hr.city, r.hr.state, r.hr.zip].filter(Boolean).join(' ')]
+            .filter(Boolean).map(escapeHtml).join('<br>') || '<span style="color:#B4232A">missing</span>'}</td>
+        <td class="num">${fmtMoney(r.amt)}</td>
+        <td>${r.hr.w9OnFile ? 'yes' : '<span style="color:#B4232A">no</span>'}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+
+  const copies = rows.filter(r => r.reportable).map(r => `
+    <div style="page-break-before:always;border:1px solid #171F63;padding:22px;margin-top:20px">
+      <div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#5A6288">
+        Recipient copy \u00b7 nonemployee compensation \u00b7 ${year}</div>
+      <h2 style="font-size:19px;margin:6px 0 14px">${escapeHtml(r.hr.legalName || r.name)}</h2>
+      <table style="width:100%"><tbody>
+        <tr><td style="width:38%">Payer</td><td>${escapeHtml(payer.name || '')}<br>
+          <span style="font-size:12px;color:#5A6288">${escapeHtml(payer.tradeName || '')}</span></td></tr>
+        <tr><td>Payer TIN</td><td>${escapeHtml(payer.ein || '\u2014')}</td></tr>
+        <tr><td>Recipient TIN</td><td>${escapeHtml(r.hr.tinFormatted || '\u2014')}</td></tr>
+        <tr><td>Recipient address</td><td>${
+          [r.hr.address1, r.hr.address2, [r.hr.city, r.hr.state, r.hr.zip].filter(Boolean).join(' ')]
+            .filter(Boolean).map(escapeHtml).join('<br>') || '\u2014'}</td></tr>
+        <tr><td><strong>Box 1 \u2014 nonemployee compensation</strong></td>
+            <td><strong>${fmtMoney(r.amt)}</strong></td></tr>
+      </tbody></table>
+      <p style="font-size:11.5px;color:#5A6288;margin-top:14px;line-height:1.5">
+        This is a summary of what ${escapeHtml(payer.tradeName || 'the brokerage')} paid you in ${year}.
+        Your official Form 1099-NEC is filed separately. Keep this for your records and give it to
+        whoever prepares your return.</p>
+    </div>`).join('');
+
+  printReport(`1099 worksheet ${year}`, `
+    <h1>1099 worksheet \u2014 ${year}</h1>
+    <div class="sub">${escapeHtml(payer.tradeName || '')} \u00b7 generated ${new Date().toLocaleDateString()}</div>
+    <div style="background:#FBF6EA;border-left:3px solid #E6C381;padding:11px 13px;
+      border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.55">
+      <strong>This is not a filed 1099.</strong> Copy A must go to the IRS on the official
+      scannable form or electronically \u2014 a printed substitute Copy A can draw a penalty.
+      Use this worksheet for your accountant or filing service, and give each agent their
+      recipient copy below.
+    </div>
+    ${warn}
+    ${payerBlock}
+    ${worksheet}
+    ${copies}
+  `);
+}
+
 function printYearEndPackage(){
   const year = cdYear;
   const per = (cdData.agents || []).map(a => ({ agent:a, r: computeAgentYear(a.id, year) }))
@@ -7023,16 +7147,19 @@ function licenseLine(a){
   const states = a.licensedStates || [];
   const nums = a.licenseNumbers || {};
   const NAME = { AL: 'Alabama', FL: 'Florida' };
-  if(!states.length){
-    return `<div class="ap-license warn">Licensing details are being updated.
-      For anything outside Alabama, call the brokerage on 251-229-3216.</div>`;
-  }
+  // No licence record on file: say nothing at all. That is the fail-closed rule —
+  // the page must never CLAIM a state the agent isn't licensed in, but there is
+  // no requirement to post a notice about it, and the old "details are being
+  // updated" line read like something was broken. An agent who gets a call from
+  // outside their area simply refers it on.
+  if(!states.length) return '';
   const parts = states.map(c => NAME[c] + (nums[c] ? ' #' + escapeHtml(nums[c]) : ''));
   const missingFL = !states.includes('FL');
   return `<div class="ap-license">
       <strong>Licensed in ${parts.join(' and ')}</strong>
       ${missingFL ? `<div class="ap-license-note">Looking in Florida? ${escapeHtml((a.name||'').split(' ')[0])}
-        can introduce you to a licensed Avani &amp; Co. agent for the Perdido Key and Pensacola area.</div>` : ''}
+        can introduce you to a licensed Avani &amp; Co Real Estate Southern Sands agent
+        for the Perdido Key and Pensacola area.</div>` : ''}
     </div>`;
 }
 </script>
@@ -8028,11 +8155,51 @@ function mkShareFacebook(){
 }
 
 async function mkCopyLink(){
+  const url = mkQrUrl();
+  // navigator.clipboard is unavailable in a few desktop setups and silently
+  // rejects in others, which looked like the button doing nothing at all.
+  // Fall back to a selection copy, and if even that fails, show the link so it
+  // can be copied by hand rather than leaving the person with nothing.
+  let done = false;
   try{
-    await navigator.clipboard.writeText(mkQrUrl());
-    showToast('Link copied.');
-  }catch(e){ prompt('Copy this link:', mkQrUrl()); }
-  mkCloseSheet();
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(url);
+      done = true;
+    }
+  }catch(e){}
+  if(!done){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly','');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select(); ta.setSelectionRange(0, url.length);
+      done = document.execCommand('copy');
+      ta.remove();
+    }catch(e){}
+  }
+  if(done){
+    showToast('Link copied \u2014 ' + url);
+    mkCloseSheet();
+  } else {
+    // last resort: put it on screen, selected, so it can be copied manually
+    const box = window.__mkSheet && window.__mkSheet.querySelector('.box');
+    if(box){
+      box.innerHTML = `<h4>Your link</h4>
+        <div style="font-size:12.5px;color:rgba(27,32,67,.62);margin-bottom:9px">
+          This browser wouldn't let us copy it for you \u2014 select it and copy.</div>
+        <input id="mkLinkBox" value="${escapeHtml(url)}" readonly
+          style="width:100%;padding:10px;border:1px solid rgba(27,32,67,.2);border-radius:7px;
+          font:inherit;font-size:13px">
+        <div style="text-align:right;margin-top:12px">
+          <button class="btn ghost" onclick="mkCloseSheet()">Close</button></div>`;
+      const f = document.getElementById('mkLinkBox');
+      if(f){ f.focus(); f.select(); }
+    } else {
+      prompt('Copy this link:', url);
+    }
+  }
 }
 
 function mkShareEmail(){
@@ -9431,6 +9598,196 @@ async function rsRemove(i){
   custom.splice(i,1);
   await storeSet('settings:resourceLinks', custom);
   renderResourcesSection();
+}
+</script>
+
+<div class="modal-overlay" id="hr-overlay">
+<div class="modal" style="max-width:640px">
+<button class="modal-close" onclick="closeAgentHR()">&times;</button>
+<h3 id="hr-title">Agent file</h3>
+<div class="sub">Everything you'd otherwise have to keep asking them for.</div>
+<div id="hr-body" style="max-height:66vh;overflow:auto;padding-right:4px">Loading&hellip;</div>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+  <button class="btn-sm" onclick="closeAgentHR()">Cancel</button>
+  <button class="btn-sm" id="hr-save" style="background:var(--marsh);color:var(--sand-light);
+    border-color:var(--marsh)" onclick="saveAgentHR()">Save file</button>
+</div>
+</div>
+</div>
+
+<script>
+/* ---------- agent file (HR record) ----------
+   Address, emergency contact, licence dates, W-9 status and the taxpayer ID the
+   1099 needs. The TIN is encrypted server-side and only ever comes back here as
+   last four — the full number is never sent to a browser except in the broker's
+   own 1099 worksheet. */
+let hrAgentId = '', hrAgentName = '', hrKeyConfigured = true;
+
+const HR_ROW = (label, id, val, type, hint) => `
+  <div class="field" style="margin-bottom:10px">
+    <label style="display:block;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+      text-transform:uppercase;color:var(--driftwood);margin-bottom:4px">${label}</label>
+    <input id="${id}" type="${type||'text'}" value="${escapeHtml(val||'')}"
+      style="width:100%;padding:9px 10px;border:1px solid rgba(27,32,67,.2);border-radius:6px;
+      font:inherit;font-size:14px">
+    ${hint ? `<div style="font-size:11.5px;color:var(--driftwood);margin-top:3px">${hint}</div>` : ''}
+  </div>`;
+
+async function openAgentHR(id, name){
+  hrAgentId = id; hrAgentName = name || '';
+  document.getElementById('hr-title').textContent = 'Agent file \u2014 ' + (name || '');
+  document.getElementById('hr-overlay').classList.add('active');
+  const body = document.getElementById('hr-body');
+  body.textContent = 'Loading\u2026';
+
+  let hr = {}, keyOk = true;
+  try{
+    const r = await fetch('/api/agent/' + encodeURIComponent(id) + '/hr');
+    if(r.ok){ const d = await r.json(); hr = d.hr || {}; keyOk = d.keyConfigured !== false; }
+    else { body.innerHTML = '<div style="color:#B4232A">Not permitted.</div>'; return; }
+  }catch(e){ body.innerHTML = '<div style="color:#B4232A">Could not load that.</div>'; return; }
+  hrKeyConfigured = keyOk;
+
+  const isBroker = (typeof currentAgent === 'object' && currentAgent && currentAgent.role === 'broker');
+  const half = 'display:grid;grid-template-columns:1fr 1fr;gap:10px';
+
+  body.innerHTML = `
+    <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+      color:var(--marsh);margin:4px 0 8px">Identity and address</div>
+    ${HR_ROW('Legal name', 'hr-legalName', hr.legalName, 'text',
+      'As it appears on their W-9 \u2014 may differ from the name on their page.')}
+    ${HR_ROW('Paid to a business? Entity name', 'hr-entityName', hr.entityName, 'text',
+      'Leave blank if you pay them personally.')}
+    ${HR_ROW('Address', 'hr-address1', hr.address1)}
+    ${HR_ROW('Address line 2', 'hr-address2', hr.address2)}
+    <div style="${half}">
+      ${HR_ROW('City', 'hr-city', hr.city)}
+      ${HR_ROW('State', 'hr-state', hr.state)}
+    </div>
+    <div style="${half}">
+      ${HR_ROW('ZIP', 'hr-zip', hr.zip)}
+      ${HR_ROW('Date of birth', 'hr-dob', hr.dob, 'date')}
+    </div>
+    <div style="${half}">
+      ${HR_ROW('Personal phone', 'hr-personalPhone', hr.personalPhone, 'tel')}
+      ${HR_ROW('Personal email', 'hr-personalEmail', hr.personalEmail, 'email')}
+    </div>
+
+    <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+      color:var(--marsh);margin:16px 0 8px">Emergency contact</div>
+    <div style="${half}">
+      ${HR_ROW('Name', 'hr-emergencyName', hr.emergencyName)}
+      ${HR_ROW('Phone', 'hr-emergencyPhone', hr.emergencyPhone, 'tel')}
+    </div>
+    ${HR_ROW('Relationship', 'hr-emergencyRelation', hr.emergencyRelation)}
+
+    <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+      color:var(--marsh);margin:16px 0 8px">Dates</div>
+    <div style="${half}">
+      ${HR_ROW('Started with us', 'hr-startDate', hr.startDate, 'date')}
+      ${HR_ROW('Left (if applicable)', 'hr-endDate', hr.endDate, 'date')}
+    </div>
+    ${HR_ROW('License expires', 'hr-licenseExpiry', hr.licenseExpiry, 'date',
+      'Feeds the license-expiry warning.')}
+
+    <div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+      color:var(--marsh);margin:16px 0 8px">Tax</div>
+    <label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;margin-bottom:10px;
+      cursor:pointer;line-height:1.45">
+      <input type="checkbox" id="hr-w9OnFile" ${hr.w9OnFile?'checked':''} style="margin-top:3px">
+      <span><strong>W-9 on file.</strong> Needed before a 1099 can be filed, and the
+      referral form asks about it too.</span>
+    </label>
+    ${HR_ROW('W-9 received', 'hr-w9Date', hr.w9Date, 'date')}
+    <div class="field" style="margin-bottom:10px">
+      <label style="display:block;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+        text-transform:uppercase;color:var(--driftwood);margin-bottom:4px">TIN type</label>
+      <select id="hr-tinType" style="width:100%;padding:9px 10px;border:1px solid rgba(27,32,67,.2);
+        border-radius:6px;font:inherit;font-size:14px">
+        <option value=""${!hr.tinType?' selected':''}>\u2014</option>
+        <option value="SSN"${hr.tinType==='SSN'?' selected':''}>SSN (paid personally)</option>
+        <option value="EIN"${hr.tinType==='EIN'?' selected':''}>EIN (paid to a business)</option>
+      </select>
+    </div>
+
+    ${isBroker ? `
+      <div class="field" style="margin-bottom:6px">
+        <label style="display:block;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+          text-transform:uppercase;color:var(--driftwood);margin-bottom:4px">Taxpayer ID</label>
+        ${hr.tinOnFile
+          ? `<div style="display:flex;align-items:center;gap:10px;padding:9px 10px;
+               background:#F0F1F8;border-radius:6px;font-size:14px">
+               <span>On file \u2014 ending <strong>${escapeHtml(hr.tinLast4||'')}</strong></span>
+               <button class="btn-sm" style="margin-left:auto" onclick="hrReplaceTin()">Replace</button>
+             </div>
+             <input id="hr-tin" type="text" inputmode="numeric" placeholder="Nine digits"
+               style="display:none;width:100%;margin-top:8px;padding:9px 10px;
+               border:1px solid rgba(27,32,67,.2);border-radius:6px;font:inherit;font-size:14px">`
+          : `<input id="hr-tin" type="text" inputmode="numeric" placeholder="Nine digits, no dashes"
+               style="width:100%;padding:9px 10px;border:1px solid rgba(27,32,67,.2);
+               border-radius:6px;font:inherit;font-size:14px">`}
+        <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px;line-height:1.5">
+          Encrypted on the server. It is never shown again \u2014 only the last four \u2014
+          except in your own 1099 worksheet. Only you can enter it; admins cannot.
+        </div>
+      </div>
+      ${!keyOk ? `<div style="background:#FBEAEA;border-left:3px solid #B4232A;padding:9px 11px;
+        border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.5;margin-bottom:10px">
+        <strong>HR_ENCRYPTION_KEY isn't set on the server</strong>, so a taxpayer ID can't be
+        stored securely and will be refused. Everything else here saves fine. Generate a key with
+        <code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code>
+        and add it in the GoDaddy environment variables.</div>` : ''}
+    ` : `<div style="font-size:12.5px;color:var(--driftwood);padding:9px 11px;background:#F0F1F8;
+        border-radius:6px;margin-bottom:10px">Taxpayer IDs are visible to the broker only.</div>`}
+
+    <div class="field" style="margin-top:10px">
+      <label style="display:block;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+        text-transform:uppercase;color:var(--driftwood);margin-bottom:4px">Notes</label>
+      <textarea id="hr-notes" rows="3" style="width:100%;padding:9px 10px;
+        border:1px solid rgba(27,32,67,.2);border-radius:6px;font:inherit;font-size:14px"
+        >${escapeHtml(hr.notes||'')}</textarea>
+    </div>`;
+}
+
+function hrReplaceTin(){
+  const f = document.getElementById('hr-tin');
+  if(f){ f.style.display = 'block'; f.focus(); }
+}
+
+function closeAgentHR(){
+  document.getElementById('hr-overlay').classList.remove('active');
+  const t = document.getElementById('hr-tin');
+  if(t) t.value = '';                       // never leave a TIN sitting in the DOM
+}
+
+async function saveAgentHR(){
+  const btn = document.getElementById('hr-save');
+  const g = id => (document.getElementById('hr-' + id) || {}).value || '';
+  const body = {
+    legalName:g('legalName'), entityName:g('entityName'),
+    address1:g('address1'), address2:g('address2'), city:g('city'),
+    state:g('state'), zip:g('zip'), dob:g('dob'),
+    personalPhone:g('personalPhone'), personalEmail:g('personalEmail'),
+    emergencyName:g('emergencyName'), emergencyPhone:g('emergencyPhone'),
+    emergencyRelation:g('emergencyRelation'),
+    startDate:g('startDate'), endDate:g('endDate'), licenseExpiry:g('licenseExpiry'),
+    w9OnFile: !!(document.getElementById('hr-w9OnFile')||{}).checked,
+    w9Date:g('w9Date'), tinType:g('tinType'), notes:g('notes'),
+  };
+  const tin = g('tin').trim();
+  if(tin) body.tin = tin;
+
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+  try{
+    const r = await fetch('/api/agent/' + encodeURIComponent(hrAgentId) + '/hr', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error || "Couldn't save that."); return; }
+    showToast('File saved.');
+    closeAgentHR();
+  }catch(e){ showToast("Couldn't save that."); }
+  finally{ if(btn){ btn.disabled = false; btn.textContent = 'Save file'; } }
 }
 </script>
 
