@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v155">
+<meta name="build" content="index-v163">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -408,7 +408,7 @@ header.stuck nav .tel{color:var(--gold)}
 .utility a.u-agent svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9}
 .utility a.u-agent:hover{color:var(--gold)}
 @media(max-width:820px){
-  .utility a.u-agent{margin-left:10px;padding-left:10px;font-size:11.5px}
+  .utility a.u-agent{margin-left:10px;padding-left:10px;font-size:11.5px;flex:0 0 auto}
   /* The label stays. This rule used to hide a span that did not exist, so it
      had no effect; once the label was wrapped properly it started hiding
      "Agent Login" behind a bare padlock on every phone. Agents look for the
@@ -441,7 +441,7 @@ header.stuck{top:52px}
 }
 
 @media(max-width:1050px){
-  .utility{padding:0 18px;gap:10px;height:52px}
+  .utility{padding:0 18px;gap:10px;height:52px;min-width:0}
   .utility .u-tel{font-size:16px}
   .utility a.pill{padding:7px 13px;font-size:11px;letter-spacing:.06em}
   header,header.stuck{top:52px}
@@ -1181,11 +1181,64 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 </head>
 <body>
 
+
+
+<style>
+/* ---------- clocks in the utility bar ----------
+   Two pieces. The four US zones sit still, because each shows a different time and
+   four short items read at a glance. Everywhere else cycles through one slot,
+   because that list is long and only one will fit.
+
+   What did not work, and why: six cities across the bar (a wall of numbers, and
+   half of them showed the same time as Gulf Shores) · a full-width band above the
+   page (greeted people with clocks before the property) · after </header> (the
+   header is position:fixed, so it landed under the hero) · between hero and search
+   (.search has margin:-34px and covered it). */
+.utility .wc-us{display:inline-flex;align-items:center;gap:13px;flex:0 0 auto}
+.utility .wc-us .z{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap}
+.utility .wc-us .lbl{font-size:8.5px;font-weight:700;letter-spacing:.1em;
+  color:rgba(255,255,255,.42)}
+.utility .wc-us .t{font-size:12px;font-variant-numeric:tabular-nums;
+  color:rgba(255,255,255,.82)}
+.utility .wc-us .z.day .t{color:#F0D9A6}
+.utility .wc-us .z.home .lbl{color:rgba(230,195,129,.95)}
+.utility .wc-us .z.home .t{color:#fff;font-weight:600}
+
+.utility .wc-one{display:inline-flex;align-items:center;gap:7px;background:none;border:none;
+  padding:0 0 0 13px;margin-left:13px;font:inherit;cursor:pointer;color:inherit;
+  border-left:1px solid rgba(252,252,253,.24);flex:0 0 auto;min-width:150px;text-align:left}
+.utility .wc-one .globe{font-size:12px;line-height:1;opacity:.85;flex:0 0 auto}
+.utility .wc-one .body{display:inline-flex;align-items:baseline;gap:6px;
+  transition:opacity .3s ease;white-space:nowrap}
+.utility .wc-one.fade .body{opacity:0}
+.utility .wc-one .city{font-size:8.5px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:rgba(230,195,129,.88)}
+.utility .wc-one .t{font-size:12px;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.82)}
+.utility .wc-one .t .day{font-size:8.5px;color:rgba(255,255,255,.44);margin-left:4px}
+.utility .wc-one:hover .city{color:var(--gold)}
+
+@media(max-width:1050px){
+  .utility .wc-us{gap:10px}
+  .utility .wc-one{min-width:132px;margin-left:9px;padding-left:9px}
+}
+@media(max-width:880px){
+  /* the world slot goes first — the US zones are the useful half */
+  .utility .wc-one{display:none}
+  .utility .wc-us{gap:9px}
+  .utility .wc-us .t{font-size:11.5px}
+}
+@media(max-width:620px){
+  /* then everything but home, which is the one that answers "what time is it there" */
+  .utility .wc-us .z:not(.home){display:none}
+}
+</style>
+
 <div class="utility">
-  <a href="tel:2512293216" class="u-tel">
-    <svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.3-1.2a2 2 0 012.1-.5c.9.3 1.8.6 2.8.7a2 2 0 011.7 2z"/></svg>
-    251-229-3216
-  </a>
+  <div class="wc-us" id="wc-us" title="Across the States"></div>
+  <button class="wc-one" id="wc-one" onclick="wcNext()" title="Around the world \u2014 tap to skip">
+    <span class="globe">&#127758;</span>
+    <span class="body"><span class="city" id="wc-city"></span><span class="t" id="wc-t">--:--</span></span>
+  </button>
   <a href="#" class="u-agent" onclick="switchView('crm');return false;" title="Agent &amp; broker sign-in">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><span>Agent Login</span></a>
   <div class="u-actions">
@@ -1231,49 +1284,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="photo-credit"><div><span>Zayde Albiyati</span><span class="b">Salt Air Media</span></div></div>
   <div class="scroll-cue">Scroll</div>
 </section>
-<style>
-/* A slim strip, directly beneath the hero — the first thing you meet on scrolling.
 
-   It was placed after </header> at first and vanished: the header is
-   position:fixed, so it is out of the page flow and anything "after" it lands
-   underneath the hero instead. */
-.wc-strip{background:linear-gradient(100deg,#1B2043,#25306B 55%,#1E5F7A);color:#fff;
-  border-bottom:1px solid rgba(230,195,129,.28)}
-.wc-in{max-width:1180px;margin:0 auto;padding:8px 22px;display:flex;align-items:center;gap:16px}
-.wc-here{display:flex;align-items:baseline;gap:9px;flex:0 0 auto}
-.wc-here .lbl{font-size:9.5px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;
-  color:rgba(230,195,129,.9);white-space:nowrap}
-.wc-here .big{font-family:'Cormorant Garamond',serif;font-size:23px;line-height:1;
-  font-variant-numeric:tabular-nums;white-space:nowrap}
-.wc-sep{width:1px;height:22px;background:rgba(255,255,255,.18);flex:0 0 auto}
-.wc-row{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;flex:1;
-  -webkit-overflow-scrolling:touch}
-.wc-row::-webkit-scrollbar{display:none}
-.wc-c{flex:0 0 auto;text-align:center;line-height:1.2}
-.wc-c .city{font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;
-  color:rgba(255,255,255,.55);white-space:nowrap}
-.wc-c .t{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;
-  color:rgba(255,255,255,.9)}
-.wc-c.day .t{color:#F0D9A6}
-.wc-c .d{display:none}
-@media(max-width:760px){
-  .wc-in{padding:7px 14px;gap:11px}
-  .wc-here .lbl{display:none}
-  .wc-here .big{font-size:19px}
-  .wc-row{gap:11px}
-}
-</style>
-
-<section class="wc-strip" id="worldclocks">
-  <div class="wc-in">
-    <div class="wc-here">
-      <span class="lbl">On the Gulf</span>
-      <span class="big" id="wc-local">--:--</span>
-    </div>
-    <span class="wc-sep"></span>
-    <div class="wc-row" id="wc-row"></div>
-  </div>
-</section>
 
 <div class="search" role="search">
   <div class="f"><label for="f-city">Where</label>
@@ -1723,17 +1734,30 @@ Call Jimmy · 251-229-3216
    Local time large, then the places buyers here actually come from. Kept to
    Intl.DateTimeFormat with IANA zones so daylight saving is handled by the
    browser rather than by arithmetic that quietly goes wrong twice a year. */
+/* Two separate things, because they behave differently.
+
+   The four US zones each show a different time, so they sit still and are read at
+   a glance. Cities that share a zone — Nashville, Chicago, Dallas with Gulf Shores,
+   Atlanta with New York — add nothing but width, which is why an earlier row of six
+   looked so cluttered.
+
+   The rest of the world is a long list where only one can fit, so it cycles. */
+const US_ZONES = [
+  { label:'ET', tz:'America/New_York' },
+  { label:'CT', tz:'America/Chicago', home:true },   // Gulf Shores
+  { label:'MT', tz:'America/Denver' },
+  { label:'PT', tz:'America/Los_Angeles' },
+];
+
 const WC_ZONES = [
-  { city:'Gulf Shores', tz:'America/Chicago' },
-  { city:'Nashville',   tz:'America/Chicago' },
-  { city:'Atlanta',     tz:'America/New_York' },
-  { city:'Chicago',     tz:'America/Chicago' },
-  { city:'Dallas',      tz:'America/Chicago' },
-  { city:'Denver',      tz:'America/Denver' },
-  { city:'Los Angeles', tz:'America/Los_Angeles' },
-  { city:'New York',    tz:'America/New_York' },
-  { city:'Toronto',     tz:'America/Toronto' },
   { city:'London',      tz:'Europe/London' },
+  { city:'Toronto',     tz:'America/Toronto' },
+  { city:'Mexico City', tz:'America/Mexico_City' },
+  { city:'Paris',       tz:'Europe/Paris' },
+  { city:'Rome',        tz:'Europe/Rome' },
+  { city:'Dubai',       tz:'Asia/Dubai' },
+  { city:'Tokyo',       tz:'Asia/Tokyo' },
+  { city:'Sydney',      tz:'Australia/Sydney' },
 ];
 
 function wcTime(tz){
@@ -1759,36 +1783,70 @@ function wcDayLabel(tz){
   }catch(e){ return ''; }
 }
 
-function wcTick(){
-  const local = document.getElementById('wc-local');
-  if(local) local.textContent = wcTime('America/Chicago');
+let wcIdx = 0, wcPaused = false;
 
-  const row = document.getElementById('wc-row');
-  if(!row) return;
-  if(!row.children.length){
-    row.innerHTML = WC_ZONES.map(z =>
-      `<div class="wc-c" data-tz="${z.tz}">
-         <div class="city">${z.city}</div>
-         <div class="t">--:--</div>
-         <div class="d"></div>
-       </div>`).join('');
-  }
-  Array.from(row.children).forEach((el, i) => {
-    const z = WC_ZONES[i];
-    const h = wcHour(z.tz);
-    el.querySelector('.t').textContent = wcTime(z.tz);
-    el.querySelector('.d').textContent = wcDayLabel(z.tz);
-    el.classList.toggle('day', h >= 6 && h < 19);
-    el.classList.toggle('night', h < 6 || h >= 19);
-  });
+/* Short form: "2:52a" rather than "2:52 AM". Four of these sit side by side, and
+   the full form doubled the width of the row for no extra meaning. */
+function wcShort(tz){
+  try{
+    const p = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour:'numeric', minute:'2-digit', hour12:true
+    }).formatToParts(new Date());
+    const h = p.find(x => x.type === 'hour').value;
+    const m = p.find(x => x.type === 'minute').value;
+    const ap = (p.find(x => x.type === 'dayPeriod') || {}).value || '';
+    return `${h}:${m}${ap.toLowerCase().startsWith('p') ? 'p' : 'a'}`;
+  }catch(e){ return '--:--'; }
 }
+
+function wcPaintUS(){
+  const host = document.getElementById('wc-us');
+  if(!host) return;
+  host.innerHTML = US_ZONES.map(z => {
+    const h = wcHour(z.tz);
+    const night = h < 6 || h >= 19;
+    return `<span class="z ${z.home?'home':''} ${night?'night':'day'}">
+      <span class="lbl">${z.label}</span><span class="t">${wcShort(z.tz)}</span></span>`;
+  }).join('');
+}
+
+function wcPaintWorld(){
+  const z = WC_ZONES[wcIdx] || WC_ZONES[0];
+  const city = document.getElementById('wc-city');
+  const t = document.getElementById('wc-t');
+  if(!z || !t) return;
+  const day = wcDayLabel(z.tz);
+  if(city) city.textContent = z.city;
+  t.innerHTML = escapeHtml(wcShort(z.tz)) + (day ? `<span class="day">${escapeHtml(day)}</span>` : '');
+  const el = document.getElementById('wc-one');
+  if(el){
+    const h = wcHour(z.tz);
+    el.classList.toggle('night', h < 6 || h >= 19);
+  }
+}
+
+/* Fade out, swap, fade back \u2014 a hard cut reads as a glitch. */
+function wcNext(){
+  const el = document.getElementById('wc-one');
+  const go = () => { wcIdx = (wcIdx + 1) % WC_ZONES.length; wcPaintWorld(); };
+  if(!el){ go(); return; }
+  el.classList.add('fade');
+  setTimeout(() => { go(); el.classList.remove('fade'); }, 300);
+}
+
+function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 (function(){
   const start = () => {
+    wcIdx = 0;
     wcTick();
-    // tick on the minute rather than every second — nothing here needs seconds
-    setTimeout(function loop(){ wcTick(); setTimeout(loop, 60000); },
-      (60 - new Date().getSeconds()) * 1000);
+    setInterval(() => { wcPaintUS(); if(!wcPaused) wcPaintWorld(); }, 15000);
+    setInterval(() => { if(!wcPaused) wcNext(); }, 5000);
+    const el = document.getElementById('wc-one');
+    if(el){
+      el.addEventListener('mouseenter', () => { wcPaused = true; });
+      el.addEventListener('mouseleave', () => { wcPaused = false; });
+    }
   };
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
@@ -3082,7 +3140,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v155';
+window.BUILD = 'index-v163';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3932,11 +3990,24 @@ if(!author || !text) return;
 // the picker only appears when the link didn't name anyone
 const picked = (document.getElementById('rv-agent') || {}).value || '';
 const rating = Number((document.getElementById('rv-rating') || {}).value) || 5;
-const list = await storeGet('settings:testimonials') || [];
-list.push({ id: 'rv_'+Date.now(), text, author, rating,
-            agentId: leaveReviewAgentId || picked,
-            status: 'pending', submittedAt: new Date().toISOString() });
-await storeSet('settings:testimonials', list);
+
+/* Goes through a dedicated endpoint. Writing straight to the settings key
+   failed silently for anyone without a session \u2014 which is every visitor \u2014 so
+   people were thanked for reviews that were never saved. */
+try{
+  const res = await fetch('/api/review', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ author, text, rating, agentId: leaveReviewAgentId || picked }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if(!res.ok){
+    showToast(d.error || "That didn't go through \u2014 please try again.");
+    return;
+  }
+}catch(err){
+  showToast("That didn't go through \u2014 please try again.");
+  return;
+}
 closeLeaveReview();
 showToast("Thank you \u2014 that means a lot. We'll take a look before it goes up.");
 }
