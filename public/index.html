@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v128">
+<meta name="build" content="index-v130">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1732,6 +1732,7 @@ Call Jimmy · 251-229-3216
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-taxes"></div>
 <div class="crm-sec" id="sec-marketing"></div>
 <div class="crm-sec" id="sec-resources"></div>
 <div class="crm-sec" id="sec-mypage"></div>
@@ -1758,7 +1759,6 @@ Call Jimmy · 251-229-3216
 <div id="cd-tabs" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
 <button class="btn-sm" style="margin-left:auto;" onclick="printCommissions()">&#9113; Print / PDF</button>
 <button class="btn-sm" onclick="printYearEndPackage()" title="Everything your accountant needs, in one document">&#9113; Year-end package</button>
-<button class="btn-sm" onclick="print1099Worksheet()" title="Recipient copies and the figures your accountant needs to file">&#9113; 1099 worksheet</button>
 </div>
 <div id="cd-content"></div>
 </div>
@@ -2809,7 +2809,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v128';
+window.BUILD = 'index-v130';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4811,7 +4811,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(h === 'client-login'){
     setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
   }
-  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources'].includes(h)){
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes'].includes(h)){
     try{
       switchView('crm');
       if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
@@ -5161,6 +5161,13 @@ async function saveAgentProfile(agentId){
 <script>
 /* Printable reports — opens a clean print view in a new tab. */
 function printReport(title, bodyHtml){
+  /* When a capture array is set, hand the report back instead of opening a print
+     window. That lets the same four reports be emailed as attachments without
+     writing them twice and letting the two versions drift apart. */
+  if(Array.isArray(window.__captureReport)){
+    window.__captureReport.push({ title, html: bodyHtml });
+    return;
+  }
   const w = window.open('', '_blank');
   if(!w){ showToast("Allow pop-ups to print this report."); return; }
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -5407,18 +5414,22 @@ function referralLedgerHtml(year){
 /* ---------- CRM section navigation ----------
    The CRM was a stack of collapsed accordions — finding commissions meant
    scrolling past everything else. Now it's proper tabs. */
+/* Icons are picked so the purpose reads before the word does. Taxes is separate
+   from Commissions on purpose: one is what agents earned, the other is what gets
+   filed, and putting the 1099 under Commissions had people hunting for it. */
 const CRM_SECTIONS = [
-  { id:'sec-today',       label:'Today',       icon:'\u25C9' },
+  { id:'sec-today',       label:'Today',       icon:'\u2600' },   // sun
   { id:'sec-leads',       label:'Leads',       icon:'\u2709', badge:() => (window.__leadCount || 0), noAdmin:true },
-  { id:'sec-commissions', label:'Commissions', icon:'\u0024' },
-  { id:'sec-expenses',    label:'Expenses',    icon:'\u2338' },
+  { id:'sec-commissions', label:'Commissions', icon:'\u0024' },   // dollar
+  { id:'sec-expenses',    label:'Expenses',    icon:'\u2702' },   // scissors, i.e. what comes off
+  { id:'sec-taxes',       label:'Taxes',       icon:'\u25A4', brokerOnly:true },  // ruled form
+  { id:'sec-marketing',   label:'Marketing',   icon:'\u2726' },   // spark
   { id:'sec-agents',      label:'Agents',      icon:'\u263A', brokerOnly:true },
   { id:'sec-reviews',     label:'Reviews',     icon:'\u2605', brokerOnly:true },
+  { id:'sec-resources',   label:'Resources',   icon:'\u26AD' },   // links
   { id:'sec-setup',       label:'Settings',    icon:'\u2699', brokerOnly:true },
-  { id:'sec-marketing',   label:'Marketing',   icon:'\u2726' },
-  { id:'sec-resources',   label:'Resources',   icon:'\u2630' },
-  { id:'sec-mypage',      label:'My page',     icon:'\u2318' },
-  { id:'sec-myprofile',   label:'My details',  icon:'\u2637', agentOnly:true },
+  { id:'sec-mypage',      label:'My page',     icon:'\u2691' },   // flag
+  { id:'sec-myprofile',   label:'My details',  icon:'\u270D', agentOnly:true },
   { id:'sec-password',    label:'My password', icon:'\u26BF' },
 ];
 let crmSection = 'sec-today';
@@ -5472,6 +5483,7 @@ function showCrmSection(id){
     if(id === 'sec-myprofile') renderMyProfileSection();
     if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
     if(id === 'sec-marketing' && typeof renderMarketingSection === 'function') renderMarketingSection();
+    if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function') renderResourcesSection();
     if(id === 'sec-today') renderDashboard();
   }catch(e){}
@@ -6446,12 +6458,24 @@ async function print1099Worksheet(){
   printReport(`1099 worksheet ${year}`, `
     <h1>1099 worksheet \u2014 ${year}</h1>
     <div class="sub">${escapeHtml(payer.tradeName || '')} \u00b7 generated ${new Date().toLocaleDateString()}</div>
-    <div style="background:#FBF6EA;border-left:3px solid #E6C381;padding:11px 13px;
-      border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.55">
-      <strong>This is not a filed 1099.</strong> Copy A must go to the IRS on the official
-      scannable form or electronically \u2014 a printed substitute Copy A can draw a penalty.
-      Use this worksheet for your accountant or filing service, and give each agent their
-      recipient copy below.
+    <div style="border:2px solid #171F63;border-radius:8px;padding:16px 18px;margin:6px 0 4px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px">How to use this</div>
+      <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.75">
+        <li><strong>Check the warnings below.</strong> Anyone over $600 missing a taxpayer ID,
+            address or W-9 has to be filled in first \u2014 CRM &rarr; Agents &rarr; File.</li>
+        <li><strong>Give each agent their recipient copy.</strong> Those are the pages after
+            the worksheet, one per agent, already addressed.</li>
+        <li><strong>Send the worksheet to your accountant</strong> \u2014 or use the
+            "Email to accountant" button on the Taxes tab.</li>
+        <li><strong>They file Copy A with the IRS.</strong> That part cannot be printed here:
+            the IRS requires the official scannable red-ink form or electronic filing, and a
+            home-printed substitute Copy A can draw a penalty.</li>
+        <li>Both the recipient copy and the IRS filing are normally due
+            <strong>January 31</strong>. Confirm the current year's date.</li>
+      </ol>
+      <div style="font-size:12px;color:#5A6288;margin-top:10px;padding-top:9px;
+        border-top:1px solid #D8DBEC">
+        This document is a worksheet and a set of recipient copies. It is not a filed 1099.</div>
     </div>
     ${warn}
     ${payerBlock}
@@ -8410,13 +8434,22 @@ async function renderMarketingSection(){
   const mine = await mkLoadProjects(currentAgent.id);
   mkProjects = mine;
 
-  const rows = mine.map(p => `
+  // Actions live on the row itself. Previously the list was a dead end: you had
+  // to open a project into the studio before you could do anything with it, then
+  // close it again, which is a lot of clicks to re-send a flyer you already made.
+  const rows = mine.map(p => {
+    const t = AvaniTemplates.TEMPLATES[p.tpl] || {};
+    return `
     <div class="mk-proj">
-      <span class="nm" onclick="mkOpenById('${p.id}')">${escapeHtml(p.name || 'Untitled')}</span>
-      <span class="mt">${escapeHtml((AvaniTemplates.TEMPLATES[p.tpl]||{}).label || p.tpl)}</span>
+      <span class="nm" onclick="mkOpenById('${p.id}')" title="Open and edit">${escapeHtml(p.name || 'Untitled')}</span>
+      <span class="mt">${escapeHtml(t.label || p.tpl)}</span>
+      <button title="Download image" onclick="mkQuick('${p.id}','png')">\u2193</button>
+      ${t.social ? '' : `<button title="Download PDF" onclick="mkQuick('${p.id}','pdf')">\u25A4</button>`}
+      <button title="Email it" onclick="mkQuick('${p.id}','email')">\u2709</button>
       <button title="Duplicate" onclick="mkDupById('${p.id}')">\u29C9</button>
       <button title="Delete" onclick="mkDeleteProject('${p.id}')">\u2715</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   list.innerHTML = rows || '<div style="color:rgba(27,32,67,.55);font-size:13.5px">Nothing saved yet.</div>';
 
@@ -8505,6 +8538,57 @@ async function renderScanStats(){
       <div><div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
         color:rgba(27,32,67,.6);margin-bottom:5px">By campaign</div>${rows(rank(st.byCampaign))}</div>
     </div>`;
+}
+
+/* Render a saved project off-screen so it can be downloaded or emailed straight
+   from the list, without loading the whole studio first. */
+async function mkQuick(id, what){
+  const p = mkProjects.find(x => x.id === id);
+  if(!p){ showToast('Project not found.'); return; }
+  showToast('Preparing\u2026');
+
+  // stand the studio state up in memory only
+  const prev = { tpl: mkState.tpl, fields: mkState.fields, name: mkState.name,
+                 projectId: mkState.projectId,
+                 imgs: window.__mkPhotoImgs, img: window.__mkPhotoImg, cv: window.__mkCanvas };
+  mkState = { tpl: p.tpl || 'openhouse', projectId: p.id, name: p.name || '',
+              fields: Object.assign(mkDefaults(), p.fields || {}) };
+  window.__mkPhotoImgs = null; window.__mkPhotoImg = null; window.__mkPhotoSrc = null;
+
+  await new Promise(res => mkLoadPhotos(res));
+
+  const t = AvaniTemplates.TEMPLATES[mkState.tpl];
+  if(!t){ showToast('That template no longer exists.'); return; }
+  const spec = Object.assign({}, mkState.fields, {
+    qrUrl: mkQrUrl(),
+    _photoImg: window.__mkPhotoImg || null,
+    _photoImgs: window.__mkPhotoImgs || [],
+    _bannerFree: !!mkPolicy.bannerFree,
+  });
+  const probe = document.createElement('canvas').getContext('2d');
+  const dims = t.draw(probe, Object.assign({}, spec), t.dpi, AvaniQR);
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(dims.W); cv.height = Math.round(dims.H);
+  t.draw(cv.getContext('2d'), Object.assign({}, spec), t.dpi, AvaniQR);
+  window.__mkCanvas = cv;
+
+  const restore = () => {
+    mkState = { tpl: prev.tpl, fields: prev.fields, name: prev.name, projectId: prev.projectId };
+    window.__mkPhotoImgs = prev.imgs; window.__mkPhotoImg = prev.img; window.__mkCanvas = prev.cv;
+  };
+
+  if(what === 'png'){ mkDownload('png'); setTimeout(restore, 800); return; }
+  if(what === 'pdf'){ mkDownload('pdf'); setTimeout(restore, 800); return; }
+  if(what === 'email'){
+    // leave the state in place; the sheet needs it until the send finishes
+    const wrap = document.createElement('div');
+    wrap.className = 'mk-sheet';
+    wrap.onclick = e => { if(e.target === wrap){ wrap.remove(); window.__mkSheet = null; restore(); } };
+    wrap.innerHTML = '<div class="box"></div>';
+    document.body.appendChild(wrap);
+    window.__mkSheet = wrap;
+    mkShareEmail();
+  }
 }
 
 function mkOpenById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkOpen(p); }
@@ -9865,6 +9949,225 @@ async function saveAgentHR(){
     closeAgentHR();
   }catch(e){ showToast("Couldn't save that."); }
   finally{ if(btn){ btn.disabled = false; btn.textContent = 'Save file'; } }
+}
+</script>
+
+<style>
+.tx-doc{display:flex;gap:14px;align-items:flex-start;padding:15px;border:1px solid var(--line);
+  border-radius:10px;margin-bottom:11px;background:var(--paper)}
+.tx-doc .ic{font-size:22px;line-height:1;flex:0 0 auto;width:30px;text-align:center;color:var(--marsh)}
+.tx-doc .tt{font-weight:600;font-size:15px;margin-bottom:2px}
+.tx-doc .dd{font-size:13px;color:var(--driftwood);line-height:1.5}
+.tx-doc .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.tx-doc .acts button{font-size:12.5px;padding:6px 12px}
+.tx-cpa{background:#F4F5FA;border-radius:10px;padding:15px;margin-bottom:16px}
+@media(max-width:620px){ .tx-doc{flex-direction:column;gap:8px} .tx-doc .ic{text-align:left} }
+</style>
+<script>
+/* ---------- Taxes ----------
+   Separate from Commissions deliberately. Commissions is what agents earned;
+   this is what gets filed. Keeping the 1099 buried under Commissions meant
+   nobody could find it at the one time of year they needed it. */
+let taxCpaEmail = '';
+
+async function renderTaxesSection(){
+  const el = document.getElementById('sec-taxes');
+  if(!el || !currentAgent) return;
+  const year = (typeof cdYear !== 'undefined' && cdYear) ? cdYear : new Date().getFullYear();
+
+  try{ taxCpaEmail = (await storeGet('settings:cpaEmail')) || ''; }catch(e){}
+
+  el.innerHTML = `
+    <div class="card"><div style="padding:18px">
+      <p style="margin:0 0 4px;font-size:14px;color:var(--driftwood);max-width:660px;line-height:1.55">
+        Everything your accountant needs for <strong>${year}</strong>. Print it, or send it
+        straight across \u2014 each document goes as an attachment they can open and file.</p>
+
+      <div class="tx-cpa">
+        <label style="display:block;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+          text-transform:uppercase;color:var(--driftwood);margin-bottom:5px">Your accountant's email</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="tx-cpa" value="${escapeHtml(taxCpaEmail)}" placeholder="cpa@theirfirm.com"
+            style="flex:1 1 240px;padding:9px 10px;border:1px solid rgba(27,32,67,.2);
+            border-radius:7px;font:inherit;font-size:14px">
+          <button class="btn-sm" onclick="saveCpaEmail()">Remember this</button>
+        </div>
+        <div style="font-size:12px;color:var(--driftwood);margin-top:5px">
+          Saved so you don't retype it every year.</div>
+      </div>
+
+      <div class="tx-doc">
+        <span class="ic">&#9636;</span>
+        <div style="flex:1">
+          <div class="tt">1099 worksheet</div>
+          <div class="dd">Recipient copies for each agent plus the figures for filing.
+            Flags anyone over $600 who's missing an address, taxpayer ID or W-9 before
+            it reaches your accountant.</div>
+          <div class="acts">
+            <button class="btn-sm" onclick="print1099Worksheet()">Print</button>
+            <button class="btn-sm" onclick="emailTaxDoc('1099')">Email to accountant</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tx-doc">
+        <span class="ic">&#9113;</span>
+        <div style="flex:1">
+          <div class="tt">Year-end package</div>
+          <div class="dd">Agent compensation, brokerage income, and full transaction
+            detail by agent for ${year}.</div>
+          <div class="acts">
+            <button class="btn-sm" onclick="printYearEndPackage()">Print</button>
+            <button class="btn-sm" onclick="emailTaxDoc('yearend')">Email to accountant</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tx-doc">
+        <span class="ic">&#36;</span>
+        <div style="flex:1">
+          <div class="tt">Commissions report</div>
+          <div class="dd">Every closing, with splits, referrals, fees and net.</div>
+          <div class="acts">
+            <button class="btn-sm" onclick="printCommissions()">Print</button>
+            <button class="btn-sm" onclick="emailTaxDoc('commissions')">Email to accountant</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tx-doc">
+        <span class="ic">&#9986;</span>
+        <div style="flex:1">
+          <div class="tt">Expense report</div>
+          <div class="dd">Brokerage expenses with payee, method, check number and notes.</div>
+          <div class="acts">
+            <button class="btn-sm" onclick="printExpenses()">Print</button>
+            <button class="btn-sm" onclick="emailTaxDoc('expenses')">Email to accountant</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;padding-top:15px;border-top:1px solid var(--line)">
+        <button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);
+          border-color:var(--marsh);padding:10px 18px"
+          onclick="emailTaxDoc('all')">&#9993; Send all four to my accountant</button>
+        <div style="font-size:12px;color:var(--driftwood);margin-top:7px;line-height:1.5">
+          One email, four attachments. They open in any browser and print to PDF.</div>
+      </div>
+    </div></div>
+
+    <div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 8px;font-size:16px">Before you file</h3>
+      <ol style="margin:0;padding-left:20px;font-size:13.5px;line-height:1.7;color:var(--driftwood)">
+        <li>Every agent paid $600 or more needs a <strong>W-9 on file</strong>, an address
+            and a taxpayer ID. Fill gaps under <strong>Agents &rarr; File</strong>.</li>
+        <li>Print the 1099 worksheet and check the red warnings at the top.</li>
+        <li>Give each agent their <strong>recipient copy</strong> \u2014 those are the pages
+            after the worksheet.</li>
+        <li><strong>Copy A goes to the IRS on the official red-ink form or electronically.</strong>
+            You cannot print that one here, and a home-printed substitute can draw a penalty.
+            Your accountant or a filing service submits it.</li>
+        <li>Deadline is normally <strong>January 31</strong> for both the recipient copy and
+            the IRS filing. Confirm the current year's date with your accountant.</li>
+      </ol>
+    </div></div>`;
+}
+
+async function saveCpaEmail(){
+  const v = (document.getElementById('tx-cpa') || {}).value || '';
+  const ok = await storeSet('settings:cpaEmail', v.trim());
+  taxCpaEmail = v.trim();
+  showToast(ok ? 'Saved.' : "Couldn't save that.");
+}
+
+/* The reports are built as printable HTML, so that is what gets attached. A CPA
+   opens it in any browser and prints to PDF \u2014 no special software, and the
+   tables stay selectable, which they cannot do with a flattened image. */
+function taxDocHtml(title, inner){
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>body{font-family:Georgia,'Times New Roman',serif;color:#171F63;margin:40px;line-height:1.6}
+h1{font-size:22px;margin:0 0 4px}.sub{font-size:12px;color:#5A6288;margin-bottom:22px}
+table{width:100%;border-collapse:collapse;margin:10px 0 18px;font-family:Helvetica,Arial,sans-serif;
+font-size:12.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;border-bottom:2px solid #171F63;padding:6px 8px;font-size:11px;
+letter-spacing:.05em;text-transform:uppercase}
+td{border-bottom:1px solid #D8DBEC;padding:6px 8px}
+.num{text-align:right}</style></head><body>${inner}</body></html>`;
+}
+
+async function emailTaxDoc(which){
+  const to = ((document.getElementById('tx-cpa') || {}).value || taxCpaEmail || '').trim();
+  if(!to){ showToast("Add your accountant's email first."); return; }
+
+  const year = (typeof cdYear !== 'undefined' && cdYear) ? cdYear : new Date().getFullYear();
+  const wanted = which === 'all' ? ['1099','yearend','commissions','expenses'] : [which];
+
+  showToast('Building the documents\u2026');
+  const files = [];
+  for(const w of wanted){
+    try{
+      const doc = await buildTaxDoc(w, year);
+      if(doc) files.push(doc);
+    }catch(e){ console.error('tax doc failed', w, e); }
+  }
+  if(!files.length){ showToast('Nothing to send for ' + year + '.'); return; }
+
+  // one email per attachment: the send route takes a single file
+  let sent = 0;
+  for(const f of files){
+    try{
+      const r = await fetch('/api/marketing/email', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to,
+          subject: `${f.label} \u2014 ${year} \u2014 ${AvaniTemplates.BROKERAGE_NAME}`,
+          message: `Attached is the ${f.label.toLowerCase()} for ${year}.\n\n`
+                 + `Open the attachment in a browser and print to PDF if you need it that way.`
+                 + (f.label.includes('1099')
+                    ? `\n\nNote: Copy A must be filed on the official scannable form or electronically. `
+                    + `The attachment is the worksheet and the recipient copies.` : ''),
+          filename: f.filename,
+          dataBase64: f.b64,
+          mimeType: 'text/html',
+        }),
+      });
+      if(r.ok) sent++;
+    }catch(e){}
+  }
+  showToast(sent === files.length
+    ? (sent === 1 ? 'Sent to ' + to : sent + ' documents sent to ' + to)
+    : sent + ' of ' + files.length + ' sent — check the address and try again.');
+}
+
+/* Runs a report with capture on, so the same code that prints also produces the
+   attachment. */
+async function buildTaxDoc(which, year){
+  const LABEL = { '1099':'1099 worksheet', yearend:'Year-end package',
+                  commissions:'Commissions report', expenses:'Expense report' };
+  const cap = [];
+  window.__captureReport = cap;
+  try{
+    if(which === '1099')             await print1099Worksheet();
+    else if(which === 'yearend')     printYearEndPackage();
+    else if(which === 'commissions') printCommissions();
+    else if(which === 'expenses')    printExpenses();
+  }catch(e){
+    console.error('[tax] building ' + which + ' failed', e);
+  }finally{
+    window.__captureReport = null;
+  }
+  if(!cap.length) return null;
+
+  const label = LABEL[which] || which;
+  const html = taxDocHtml(cap[0].title || label, cap[0].html);
+  // btoa can't take characters above 255, and these reports contain \u00b7 and
+  // similar, so encode to UTF-8 bytes first.
+  const b64 = btoa(unescape(encodeURIComponent(html)));
+  return {
+    label,
+    filename: (which + '-' + year + '.html'),
+    b64,
+  };
 }
 </script>
 
