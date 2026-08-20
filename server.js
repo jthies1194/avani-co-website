@@ -912,6 +912,44 @@ function hrPublic(rec){
   return out;
 }
 
+/* ---------- one view of an agent's details ----------
+   Two records held the same facts under different names: agentProfile, which the
+   agent fills in on My details, and agentHR, which the broker keeps and which the
+   1099 reads. An agent could complete every field and still be reported as
+   "missing address, missing taxpayer ID" because nothing was copied across.
+
+   Rather than making anybody type it twice, the HR record reads through to the
+   profile wherever the broker has not entered something of their own. The broker's
+   value always wins when there is one; the taxpayer ID stays HR-only because only
+   the broker may enter it. */
+const HR_FROM_PROFILE = {
+  address1: 'address', city: 'city', state: 'state', zip: 'zip',
+  personalPhone: 'phone', personalEmail: 'personalEmail',
+  dob: 'dob', startDate: 'startDate',
+  emergencyName: 'emergencyName', emergencyPhone: 'emergencyPhone',
+  licenseExpiry: 'licenseExp',
+};
+
+async function mergedHR(agentId, agentName) {
+  const hr = (await getSetting('agentHR:' + agentId)) || {};
+  const profile = (await getSetting('agentProfile:' + agentId)) || {};
+  const out = Object.assign({}, hr);
+
+  for (const [hrKey, pKey] of Object.entries(HR_FROM_PROFILE)) {
+    if (!String(out[hrKey] || '').trim() && String(profile[pKey] || '').trim()) {
+      out[hrKey] = profile[pKey];
+      out._fromProfile = true;
+    }
+  }
+  // a legal name is required to file; the display name is a reasonable default
+  if (!String(out.legalName || '').trim() && agentName) out.legalName = agentName;
+  // the agent's own W-9 answer counts until the broker records otherwise
+  if (out.w9OnFile === undefined && profile.w9) {
+    out.w9OnFile = /^(y|yes|true|1|on file)/i.test(String(profile.w9).trim());
+  }
+  return out;
+}
+
 app.get('/api/agent/:id/hr', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   // staff see anyone's; an agent sees only their own
@@ -919,7 +957,12 @@ app.get('/api/agent/:id/hr', async (req, res) => {
     console.warn(`[security] agent ${sess.agentId} blocked reading HR record ${req.params.id}`);
     return res.status(403).json({ error: 'Not permitted.' });
   }
-  const rec = await getSetting('agentHR:' + req.params.id);
+  let name = '';
+  try {
+    const { data } = await supabase.from('agents').select('name').eq('id', req.params.id).maybeSingle();
+    name = (data && data.name) || '';
+  } catch (e) {}
+  const rec = await mergedHR(req.params.id, name);
   res.json({ ok: true, hr: hrPublic(rec), keyConfigured: !!HR_KEY });
 });
 
@@ -987,9 +1030,17 @@ app.post('/api/tax/1099-data', async (req, res) => {
   const ids = Array.isArray((req.body || {}).agentIds) ? req.body.agentIds.slice(0, 200) : [];
   if (!ids.length) return res.status(400).json({ error: 'No agents given.' });
 
+  // names, so a legal name can fall back to the display name
+  const names = {};
+  try {
+    const { data } = await supabase.from('agents').select('id,name').in('id', ids);
+    (data || []).forEach(a => { names[a.id] = a.name || ''; });
+  } catch (e) {}
+
   const out = [];
   for (const id of ids) {
-    const hr = (await getSetting('agentHR:' + id)) || {};
+    // reads through to what the agent supplied on My details
+    const hr = await mergedHR(id, names[id]);
     const tin = hr.tinEnc ? decryptTin(hr.tinEnc) : null;
     out.push({
       agentId: id,
@@ -1032,11 +1083,31 @@ app.post('/api/tax/1099-data', async (req, res) => {
    gain. Last four is enough to confirm the right record. */
 app.get('/api/tax/my-1099', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
-  const hr = (await getSetting('agentHR:' + sess.agentId)) || {};
+
+  /* "View as" changes who the browser is showing, but the session is still the
+     broker's — so this used to answer with the broker's own details while the
+     figures on screen belonged to the agent being viewed. A 1099 naming the wrong
+     recipient is about as bad as this gets, so the agent may be named explicitly,
+     and only staff may name anyone but themselves. */
+  const asked = String((req.query || {}).agentId || '').trim();
+  let who = sess.agentId, whoName = sess.name;
+  if (asked && asked !== sess.agentId) {
+    if (!isStaff(sess)) {
+      console.warn(`[security] ${sess.agentId} tried to read 1099 details for ${asked}`);
+      return res.status(403).json({ error: 'Not permitted.' });
+    }
+    who = asked;
+    try {
+      const { data } = await supabase.from('agents').select('name').eq('id', who).maybeSingle();
+      whoName = (data && data.name) || '';
+    } catch (e) { whoName = ''; }
+  }
+
+  const hr = await mergedHR(who, whoName);
   res.json({
     ok: true,
     recipient: {
-      legalName: hr.legalName || sess.name || '',
+      legalName: hr.legalName || whoName || '',
       entityName: hr.entityName || '',
       address1: hr.address1 || '', address2: hr.address2 || '',
       city: hr.city || '', state: hr.state || '', zip: hr.zip || '',
@@ -2403,7 +2474,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v72',
+    serverVersion: 'v74',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
