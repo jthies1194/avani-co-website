@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v167">
+<meta name="build" content="index-v169">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3162,7 +3162,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v167';
+window.BUILD = 'index-v169';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10678,6 +10678,82 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
    and remove entries without a deploy — a dead link should be a text edit, not
    a release. Anything I could not verify is flagged in the interface rather
    than quietly sending an agent to the wrong site. */
+/* ---------- Baldwin REALTORS forms ----------
+   The association's own document library, linked straight through so an agent is
+   two clicks from a purchase agreement instead of hunting a Wix page.
+
+   ⚠ These point at files the association hosts and replaces. Several already
+   carry a *NEW or *UPDATED marker, which is the association saying the previous
+   version is superseded. A stale contract is a real professional problem, so the
+   source page is linked first and the caution is stated plainly rather than
+   buried. */
+const BR_FORMS_SOURCE = 'https://www.baldwincountymls.com/associationdocuments';
+
+const BR_FORMS = [
+  { group:'Contracts & agreements', items:[
+    { t:'Purchase Agreement \u2014 Single Family Residential', u:'https://www.baldwincountymls.com/_files/ugd/90365d_c8b1a1b6d846410288f2db5de38a3525.pdf', d:'Updated version' },
+    { t:'Purchase Agreement \u2014 Unimproved Land & Lot', u:'https://www.baldwincountymls.com/_files/ugd/90365d_87cba3a7cc58467a9bfc5bbafa132c65.pdf', d:'Updated version' },
+    { t:'Purchase Agreement \u2014 Escalation Clause', u:'https://www.baldwincountymls.com/_files/ugd/90365d_35aacc5f647c4da39aee53f2d8057678.pdf', d:'' },
+    { t:'Listing Agreement \u2014 Single Family Residential', u:'https://www.baldwincountymls.com/_files/ugd/90365d_0cd9e24348e440548ce4d85a8d910cd3.pdf', d:'Updated version' },
+    { t:'Listing Agreement \u2014 Unimproved Land & Lot', u:'https://www.baldwincountymls.com/_files/ugd/90365d_9ba60f62221f44afbd09d6a963fe6bf0.pdf', d:'Updated version' },
+    { t:'Buyer Agency', u:'https://www.baldwincountymls.com/_files/ugd/90365d_8da4c7054ed545a5aa0a0c4b14fb5c6c.pdf', d:'Updated version' },
+    { t:'Dual Agency', u:'https://www.baldwincountymls.com/_files/ugd/90365d_1b74dfb61e4a4cb4a41b694bdc246cbb.pdf', d:'Updated version' },
+    { t:'RECAD', u:'https://www.baldwincountymls.com/_files/ugd/90365d_87e6acd702cf492284f2ca92e4ef62b1.pdf', d:'Real Estate Consumer Agency Disclosure' },
+    { t:'Transaction Facilitator \u2014 Buyers', u:'https://www.baldwincountymls.com/_files/ugd/90365d_3ff1d1963bf34705a2420b16d2ad0774.pdf', d:'' },
+    { t:'Transaction Facilitator \u2014 Sellers', u:'https://www.baldwincountymls.com/_files/ugd/90365d_3edd6e8630e94d21bd5217c82180f606.pdf', d:'' },
+  ]},
+  { group:'Addenda & releases', items:[
+    { t:'Addendum to Purchase Agreement \u2014 nonspecific', u:'https://www.baldwincountymls.com/_files/ugd/90365d_54ba98155a3c417f85ffa73a14410794.pdf', d:'The general-purpose one' },
+    { t:'Addendum \u2014 contingent upon close', u:'https://www.baldwincountymls.com/_files/ugd/d752df_79866c223d2947529ce9d260868cbed5.pdf', d:'' },
+    { t:'Addendum to Listing Agreement', u:'https://www.baldwincountymls.com/_files/ugd/90365d_5ec64ed0b607472689ee35a76d849cc6.pdf', d:'' },
+    { t:'Addendum to Seller Financing', u:'https://www.baldwincountymls.com/_files/ugd/90365d_78c0e54955614002b356b0035a1bae83.pdf', d:'' },
+    { t:'Release of Earnest Money', u:'https://www.baldwincountymls.com/_files/ugd/90365d_5e24cc55b3c74c69a0ca4141d390aae6.pdf', d:'' },
+    { t:'Release of Purchase Agreement', u:'https://www.baldwincountymls.com/_files/ugd/90365d_38048efacc174a2783fbf04373d79232.pdf', d:'' },
+    { t:'Release of Purchase Agreement \u2014 no earnest money', u:'https://www.baldwincountymls.com/_files/ugd/90365d_bdf7669e853d4c359c1a9772d95d3535.pdf', d:'' },
+    { t:'Release of Buyers Agreement', u:'https://www.baldwincountymls.com/_files/ugd/90365d_2669ee44d2a3414bb207318e2f031fbf.pdf', d:'Updated version' },
+    { t:'Pre-closing Occupancy Agreement', u:'https://www.baldwincountymls.com/_files/ugd/90365d_65f49f025e864f03b7a5597dcf8d78bc.pdf', d:'' },
+    { t:'Post-closing Occupancy Agreement', u:'https://www.baldwincountymls.com/_files/ugd/90365d_16edf0762b0243afb0705afc0d18f664.pdf', d:'' },
+  ]},
+  { group:'Disclosures & compliance', items:[
+    { t:'Template Compensation Disclosure', u:'https://www.baldwincountymls.com/_files/ugd/56670e_14b052d6036e4ed696034d0656ceaa9d.pdf', d:'Post-settlement compensation language' },
+    { t:'Lead Based Paint \u2014 Seller', u:'https://www.baldwincountymls.com/_files/ugd/90365d_44de81b3060b4574b136ac3e2862b816.pdf', d:'Required on pre-1978 homes' },
+    { t:'Lead Based Paint \u2014 Lease', u:'https://www.baldwincountymls.com/_files/ugd/90365d_a6b003618de9453780ca6867254df9a0.pdf', d:'' },
+    { t:'Lead Hazard Pamphlet', u:'https://www.baldwincountymls.com/_files/ugd/90365d_6b383b58bae5423c824027e5c280591f.pdf', d:'Give to the buyer with the disclosure' },
+    { t:'Multiple Offers Notification', u:'https://www.baldwincountymls.com/_files/ugd/90365d_fbbc4f6813e44b60aec9a6ad34a3842d.pdf', d:'' },
+    { t:'Clear Cooperation Policy', u:'https://www.baldwincountymls.com/_files/ugd/90365d_20af3d8acfdd4426a1cbe2425c562114.pdf', d:'' },
+    { t:'MLS Rules & Regulations', u:'https://www.baldwincountymls.com/_files/ugd/2b67d6_ba7e6c93f19249e5ba6629656cb268be.pdf', d:'Updated 6-26' },
+    { t:'Lockbox Rules & Regs', u:'https://www.baldwincountymls.com/_files/ugd/90365d_f01f2680b83b475eb0b1facebdba205e.pdf', d:'Updated 2-25' },
+    { t:'Closing Cost Spreadsheet', u:'https://www.baldwincountymls.com/_files/archives/90365d_e3f88c3cc93a45f780b14be4b895606e.zip?dn=Est%20Cost%20to%20Close%20Updated%206.10.24.zip', d:'Downloads as a zip' },
+  ]},
+  { group:'Listing & MLS forms', items:[
+    { t:'Listing Profile \u2014 Single Family', u:'https://www.baldwincountymls.com/_files/ugd/90365d_8d08bc8882ec4f56a7d1148df8249281.pdf', d:'Updated 6-26' },
+    { t:'Listing Profile \u2014 Lots & Land', u:'https://www.baldwincountymls.com/_files/ugd/90365d_929db428f7094a248245355a76d9025b.pdf', d:'' },
+    { t:'Listing Profile \u2014 Multi-family', u:'https://www.baldwincountymls.com/_files/ugd/90365d_644b51bbbcbf48da95a17de8b3ff01d6.pdf', d:'' },
+    { t:'Listing Profile \u2014 Lease', u:'https://www.baldwincountymls.com/_files/ugd/90365d_08e8b1bdc11a4ba49b6450f09b8b5f68.pdf', d:'' },
+    { t:'Listing Profile \u2014 Other', u:'https://www.baldwincountymls.com/_files/ugd/90365d_497349998d0344719d5646e8c5b0398e.pdf', d:'' },
+    { t:'Commercial Sale Profile Sheet', u:'https://www.baldwincountymls.com/_files/ugd/90365d_dae378bd50934959af5377868e5e26e3.pdf', d:'' },
+    { t:'Commercial Lease Profile Sheet', u:'https://www.baldwincountymls.com/_files/ugd/90365d_a85e8a7e11ab4b4daffe5e93ed3207b0.pdf', d:'' },
+    { t:'Coming Soon Addendum', u:'https://www.baldwincountymls.com/_files/ugd/90365d_0cb05865593b4deb9388d2c803ea6f8d.pdf', d:'' },
+    { t:'Delayed Marketing Exempt Listing Addendum', u:'https://www.baldwincountymls.com/_files/ugd/90365d_69f0e033dbbc49ccb2d4f9e8c678b03f.pdf', d:'Updated version' },
+    { t:'Confidential Listing Addendum', u:'https://www.baldwincountymls.com/_files/ugd/90365d_22a66a0dac7a4414985d462277fb226a.pdf', d:'Updated version' },
+    { t:'Brokerage Exclusive Listing Addendum', u:'https://www.baldwincountymls.com/_files/ugd/90365d_b6b804eb70e6421192f6d16ebaebeec2.pdf', d:'Updated version' },
+    { t:'Exempt to Active Listing Addendum', u:'https://www.baldwincountymls.com/_files/ugd/90365d_6b40585a61bc4271a4cf55c6322ca4e7.pdf', d:'Updated version' },
+    { t:'Equitable Interest Addendum', u:'https://www.baldwincountymls.com/_files/ugd/90365d_05a4f8f8dfd74f86b60edd8b931c5c4e.pdf', d:'' },
+    { t:'Street / Subdivision Add Request', u:'https://form.jotform.com/252576960064059', d:'Online form' },
+    { t:'MLS Fine Appeal', u:'https://www.baldwincountymls.com/_files/ugd/90365d_7a4ac2eedae84c71ae66823c208e7322.pdf', d:'' },
+  ]},
+  { group:'Membership & office changes', items:[
+    { t:'New agent \u2014 applications & pricing', u:'https://www.baldwincountymls.com/join-br', d:'Start here for anyone joining' },
+    { t:'Office Transfer Form', u:'https://form.jotform.com/242324695019155', d:'Online form' },
+    { t:'Change Membership Type', u:'https://form.jotform.com/231354671255152', d:'Online form' },
+    { t:'Agent Change to Qualifying Broker', u:'https://form.jotform.com/221514684108150', d:'Online form' },
+    { t:'Office Staff / Personal Assistant Application', u:'https://www.jotform.com/form/260575972391164', d:'Online form' },
+    { t:'Deactivation Form', u:'https://form.jotform.com/221315597918060', d:'Online form' },
+    { t:'Team Set-up Form', u:'https://form.jotform.com/243366584348063', d:'Online form' },
+    { t:'Team Change Form', u:'https://form.jotform.com/252306332532144', d:'Online form' },
+  ]},
+];
+
 const RESOURCE_DEFAULTS = [
   { group:'Association & MLS', items:[
     { t:'Baldwin REALTORS\u00AE', u:'https://www.baldwinrealtors.com',
@@ -10738,7 +10814,35 @@ async function renderResourcesSection(){
       </div>
     </div>`;
 
-  el.innerHTML = `<div class="card"><div style="padding:18px">
+  /* Two views: the everyday links, and the association's forms library. The forms
+     run to fifty-odd documents and would bury everything else if they shared a
+     list. */
+  el.innerHTML = `
+    <div class="rs-tabs">
+      <button id="rst-links" class="on" onclick="rsTab('links')">Links &amp; contacts</button>
+      <button id="rst-forms" onclick="rsTab('forms')">Baldwin REALTORS&reg; forms</button>
+    </div>
+
+    <div id="rs-pane-forms" class="rs-pane">
+      <div class="card"><div style="padding:18px">
+        <div class="rs-caution">
+          <strong>Check the date before you use a contract.</strong>
+          These link straight to Baldwin REALTORS&reg; files, and the association replaces forms
+          from time to time \u2014 several are already marked as updated versions. If you are about
+          to put one in front of a client, open the
+          <a href="${BR_FORMS_SOURCE}" target="_blank" rel="noopener">association's forms page</a>
+          and confirm you have the current one.
+        </div>
+        ${BR_FORMS.map(card).join('')}
+        <div style="margin-top:6px;font-size:12.5px;color:var(--driftwood)">
+          Every one of these comes from
+          <a href="${BR_FORMS_SOURCE}" target="_blank" rel="noopener"
+             style="color:var(--marsh)">baldwincountymls.com/associationdocuments</a>.
+        </div>
+      </div></div>
+    </div>
+
+    <div id="rs-pane-links" class="rs-pane on"><div class="card"><div style="padding:18px">
       ${groups.map(card).join('')}
       ${staff ? `<div class="rs-admin">
         <div style="font-weight:600;margin-bottom:8px">Add a link</div>
@@ -10762,7 +10866,17 @@ async function renderResourcesSection(){
           Entries marked <span class="warn">confirm</span> are addresses I could not verify.
           Check them, then replace with a link of your own so the flag goes away.</div>
       </div>` : ''}
-    </div></div>`;
+    </div></div></div>`;
+}
+
+/* Which half of Resources is showing. */
+function rsTab(which){
+  ['links','forms'].forEach(k => {
+    const b = document.getElementById('rst-' + k);
+    const p = document.getElementById('rs-pane-' + k);
+    if(b) b.classList.toggle('on', k === which);
+    if(p) p.classList.toggle('on', k === which);
+  });
 }
 
 async function rsAdd(){
@@ -13143,7 +13257,7 @@ body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
    Notes are shown to the client unless explicitly marked private — the checkbox
    says so plainly, because "seller being difficult" appearing on someone's phone
    is the obvious way this goes wrong. */
-let tkList = [], tkCur = null, tkCurStep = null, tkExtras = [], tkEditing = null, tkDragFrom = null;
+let tkList = [], tkCur = null, tkCurStep = null, tkExtras = [], tkEditing = null, tkDragRow = null;
 
 /* Steps live on the tracker itself so they can be edited per deal. Anything made
    before that falls back to the template. */
@@ -13209,20 +13323,18 @@ function tkCloseEdit(){
 function tkRenderEdit(){
   if(!tkEditing) return;
   const host = document.getElementById('tk-edit-list');
-  host.innerHTML = tkEditing.steps.map((st, i) => `
-    <div class="tke-row" data-i="${i}">
-      <span class="tke-grip" title="Drag to move">\u2807</span>
-      <div class="tke-mv">
-        <button onclick="tkMoveStep(${i},-1)" ${i===0?'disabled':''}>\u2191</button>
-        <button onclick="tkMoveStep(${i},1)" ${i===tkEditing.steps.length-1?'disabled':''}>\u2193</button>
-      </div>
+  host.innerHTML = tkEditing.steps.map(st => `
+    <div class="tke-row" data-k="${escapeHtml(st.k)}">
+      <span class="tke-grip" title="Drag to move">⠇</span>
       <div style="flex:1;min-width:0">
-        <input value="${escapeHtml(st.label)}" oninput="tkEditLabel(${i}, this.value)"
+        <input value="${escapeHtml(st.label)}" oninput="tkEditLabel('${escapeHtml(st.k)}', this.value)"
           placeholder="What is this step?">
-        <input class="sub" value="${escapeHtml(st.blurb||'')}" oninput="tkEditBlurb(${i}, this.value)"
+        <input class="sub" value="${escapeHtml(st.blurb||'')}"
+          oninput="tkEditBlurb('${escapeHtml(st.k)}', this.value)"
           placeholder="What your client reads underneath (optional)">
       </div>
-      <button class="tke-x" onclick="tkRemoveStep(${i})">\u2715</button>
+      ${st.done ? '<span class="tke-done" title="Already marked done">✓</span>' : ''}
+      <button class="tke-x" onclick="tkRemoveStep('${escapeHtml(st.k)}')" title="Remove this step">Remove</button>
     </div>`).join('');
 
   tkBindStepDrag(host);
@@ -13235,23 +13347,85 @@ function tkRenderEdit(){
     : '<span style="font-size:12.5px;color:var(--driftwood)">All of those are on there already.</span>';
 }
 
-function tkEditLabel(i, v){ if(tkEditing) tkEditing.steps[i].label = v; }
-function tkEditBlurb(i, v){ if(tkEditing) tkEditing.steps[i].blurb = v; }
-
-function tkMoveStep(i, d){
-  const j = i + d;
-  if(!tkEditing || j < 0 || j >= tkEditing.steps.length) return;
-  const a = tkEditing.steps;
-  const t = a[i]; a[i] = a[j]; a[j] = t;
-  tkRenderEdit();
+/* Reads the running order back out of the DOM. Dragging moves the actual row and
+   leaves the data alone until the pointer is released — the previous version
+   re-rendered on every movement, which destroyed the element being held. */
+function tkSyncOrderFromDom(){
+  const host = document.getElementById('tk-edit-list');
+  if(!host || !tkEditing) return;
+  const order = Array.from(host.querySelectorAll('.tke-row')).map(r => r.dataset.k);
+  tkEditing.steps.sort((x, y) => order.indexOf(x.k) - order.indexOf(y.k));
 }
 
-function tkRemoveStep(i){
+function tkBindStepDrag(host){
+  host.querySelectorAll('.tke-grip').forEach(grip => {
+    const row = grip.closest('.tke-row');
+    const start = e => {
+      tkDragRow = row;
+      row.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    };
+    grip.addEventListener('mousedown', start);
+    grip.addEventListener('touchstart', start, { passive:false });
+  });
+  if(host.__dragBound) return;
+
+  const move = e => {
+    if(!tkDragRow) return;
+    e.preventDefault();
+    const p = e.touches ? e.touches[0] : e;
+    const rows = Array.from(host.querySelectorAll('.tke-row')).filter(r => r !== tkDragRow);
+    for(const r of rows){
+      const b = r.getBoundingClientRect();
+      const mid = b.top + b.height / 2;
+      if(p.clientY < mid){ host.insertBefore(tkDragRow, r); return; }
+    }
+    host.appendChild(tkDragRow);      // past the last row
+  };
+
+  const end = () => {
+    if(!tkDragRow) return;
+    tkDragRow.classList.remove('dragging');
+    tkDragRow = null;
+    document.body.style.userSelect = '';
+    tkSyncOrderFromDom();
+  };
+
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchmove', move, { passive:false });
+  document.addEventListener('touchend', end);
+  host.__dragBound = true;
+}
+
+/* Keyed by step, not by position, so editing survives a reorder. */
+function tkStepBy(k){ return tkEditing && tkEditing.steps.find(x => x.k === k); }
+function tkEditLabel(k, v){ const st = tkStepBy(k); if(st) st.label = v; }
+function tkEditBlurb(k, v){ const st = tkStepBy(k); if(st) st.blurb = v; }
+
+function tkRemoveStep(k){
   if(!tkEditing) return;
+  const i = tkEditing.steps.findIndex(x => x.k === k);
+  if(i < 0) return;
   const st = tkEditing.steps[i];
   if(st.done && !confirm('That one is already marked done. Remove it anyway? Your client will see it disappear.')) return;
   tkEditing.steps.splice(i, 1);
   tkRenderEdit();
+}
+
+/* A cash purchase has no lender, so the appraisal and financing steps are just
+   noise on the client's timeline. */
+function tkCashDeal(){
+  if(!tkEditing) return;
+  const drop = ['appraisal','appraised','loan'];
+  const going = tkEditing.steps.filter(st => drop.includes(st.k));
+  if(!going.length){ showToast('Those are already off.'); return; }
+  const done = going.filter(st => st.done);
+  if(done.length && !confirm(done.length + ' of those are marked done. Remove them anyway?')) return;
+  tkEditing.steps = tkEditing.steps.filter(st => !drop.includes(st.k));
+  tkRenderEdit();
+  showToast('Lender steps removed.');
 }
 
 /* Drop it after the last completed step, not at the very bottom. An addendum that
@@ -13264,58 +13438,16 @@ function tkInsertAt(){
   return last + 1;
 }
 
-function tkFlashRow(i){
+/* Rows are keyed by step now, not by position, so a reorder cannot point this at
+   the wrong one. */
+function tkFlashRow(k){
   const host = document.getElementById('tk-edit-list');
   if(!host) return;
-  const row = host.querySelector('.tke-row[data-i="' + i + '"]');
+  const row = host.querySelector('.tke-row[data-k="' + k + '"]');
   if(!row) return;
   row.scrollIntoView({ block:'nearest', behavior:'smooth' });
   row.classList.add('flash');
   setTimeout(() => row.classList.remove('flash'), 900);
-}
-
-/* Pointer-based rather than HTML5 drag — HTML5 drag does not fire on touch. */
-function tkBindStepDrag(host){
-  host.querySelectorAll('.tke-grip').forEach(grip => {
-    const row = grip.closest('.tke-row');
-    const start = e => {
-      tkDragFrom = parseInt(row.dataset.i, 10);
-      row.classList.add('dragging');
-      e.preventDefault();
-    };
-    grip.addEventListener('mousedown', start);
-    grip.addEventListener('touchstart', start, { passive:false });
-  });
-  if(host.__dragBound) return;
-  const move = e => {
-    if(tkDragFrom === null) return;
-    e.preventDefault();
-    const p = e.touches ? e.touches[0] : e;
-    let over = null;
-    host.querySelectorAll('.tke-row').forEach(r => {
-      const b = r.getBoundingClientRect();
-      if(p.clientY >= b.top && p.clientY <= b.bottom) over = r;
-    });
-    if(!over) return;
-    const to = parseInt(over.dataset.i, 10);
-    if(isNaN(to) || to === tkDragFrom) return;
-    const a = tkEditing.steps;
-    a.splice(to, 0, a.splice(tkDragFrom, 1)[0]);
-    tkDragFrom = to;
-    tkRenderEdit();
-    const again = host.querySelector('.tke-row[data-i="' + to + '"]');
-    if(again) again.classList.add('dragging');
-  };
-  const end = () => {
-    if(tkDragFrom === null) return;
-    tkDragFrom = null;
-    host.querySelectorAll('.tke-row').forEach(r => r.classList.remove('dragging'));
-  };
-  document.addEventListener('mousemove', move);
-  document.addEventListener('mouseup', end);
-  document.addEventListener('touchmove', move, { passive:false });
-  document.addEventListener('touchend', end);
-  host.__dragBound = true;
 }
 
 function tkAddExtra(k){
@@ -13324,18 +13456,18 @@ function tkAddExtra(k){
   const at = tkInsertAt();
   tkEditing.steps.splice(at, 0, { k:e.k, label:e.label, blurb:e.blurb, done:false, custom:true });
   tkRenderEdit();
-  tkFlashRow(at);
+  tkFlashRow(e.k);
 }
 
 function tkAddBlank(){
   if(!tkEditing) return;
-  const at = tkInsertAt();
-  tkEditing.steps.splice(at, 0, { k:'s_' + Math.random().toString(36).slice(2,8),
-    label:'', blurb:'', done:false, custom:true });
+  const key = 's_' + Math.random().toString(36).slice(2,8);
+  tkEditing.steps.splice(tkInsertAt(), 0,
+    { k:key, label:'', blurb:'', done:false, custom:true });
   tkRenderEdit();
-  tkFlashRow(at);
+  tkFlashRow(key);
   const host = document.getElementById('tk-edit-list');
-  const row = host && host.querySelector('.tke-row[data-i="' + at + '"]');
+  const row = host && host.querySelector('.tke-row[data-k="' + key + '"]');
   const inp = row && row.querySelector('input');
   if(inp) inp.focus();
 }
@@ -13828,8 +13960,12 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenTracker(); }
 .tke-row input{width:100%;padding:7px 9px;border:1px solid rgba(27,32,67,.2);border-radius:7px;
   font:inherit;font-size:13.5px}
 .tke-row input.sub{margin-top:4px;font-size:12px;color:var(--driftwood)}
-.tke-x{border:none;background:none;color:#C0483C;font-size:15px;cursor:pointer;padding:4px 2px;
-  flex:0 0 auto}
+.tke-x{border:1px solid rgba(192,72,60,.3);background:#fff;color:#C0483C;font-size:11.5px;
+  font-weight:600;cursor:pointer;padding:5px 10px;border-radius:7px;flex:0 0 auto;
+  align-self:center;white-space:nowrap}
+.tke-x:hover{background:#FDF2F1;border-color:#C0483C}
+.tke-done{color:#2E8C5A;font-size:14px;flex:0 0 auto;align-self:center}
+.tke-row .sub{margin-top:4px}
 .tke-add{border:1px dashed rgba(27,32,67,.3);background:#fff;border-radius:20px;padding:6px 12px;
   font:inherit;font-size:12.5px;cursor:pointer;color:#1B2043;margin:0 5px 5px 0}
 .tke-add:hover{border-color:#2E3CB0;color:#2E3CB0}
@@ -13842,6 +13978,10 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenTracker(); }
 <div class="sub">Rename anything, move it, drop it, or add what this deal actually needs.
   Steps already marked keep their dates and notes.</div>
 <div id="tk-edit-list" style="max-height:44vh;overflow:auto;margin:10px 0"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 4px">
+  <button class="btn-sm" onclick="tkCashDeal()"
+    title="Removes the appraisal and financing steps">Cash deal &mdash; drop lender steps</button>
+</div>
 <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
   color:var(--driftwood);margin:14px 0 7px">Common additions</div>
 <div id="tk-edit-extras"></div>
@@ -13853,6 +13993,24 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenTracker(); }
 </div>
 </div>
 </div>
+
+<style>
+.rs-tabs{display:flex;gap:6px;background:#EFF0F6;padding:5px;border-radius:11px;margin-bottom:14px;
+  max-width:460px}
+.rs-tabs button{flex:1;border:none;background:transparent;padding:9px 10px;border-radius:8px;
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--driftwood);cursor:pointer;
+  white-space:nowrap}
+.rs-tabs button.on{background:#fff;color:#1B2043;box-shadow:0 1px 5px rgba(27,32,67,.13)}
+.rs-pane{display:none}
+.rs-pane.on{display:block}
+.rs-caution{background:#FBF6EA;border-left:3px solid #E6C381;border-radius:0 8px 8px 0;
+  padding:12px 15px;margin-bottom:18px;font-size:13.5px;line-height:1.6;color:#5A4520}
+.rs-caution a{color:#8A6314;font-weight:600}
+body.crm-dark .rs-tabs{background:#1A1E30}
+body.crm-dark .rs-tabs button.on{background:#2C3350;color:#EEF0F8}
+body.crm-dark .rs-caution{background:#2A2413;color:#E8DCC0}
+@media(max-width:520px){ .rs-tabs{max-width:none} .rs-tabs button{font-size:12.5px;padding:8px 6px} }
+</style>
 
 </body>
 </html>
