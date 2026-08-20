@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v116">
+<meta name="build" content="index-v118">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2633,7 +2633,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v116';
+window.BUILD = 'index-v118';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7020,9 +7020,32 @@ function removeMyPhoto(){
 #mkStudio{position:fixed;inset:0;z-index:9000;background:var(--paper,#fff);display:none;
   flex-direction:column;overflow:hidden}
 #mkStudio.on{display:flex}
-.mk-bar{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid rgba(27,32,67,.12);
-  background:#fff;flex:0 0 auto;flex-wrap:wrap}
-.mk-bar h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:23px;font-weight:500;color:#1B2043}
+.mk-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(27,32,67,.12);
+  background:#fff;flex:0 0 auto;flex-wrap:nowrap;overflow-x:auto}
+.mk-bar h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:500;
+  color:#1B2043;white-space:nowrap}
+.mk-bar .btn{white-space:nowrap;padding:7px 13px;font-size:13px;letter-spacing:.02em;flex:0 0 auto}
+@media(max-width:700px){ .mk-bar h3{display:none} }
+.mk-shots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.mk-shot{position:relative;aspect-ratio:4/3;border-radius:5px;overflow:hidden;cursor:pointer;
+  border:2.5px solid transparent;background:#E9EAF2}
+.mk-shot img{width:100%;height:100%;object-fit:cover;display:block}
+.mk-shot.on{border-color:#2E3CB0}
+.mk-shot .n{position:absolute;top:2px;left:2px;background:#2E3CB0;color:#fff;font-size:10px;
+  font-weight:700;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center}
+.mk-sheet{position:fixed;inset:0;z-index:9200;background:rgba(15,18,40,.5);display:flex;
+  align-items:center;justify-content:center;padding:20px}
+.mk-sheet .box{background:#fff;border-radius:14px;max-width:430px;width:100%;padding:20px;
+  max-height:86vh;overflow:auto}
+.mk-sheet h4{margin:0 0 4px;font-size:17px;font-family:'Cormorant Garamond',serif;font-weight:500}
+.mk-opt{display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:11px 12px;
+  border:1px solid rgba(27,32,67,.14);border-radius:9px;background:#fff;cursor:pointer;
+  margin-top:8px;font:inherit}
+.mk-opt:hover{border-color:#2E3CB0;background:#F7F8FD}
+.mk-opt .ic{font-size:17px;line-height:1.1;flex:0 0 auto;width:20px;text-align:center}
+.mk-opt .tt{font-weight:600;font-size:13.5px;color:#1B2043}
+.mk-opt .dd{font-size:12px;color:rgba(27,32,67,.62);line-height:1.42;margin-top:2px}
 .mk-bar .sp{flex:1}
 .mk-body{flex:1;display:flex;min-height:0;overflow:hidden}
 .mk-side{width:330px;flex:0 0 330px;border-right:1px solid rgba(27,32,67,.12);overflow:auto;padding:18px;background:#FAFAFD}
@@ -7150,6 +7173,17 @@ async function mkLoadListings(){
   return mkListings;
 }
 
+/* Only add the parts the address line doesn't already contain. */
+function mkComposeAddress(l){
+  const base = String(l.UnparsedAddress || '').trim().replace(/,\s*$/, '');
+  const has = t => base.toLowerCase().includes(String(t || '').toLowerCase().trim());
+  const parts = [base];
+  if(l.City && !has(l.City)) parts.push(l.City);
+  if(l.StateOrProvince && !has(l.StateOrProvince)) parts.push(l.StateOrProvince);
+  if(l.PostalCode && !has(l.PostalCode)) parts.push(l.PostalCode);
+  return parts.filter(Boolean).join(', ');
+}
+
 function mkListingLabel(l){
   const addr = l.UnparsedAddress || '';
   const city = l.City ? ', ' + l.City : '';
@@ -7163,17 +7197,24 @@ async function mkPickListing(key){
   const f = mkState.fields;
   f.listingKey = String(l.ListingKey);
   f.price   = l.ListPrice || '';
-  f.address = [l.UnparsedAddress, l.City, l.StateOrProvince, l.PostalCode].filter(Boolean).join(', ');
+  // UnparsedAddress usually already carries city, state and ZIP. Appending them
+  // again produced "…Gulf Shores AL 36542, Gulf Shores, AL, 36542".
+  f.address = mkComposeAddress(l);
   f.beds    = l.BedroomsTotal || '';
   f.baths   = l.BathroomsTotalInteger || '';
   f.sqft    = l.LivingArea || '';
-  f.remarks = (l.PublicRemarks || '').slice(0, 700);
+  // No truncation. The flyer shrinks the type to fit instead of cutting mid-word,
+  // and the agent can edit it down if they want it shorter.
+  f.remarks = (l.PublicRemarks || '').trim();
   // MLS photos are cross-origin, which taints the canvas and breaks export —
   // so they come back through our own origin instead.
   const photos = (typeof extractPhotos === 'function') ? extractPhotos(l) : [];
-  f.photo = photos.length ? '/api/listing-photo?u=' + encodeURIComponent(photos[0]) : '';
+  const prox = u => '/api/listing-photo?u=' + encodeURIComponent(u);
+  f.gallery = photos.slice(0, 24).map(prox);          // everything the feed gave us
+  f.chosen  = f.gallery.slice(0, 4);                  // what the flyer uses
+  f.photo   = f.chosen[0] || '';
   window.__mkPhotoImg = null; window.__mkPhotoSrc = null;
-  mkLoadPhoto(() => { mkSide(); mkRender(); });
+  mkLoadPhotos(() => { mkSide(); mkRender(); });
 }
 
 /* ---------- photo ----------
@@ -7213,15 +7254,48 @@ function mkClearPhoto(){
   mkSide(); mkRender();
 }
 
-/* Canvas needs a decoded Image, not a data URI, so this resolves before drawing. */
-function mkLoadPhoto(done){
-  const src = mkState.fields.photo;
-  if(!src){ window.__mkPhotoImg = null; return done && done(); }
-  if(window.__mkPhotoImg && window.__mkPhotoSrc === src) return done && done();
-  const img = new Image();
-  img.onload = () => { window.__mkPhotoImg = img; window.__mkPhotoSrc = src; done && done(); };
-  img.onerror = () => { window.__mkPhotoImg = null; done && done(); };
-  img.src = src;
+/* Canvas needs decoded Images, not URLs, so these resolve before drawing.
+   A photo that fails to load must not stall the render — the flyer falls back
+   to a placeholder rather than hanging on a dead MLS URL. */
+function mkLoadImage(src){
+  return new Promise(resolve => {
+    if(!src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function mkLoadPhotos(done){
+  const f = mkState.fields;
+  const list = (Array.isArray(f.chosen) && f.chosen.length) ? f.chosen
+             : (f.photo ? [f.photo] : []);
+  Promise.all(list.map(mkLoadImage)).then(imgs => {
+    window.__mkPhotoImgs = imgs;
+    window.__mkPhotoImg  = imgs[0] || null;
+    window.__mkPhotoSrc  = list[0] || '';
+    done && done();
+  });
+}
+
+// kept for the single-photo path
+function mkLoadPhoto(done){ mkLoadPhotos(done); }
+
+/* Thumbnails so the agent picks which shots go on the flyer. */
+function mkToggleShot(url){
+  const f = mkState.fields;
+  if(!Array.isArray(f.chosen)) f.chosen = [];
+  const max = AvaniTemplates.TEMPLATES[mkState.tpl].multi || 1;
+  const i = f.chosen.indexOf(url);
+  if(i >= 0) f.chosen.splice(i, 1);
+  else {
+    if(f.chosen.length >= max) f.chosen.shift();   // oldest out
+    f.chosen.push(url);
+  }
+  f.photo = f.chosen[0] || '';
+  mkLoadPhotos(() => { mkSide(); mkRender(); });
 }
 
 /* ---------- render ---------- */
@@ -7234,6 +7308,7 @@ function mkRender(){
   const spec = Object.assign({}, mkState.fields, {
     qrUrl: mkQrUrl(),
     _photoImg: window.__mkPhotoImg || null,
+    _photoImgs: window.__mkPhotoImgs || [],
     _bannerFree: !!mkPolicy.bannerFree,
   });
 
@@ -7325,8 +7400,24 @@ function mkSide(){
     <div class="mk-field"><label>Description</label>
       <textarea id="f_remarks" rows="5">${escapeHtml(f.remarks||'')}</textarea></div>` : ''}
 
+    ${T.photo && Array.isArray(f.gallery) && f.gallery.length ? `
+    <div class="mk-field">
+      <label>MLS photos \u2014 pick up to ${T.multi || 1}</label>
+      <div class="mk-shots">
+        ${f.gallery.map(u => {
+          const idx = (f.chosen||[]).indexOf(u);
+          return `<div class="mk-shot ${idx>=0?'on':''}" onclick="mkToggleShot('${u.replace(/'/g,"\\'")}')">
+            <img src="${escapeHtml(u)}" loading="lazy" alt="">
+            ${idx>=0?`<span class="n">${idx+1}</span>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="font-size:11.5px;color:rgba(27,32,67,.55)">
+        Numbers show the order they appear. Click to add or remove.</div>
+    </div>` : ''}
+
     ${T.photo ? `
-    <div class="mk-field"><label>Photo</label>
+    <div class="mk-field"><label>${(Array.isArray(f.gallery)&&f.gallery.length)?'Or upload your own':'Photo'}</label>
       ${f.photo ? `<div style="display:flex;gap:9px;align-items:center;margin-bottom:6px">
           <img src="${escapeHtml(f.photo)}" style="width:74px;height:50px;object-fit:cover;border-radius:5px">
           <button class="btn ghost" style="padding:5px 11px;font-size:12.5px" onclick="mkClearPhoto()">Remove</button>
@@ -7475,46 +7566,55 @@ function mkFileBase(){
 
 function mkDownload(kind){
   const cv = window.__mkCanvas;
-  if(!cv){ alert('Nothing to download yet.'); return; }
+  if(!cv){ showToast('Nothing to download yet.'); return; }
   if(kind === 'png'){
     cv.toBlob(b => mkSaveBlob(b, mkFileBase() + '.png'), 'image/png');
     return;
   }
-  // PDF: embed the rendered bitmap as a JPEG XObject. Sign shops and card
-  // printers accept this; it keeps the physical dimensions exact.
-  const t = AvaniTemplates.TEMPLATES[mkState.tpl];
-  const jpeg = cv.toDataURL('image/jpeg', 0.95).split(',')[1];
-  const bytes = atob(jpeg);
-  const wPt = cv.width / t.dpi * 72, hPt = cv.height / t.dpi * 72;
+  mkPdfBlob().then(b => mkSaveBlob(b, mkFileBase() + '.pdf'))
+             .catch(e => showToast('Could not build the PDF: ' + e.message));
+}
 
-  const objs = [];
-  objs[1] = '<</Type/Catalog/Pages 2 0 R>>';
-  objs[2] = '<</Type/Pages/Kids[3 0 R]/Count 1>>';
-  objs[3] = `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${wPt.toFixed(2)} ${hPt.toFixed(2)}]`
-          + `/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>`;
-  const content = `q ${wPt.toFixed(2)} 0 0 ${hPt.toFixed(2)} 0 0 cm /Im0 Do Q`;
+/* PDF with the rendered bitmap as a JPEG XObject. Sign shops and print shops
+   accept this, and it keeps the physical dimensions exact. Split out from the
+   download button so the email path can attach the same file. */
+function mkPdfBlob(){
+  return new Promise((resolve, reject) => {
+    try{
+      const cv = window.__mkCanvas;
+      if(!cv) return reject(new Error('nothing rendered'));
+      const t = AvaniTemplates.TEMPLATES[mkState.tpl];
+      const jpeg = cv.toDataURL('image/jpeg', 0.92).split(',')[1];
+      const bytes = atob(jpeg);
+      const wPt = cv.width / t.dpi * 72, hPt = cv.height / t.dpi * 72;
+      const content = `q ${wPt.toFixed(2)} 0 0 ${hPt.toFixed(2)} 0 0 cm /Im0 Do Q`;
 
-  let pdf = '%PDF-1.4\n';
-  const offsets = [];
-  const push = (num, body, stream) => {
-    offsets[num] = pdf.length;
-    pdf += num + ' 0 obj\n' + body + '\n';
-    if(stream != null) pdf += 'stream\n' + stream + '\nendstream\n';
-    pdf += 'endobj\n';
-  };
-  push(1, objs[1]); push(2, objs[2]); push(3, objs[3]);
-  push(4, `<</Type/XObject/Subtype/Image/Width ${cv.width}/Height ${cv.height}`
-        + `/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${bytes.length}>>`, bytes);
-  push(5, `<</Length ${content.length}>>`, content);
+      let pdf = '%PDF-1.4\n';
+      const offsets = [];
+      const push = (num, body, stream) => {
+        offsets[num] = pdf.length;
+        pdf += num + ' 0 obj\n' + body + '\n';
+        if(stream != null) pdf += 'stream\n' + stream + '\nendstream\n';
+        pdf += 'endobj\n';
+      };
+      push(1, '<</Type/Catalog/Pages 2 0 R>>');
+      push(2, '<</Type/Pages/Kids[3 0 R]/Count 1>>');
+      push(3, `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${wPt.toFixed(2)} ${hPt.toFixed(2)}]`
+            + `/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>`);
+      push(4, `<</Type/XObject/Subtype/Image/Width ${cv.width}/Height ${cv.height}`
+            + `/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${bytes.length}>>`, bytes);
+      push(5, `<</Length ${content.length}>>`, content);
 
-  const xref = pdf.length;
-  pdf += 'xref\n0 6\n0000000000 65535 f \n';
-  for(let i = 1; i <= 5; i++) pdf += String(offsets[i]).padStart(10,'0') + ' 00000 n \n';
-  pdf += `trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
+      const xref = pdf.length;
+      pdf += 'xref\n0 6\n0000000000 65535 f \n';
+      for(let i = 1; i <= 5; i++) pdf += String(offsets[i]).padStart(10,'0') + ' 00000 n \n';
+      pdf += `trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
 
-  const buf = new Uint8Array(pdf.length);
-  for(let i = 0; i < pdf.length; i++) buf[i] = pdf.charCodeAt(i) & 0xFF;
-  mkSaveBlob(new Blob([buf], { type:'application/pdf' }), mkFileBase() + '.pdf');
+      const buf = new Uint8Array(pdf.length);
+      for(let i = 0; i < pdf.length; i++) buf[i] = pdf.charCodeAt(i) & 0xFF;
+      resolve(new Blob([buf], { type:'application/pdf' }));
+    }catch(e){ reject(e); }
+  });
 }
 
 function mkSaveBlob(blob, filename){
@@ -7525,27 +7625,151 @@ function mkSaveBlob(blob, filename){
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-/* ---------- share ---------- */
-async function mkShare(){
+/* ---------- share ----------
+   What each platform will actually accept, rather than what would be convenient:
+
+   Instagram  no web posting API exists. On a phone the OS share sheet hands the
+              file to the app; on a desktop browser it is simply not possible, so
+              this says so instead of opening a page that cannot work.
+   Facebook   the share dialog takes a URL, never an image. The image has to be
+              downloaded and attached by hand.
+   Email      mailto: cannot attach a file either — so this one goes through our
+              own server, where Resend can attach the PDF for real.             */
+function mkCanNativeShare(){
+  try{ return !!(navigator.canShare && navigator.share); }catch(e){ return false; }
+}
+
+function mkShare(){
   const cv = window.__mkCanvas;
-  if(!cv) return;
+  if(!cv){ showToast('Nothing to share yet.'); return; }
   const url = mkQrUrl();
+  const native = mkCanNativeShare();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'mk-sheet';
+  wrap.onclick = e => { if(e.target === wrap) wrap.remove(); };
+  wrap.innerHTML = `<div class="box">
+    <h4>Share this flyer</h4>
+    <div style="font-size:12.5px;color:rgba(27,32,67,.62);margin-bottom:4px">
+      Scans go to ${escapeHtml(url)}</div>
+
+    ${native ? `<button class="mk-opt" onclick="mkShareNative()">
+      <span class="ic">\u2934</span><span><span class="tt">Share to an app</span>
+      <span class="dd">Opens your phone's share sheet \u2014 Instagram, Messages, WhatsApp,
+      anything installed. This is the only route Instagram accepts.</span></span></button>`
+    : `<div class="mk-opt" style="cursor:default;opacity:.72">
+      <span class="ic">\u24D8</span><span><span class="tt">Instagram needs a phone</span>
+      <span class="dd">Instagram has no way to post from a desktop browser. Email the
+      flyer to yourself, then post it from the app.</span></span></div>`}
+
+    <button class="mk-opt" onclick="mkShareEmail()">
+      <span class="ic">\u2709</span><span><span class="tt">Email it</span>
+      <span class="dd">Sends a real PDF attachment from the brokerage, with replies
+      coming back to you.</span></span></button>
+
+    <button class="mk-opt" onclick="mkShareFacebook()">
+      <span class="ic">f</span><span><span class="tt">Facebook</span>
+      <span class="dd">Downloads the image and opens Facebook. You attach it there \u2014
+      Facebook does not let a website post a picture for you.</span></span></button>
+
+    <button class="mk-opt" onclick="mkCopyLink()">
+      <span class="ic">\u26AD</span><span><span class="tt">Copy my link</span>
+      <span class="dd">The same address the QR points to, for a text or a caption.</span></span></button>
+
+    <button class="mk-opt" onclick="mkDownload('png');mkCloseSheet()">
+      <span class="ic">\u2193</span><span><span class="tt">Just download the image</span>
+      <span class="dd">PNG at print resolution.</span></span></button>
+
+    <div style="text-align:right;margin-top:12px">
+      <button class="btn ghost" onclick="mkCloseSheet()">Close</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  window.__mkSheet = wrap;
+}
+
+function mkCloseSheet(){
+  if(window.__mkSheet){ window.__mkSheet.remove(); window.__mkSheet = null; }
+}
+
+function mkShareNative(){
+  const cv = window.__mkCanvas; if(!cv) return;
   cv.toBlob(async blob => {
     const file = new File([blob], mkFileBase() + '.png', { type:'image/png' });
-    // Phones can hand the image straight to Instagram or Facebook. Desktop
-    // browsers mostly can't, so fall back to a share link plus the download.
-    if(navigator.canShare && navigator.canShare({ files:[file] })){
-      try{
-        await navigator.share({ files:[file], text:'Find me at ' + url });
+    try{
+      if(navigator.canShare && navigator.canShare({ files:[file] })){
+        await navigator.share({ files:[file], text: 'Find me at ' + mkQrUrl() });
+        mkCloseSheet();
         return;
-      }catch(e){ if(e && e.name === 'AbortError') return; }
-    }
-    const pick = confirm('Your browser can\'t hand the image to an app directly.\n\n'
-      + 'OK — download the image and open Facebook to post it.\n'
-      + 'Cancel — just download the image.');
-    mkDownload('png');
-    if(pick) window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url), '_blank');
+      }
+    }catch(e){ if(e && e.name === 'AbortError'){ mkCloseSheet(); return; } }
+    showToast("This browser wouldn't take the image \u2014 downloading it instead.");
+    mkDownload('png'); mkCloseSheet();
   }, 'image/png');
+}
+
+function mkShareFacebook(){
+  mkDownload('png');
+  window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(mkQrUrl()), '_blank');
+  showToast('Image downloaded \u2014 attach it in the Facebook window.');
+  mkCloseSheet();
+}
+
+async function mkCopyLink(){
+  try{
+    await navigator.clipboard.writeText(mkQrUrl());
+    showToast('Link copied.');
+  }catch(e){ prompt('Copy this link:', mkQrUrl()); }
+  mkCloseSheet();
+}
+
+function mkShareEmail(){
+  const box = window.__mkSheet && window.__mkSheet.querySelector('.box');
+  if(!box) return;
+  box.innerHTML = `<h4>Email this flyer</h4>
+    <div class="mk-field" style="margin-top:10px"><label>To</label>
+      <input id="mkTo" placeholder="name@example.com, another@example.com"></div>
+    <div class="mk-field"><label>Subject</label>
+      <input id="mkSubj" value="${escapeHtml(mkState.fields.banner || 'Open house')} \u2014 ${escapeHtml(mkState.fields.address || '')}"></div>
+    <div class="mk-field"><label>Message</label>
+      <textarea id="mkMsg" rows="4">Attached is the flyer. Let me know if you'd like to see it in person.</textarea></div>
+    <div style="font-size:12px;color:rgba(27,32,67,.6)">
+      Sends as a PDF from the brokerage. Replies come to you.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:13px">
+      <button class="btn ghost" onclick="mkCloseSheet()">Cancel</button>
+      <button class="btn" id="mkSendBtn" onclick="mkSendEmail()">Send</button></div>`;
+}
+
+async function mkSendEmail(){
+  const to = (document.getElementById('mkTo')||{}).value || '';
+  if(!to.trim()){ showToast('Who should it go to?'); return; }
+  const btn = document.getElementById('mkSendBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending\u2026'; }
+  try{
+    const blob = await mkPdfBlob();
+    const b64 = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.readAsDataURL(blob);
+    });
+    const r = await fetch('/api/marketing/email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to: to.trim(),
+        subject: (document.getElementById('mkSubj')||{}).value || '',
+        message: (document.getElementById('mkMsg')||{}).value || '',
+        filename: mkFileBase() + '.pdf',
+        dataBase64: b64,
+        mimeType: 'application/pdf',
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(j.error || 'Send failed.');
+    showToast('Sent to ' + j.sent + (j.sent === 1 ? ' recipient.' : ' recipients.'));
+    mkCloseSheet();
+  }catch(e){
+    showToast(e.message || 'Could not send that.');
+    if(btn){ btn.disabled = false; btn.textContent = 'Send'; }
+  }
 }
 
 /* ---------- CRM section ---------- */
@@ -8003,6 +8227,52 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     return lines;
   }
 
+  /* Fit a paragraph into a box.
+
+     Listing remarks vary from one line to six hundred words, so a fixed size
+     either wastes the page or cuts mid-sentence. This steps the size down until
+     the whole thing fits. Only if it still will not fit at the smallest readable
+     size does it trim — and then on a word boundary with an ellipsis, never
+     mid-word like "fitness facil".                                              */
+  function drawParagraph(ctx, text, x, y, w, maxH, dpi, opts){
+    const t = String(text || '').trim();
+    if(!t) return 0;
+    opts = opts || {};
+    const startPx = opts.start || 0.15 * dpi;
+    const minPx   = opts.min   || 0.098 * dpi;
+    const lead    = opts.lead  || 1.42;
+    const font    = opts.font  || '%SIZE%px Helvetica, Arial, sans-serif';
+
+    let px = startPx, lines = null;
+    while(px >= minPx){
+      ctx.font = font.replace('%SIZE%', px);
+      const ls = wrapLines(ctx, t, w);
+      if(ls.length * px * lead <= maxH){ lines = ls; break; }
+      px -= Math.max(1, Math.round(0.004 * dpi));
+    }
+
+    if(!lines){
+      // smallest readable size still overflows — trim on a word boundary
+      px = minPx;
+      ctx.font = font.replace('%SIZE%', px);
+      const all = wrapLines(ctx, t, w);
+      const room = Math.max(1, Math.floor(maxH / (px * lead)));
+      lines = all.slice(0, room);
+      if(all.length > room && lines.length){
+        let last = lines[lines.length - 1];
+        while(last.length && ctx.measureText(last + '\u2026').width > w){
+          last = last.replace(/\s*\S+$/, '');
+        }
+        lines[lines.length - 1] = (last || lines[lines.length - 1]) + '\u2026';
+      }
+    }
+
+    ctx.font = font.replace('%SIZE%', px);
+    let cy = y;
+    lines.forEach(l => { ctx.fillText(l, x, cy); cy += px * lead; });
+    return cy - y;
+  }
+
   function roundRect(ctx, x, y, w, h, r){
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -8228,8 +8498,12 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
 
     // the photo takes whatever the text below does not need, so there is no
     // dead band above the footer
+    // Reserve room for the description in proportion to how long it actually is,
+    // so a short blurb doesn't shrink the photo and a long one still fits.
+    const remLen = String(spec.remarks || '').length;
+    const remH = remLen ? Math.min(2.5*dpi, Math.max(0.5*dpi, remLen / 90 * 0.19 * dpi)) : 0;
     const belowPhoto = Math.min(0.44*dpi, CAP) * 1.24 + 0.2*dpi*1.6 + 0.62*dpi
-                     + (spec.remarks ? 0.145*dpi*1.42*3 : 0) + 0.5*dpi;
+                     + remH + 0.45*dpi;
     const footTopA = H - 1.55 * dpi;
     const photoH = Math.max(2.6 * dpi, footTopA - y - belowPhoto);
     if(!drawCover(ctx, spec._photoImg, pad, y, W - pad*2, photoH))
@@ -8259,14 +8533,10 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
 
     y += drawFacts(ctx, spec, pad, y, W - pad*2, dpi) + 0.2 * dpi;
 
-    const footTop = H - 1.55 * dpi - 0.26 * dpi;
-    if(spec.remarks && y < footTop - 0.4 * dpi){
-      ctx.fillStyle = 'rgba(27,32,67,.72)';
-      const rp = 0.145 * dpi;
-      ctx.font = `${rp}px Helvetica, Arial, sans-serif`;
-      const lines = wrapLines(ctx, spec.remarks, W - pad*2);
-      const room = Math.floor((footTop - y) / (rp * 1.42));
-      lines.slice(0, Math.max(0, room)).forEach(l => { ctx.fillText(l, pad, y); y += rp * 1.42; });
+    const footTop = H - 1.55 * dpi - 0.22 * dpi;
+    if(spec.remarks){
+      ctx.fillStyle = 'rgba(27,32,67,.74)';
+      drawParagraph(ctx, spec.remarks, pad, y, W - pad*2, footTop - y, dpi);
     }
 
     drawFooter(ctx, spec, dpi, W, H, QR);
@@ -8315,14 +8585,11 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
     y += 0.28 * dpi;
 
-    const footTop = H - 1.55 * dpi - 0.26 * dpi;
+    const footTop = H - 1.55 * dpi - 0.24 * dpi;
     if(spec.remarks){
-      ctx.fillStyle = 'rgba(27,32,67,.75)';
-      const rp = 0.15 * dpi;
-      ctx.font = `${rp}px Helvetica, Arial, sans-serif`;
-      const lines = wrapLines(ctx, spec.remarks, W - pad*2);
-      const room = Math.floor((footTop - y) / (rp * 1.45));
-      lines.slice(0, Math.max(0, room)).forEach(l => { ctx.fillText(l, pad, y); y += rp * 1.45; });
+      ctx.fillStyle = 'rgba(27,32,67,.76)';
+      drawParagraph(ctx, spec.remarks, pad, y, W - pad*2, footTop - y, dpi,
+                    { start: 0.155*dpi, min: 0.1*dpi, lead: 1.45 });
     }
 
     drawFooter(ctx, spec, dpi, W, H, QR);
@@ -8405,9 +8672,105 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     return { W, H };
   }
 
+  /* Four-photo variant. Agents kept asking for more than one shot, and a single
+     exterior rarely sells an interior. */
+  function drawOpenHouseGallery(ctx, spec, dpi, QR){
+    const W = LETTER.w * dpi, H = LETTER.h * dpi;
+    const pad = 0.5 * dpi;
+    const CAP = firmCeiling(ctx, dpi, W, H);
+    spec._firmPt = CAP;
+
+    ctx.fillStyle = BRAND.paper;
+    ctx.fillRect(0, 0, W, H);
+
+    const banPt = bannerSize(ctx, spec, dpi, W, CAP);
+    const banH = Math.max(CAP * 1.5, banPt * 1.5);
+    ctx.fillStyle = BRAND.gold;
+    ctx.fillRect(0, 0, W, banH);
+    ctx.fillStyle = BRAND.ink;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const bp = fitText(ctx, spec.banner || 'OPEN HOUSE', W - pad*2, banPt,
+                       '600 %SIZE%px Georgia, serif', 0.2*dpi);
+    ctx.font = `600 ${bp}px Georgia, serif`;
+    ctx.fillText(spec.banner || 'OPEN HOUSE', W/2, banH/2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+
+    let y = banH + 0.24 * dpi;
+    if(spec.when){
+      ctx.fillStyle = BRAND.blue;
+      ctx.textAlign = 'center';
+      const wp = fitText(ctx, spec.when, W - pad*2, Math.min(0.24*dpi, CAP),
+                         '600 %SIZE%px Helvetica, Arial, sans-serif', 0.12*dpi);
+      ctx.font = `600 ${wp}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.when, W/2, y);
+      ctx.textAlign = 'left';
+      y += wp * 1.5;
+    }
+
+    const imgs = Array.isArray(spec._photoImgs) ? spec._photoImgs.filter(Boolean) : [];
+    const hero = imgs[0] || spec._photoImg || null;
+    const gap = 0.14 * dpi;
+    const innerW = W - pad*2;
+
+    // Photos take whatever the text below doesn't need, so the sheet never ends
+    // with a band of empty white above the footer.
+    const rest = imgs.slice(1, 4);
+    const remLen = String(spec.remarks || '').length;
+    const remH = remLen ? Math.min(2.1*dpi, Math.max(0.42*dpi, remLen / 100 * 0.17 * dpi)) : 0;
+    const textH = Math.min(0.38*dpi, CAP) * 1.2 + 0.18*dpi*1.5 + 0.62*dpi + remH + 0.3*dpi;
+    const avail = (H - 1.55*dpi) - y - textH;
+    const thumbH = rest.length ? Math.max(0.9*dpi, Math.min(1.35*dpi, avail * 0.3)) : 0;
+    const heroH  = Math.max(2.2*dpi, avail - thumbH - (rest.length ? gap : 0));
+
+    if(!drawCover(ctx, hero, pad, y, innerW, heroH))
+      placeholder(ctx, pad, y, innerW, heroH, 'Listing photo');
+    y += heroH + gap;
+
+    if(rest.length){
+      const cellW = (innerW - gap * (rest.length - 1)) / rest.length;
+      rest.forEach((im, i) => drawCover(ctx, im, pad + (cellW + gap) * i, y, cellW, thumbH));
+      y += thumbH + 0.2 * dpi;
+    } else {
+      y += 0.06 * dpi;
+    }
+
+    if(spec.price){
+      ctx.fillStyle = BRAND.ink;
+      ctx.textAlign = 'center';
+      const pp = Math.min(0.38 * dpi, CAP);
+      ctx.font = `500 ${pp}px Georgia, serif`;
+      ctx.fillText(money(spec.price), W/2, y);
+      ctx.textAlign = 'left';
+      y += pp * 1.2;
+    }
+    if(spec.address){
+      ctx.fillStyle = 'rgba(27,32,67,.78)';
+      ctx.textAlign = 'center';
+      const ap = fitText(ctx, spec.address, innerW, 0.18*dpi,
+                         '%SIZE%px Helvetica, Arial, sans-serif', 0.1*dpi);
+      ctx.font = `${ap}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.address, W/2, y);
+      ctx.textAlign = 'left';
+      y += ap * 1.5;
+    }
+    y += drawFacts(ctx, spec, pad, y, innerW, dpi) + 0.16 * dpi;
+
+    const footTop = H - 1.55 * dpi - 0.18 * dpi;
+    if(spec.remarks){
+      ctx.fillStyle = 'rgba(27,32,67,.74)';
+      drawParagraph(ctx, spec.remarks, pad, y, innerW, footTop - y, dpi,
+                    { start: 0.14*dpi, min: 0.094*dpi });
+    }
+
+    drawFooter(ctx, spec, dpi, W, H, QR);
+    return { W, H };
+  }
+
   const TEMPLATES = {
     'openhouse': { label: 'Open house flyer',         dpi: 200, draw: drawOpenHouse,
                    size: '8.5 \u00d7 11 in', listing: true, photo: true },
+    'gallery':   { label: 'Open house \u2014 4 photos', dpi: 200, draw: drawOpenHouseGallery,
+                   size: '8.5 \u00d7 11 in', listing: true, photo: true, multi: 4 },
     'feature':   { label: 'Property feature sheet',   dpi: 200, draw: drawFeatureSheet,
                    size: '8.5 \u00d7 11 in', listing: true, photo: true },
     'signin':    { label: 'Open house sign-in sheet', dpi: 200, draw: drawSignIn,
