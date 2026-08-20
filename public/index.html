@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v141">
+<meta name="build" content="index-v143">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2898,7 +2898,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v141';
+window.BUILD = 'index-v143';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3250,7 +3250,16 @@ ${(function(){
   const isSelf = a.id === currentAgent.id;
   const isBrokerRow = a.role === 'broker';
   const previewing = !!brokerIdentity;
-  if(isSelf) return '';
+  /* Your own row used to show nothing at all. That stops you locking or deleting
+     yourself, which is right \u2014 but it also hid File and Details, so the broker
+     had no way to reach their own record or licensing from here. The harmless
+     ones are back; the destructive ones stay off. */
+  if(isSelf) return `<button class="btn-sm" style="margin-right:8px;"
+      onclick="openAgentHR('${a.id}','${escapeHtml(a.name).replace(/'/g,"\\'")}')"
+      title="Your address, emergency contact, W-9, taxpayer ID">File</button>`
+    + `<button class="btn-sm" style="margin-right:8px;" onclick="openAgentProfile('${a.id}')"
+      title="Your contact and license details">Details</button>`
+    + '<span class="agent-role-tag" title="You can\'t lock or delete your own account">you</span>';
   if(isBrokerRow) return '<span class="agent-role-tag">protected</span>';
   // While previewing, read-only actions stay available; destructive ones don't.
   const safe = `<button class="btn-sm" style="margin-right:8px;" onclick="viewAsAgent('${a.id}')" title="See the CRM exactly as they see it">View as</button>`
@@ -5788,7 +5797,7 @@ const CRM_SECTIONS = [
   { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B' },  // slate blue
   { id:'sec-setup',       label:'Settings',    icon:'settings', color:'#6A7290', brokerOnly:true },
   { id:'sec-mypage',      label:'My page',     icon:'mypage',   color:'#2A9D8F' },  // seafoam
-  { id:'sec-myprofile',   label:'My details',  icon:'details',  color:'#7A6A9B', agentOnly:true },
+  { id:'sec-myprofile',   label:'My details',  icon:'details',  color:'#7A6A9B' },  // broker needs one too
   { id:'sec-password',    label:'My password', icon:'key',      color:'#6A7290' },
 ];
 let crmSection = 'sec-today';
@@ -6262,13 +6271,46 @@ async function checkProfileGate(){
 async function renderMyProfileSection(){
   const el = document.getElementById('sec-myprofile');
   if(!el || !currentAgent) return;
-  const p = (await storeGet('agentProfile:'+currentAgent.id)) || {};
+  const staff = isAdminOrOwner();
+  const id = currentAgent.id;
+  const p = (await storeGet('agentProfile:'+id)) || {};
   const missing = missingProfileFields(p);
+
+  /* The broker had no page of their own \u2014 this section used to be agent-only.
+     Their licensing could only be set by opening their own row under Agents,
+     which nobody thinks to do, so it simply never got filled in. */
+  const licenceBox = staff ? `
+    <div class="license-box" id="license-box-${id}" style="margin-top:14px">
+      <div class="field-label">Licensed to practice in <span style="color:var(--coral)">*</span></div>
+      <p style="font-size:12.5px;color:var(--driftwood);margin:4px 0 10px;">
+        This decides what your public page, your flyers and your search listing may claim.
+        Leave it blank and the page says nothing about where you practise \u2014 which is safe,
+        but it also means your own page can't say you're licensed in Florida.</p>
+      <label class="lic-row"><input type="checkbox" id="lic-AL-${id}"> Alabama</label>
+      <input id="licnum-AL-${id}" placeholder="AL license #" style="margin:6px 0 12px;">
+      <label class="lic-row"><input type="checkbox" id="lic-FL-${id}"> Florida</label>
+      <input id="licnum-FL-${id}" placeholder="FL license #" style="margin:6px 0 0;">
+      <button class="btn-sm primary" style="margin-top:12px;" onclick="saveAgentLicense('${id}')">Save licensing</button>
+    </div>` : '';
+
+  const safeName = String(currentAgent.name || '').replace(/'/g, "\\'");
+  const hrLink = `
+    <p style="font-size:12.5px;color:var(--driftwood);margin-top:14px">
+      Your address, emergency contact, W-9 and taxpayer ID sit on your file.
+      <button class="btn-sm" style="margin-left:6px"
+        onclick="openAgentHR('${id}','${safeName}')">Open my file</button></p>`;
+
   el.innerHTML = `<h3 style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;color:var(--marsh);margin:0 0 4px;">My details</h3>
-    <p style="font-size:14px;color:var(--driftwood);margin:0 0 14px;">Keep this current \u2014 the brokerage is required to hold it. Only the broker can see it.</p>
+    <p style="font-size:14px;color:var(--driftwood);margin:0 0 14px;">${staff
+      ? 'Your own record \u2014 the same information you hold for everyone else.'
+      : 'Keep this current \u2014 the brokerage is required to hold it. Only the broker can see it.'}</p>
     <div id="profile-missing" class="profile-missing">${missing.length?'\u26A0 Still needed: '+missing.join(', '):''}</div>
-    ${profileFormHtml(currentAgent.id, p)}
-    <button class="btn-sm primary" style="margin-top:12px;" onclick="saveMyProfile('${currentAgent.id}', false)">Save my details</button>`;
+    ${profileFormHtml(id, p)}
+    <button class="btn-sm primary" style="margin-top:12px;" onclick="saveMyProfile('${id}', false)">Save my details</button>
+    ${licenceBox}
+    ${hrLink}`;
+
+  if(staff && typeof loadAgentLicense === 'function') loadAgentLicense(id);
 }
 </script>
 <script>
