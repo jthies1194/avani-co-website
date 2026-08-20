@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v153">
+<meta name="build" content="index-v155">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2399,6 +2399,11 @@ document.getElementById('view-site').classList.toggle('active', v==='site');
 document.getElementById('view-crm').classList.toggle('active', v==='crm');
 document.getElementById('chat-fab').style.display = v==='site' ? 'flex' : 'none';
 if(v==='crm'){ document.getElementById('chat-panel').classList.remove('open'); initCRM(); }
+// the workspace tint belongs to the CRM only \u2014 never leave it on the public site
+try{
+  if(v === 'crm'){ if(typeof applyCrmBackground === 'function') applyCrmBackground(); }
+  else { if(typeof clearCrmBackground === 'function') clearCrmBackground(); }
+}catch(e){}
 // so Back moves between the site and the CRM instead of leaving bamacoast.com
 if(typeof suppressHistory !== 'undefined' && !suppressHistory){
 try{ history.pushState({ view: v }, '', v === 'crm' ? '#crm' : location.pathname); }catch(e){}
@@ -3077,7 +3082,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v153';
+window.BUILD = 'index-v155';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3354,6 +3359,7 @@ if(!brokerIdentity) saveAgentSession(currentAgent);
 resetIdleTimer();
 document.getElementById('crm-gate').style.display='none';
 document.getElementById('crm-main').style.display='block';
+if(typeof applyCrmBackground === 'function') applyCrmBackground();
 // visibility of the Agents tab is handled by renderCrmNav()
 document.getElementById('crm-signed-in-as').textContent = brokerIdentity
 ? `Previewing as ${currentAgent.name} (${currentAgent.role})`
@@ -6083,6 +6089,12 @@ const BACKGROUNDS = {
   purple: { label:'Purple & gold',   css:'linear-gradient(160deg,#F2EFF8,#FBF5E2)' },
   royal:  { label:'Royal & silver',  css:'linear-gradient(160deg,#EDF0FA,#F2F3F5)' },
 
+  // dark
+  charcoal:{ label:'Charcoal',  css:'#20242F' },
+  midnight:{ label:'Midnight',  css:'linear-gradient(160deg,#141A33,#0F1428)' },
+  ink:     { label:'Deep ink',  css:'#131731' },
+  black:   { label:'Black',     css:'#000000' },
+
   // seasons
   spring: { label:'Spring',  css:'linear-gradient(160deg,#F2F9EF,#FBF4F6)' },
   summer: { label:'Summer',  css:'linear-gradient(160deg,#EFF8FA,#FDF6E8)' },
@@ -6090,7 +6102,7 @@ const BACKGROUNDS = {
   winter: { label:'Winter',  css:'linear-gradient(160deg,#F1F5FA,#EFF1F6)' },
 };
 
-let crmTheme = { palette:'coastal', bg:'paper', custom:{} };
+let crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
 
 /* The colour a given tab should actually be: an explicit override first, then the
    chosen palette, then whatever the section was born with. */
@@ -6101,11 +6113,66 @@ function tabColor(sc, i){
   return sc.color || '#2E3CB0';
 }
 
+/* The workspace background has to go on the page, not on #crm-main. That element
+   is a centred 1180px column, so tinting it produced a stripe down the middle with
+   plain white either side — which reads as nothing having happened.
+
+   Applied to <body> while the CRM is open, and taken off again on the way out so
+   the public site is never touched. */
+/* ---------- any colour they like ----------
+   People should be able to set their workspace to anything, black included. The
+   only thing that isn't optional is being able to read it: a dark background gets
+   a light palette automatically, so nobody ends up with black text on black.
+
+   They can override that too \u2014 text: auto, light, or dark. */
+function luminanceOf(css){
+  // pull the first colour out of a solid or a gradient
+  const hex = String(css || '').match(/#([0-9a-f]{6}|[0-9a-f]{3})/i);
+  const rgb = String(css || '').match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  let r, g, b;
+  if(hex){
+    let h = hex[1];
+    if(h.length === 3) h = h.split('').map(c => c + c).join('');
+    r = parseInt(h.slice(0,2),16); g = parseInt(h.slice(2,4),16); b = parseInt(h.slice(4,6),16);
+  } else if(rgb){
+    r = +rgb[1]; g = +rgb[2]; b = +rgb[3];
+  } else return 1;
+  const lin = v => { v /= 255; return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); };
+  return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+}
+
+function crmIsDark(){
+  const mode = crmTheme.text || 'auto';
+  if(mode === 'light') return true;    // light text means a dark surface
+  if(mode === 'dark')  return false;
+  const b = crmCustomBg() || (BACKGROUNDS[crmTheme.bg] || BACKGROUNDS.paper).css;
+  return luminanceOf(b) < 0.42;
+}
+
+function crmCustomBg(){
+  return (crmTheme.bg === 'custom' && crmTheme.bgColor) ? crmTheme.bgColor : '';
+}
+
 function applyCrmBackground(){
   const el = document.getElementById('crm-main');
-  if(!el) return;
-  const b = BACKGROUNDS[crmTheme.bg] || BACKGROUNDS.paper;
-  el.style.background = b.css;
+  const open = el && el.style.display !== 'none';
+  const css = crmCustomBg() || (BACKGROUNDS[crmTheme.bg] || BACKGROUNDS.paper).css;
+  if(el) el.style.background = 'transparent';
+  if(open){
+    document.body.style.background = css;
+    document.body.style.backgroundAttachment = 'fixed';
+    document.documentElement.style.background = css;
+    document.body.classList.toggle('crm-dark', crmIsDark());
+  } else {
+    clearCrmBackground();
+  }
+}
+
+function clearCrmBackground(){
+  document.body.style.background = '';
+  document.body.style.backgroundAttachment = '';
+  document.documentElement.style.background = '';
+  document.body.classList.remove('crm-dark');
 }
 
 /* One definition of "which tabs does this person see, in what order". The nav and
@@ -6147,7 +6214,7 @@ function prefsOwnerId(){
 /* Loads whoever's settings apply right now and repaints. */
 async function applyPrefsFor(){
   crmTabOrder = null;
-  crmTheme = { palette:'coastal', bg:'paper', custom:{} };
+  crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
   await loadTabOrder();
   applyCrmBackground();
   renderCrmNav();
@@ -6169,9 +6236,13 @@ async function loadTabOrder(){
     const p = await storeGet('crmPrefs:' + prefsOwnerId());
     if(p && Array.isArray(p.tabOrder)) crmTabOrder = p.tabOrder;
     if(p && p.theme){
-      crmTheme = Object.assign({ palette:'coastal', bg:'paper', custom:{} }, p.theme);
+      crmTheme = Object.assign({ palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} }, p.theme);
       if(!PALETTES[crmTheme.palette]) crmTheme.palette = 'coastal';
-      if(!BACKGROUNDS[crmTheme.bg])   crmTheme.bg = 'paper';
+      // 'custom' is a real value and is not in BACKGROUNDS — without this test a
+      // colour someone chose themselves was thrown away on every reload
+      if(crmTheme.bg !== 'custom' && !BACKGROUNDS[crmTheme.bg]) crmTheme.bg = 'paper';
+      if(crmTheme.bg === 'custom' && !/^#[0-9a-f]{6}$/i.test(crmTheme.bgColor || '')) crmTheme.bg = 'paper';
+      if(!['auto','light','dark'].includes(crmTheme.text)) crmTheme.text = 'auto';
       if(typeof crmTheme.custom !== 'object' || !crmTheme.custom) crmTheme.custom = {};
     }
   }catch(e){}
@@ -11550,7 +11621,12 @@ function renderBgPane(){
     ['Everyday', ['paper','sand','mist','shell','sea','dusk']],
     ['Game day', ['crimson','navyor','garnet','green','purple','royal']],
     ['Seasons',  ['spring','summer','autumn','winter']],
+    ['Dark',     ['charcoal','midnight','ink','black']],
   ];
+  const custom = arrTheme.bg === 'custom';
+  const cur = custom ? (arrTheme.bgColor || '#1B2043') : '#2E3CB0';
+  const mode = arrTheme.text || 'auto';
+
   host.innerHTML = groups.map(([title, keys]) => `
     <div class="lbl">${title}</div><div class="bgs" style="margin-bottom:14px">` +
     keys.map(k => {
@@ -11558,9 +11634,58 @@ function renderBgPane(){
       return `<button class="bgsw ${arrTheme.bg===k?'on':''}" onclick="pickBg('${k}')">
         <span class="sq" style="background:${b.css}"></span>
         <span>${escapeHtml(b.label)}</span></button>`;
-    }).join('') + `</div>`).join('') + `<div>
-    <div style="font-size:12px;color:var(--driftwood);margin-top:10px;line-height:1.5">
-      Only your CRM changes. The public site stays on the brand.</div>`;
+    }).join('') + `</div>`).join('')
+
+    + `<div class="lbl">Anything you like</div>
+       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+         <input type="color" id="bg-wheel" value="${cur}"
+           oninput="pickCustomBg(this.value)"
+           style="width:52px;height:40px;border:1px solid rgba(27,32,67,.2);border-radius:9px;
+             background:none;cursor:pointer;padding:2px">
+         <input type="text" id="bg-hex" value="${cur}" maxlength="7"
+           oninput="pickCustomBg(this.value)" placeholder="#000000"
+           style="width:110px;padding:9px 10px;border:1px solid rgba(27,32,67,.2);
+             border-radius:8px;font:inherit;font-size:13.5px;font-family:monospace">
+         <span style="font-size:12.5px;color:var(--driftwood)">
+           ${custom ? 'Using your own color' : 'Pick one to use your own'}</span>
+       </div>
+
+       <div class="lbl" style="margin-top:16px">Text</div>
+       <div class="bgs" style="grid-template-columns:repeat(3,1fr)">
+         ${[['auto','Match the background'],['dark','Always dark'],['light','Always light']]
+           .map(([k,label]) => `
+           <button class="bgsw ${mode===k?'on':''}" onclick="pickTextMode('${k}')">
+             <span class="sq" style="background:${
+               k==='light' ? 'linear-gradient(#20253A,#141830)'
+               : k==='dark' ? 'linear-gradient(#FFFFFF,#EDEFF6)'
+               : 'linear-gradient(90deg,#FFFFFF 50%,#20253A 50%)'};
+               display:flex;align-items:center;justify-content:center;
+               color:${k==='light'?'#EEF0F8':'#1B2043'};font-size:15px">Aa</span>
+             <span style="font-size:11px">${label}</span></button>`).join('')}
+       </div>
+       <div style="font-size:12px;color:var(--driftwood);margin-top:8px;line-height:1.5">
+         On <strong>Match the background</strong> a dark color switches the whole workspace to a
+         light palette, so it stays readable whatever you choose.
+         Only your CRM changes \u2014 the public site always stays on the brand.</div>`;
+}
+
+function pickCustomBg(v){
+  let c = String(v || '').trim();
+  if(/^[0-9a-f]{6}$/i.test(c)) c = '#' + c;
+  if(!/^#[0-9a-f]{6}$/i.test(c)) return;      // wait until it's a complete colour
+  arrTheme.bg = 'custom';
+  arrTheme.bgColor = c;
+  const wheel = document.getElementById('bg-wheel');
+  const hex = document.getElementById('bg-hex');
+  if(wheel && wheel.value.toLowerCase() !== c.toLowerCase()) wheel.value = c;
+  if(hex && document.activeElement !== hex) hex.value = c;
+  previewTheme();
+}
+
+function pickTextMode(k){
+  arrTheme.text = k;
+  renderBgPane();
+  previewTheme();
 }
 
 function pickBg(k){
@@ -11591,7 +11716,7 @@ async function applyTabArrange(){
 
 async function resetTabArrange(){
   crmTabOrder = null;
-  crmTheme = { palette:'coastal', bg:'paper', custom:{} };
+  crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
   arrDraft = []; arrTheme = JSON.parse(JSON.stringify(crmTheme));
   try{ await storeSet('crmPrefs:' + prefsOwnerId(), { tabOrder: [], theme: crmTheme }); }catch(e){}
   applyCrmBackground();
@@ -12441,7 +12566,13 @@ function openTileColor(id){
   document.getElementById('tc-name').textContent = (sec ? sec.label : 'Tab') + ' color';
   document.getElementById('tc-sw').innerHTML = SWATCHES.map(c =>
     `<i class="${c.toLowerCase()===String(cur).toLowerCase()?'on':''}" style="background:${c}"
-      onclick="setTileColor('${c}')"></i>`).join('');
+      onclick="setTileColor('${c}')"></i>`).join('')
+    + `<label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:8px;
+        font-size:12px;color:rgba(27,32,67,.62);cursor:pointer">
+        <input type="color" value="${cur}" oninput="setTileColor(this.value)"
+          style="width:30px;height:26px;border:1px solid rgba(27,32,67,.2);border-radius:6px;
+          background:none;cursor:pointer;padding:1px">
+        Any color you like</label>`;
 
   const btn = document.querySelector(`button.tile-arr[data-id="${id}"]`);
   const r = btn ? btn.getBoundingClientRect() : { left:20, bottom:80 };
@@ -12752,6 +12883,66 @@ async function calDelete(id, office){
 <button class="submit-btn" onclick="calSave()">Add it</button>
 </div>
 </div>
+
+<style>
+/* ---------- dark workspace ----------
+   Redefines the palette variables rather than restyling every component, so
+   anything built later inherits it without extra work. Applied only when the
+   chosen background is genuinely dark, or when someone asks for light text. */
+body.crm-dark{
+  --sand:#1A1E30;
+  --sand-light:#20253A;
+  --white:#232941;
+  --paper:#232941;
+  --ink:#EEF0F8;
+  --blue-ink:#EEF0F8;
+  --driftwood:#A8B0CC;
+  --grey:#A8B0CC;
+  --line:rgba(238,240,248,0.16);
+  --marsh:#8FA0FF;
+  --blue:#8FA0FF;
+  --gulf:#8FA0FF;
+  --gold:#E6C381;
+  --gold-deep:#E6C381;
+  color:#EEF0F8;
+}
+body.crm-dark .crm-wrap,
+body.crm-dark .crm-wrap *{border-color:rgba(238,240,248,.16)}
+body.crm-dark .card,
+body.crm-dark .setup-panel,
+body.crm-dark .tx-doc,
+body.crm-dark .rs-link,
+body.crm-dark .arr-item,
+body.crm-dark .mk-proj,
+body.crm-dark .cal-day,
+body.crm-dark .cal-item,
+body.crm-dark .agent-row{background:#232941;color:#EEF0F8}
+body.crm-dark .cal-day.out{background:#1D2234}
+body.crm-dark input,
+body.crm-dark select,
+body.crm-dark textarea{background:#1A1E30;color:#EEF0F8;
+  border-color:rgba(238,240,248,.22)}
+body.crm-dark input::placeholder,
+body.crm-dark textarea::placeholder{color:rgba(238,240,248,.42)}
+body.crm-dark .btn-sm{background:#232941;color:#EEF0F8;border-color:rgba(238,240,248,.22)}
+body.crm-dark .btn-sm.primary{background:var(--marsh);color:#141830;border-color:var(--marsh)}
+body.crm-dark .crm-nav button{background:color-mix(in srgb, var(--tab) 22%, #1E2336);
+  border-color:color-mix(in srgb, var(--tab) 42%, transparent);
+  color:color-mix(in srgb, var(--tab) 34%, #F2F4FC)}
+body.crm-dark .crm-nav button .ti{background:color-mix(in srgb, var(--tab) 34%, #1E2336);
+  color:color-mix(in srgb, var(--tab) 55%, #FFFFFF)}
+body.crm-dark .crm-nav button.on{background:var(--tab);border-color:var(--tab);color:#12162A}
+body.crm-dark .crm-nav button.on .ti{background:rgba(0,0,0,.2);color:#12162A}
+body.crm-dark .sec-header h2,
+body.crm-dark .crm-wrap .card h3{color:color-mix(in srgb, var(--sec,#8FA0FF) 40%, #EEF0F8)}
+body.crm-dark .modal{background:#232941;color:#EEF0F8}
+body.crm-dark .modal h3{color:#EEF0F8}
+body.crm-dark .arr-tabs{background:#1A1E30}
+body.crm-dark .arr-tabs button.on{background:#2C3350;color:#EEF0F8}
+body.crm-dark .pals .pal,
+body.crm-dark .bgsw{background:#232941;color:#EEF0F8;border-color:rgba(238,240,248,.18)}
+body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
+</style>
 
 </body>
 </html>
