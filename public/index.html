@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v184">
+<meta name="build" content="index-v185">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3622,7 +3622,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v184';
+window.BUILD = 'index-v185';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -11364,6 +11364,19 @@ async function renderResourcesSection(){
     <div class="rs-tabs">
       <button id="rst-links" class="on" onclick="rsTab('links')">Links &amp; contacts</button>
       <button id="rst-forms" onclick="rsTab('forms')">Baldwin REALTORS&reg; forms</button>
+      <button id="rst-train" onclick="rsTab('train')">How it all works</button>
+    </div>
+
+    <div id="rs-pane-train" class="rs-pane">
+      <div class="card"><div style="padding:18px">
+        <h3 style="margin:0 0 3px;font-family:'Cormorant Garamond',serif;font-size:23px;
+          font-weight:500;color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)">
+          How it all works</h3>
+        <p style="margin:0 0 14px;font-size:13.5px;color:var(--driftwood);max-width:620px;
+          line-height:1.55">The shape of a transaction, in plain language. For when you know
+          roughly what happens next but would rather be sure.</p>
+        <div id="tr-body"></div>
+      </div></div>
     </div>
 
     <div id="rs-pane-forms" class="rs-pane">
@@ -11414,7 +11427,8 @@ async function renderResourcesSection(){
 
 /* Which half of Resources is showing. */
 function rsTab(which){
-  ['links','forms'].forEach(k => {
+  if(which === 'train' && typeof renderTraining === 'function') renderTraining();
+  ['links','forms','train'].forEach(k => {
     const b = document.getElementById('rst-' + k);
     const p = document.getElementById('rs-pane-' + k);
     if(b) b.classList.toggle('on', k === which);
@@ -16843,6 +16857,196 @@ function mkoImg(src){
   }
   return mkoImgs[src];
 }
+</script>
+
+<style>
+.tr-tabs{display:flex;gap:5px;background:#EFF0F6;padding:5px;border-radius:11px;margin-bottom:16px;
+  flex-wrap:wrap}
+.tr-tabs button{flex:1 1 130px;border:none;background:transparent;padding:9px 10px;border-radius:8px;
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--driftwood);cursor:pointer}
+.tr-tabs button.on{background:#fff;color:#1B2043;box-shadow:0 1px 5px rgba(27,32,67,.13)}
+body.crm-dark .tr-tabs{background:#1A1E30}
+body.crm-dark .tr-tabs button.on{background:#2C3350;color:#EEF0F8}
+
+.tr-step{display:flex;gap:14px;align-items:flex-start;padding:14px 0;
+  border-bottom:1px solid var(--line)}
+.tr-step:last-child{border-bottom:none}
+.tr-n{width:28px;height:28px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;
+  justify-content:center;font-size:13px;font-weight:700;color:#fff;
+  background:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)}
+.tr-step .tx{flex:1;min-width:0}
+.tr-step .tx b{display:block;font-size:15.5px;margin-bottom:3px}
+.tr-step .tx p{margin:0;font-size:13.5px;line-height:1.6;color:var(--driftwood)}
+.tr-step .tx .watch{font-size:12.5px;color:#8A6314;background:#FBF6EA;border-radius:7px;
+  padding:7px 10px;margin-top:7px;line-height:1.5}
+body.crm-dark .tr-step .tx .watch{background:#2A2413;color:#E8DCC0}
+
+.tr-q{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--paper)}
+.tr-q .qh{padding:12px 14px;cursor:pointer;font-size:14.5px;font-weight:600;display:flex;
+  gap:10px;align-items:center}
+.tr-q .qh .cv{margin-left:auto;opacity:.5;font-size:11px;transition:transform .2s}
+.tr-q.open .qh .cv{transform:rotate(180deg)}
+.tr-q .qb{display:none;padding:0 14px 13px;font-size:13.5px;line-height:1.65;color:var(--driftwood)}
+.tr-q.open .qb{display:block}
+
+.tr-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.tr-link{display:block;border:1px solid var(--line);border-radius:10px;padding:13px 15px;
+  text-decoration:none;background:var(--paper);transition:.15s}
+.tr-link:hover{border-color:var(--sec,#2E3CB0);transform:translateY(-1px)}
+.tr-link b{display:block;font-size:14.5px;color:#1B2043;margin-bottom:2px}
+.tr-link span{font-size:12.5px;color:var(--driftwood);line-height:1.45}
+body.crm-dark .tr-link b{color:#EEF0F8}
+.tr-note{font-size:12.5px;color:var(--driftwood);line-height:1.6;margin-top:16px;
+  padding-top:13px;border-top:1px solid var(--line)}
+</style>
+
+<script>
+/* ---------- training ----------
+   The basics, in plain language, for people who have not done many deals. It is
+   not a substitute for the broker and says so \u2014 but "what happens after the offer
+   is accepted" should not require ringing anybody.
+
+   \u26a0 Everything here describes the ordinary shape of a transaction. Anything that
+   turns on the contract, the law or a specific deal goes to the broker or the
+   association, and the page says that plainly rather than guessing. */
+const TR_BUY = [
+  { t:'Get them pre-approved first',
+    d:'Before you show anything, send them to a lender. A pre-approval tells you what they can actually buy, and a seller will not take an offer seriously without one.',
+    w:'Pre-qualified and pre-approved are not the same thing. Pre-approval means the lender has checked the paperwork.' },
+  { t:'Agency, in writing',
+    d:'Alabama requires a written agreement before you represent a buyer, and the RECAD disclosure is given at first substantive contact. Florida has its own disclosure rules.',
+    w:'This is where new agents most often get caught out. Get the paperwork signed before you start showing.' },
+  { t:'Show, and keep a record',
+    d:'Note what they liked and did not. It saves repeating yourself and it is what makes the next showing sharper.' },
+  { t:'Write the offer',
+    d:'Price, earnest money, closing date, what conveys, and every contingency: inspection, appraisal, financing, sale of another home.',
+    w:'Every date in the contract is a deadline somebody has to meet. Put them all in your deal record the day it is signed.' },
+  { t:'Earnest money, on time',
+    d:'It goes to the escrow holder named in the contract, by the deadline in the contract. Get a receipt.',
+    w:'Late earnest money can put the whole contract at risk. This is the first deadline and the easiest to miss.' },
+  { t:'Inspection and the response',
+    d:'Book it early in the window. When the report comes back, any repair request goes in writing before the inspection period ends.',
+    w:'If the period passes without a written response, the right to object usually goes with it.' },
+  { t:'Appraisal',
+    d:'The lender orders it. If it comes in under the contract price, the parties renegotiate, the buyer makes up the difference, or the contract may allow a way out.' },
+  { t:'Financing and the deadline',
+    d:'Stay in touch with the lender weekly. Underwriting asks for documents, and a buyer who is slow returning them is the usual reason closings slip.' },
+  { t:'Title work',
+    d:'The title company checks ownership, liens and easements. Read the commitment when it arrives \u2014 that is when surprises turn up.' },
+  { t:'Clear to close, then walkthrough',
+    d:'Once the lender clears it, do the final walkthrough. Check agreed repairs were done and that what conveys is still there.' },
+  { t:'Closing',
+    d:'Funds, signatures, keys. Make sure they know what to bring and how the money is being sent.',
+    w:'Wire fraud is real and this industry is a target. Tell your buyer to ring the closing company on a number they looked up themselves before sending anything.' },
+];
+
+const TR_SELL = [
+  { t:'Price it on evidence',
+    d:'Comparable sales, not hope. Bring the data and let it make the argument for you.' },
+  { t:'Listing agreement, signed',
+    d:'Term, price, compensation, what conveys, how it is marketed. All in writing before anything goes live.' },
+  { t:'Disclosures',
+    d:'Alabama is largely caveat emptor but there are real exceptions \u2014 known material defects affecting health or safety, and anything you are asked directly. Florida requires disclosure of known material defects not readily observable.',
+    w:'When in doubt, disclose. Nobody has been sued for telling the truth too early. Ask the broker if you are unsure.' },
+  { t:'Lead paint, pre-1978',
+    d:'Federal law. Disclosure and the pamphlet, every time, on any home built before 1978.' },
+  { t:'Prepare and photograph',
+    d:'Declutter, clean, light it well. The photographs decide whether anyone comes at all.' },
+  { t:'On the market',
+    d:'Into the MLS within the timeframe the rules require, with accurate data. Wrong square footage or a wrong year built causes trouble later.' },
+  { t:'Showings and feedback',
+    d:'Collect it and pass it on. A seller who hears nothing assumes the worst \u2014 the same as a buyer.' },
+  { t:'Offers',
+    d:'Present every one. Compare net proceeds, not just the headline price: financing type, contingencies, closing date and who pays what all move the real number.' },
+  { t:'Under contract',
+    d:'Now it is deadlines. Inspection response, appraisal, financing, title \u2014 and the seller needs to know what each one means for them.' },
+  { t:'Closing',
+    d:'Confirm what conveys, arrange the move, and make sure utilities and keys are sorted.' },
+];
+
+const TR_FAQ = [
+  { q:'What actually happens after an offer is accepted?',
+    a:'The deadlines start. Earnest money goes to escrow, the inspection is booked, the lender orders the appraisal, underwriting works through the file, and the title company checks ownership. Your job is to watch every date in the contract and chase whoever is behind. Put those dates into your deal record on day one and the CRM will remind you.' },
+  { q:'The inspection found problems. Now what?',
+    a:'Any request goes in writing, before the inspection period ends. The seller can agree, refuse, or offer something in between \u2014 money at closing is often easier than repairs. If the period passes with nothing in writing, the right to object usually goes with it. Read the contract for the exact wording and ask the broker if it is not obvious.' },
+  { q:'The appraisal came in low.',
+    a:'Renegotiate, have the buyer cover the gap, challenge it with better comparables, or use whatever the contract allows. What you cannot do is ignore it \u2014 the lender will not lend above the appraised value.' },
+  { q:'Can I tell a buyer about the schools or the neighbourhood?',
+    a:'Careful. Steering is a fair-housing violation and it does not require bad intent. Point people at the data \u2014 school district sites, crime statistics, census figures \u2014 and let them draw conclusions. Do not characterise an area as good, bad, safe or family-friendly.' },
+  { q:'What do I have to disclose?',
+    a:'Alabama is largely caveat emptor, with real exceptions: known material defects affecting health or safety, anything you are asked directly, and anything the law specifically requires. Florida requires disclosure of known material defects not readily observable. Neither summary is a substitute for asking the broker about a specific property.' },
+  { q:'Someone wants to buy a house I have listed and they have no agent.',
+    a:'Speak to the broker before you answer. Representing both sides changes what you are allowed to do and say, needs written consent, and is handled differently in Alabama and Florida. Do not improvise this one.' },
+  { q:'How does compensation work now?',
+    a:'It is negotiable and it always was, and since the NAR settlement it cannot be advertised or implied in the MLS. Buyer agreements must state what the buyer pays. If you are unsure how to word something, ask before you send it.' },
+  { q:'A client wants to wire money.',
+    a:'Tell them to ring the closing company on a number they found themselves \u2014 not one from an email \u2014 and confirm the details verbally before sending anything. Wire fraud in real estate is common, fast, and usually unrecoverable.' },
+  { q:'What if I genuinely do not know the answer?',
+    a:'Say so and find out. "Let me check and come straight back to you" costs nothing. Guessing in a transaction is how people end up in front of the commission.' },
+];
+
+const TR_LINKS = [
+  { t:'Alabama Real Estate Commission', u:'https://arec.alabama.gov',
+    d:'Licence law, rules, renewals, disciplinary decisions worth reading' },
+  { t:'Alabama Association of REALTORS\u00ae', u:'https://www.alabamarealtors.com',
+    d:'Legal helpdesk, forms library, statewide guidance' },
+  { t:'Baldwin REALTORS\u00ae', u:'https://www.baldwinrealtors.com',
+    d:'Our association \u2014 classes, forms, MLS rules' },
+  { t:'Baldwin forms library', u:'https://www.baldwincountymls.com/associationdocuments',
+    d:'Every contract and addendum, always the current version' },
+  { t:'Florida Real Estate Commission', u:'https://www.myfloridalicense.com',
+    d:'Florida licence law and renewals' },
+  { t:'Florida REALTORS\u00ae', u:'https://www.floridarealtors.org',
+    d:'Florida forms, legal hotline, education' },
+  { t:'HUD fair housing', u:'https://www.hud.gov/fairhousing',
+    d:'What steering and discrimination actually mean in practice' },
+  { t:'The CE Shop', u:'https://share.theceshop.com/x/xrbamL',
+    d:'Continuing education for both states \u2014 our referral link' },
+];
+
+let trTab = 'buy';
+
+function renderTraining(){
+  const host = document.getElementById('tr-body');
+  if(!host) return;
+
+  const steps = list => list.map((s, i) => `
+    <div class="tr-step">
+      <span class="tr-n">${i+1}</span>
+      <span class="tx"><b>${escapeHtml(s.t)}</b><p>${escapeHtml(s.d)}</p>
+        ${s.w ? `<div class="watch"><strong>Watch out:</strong> ${escapeHtml(s.w)}</div>` : ''}</span>
+    </div>`).join('');
+
+  let inner = '';
+  if(trTab === 'buy')  inner = steps(TR_BUY);
+  else if(trTab === 'sell') inner = steps(TR_SELL);
+  else if(trTab === 'faq') inner = TR_FAQ.map((f, i) => `
+      <div class="tr-q" id="trq-${i}">
+        <div class="qh" onclick="document.getElementById('trq-${i}').classList.toggle('open')">
+          ${escapeHtml(f.q)}<span class="cv">&#9662;</span></div>
+        <div class="qb">${escapeHtml(f.a)}</div>
+      </div>`).join('');
+  else inner = `<div class="tr-links">${TR_LINKS.map(l => `
+      <a class="tr-link" href="${l.u}" target="_blank" rel="noopener">
+        <b>${escapeHtml(l.t)}</b><span>${escapeHtml(l.d)}</span></a>`).join('')}</div>`;
+
+  host.innerHTML = `
+    <div class="tr-tabs">
+      <button class="${trTab==='buy'?'on':''}" onclick="trShow('buy')">Working with a buyer</button>
+      <button class="${trTab==='sell'?'on':''}" onclick="trShow('sell')">Taking a listing</button>
+      <button class="${trTab==='faq'?'on':''}" onclick="trShow('faq')">When you're stuck</button>
+      <button class="${trTab==='links'?'on':''}" onclick="trShow('links')">Where to look it up</button>
+    </div>
+    ${inner}
+    <div class="tr-note">
+      This is the ordinary shape of a transaction, written plainly so you can find your bearings.
+      It is not legal advice and it does not replace the broker. Anything that turns on the
+      wording of a contract, on the law, or on the particulars of one deal \u2014 ask.
+      Nobody has ever been in trouble for asking too early.
+    </div>`;
+}
+
+function trShow(k){ trTab = k; renderTraining(); }
 </script>
 
 </body>
