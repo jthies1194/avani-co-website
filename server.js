@@ -147,7 +147,8 @@ async function requireSession(req, res) {
 function publicWriteAllowed(key) {
   return String(key || '').startsWith('lead:');
 }
-const PUBLIC_READ_KEYS = ['settings:viewLimit', 'settings:testimonials', 'settings:reviewLink'];
+const PUBLIC_READ_KEYS = ['settings:viewLimit', 'settings:testimonials', 'settings:reviewLink',
+                          'settings:exitIntent'];   // wording for the leaving-the-site prompt
 function publicReadAllowed(key) {
   return PUBLIC_READ_KEYS.includes(String(key || ''));
 }
@@ -178,7 +179,7 @@ function keyAllowedForAgent(key, sess, write) {
     'settings:viewLimit', 'settings:testimonials', 'settings:reviewLink',
     'settings:agentPlans', 'settings:agentPlanHistory', 'settings:closedDeals',
     'settings:expenses', 'settings:dealSubmissions', 'settings:officeCalendar',
-    'settings:resourceLinks', 'settings:marketingPolicy',
+    'settings:resourceLinks', 'settings:marketingPolicy', 'settings:exitIntent',
   ]);
   if (k.startsWith('settings:')) return AGENT_READABLE.has(k) && !write;
   if (k.startsWith('lead:')) return true;                 // ownership checked separately
@@ -1975,7 +1976,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v64',
+    serverVersion: 'v65',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
