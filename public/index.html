@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v181">
+<meta name="build" content="index-v182">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2578,7 +2578,15 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 </div>
 </div></div>
 
-<div class="crm-sec" id="sec-agents"><div class="setup-panel" id="agents-panel">
+<div class="crm-sec" id="sec-agents">
+<div class="setup-panel">
+  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
+    b.style.display = b.style.display==='none' ? '' : 'none';
+    if(b.style.display !== 'none' && typeof renderAwards === 'function') renderAwards();">
+    <h3>&#9733; Recognition &amp; award tiers</h3><span>&#9662;</span>
+  </div>
+  <div class="setup-body" id="aw-body" style="display:none">Loading&hellip;</div>
+</div><div class="setup-panel" id="agents-panel">
 <div class="setup-head" onclick="toggleAgentsPanel()">
 <h3>👥 Manage agents</h3>
 <span id="agents-caret">▾</span>
@@ -3614,7 +3622,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v181';
+window.BUILD = 'index-v182';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6915,7 +6923,11 @@ function showCrmSection(id){
     }
     if(id === 'sec-myprofile') renderMyProfileSection();
     if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
-    if(id === 'sec-marketing' && typeof renderMarketingSection === 'function') renderMarketingSection();
+    if(id === 'sec-marketing' && typeof renderMarketingSection === 'function'){
+      renderMarketingSection().then(() => {
+        if(typeof renderOpenHouses === 'function') renderOpenHouses();
+      });
+    }
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
     if(id === 'sec-tracker' && typeof renderTrackerSection === 'function') renderTrackerSection();
     if(id === 'sec-pipeline' && typeof renderPipelineSection === 'function') renderPipelineSection();
@@ -9905,13 +9917,30 @@ async function mkSavePolicy(on){
                  : 'Headlines are capped at the brokerage name again.');
 }
 
+/* Open houses sit inside Marketing rather than taking another tab — there are
+   fifteen already. */
+function ohPanelHtml(){
+  return `<div class="card" style="margin-bottom:14px"><div style="padding:18px">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+        <h3 style="margin:0;font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:500;
+          color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)">Open house sign-in</h3>
+        <button class="btn-sm primary" style="margin-left:auto"
+          onclick="document.getElementById('oh-new').classList.add('active')">+ Set one up</button>
+      </div>
+      <p style="margin:0 0 13px;font-size:13.5px;color:var(--driftwood);max-width:600px;line-height:1.55">
+        A QR code for the door. Visitors sign in on their own phone, it lands in your leads,
+        and afterwards you can send four tick-box questions that people actually answer.</p>
+      <div id="oh-list">Loading&hellip;</div>
+    </div></div>`;
+}
+
 async function renderMarketingSection(){
   const el = document.getElementById('sec-marketing');
   if(!el || !currentAgent) return;
   const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
   await mkLoadPolicy();
 
-  el.innerHTML = `<div class="card"><div style="padding:18px">
+  el.innerHTML = ohPanelHtml() + `<div class="card"><div style="padding:18px">
       <p style="margin:0 0 14px;color:rgba(27,32,67,.72);max-width:640px">
         Business cards and yard sign riders, print-ready, with a QR code that brings
         every scan back to you. Save a project and pick it up later instead of
@@ -15738,6 +15767,24 @@ function bfItems(){
     });
   }catch(e){}
 
+  // agents about to reach a tier — the point of the whole thing is being told early
+  try{
+    if(isAdminOrOwner() && typeof awNearlyThere === 'function'){
+      const year = (typeof cdYear !== 'undefined' && cdYear) ? cdYear : new Date().getFullYear();
+      (cdData.agents || []).filter(a => a.active !== false).forEach(a => {
+        const near = awNearlyThere(a.id, year);
+        if(!near || !near.next) return;
+        out.push({
+          key: 'award:' + a.id + ':' + near.next.k,
+          urgency: 'ok',
+          title: a.name + ' is ' + fmtMoney(near.gap) + ' from ' + near.next.label,
+          sub: 'Worth a word before they get there',
+          go: 'Agents', goTo: 'sec-agents',
+        });
+      });
+    }
+  }catch(e){}
+
   // the broker's own decisions
   try{
     if(isAdminOrOwner() && Array.isArray(window.__pendingReviews) && window.__pendingReviews.length){
@@ -15900,6 +15947,556 @@ function showModalMessage(html){
   }
   document.getElementById('msg-body').innerHTML = html;
   el.classList.add('active');
+}
+</script>
+
+<style>
+.oh-card{border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:11px;
+  background:var(--paper)}
+.oh-top{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.oh-top .w{flex:1;min-width:170px}
+.oh-top .w b{font-size:15.5px;display:block}
+.oh-top .w span{font-size:12.5px;color:var(--driftwood)}
+.oh-count{font-family:'Cormorant Garamond',serif;font-size:30px;line-height:1;
+  color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)}
+.oh-count small{display:block;font-family:'Jost',sans-serif;font-size:10px;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--driftwood)}
+.oh-qr{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:13px;
+  padding-top:13px;border-top:1px solid var(--line)}
+.oh-qr canvas{border-radius:8px;background:#fff;padding:6px;border:1px solid var(--line)}
+.oh-qr .tx{flex:1;min-width:180px;font-size:12.5px;color:var(--driftwood);line-height:1.5}
+.oh-vis{margin-top:12px}
+.oh-v{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);
+  font-size:13.5px;flex-wrap:wrap}
+.oh-v .n{font-weight:600;min-width:130px}
+.oh-v .e{color:var(--driftwood);font-size:12.5px;flex:1;min-width:150px}
+.oh-v .tag{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:20px;background:#EEF0F6;color:var(--driftwood)}
+.oh-v .tag.own{background:#FBF6EA;color:#8A6314}
+.oh-fb{font-size:12.5px;color:var(--driftwood);margin-top:4px;padding-left:6px;
+  border-left:2px solid rgba(230,195,129,.7)}
+.oh-acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+
+/* ---------- what the visitor sees ---------- */
+#ohv{display:none;min-height:80vh;background:linear-gradient(#F7F9FC,#EEF2F8)}
+#ohv.on{display:block}
+.ohv-wrap{max-width:460px;margin:0 auto;padding:34px 22px 70px}
+.ohv-h{text-align:center;margin-bottom:22px}
+.ohv-h .k{font-size:10.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#1E9AA8}
+.ohv-h h1{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:500;color:#1B2043;
+  margin:6px 0 4px;line-height:1.15}
+.ohv-h p{font-size:14px;color:#5A6288;margin:0}
+.ohv-card{background:#fff;border-radius:15px;padding:22px;box-shadow:0 3px 20px rgba(27,32,67,.09)}
+.ohv-card .field{margin-bottom:13px}
+.ohv-card label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;color:#5A6288;margin-bottom:5px}
+.ohv-card input{width:100%;padding:13px;border:1px solid rgba(27,32,67,.2);border-radius:9px;
+  font:inherit;font-size:16px}
+.ohv-opts{display:grid;gap:7px}
+.ohv-opt{display:block;padding:12px 14px;border:1.5px solid rgba(27,32,67,.16);border-radius:10px;
+  font-size:14.5px;cursor:pointer;background:#fff;text-align:left;font:inherit;color:#1B2043}
+.ohv-opt.on{border-color:#2E3CB0;background:#F2F4FD;font-weight:600}
+.ohv-go{width:100%;padding:15px;border:none;border-radius:10px;background:#2E3CB0;color:#fff;
+  font:inherit;font-size:16px;font-weight:700;cursor:pointer;margin-top:6px}
+.ohv-go:hover{background:#232C8E}
+.ohv-note{font-size:12px;color:#8A90A8;text-align:center;margin-top:14px;line-height:1.55}
+.ohv-q{margin-bottom:20px}
+.ohv-q .qt{font-size:15.5px;font-weight:600;color:#1B2043;margin-bottom:9px}
+</style>
+
+<div id="ohv"><div class="ohv-wrap" id="ohv-body"></div></div>
+
+<script>
+/* ---------- open house ----------
+   A QR on a sign or an iPad; the visitor signs in on their own phone. Faster than
+   a clipboard, legible, and the email is one they actually typed.
+
+   \u26a0 Anyone who says they already have an agent is recorded but never turned into
+   a lead. Chasing another agent's client is how you end up in front of the
+   association. */
+let ohList = [];
+
+async function renderOpenHouses(){
+  const host = document.getElementById('oh-list');
+  if(!host) return;
+  try{
+    const r = await fetch('/api/openhouse/mine');
+    ohList = r.ok ? ((await r.json()).openHouses || []) : [];
+  }catch(e){ ohList = []; }
+
+  host.innerHTML = ohList.length
+    ? ohList.map(ohCardHtml).join('')
+    : `<div style="font-size:13.5px;color:var(--driftwood);line-height:1.6">
+         Nothing set up yet. Start one before your next open house and put the QR on a sign
+         by the door \u2014 people sign in on their own phone rather than squinting at a clipboard.</div>`;
+  ohList.forEach(oh => ohDrawQr(oh));
+}
+
+function ohCardHtml(oh){
+  const vis = oh.visitors || [];
+  const withAgent = vis.filter(v => v.hasAgent).length;
+  const answered = vis.filter(v => v.feedback).length;
+  const link = location.origin + '/?oh=' + oh.token;
+  return `<div class="oh-card">
+    <div class="oh-top">
+      <div class="w">
+        <b>${escapeHtml(oh.address || 'Open house')}</b>
+        <span>${escapeHtml(oh.when || '')}${oh.price ? ' \u00b7 ' + escapeHtml(oh.price) : ''}</span>
+      </div>
+      <div class="oh-count">${vis.length}<small>signed in</small></div>
+    </div>
+
+    <div class="oh-qr">
+      <canvas id="ohqr-${oh.id}" width="132" height="132"></canvas>
+      <div class="tx">
+        <strong>Put this on a sign by the door.</strong><br>
+        They scan it, sign in on their phone, and it lands in your leads.
+        <div style="margin-top:6px;word-break:break-all;font-size:11.5px">${escapeHtml(link)}</div>
+      </div>
+    </div>
+
+    ${vis.length ? `<div class="oh-vis">
+      ${vis.map(v => `
+        <div class="oh-v">
+          <span class="n">${escapeHtml(v.name)}</span>
+          <span class="e">${escapeHtml(v.email || 'no email')}${
+            v.phone ? ' \u00b7 ' + escapeHtml(v.phone) : ''}</span>
+          ${v.hasAgent ? '<span class="tag own">has an agent</span>'
+            : '<span class="tag">lead created</span>'}
+        </div>
+        ${v.feedback ? `<div class="oh-fb">${ohFeedbackLine(v.feedback)}</div>` : ''}`).join('')}
+    </div>` : ''}
+
+    <div class="oh-acts">
+      <button class="btn-sm" onclick="ohCopy('${escapeHtml(link)}')">Copy the link</button>
+      <button class="btn-sm" onclick="ohPrintSign('${oh.id}')">Print a sign</button>
+      ${vis.filter(v => v.email && !v.feedback).length
+        ? `<button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);
+             border-color:var(--marsh)" onclick="ohAskFeedback('${oh.id}')">
+             Ask ${vis.filter(v => v.email && !v.feedback).length} for feedback</button>` : ''}
+      <button class="btn-sm" onclick="ohDelete('${oh.id}')">Remove</button>
+    </div>
+    ${answered ? `<div style="font-size:12px;color:var(--driftwood);margin-top:8px">
+      ${answered} of ${vis.length} have answered.</div>` : ''}
+  </div>`;
+}
+
+function ohFeedbackLine(f){
+  const bits = [f.impression, f.price, f.stage, f.agent].filter(Boolean);
+  return escapeHtml(bits.join(' \u00b7 ')) + (f.note ? ' \u2014 \u201c' + escapeHtml(f.note) + '\u201d' : '');
+}
+
+function ohDrawQr(oh){
+  const cv = document.getElementById('ohqr-' + oh.id);
+  if(!cv || typeof AvaniQR === 'undefined') return;
+  try{ AvaniQR.draw(cv, location.origin + '/?oh=' + oh.token, 132); }catch(e){}
+}
+
+async function ohCreate(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  if(!g('oh-address')){ showToast('Which house?'); return; }
+  try{
+    const r = await fetch('/api/openhouse', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ address:g('oh-address'), when:g('oh-when'),
+        price:g('oh-price'), listingKey:g('oh-key') }),
+    });
+    if(!r.ok){ showToast("Couldn't set that up."); return; }
+    ['oh-address','oh-when','oh-price'].forEach(i => {
+      const e = document.getElementById(i); if(e) e.value = '';
+    });
+    document.getElementById('oh-new').classList.remove('active');
+    showToast('Ready. Print the sign and put it by the door.');
+    renderOpenHouses();
+  }catch(e){ showToast("Couldn't set that up."); }
+}
+
+async function ohCopy(u){
+  try{ await navigator.clipboard.writeText(u); showToast('Link copied.'); }
+  catch(e){ prompt('The sign-in link:', u); }
+}
+
+async function ohAskFeedback(id){
+  const oh = ohList.find(x => x.id === id);
+  if(!oh) return;
+  const n = (oh.visitors||[]).filter(v => v.email && !v.feedback).length;
+  if(!confirm(`Send four tick-box questions to ${n} visitor${n===1?'':'s'}?`)) return;
+  showToast('Sending\u2026');
+  try{
+    const r = await fetch('/api/openhouse/' + encodeURIComponent(id) + '/feedback',
+      { method:'POST' });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error || "Couldn't send those."); return; }
+    showToast(`Asked ${d.sent} visitor${d.sent===1?'':'s'}.`);
+    renderOpenHouses();
+  }catch(e){ showToast("Couldn't send those."); }
+}
+
+async function ohDelete(id){
+  if(!confirm('Remove this open house? The QR code will stop working.')) return;
+  await fetch('/api/openhouse/' + encodeURIComponent(id), { method:'DELETE' });
+  renderOpenHouses();
+}
+
+/* A sign to print, with the code big enough to scan from a few feet away. */
+function ohPrintSign(id){
+  const oh = ohList.find(x => x.id === id);
+  if(!oh) return;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 620;
+  try{ AvaniQR.draw(cv, location.origin + '/?oh=' + oh.token, 620); }catch(e){}
+  printReport('Open house sign', `
+    <div style="text-align:center;padding:30px 0">
+      <div style="font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#5A6288">
+        Welcome \u2014 please sign in</div>
+      <h1 style="font-size:34px;margin:12px 0 6px">${escapeHtml(oh.address || '')}</h1>
+      <div style="font-size:15px;color:#5A6288;margin-bottom:26px">
+        ${escapeHtml(oh.when || '')}${oh.price ? ' \u00b7 ' + escapeHtml(oh.price) : ''}</div>
+      <img src="${cv.toDataURL('image/png')}" style="width:340px;height:340px">
+      <div style="font-size:19px;margin-top:20px">Point your camera at the code</div>
+      <div style="font-size:14px;color:#5A6288;margin-top:6px">
+        It takes about twenty seconds and saves you a clipboard.</div>
+      <div style="margin-top:34px;font-size:15px">
+        <strong>${escapeHtml(oh.agentName || '')}</strong><br>
+        <span style="font-size:13px;color:#5A6288">${escapeHtml(AvaniTemplates.BROKERAGE_NAME)}
+          \u00b7 251-229-3216</span></div>
+    </div>`);
+}
+
+/* ---------- the visitor's phone ---------- */
+let ohvToken = '', ohvHasAgent = false;
+
+async function maybeOpenOhSignIn(){
+  const params = new URLSearchParams(location.search);
+  const t = params.get('oh');
+  const f = params.get('ohf');
+  if(!t && !f) return false;
+
+  document.querySelectorAll('#view-site > *, #view-crm').forEach(el => {
+    if(el.id !== 'ohv') el.style.display = 'none';
+  });
+  const site = document.getElementById('view-site');
+  if(site) site.classList.add('active');
+  document.getElementById('ohv').classList.add('on');
+  const fab = document.getElementById('chat-fab');
+  if(fab) fab.style.display = 'none';
+
+  if(f) return ohvFeedback(f);
+  ohvToken = t;
+  const body = document.getElementById('ohv-body');
+  body.innerHTML = '<div style="text-align:center;padding:50px 0;color:#5A6288">One moment\u2026</div>';
+  let oh = null;
+  try{
+    const r = await fetch('/api/oh/' + encodeURIComponent(t));
+    if(r.ok) oh = (await r.json()).openHouse;
+  }catch(e){}
+  if(!oh){
+    body.innerHTML = `<div class="ohv-h"><h1>We couldn't find that</h1>
+      <p>Ask whoever is hosting for a fresh code.</p></div>`;
+    return true;
+  }
+
+  body.innerHTML = `
+    <div class="ohv-h">
+      <div class="k">Welcome</div>
+      <h1>${escapeHtml(oh.address || 'Open house')}</h1>
+      <p>${escapeHtml(oh.agentName || '')}${oh.agentName ? ' \u00b7 ' : ''}${escapeHtml(oh.brokerage)}</p>
+    </div>
+    <div class="ohv-card">
+      <div class="field"><label>Your name</label>
+        <input id="ohv-name" autocomplete="name" placeholder="Dawn Whitfield"></div>
+      <div class="field"><label>Email</label>
+        <input id="ohv-email" type="email" autocomplete="email" inputmode="email"
+          placeholder="dawn@example.com"></div>
+      <div class="field"><label>Phone <span style="font-weight:400;text-transform:none">\u2014 optional</span></label>
+        <input id="ohv-phone" type="tel" autocomplete="tel" inputmode="tel"></div>
+      <div class="field"><label>Are you working with an agent?</label>
+        <div class="ohv-opts">
+          <button type="button" class="ohv-opt on" id="ohv-no" onclick="ohvAgent(false)">No, not yet</button>
+          <button type="button" class="ohv-opt" id="ohv-yes" onclick="ohvAgent(true)">Yes, I have one</button>
+        </div></div>
+      <button class="ohv-go" onclick="ohvSubmit()">Sign in</button>
+      <div class="ohv-note">We'll only use this to follow up about this house.
+        No lists, no selling it on.</div>
+    </div>`;
+  return true;
+}
+
+function ohvAgent(v){
+  ohvHasAgent = v;
+  document.getElementById('ohv-no').classList.toggle('on', !v);
+  document.getElementById('ohv-yes').classList.toggle('on', v);
+}
+
+async function ohvSubmit(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  if(!g('ohv-name')){ showToast('Your name, at least.'); return; }
+  try{
+    const r = await fetch('/api/oh/' + encodeURIComponent(ohvToken) + '/signin', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name:g('ohv-name'), email:g('ohv-email'),
+        phone:g('ohv-phone'), hasAgent: ohvHasAgent }),
+    });
+    if(!r.ok){ showToast("That didn't go through \u2014 try again?"); return; }
+    document.getElementById('ohv-body').innerHTML = `
+      <div class="ohv-h" style="padding-top:40px">
+        <div class="k">Thank you</div>
+        <h1>You're signed in.</h1>
+        <p>Enjoy the house \u2014 and do ask if you have any questions.</p>
+      </div>`;
+  }catch(e){ showToast("That didn't go through \u2014 try again?"); }
+}
+
+/* Four tick-boxes, which is the whole reason anyone finishes it. */
+async function ohvFeedback(pair){
+  const body = document.getElementById('ohv-body');
+  body.innerHTML = '<div style="text-align:center;padding:50px 0;color:#5A6288">One moment\u2026</div>';
+  let d = null;
+  try{
+    const r = await fetch('/api/ohf/' + encodeURIComponent(pair));
+    if(r.ok) d = await r.json();
+  }catch(e){}
+  if(!d){ body.innerHTML = '<div class="ohv-h"><h1>We could not find that</h1></div>'; return true; }
+  if(d.already){
+    body.innerHTML = `<div class="ohv-h" style="padding-top:40px">
+      <h1>You've already answered.</h1><p>Thank you \u2014 it was useful.</p></div>`;
+    return true;
+  }
+
+  window.__ohfAnswers = {};
+  body.innerHTML = `
+    <div class="ohv-h">
+      <div class="k">Four quick questions</div>
+      <h1>${escapeHtml(d.address || 'The open house')}</h1>
+      <p>Ten seconds, ${escapeHtml(d.firstName || '')} \u2014 and it genuinely helps.</p>
+    </div>
+    <div class="ohv-card">
+      ${d.questions.map(q => `
+        <div class="ohv-q">
+          <div class="qt">${escapeHtml(q.q)}</div>
+          <div class="ohv-opts">
+            ${q.a.map(a => `<button type="button" class="ohv-opt"
+              onclick="ohfPick('${q.k}','${escapeHtml(a).replace(/'/g,"\\\\'")}',this)">${escapeHtml(a)}</button>`).join('')}
+          </div>
+        </div>`).join('')}
+      <div class="field"><label>Anything else? \u2014 optional</label>
+        <input id="ohf-note" placeholder="Whatever you'd like us to know"></div>
+      <button class="ohv-go" onclick="ohfSubmit('${pair}')">Send it</button>
+    </div>`;
+  return true;
+}
+
+function ohfPick(k, a, el){
+  window.__ohfAnswers[k] = a;
+  const wrap = el.parentNode;
+  wrap.querySelectorAll('.ohv-opt').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+async function ohfSubmit(pair){
+  const payload = Object.assign({}, window.__ohfAnswers || {},
+    { note: (document.getElementById('ohf-note')||{}).value || '' });
+  try{
+    await fetch('/api/ohf/' + encodeURIComponent(pair), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+  }catch(e){}
+  document.getElementById('ohv-body').innerHTML = `
+    <div class="ohv-h" style="padding-top:40px">
+      <div class="k">Thank you</div>
+      <h1>That's all we needed.</h1>
+      <p>If you'd like to see it again, or see something else, just reply to the email.</p>
+    </div>`;
+}
+
+document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenOhSignIn(); }catch(e){} });
+</script>
+
+<div class="modal-overlay" id="oh-new">
+<div class="modal" style="max-width:420px">
+<button class="modal-close" onclick="document.getElementById('oh-new').classList.remove('active')">&times;</button>
+<h3>Set up an open house</h3>
+<div class="sub">You'll get a QR code to print. Visitors sign in on their own phone.</div>
+<div class="field"><label>Which house</label><input id="oh-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
+<div class="field"><label>When</label><input id="oh-when" placeholder="Saturday, 1\u20133pm"></div>
+<div class="field"><label>Price <span style="font-weight:400;text-transform:none">\u2014 optional</span></label>
+  <input id="oh-price" placeholder="$425,000"></div>
+<input type="hidden" id="oh-key">
+<button class="submit-btn" onclick="ohCreate()">Create it</button>
+</div>
+</div>
+
+<style>
+.aw-tier{display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:11px;margin-bottom:8px;background:var(--paper)}
+.aw-tier .medal{width:38px;height:38px;border-radius:50%;flex:0 0 auto;display:flex;
+  align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff}
+.aw-tier .tx{flex:1;min-width:0}
+.aw-tier .tx b{font-size:15px;display:block}
+.aw-tier .tx span{font-size:12.5px;color:var(--driftwood)}
+.aw-tier input{width:108px;padding:8px 10px;border:1px solid rgba(27,32,67,.2);border-radius:7px;
+  font:inherit;font-size:13.5px;font-variant-numeric:tabular-nums}
+
+.aw-agent{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;
+  background:var(--paper)}
+.aw-agent .top{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+.aw-agent .top b{font-size:15.5px}
+.aw-agent .badge{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:3px 10px;border-radius:20px;color:#fff}
+.aw-agent .num{margin-left:auto;font-variant-numeric:tabular-nums;font-size:13px;
+  color:var(--driftwood)}
+.aw-bar{height:8px;border-radius:5px;background:rgba(27,32,67,.1);overflow:hidden;margin:10px 0 5px}
+.aw-bar i{display:block;height:100%;border-radius:5px;transition:width .6s ease}
+.aw-next{font-size:13px;color:var(--driftwood)}
+.aw-next strong{color:#1B2043}
+.aw-close{background:linear-gradient(100deg,#FBF6EA,#FDF9F0);border:1px solid rgba(230,195,129,.65);
+  border-radius:10px;padding:10px 13px;margin-top:9px;font-size:13.5px;color:#6B4A12;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.aw-close button{margin-left:auto;background:#2E3CB0;color:#fff;border:none;border-radius:8px;
+  padding:7px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+</style>
+
+<script>
+/* ---------- recognition ----------
+   Tiers the broker sets, measured against the ledger. The useful part is not the
+   badge \u2014 it is being told somebody is close while there is still time to say
+   something. That warning goes into the daily briefing. */
+const AW_DEFAULTS = [
+  { k:'bronze', label:'Bronze',   colour:'#B08D57', volume:1000000 },
+  { k:'silver', label:'Silver',   colour:'#8C93AD', volume:3000000 },
+  { k:'gold',   label:'Gold',     colour:'#C9971F', volume:6000000 },
+  { k:'platinum',label:'Platinum', colour:'#4A7A9B', volume:10000000 },
+];
+let awTiers = null;
+
+async function awLoad(){
+  if(awTiers) return awTiers;
+  try{
+    const saved = await storeGet('settings:awardTiers');
+    awTiers = Array.isArray(saved) && saved.length
+      ? AW_DEFAULTS.map(d => Object.assign({}, d, saved.find(s => s.k === d.k) || {}))
+      : AW_DEFAULTS.map(d => Object.assign({}, d));
+  }catch(e){ awTiers = AW_DEFAULTS.map(d => Object.assign({}, d)); }
+  return awTiers;
+}
+
+/* Volume closed this year, from the same ledger the commissions use. */
+function awVolumeFor(agentId, year){
+  try{
+    const r = computeAgentYear(agentId, year);
+    return (r.totals && r.totals.volume) || 0;
+  }catch(e){ return 0; }
+}
+
+function awStanding(volume){
+  const tiers = (awTiers || AW_DEFAULTS).slice().sort((a,b) => a.volume - b.volume);
+  let earned = null, next = null;
+  tiers.forEach(t => {
+    if(volume >= t.volume) earned = t;
+    else if(!next) next = t;
+  });
+  const floor = earned ? earned.volume : 0;
+  const pct = next ? Math.min(100, Math.round((volume - floor) / (next.volume - floor) * 100)) : 100;
+  return { earned, next, pct, gap: next ? next.volume - volume : 0 };
+}
+
+/* Anyone within this much of the next tier is worth a word. */
+const AW_NEAR = 0.12;
+
+function awNearlyThere(agentId, year){
+  const v = awVolumeFor(agentId, year);
+  const st = awStanding(v);
+  if(!st.next) return null;
+  const span = st.next.volume - (st.earned ? st.earned.volume : 0);
+  return (st.gap / span) <= AW_NEAR ? { volume:v, ...st } : null;
+}
+
+async function renderAwards(){
+  const host = document.getElementById('aw-body');
+  if(!host) return;
+  await awLoad();
+  const year = (typeof cdYear !== 'undefined' && cdYear) ? cdYear : new Date().getFullYear();
+  const agents = (cdData.agents || []).filter(a => a.active !== false);
+
+  const rows = agents.map(a => {
+    const v = awVolumeFor(a.id, year);
+    const st = awStanding(v);
+    const near = st.next && (st.gap / (st.next.volume - (st.earned ? st.earned.volume : 0))) <= AW_NEAR;
+    return `<div class="aw-agent">
+      <div class="top">
+        <b>${escapeHtml(a.name)}</b>
+        ${st.earned ? `<span class="badge" style="background:${st.earned.colour}">${escapeHtml(st.earned.label)}</span>` : ''}
+        <span class="num">${fmtMoney(v)} closed</span>
+      </div>
+      <div class="aw-bar"><i style="width:${st.pct}%;background:${(st.next||st.earned||{}).colour || '#8C93AD'}"></i></div>
+      <div class="aw-next">${st.next
+        ? `<strong>${fmtMoney(st.gap)}</strong> from ${escapeHtml(st.next.label)}`
+        : 'Top tier reached.'}</div>
+      ${near ? `<div class="aw-close">
+        <span>Nearly there \u2014 worth a word before they get there.</span>
+        <button onclick="awKudos('${a.id}')">Send kudos</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  host.innerHTML = `
+    <p style="margin:0 0 14px;font-size:13.5px;color:var(--driftwood);max-width:620px;line-height:1.55">
+      Measured on closed volume for ${year}. The useful part is the warning: you are told
+      somebody is close while there is still time to say something.</p>
+
+    <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--driftwood);margin:0 0 8px">Where the bar sits</div>
+    ${(awTiers||[]).map(t => `
+      <div class="aw-tier">
+        <span class="medal" style="background:${t.colour}">${escapeHtml(t.label[0])}</span>
+        <span class="tx"><b>${escapeHtml(t.label)}</b>
+          <span>closed volume in a calendar year</span></span>
+        <input type="text" value="${t.volume.toLocaleString('en-US')}"
+          onchange="awSetTier('${t.k}', this.value)">
+      </div>`).join('')}
+    <button class="btn-sm" onclick="awSave()" style="margin-bottom:20px">Save the tiers</button>
+
+    <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--driftwood);margin:0 0 8px">Where everyone stands</div>
+    ${rows || '<div style="font-size:13.5px;color:var(--driftwood)">No agents yet.</div>'}`;
+}
+
+function awSetTier(k, v){
+  const t = (awTiers || []).find(x => x.k === k);
+  if(!t) return;
+  const n = Number(String(v).replace(/[^0-9]/g, ''));
+  if(n > 0) t.volume = n;
+}
+
+async function awSave(){
+  const ok = await storeSet('settings:awardTiers', awTiers);
+  showToast(ok ? 'Saved.' : "Couldn't save that.");
+  renderAwards();
+}
+
+/* Public congratulations, and a note to order something if it is warranted. */
+async function awKudos(agentId){
+  const a = (cdData.agents || []).find(x => x.id === agentId);
+  if(!a) return;
+  const year = (typeof cdYear !== 'undefined' && cdYear) ? cdYear : new Date().getFullYear();
+  const st = awStanding(awVolumeFor(agentId, year));
+  const what = st.next ? st.next.label : (st.earned ? st.earned.label : '');
+  const msg = prompt(`A note to ${String(a.name).split(' ')[0]} \u2014 they are ${fmtMoney(st.gap)} from ${what}.`,
+    `${String(a.name).split(' ')[0]}, you are ${fmtMoney(st.gap)} away from ${what}. Nearly there \u2014 shout if I can help you get it over the line.`);
+  if(msg === null) return;
+  if(!a.email){ showToast('No email on file for them.'); return; }
+  try{
+    const r = await fetch('/api/marketing/email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to: a.email,
+        subject: `Nearly at ${what}`,
+        message: msg + `\n\n${currentAgent.name}\n${AvaniTemplates.BROKERAGE_NAME}`,
+      }),
+    });
+    showToast(r.ok ? 'Sent.' : "Couldn't send that.");
+  }catch(e){ showToast("Couldn't send that."); }
 }
 </script>
 
