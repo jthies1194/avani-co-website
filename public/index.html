@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v127">
+<meta name="build" content="index-v128">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2809,7 +2809,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v127';
+window.BUILD = 'index-v128';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6338,11 +6338,21 @@ function computeAllForYear(year){
    whoever actually submits. It is deliberately not called "print 1099s".      */
 async function print1099Worksheet(){
   const year = cdYear;
+  /* Must be the same figure the year-end package reports as "Net paid to agent",
+     or the broker hands the accountant two documents that disagree. That is
+     agentNet less desk fees. An earlier version of this looked for a field named
+     netToAgent, which does not exist, so nothing ever matched and it always said
+     there were no earnings. */
+  const nineNineNine = t => (t.agentNet || 0) - (t.deskFees || 0);
+
   const per = (cdData.agents || [])
     .map(a => ({ agent:a, r: computeAgentYear(a.id, year) }))
-    .filter(x => (x.r.totals.netToAgent || 0) > 0);
+    .filter(x => nineNineNine(x.r.totals) > 0);
 
-  if(!per.length){ showToast('No agent earnings recorded for ' + year + '.'); return; }
+  if(!per.length){
+    showToast('No agent earnings recorded for ' + year + '. Check the year selector above.');
+    return;
+  }
 
   let data = null;
   try{
@@ -6361,7 +6371,7 @@ async function print1099Worksheet(){
   const THRESHOLD = 600;   // the usual 1099-NEC reporting floor
   const rows = per.map(x => {
     const hr = byId[x.agent.id] || { missing:['no file on record'] };
-    const amt = x.r.totals.netToAgent || 0;
+    const amt = nineNineNine(x.r.totals);
     return { name:x.agent.name, amt, hr, reportable: amt >= THRESHOLD };
   }).sort((a,b) => b.amt - a.amt);
 
@@ -7504,12 +7514,29 @@ function mkLicenseLine(p){
   return 'Licensed in ' + states.map(c => NAMES[c] + (nums[c] ? ' #' + nums[c] : '')).join(' and ');
 }
 
+/* Where a scan or a shared link lands.
+
+   It used to always go to the agent's profile, which is wrong for a piece about
+   a specific house — somebody scanning an open house flyer wants to see THAT
+   property, not a general page. So when the piece is built on a listing, the
+   link opens the listing and carries ?agent= so attribution still sticks. The
+   site already handles both parameters together.
+
+   Pieces with no listing behind them (the sign-in sheet) still go to the
+   profile, because there is nothing else to show. */
 function mkQrUrl(){
   const slug = (typeof publicSlug === 'function' && currentAgent)
     ? publicSlug(currentAgent.name) : '';
   const src = mkState.tpl;
   const c = (mkState.fields.campaign || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
-  return location.origin + '/' + slug + '?src=' + src + (c ? '&c=' + c : '');
+  const key = (mkState.fields.listingKey || '').trim();
+  const tail = '&src=' + src + (c ? '&c=' + c : '');
+
+  if(key){
+    return location.origin + '/?listing=' + encodeURIComponent(key)
+         + (slug ? '&agent=' + encodeURIComponent(slug) : '') + tail;
+  }
+  return location.origin + '/' + slug + '?' + tail.slice(1);
 }
 
 /* ---------- listing picker ----------
@@ -8089,36 +8116,39 @@ function mkShare(){
   wrap.className = 'mk-sheet';
   wrap.onclick = e => { if(e.target === wrap) wrap.remove(); };
   wrap.innerHTML = `<div class="box">
-    <h4>Share this flyer</h4>
-    <div style="font-size:12.5px;color:rgba(27,32,67,.62);margin-bottom:4px">
-      Scans go to ${escapeHtml(url)}</div>
+    <h4>Share this post</h4>
+    <div style="font-size:12.5px;color:rgba(27,32,67,.62);margin-bottom:2px">
+      Facebook and Instagram don't let a website attach a picture to a post for you.
+      The image has to land on your device first, then you add it in the app.</div>
 
     ${native ? `<button class="mk-opt" onclick="mkShareNative()">
       <span class="ic">\u2934</span><span><span class="tt">Share to an app</span>
-      <span class="dd">Opens your phone's share sheet \u2014 Instagram, Messages, WhatsApp,
-      anything installed. This is the only route Instagram accepts.</span></span></button>`
-    : `<div class="mk-opt" style="cursor:default;opacity:.72">
-      <span class="ic">\u24D8</span><span><span class="tt">Instagram needs a phone</span>
-      <span class="dd">Instagram has no way to post from a desktop browser. Email the
-      flyer to yourself, then post it from the app.</span></span></div>`}
+      <span class="dd">Hands the image straight to Instagram, Facebook, Messages \u2014
+      anything installed. Best route by far.</span></span></button>` : ''}
+
+    <button class="mk-opt" onclick="mkPostTo('instagram')">
+      <span class="ic">\u25FB</span><span><span class="tt">Post to Instagram</span>
+      <span class="dd">Saves the image, then opens Instagram. Click Create, then
+      Select from computer, and pick the file that just downloaded.</span></span></button>
+
+    <button class="mk-opt" onclick="mkPostTo('facebook')">
+      <span class="ic">f</span><span><span class="tt">Post to Facebook</span>
+      <span class="dd">Saves the image, then opens the Facebook composer. Click Photo/Video
+      and pick the file that just downloaded.</span></span></button>
 
     <button class="mk-opt" onclick="mkShareEmail()">
-      <span class="ic">\u2709</span><span><span class="tt">Email it</span>
-      <span class="dd">Sends a real PDF attachment from the brokerage, with replies
-      coming back to you.</span></span></button>
-
-    <button class="mk-opt" onclick="mkShareFacebook()">
-      <span class="ic">f</span><span><span class="tt">Facebook</span>
-      <span class="dd">Downloads the image and opens Facebook. You attach it there \u2014
-      Facebook does not let a website post a picture for you.</span></span></button>
-
-    <button class="mk-opt" onclick="mkCopyLink()">
-      <span class="ic">\u26AD</span><span><span class="tt">Copy my link</span>
-      <span class="dd">The same address the QR points to, for a text or a caption.</span></span></button>
+      <span class="ic">\u2709</span><span><span class="tt">Send it to my phone or a client</span>
+      <span class="dd">Emails the image as a real attachment. Send it to yourself and
+      you can post from your phone, where sharing to Instagram just works.</span></span></button>
 
     <button class="mk-opt" onclick="mkDownload('png');mkCloseSheet()">
-      <span class="ic">\u2193</span><span><span class="tt">Just download the image</span>
-      <span class="dd">PNG at print resolution.</span></span></button>
+      <span class="ic">\u2193</span><span><span class="tt">Just save the image</span>
+      <span class="dd">Full resolution PNG.</span></span></button>
+
+    <button class="mk-opt" onclick="mkCopyLink()">
+      <span class="ic">\u26AD</span><span><span class="tt">Copy the link</span>
+      <span class="dd">For a caption or a text. Goes to ${
+        mkState.fields.listingKey ? 'this listing, tagged to you' : 'your page'}.</span></span></button>
 
     <div style="text-align:right;margin-top:12px">
       <button class="btn ghost" onclick="mkCloseSheet()">Close</button></div>
@@ -8137,29 +8167,20 @@ function mkShareNative(){
     const file = new File([blob], mkFileBase() + '.png', { type:'image/png' });
     try{
       if(navigator.canShare && navigator.canShare({ files:[file] })){
-        await navigator.share({ files:[file], text: 'Find me at ' + mkQrUrl() });
+        await navigator.share({ files:[file], text: mkQrUrl() });
         mkCloseSheet();
         return;
       }
     }catch(e){ if(e && e.name === 'AbortError'){ mkCloseSheet(); return; } }
-    showToast("This browser wouldn't take the image \u2014 downloading it instead.");
+    showToast("This browser wouldn't take the image \u2014 saving it instead.");
     mkDownload('png'); mkCloseSheet();
   }, 'image/png');
 }
 
-function mkShareFacebook(){
-  mkDownload('png');
-  window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(mkQrUrl()), '_blank');
-  showToast('Image downloaded \u2014 attach it in the Facebook window.');
-  mkCloseSheet();
-}
-
 async function mkCopyLink(){
   const url = mkQrUrl();
-  // navigator.clipboard is unavailable in a few desktop setups and silently
+  // navigator.clipboard is unavailable in some desktop setups and silently
   // rejects in others, which looked like the button doing nothing at all.
-  // Fall back to a selection copy, and if even that fails, show the link so it
-  // can be copied by hand rather than leaving the person with nothing.
   let done = false;
   try{
     if(navigator.clipboard && window.isSecureContext){
@@ -8183,7 +8204,6 @@ async function mkCopyLink(){
     showToast('Link copied \u2014 ' + url);
     mkCloseSheet();
   } else {
-    // last resort: put it on screen, selected, so it can be copied manually
     const box = window.__mkSheet && window.__mkSheet.querySelector('.box');
     if(box){
       box.innerHTML = `<h4>Your link</h4>
@@ -8199,6 +8219,63 @@ async function mkCopyLink(){
     } else {
       prompt('Copy this link:', url);
     }
+  }
+}
+
+/* Download first, then open the composer. Deliberately NOT Facebook's sharer.php:
+   that only accepts a URL, so it produced a link preview of the website instead
+   of the post the agent had just made \u2014 which is exactly the wrong thing. */
+function mkPostTo(where){
+  const cv = window.__mkCanvas;
+  if(!cv) return;
+  const name = mkFileBase() + '.png';
+  cv.toBlob(b => {
+    mkSaveBlob(b, name);
+    const box = window.__mkSheet && window.__mkSheet.querySelector('.box');
+    const site = where === 'instagram' ? 'https://www.instagram.com/' : 'https://www.facebook.com/';
+    const label = where === 'instagram' ? 'Instagram' : 'Facebook';
+    const how = where === 'instagram'
+      ? 'Click <strong>Create</strong> (the + in the sidebar), then <strong>Select from computer</strong>.'
+      : 'Click <strong>Photo/video</strong> in the composer.';
+    if(box){
+      box.innerHTML = `<h4>Saved \u2014 now post it</h4>
+        <div style="font-size:13px;line-height:1.6;color:rgba(27,32,67,.75)">
+          <p style="margin:8px 0"><strong>${escapeHtml(name)}</strong> is in your Downloads folder.</p>
+          <p style="margin:8px 0">${how} Pick that file.</p>
+          <p style="margin:8px 0;font-size:12.5px;color:rgba(27,32,67,.6)">
+            Neither platform lets a website attach a picture for you, so this last step
+            is always by hand on a computer. On a phone it is one tap \u2014 use
+            <em>Share to an app</em> there instead.</p>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button class="btn ghost" onclick="mkCopyCaption()">Copy a caption</button>
+          <button class="btn" onclick="window.open('${site}','_blank');mkCloseSheet()">Open ${label}</button>
+        </div>`;
+    } else {
+      window.open(site, '_blank');
+    }
+  }, 'image/png');
+}
+
+/* A caption with the link already in it, so the post is one paste away. */
+async function mkCopyCaption(){
+  const f = mkState.fields;
+  const bits = [];
+  if(f.banner) bits.push(f.banner.replace(/\b\w/g, c => c.toUpperCase()));
+  if(f.address) bits.push(f.address);
+  if(f.price) bits.push('$' + Number(String(f.price).replace(/[^0-9]/g,'')).toLocaleString('en-US'));
+  const facts = [f.beds && f.beds + ' bed', f.baths && f.baths + ' bath',
+                 f.sqft && Number(f.sqft).toLocaleString('en-US') + ' sq ft'].filter(Boolean);
+  if(facts.length) bits.push(facts.join(' \u00b7 '));
+  if(f.when) bits.push(f.when);
+  const caption = bits.join('\n') + '\n\n' + mkQrUrl()
+    + '\n\n' + (currentAgent ? currentAgent.name + ' \u00b7 ' : '')
+    + AvaniTemplates.BROKERAGE_NAME;
+  try{
+    await navigator.clipboard.writeText(caption);
+    showToast('Caption copied.');
+  }catch(e){
+    prompt('Copy this caption:', caption);
   }
 }
 
