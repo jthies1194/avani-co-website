@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v123">
+<meta name="build" content="index-v124">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2808,7 +2808,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v123';
+window.BUILD = 'index-v124';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7626,7 +7626,12 @@ function mkRender(){
 
   const cap = document.createElement('div');
   cap.className = 'mk-cap';
-  cap.textContent = t.label + ' \u00b7 ' + t.size + ' \u00b7 ' + cv.width + '\u00d7' + cv.height + 'px at ' + t.dpi + ' dpi';
+  cap.textContent = t.social
+    ? t.label + ' \u00b7 ' + t.size + ' \u00b7 ready for Instagram or Facebook'
+    : t.label + ' \u00b7 ' + t.size + ' \u00b7 ' + cv.width + '\u00d7' + cv.height + 'px at ' + t.dpi + ' dpi';
+  // a social post has no print size, so the PDF button makes no sense there
+  const pdfBtn = document.querySelector('.mk-bar .btn[onclick*="pdf"]');
+  if(pdfBtn) pdfBtn.style.display = t.social ? 'none' : '';
   stage.appendChild(cap);
 
   const note = document.createElement('div');
@@ -8146,10 +8151,17 @@ async function renderMarketingSection(){
         Worth putting to the attorney alongside the compensation language.</div>
     </div></div>` : ''}
     <div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 4px;font-size:16px">Scans</h3>
+      <div style="font-size:12.5px;color:rgba(27,32,67,.6);margin-bottom:12px">
+        Every QR on your material points at your page. This is who actually scanned.</div>
+      <div id="mkScans">Loading\u2026</div>
+    </div></div>
+    <div class="card" style="margin-top:14px"><div style="padding:18px">
       <h3 style="margin:0 0 12px;font-size:16px">Saved projects</h3>
       <div id="mkList" class="mk-projects">Loading…</div>
     </div></div>`;
 
+  renderScanStats();
   const list = document.getElementById('mkList');
   const mine = await mkLoadProjects(currentAgent.id);
   mkProjects = mine;
@@ -8170,6 +8182,85 @@ async function renderMarketingSection(){
     note.textContent = 'As broker you can also open any agent\u2019s saved projects from their profile.';
     list.parentNode.appendChild(note);
   }
+}
+
+/* ---------- scan stats ----------
+   The tracking has been recording since the QR codes went on the material, but
+   there was nowhere to look at it, which rather defeated the point of it. */
+const SRC_LABELS = {
+  openhouse:'Open house flyer', gallery:'Open house (4 photos)',
+  feature:'Feature sheet', signin:'Sign-in sheet', social:'Social post',
+  card:'Business card', rider:'Yard sign',
+};
+
+async function renderScanStats(){
+  const el = document.getElementById('mkScans');
+  if(!el) return;
+  const slug = (typeof publicSlug === 'function' && currentAgent) ? publicSlug(currentAgent.name) : '';
+  if(!slug){ el.textContent = 'No public page yet.'; return; }
+
+  let st = null;
+  try{
+    const r = await fetch('/api/marketing/scans/' + encodeURIComponent(slug));
+    if(r.ok) st = (await r.json()).scans;
+  }catch(e){}
+  if(!st){
+    el.innerHTML = '<div style="color:rgba(27,32,67,.55);font-size:13.5px">Couldn\u2019t load that just now.</div>';
+    return;
+  }
+
+  if(!st.total){
+    el.innerHTML = `<div style="color:rgba(27,32,67,.6);font-size:13.5px;line-height:1.55">
+      Nothing scanned yet. Put a flyer out with the QR on it and this fills in \u2014
+      by day, by which piece, and by campaign tag.</div>`;
+    return;
+  }
+
+  const byDay = st.byDay || {};
+  const days = [];
+  for(let i = 13; i >= 0; i--){
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0,10);
+    days.push([d, byDay[d] || 0]);
+  }
+  const peak  = Math.max(1, ...days.map(d => d[1]));
+  const last7 = days.slice(-7).reduce((a,b) => a + b[1], 0);
+  const prev7 = days.slice(0,7).reduce((a,b) => a + b[1], 0);
+
+  const bars = days.map(([d,c]) => {
+    const h = Math.round((c / peak) * 46);
+    const day = new Date(d + 'T12:00:00').toLocaleDateString('en-US',{weekday:'narrow'});
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px" title="${d}: ${c}">
+      <div style="width:100%;height:48px;display:flex;align-items:flex-end">
+        <div style="width:100%;height:${Math.max(2,h)}px;border-radius:3px 3px 0 0;
+          background:${c?'#2E3CB0':'rgba(27,32,67,.12)'}"></div></div>
+      <span style="font-size:9.5px;color:rgba(27,32,67,.5)">${day}</span></div>`;
+  }).join('');
+
+  const rank = o => Object.entries(o || {}).sort((a,b) => b[1] - a[1]).slice(0, 6);
+  const rows = (list, labels) => list.length
+    ? list.map(([k,v]) => `<div style="display:flex;justify-content:space-between;gap:10px;
+        padding:5px 0;border-bottom:1px solid rgba(27,32,67,.07);font-size:13px">
+        <span>${escapeHtml(labels ? (labels[k] || k) : k)}</span>
+        <strong style="font-variant-numeric:tabular-nums">${v}</strong></div>`).join('')
+    : '<div style="font-size:12.5px;color:rgba(27,32,67,.5);padding:5px 0">Nothing yet</div>';
+
+  el.innerHTML = `
+    <div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px">
+      <div><div style="font-size:26px;font-weight:600;color:#2E3CB0;
+        font-variant-numeric:tabular-nums">${st.total}</div>
+        <div style="font-size:11.5px;color:rgba(27,32,67,.58)">scans all time</div></div>
+      <div><div style="font-size:26px;font-weight:600;color:#1B2043;
+        font-variant-numeric:tabular-nums">${last7}</div>
+        <div style="font-size:11.5px;color:rgba(27,32,67,.58)">last 7 days${
+          prev7 ? ` \u00b7 ${last7>=prev7?'\u2191':'\u2193'} from ${prev7}` : ''}</div></div>
+    </div>
+    <div style="display:flex;gap:3px;align-items:flex-end;margin-bottom:16px">${bars}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div><div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+        color:rgba(27,32,67,.6);margin-bottom:5px">By piece</div>${rows(rank(st.bySrc), SRC_LABELS)}</div>
+      <div><div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+        color:rgba(27,32,67,.6);margin-bottom:5px">By campaign</div>${rows(rank(st.byCampaign))}</div>
+    </div>`;
 }
 
 function mkOpenById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkOpen(p); }
@@ -9074,7 +9165,121 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     return { W, H };
   }
 
+  /* ================= SOCIAL SQUARE (1080 x 1080) =================
+     Instagram and Facebook feed size. Different constraints from paper: read at
+     thumbnail size on a phone, so far fewer words and much larger type. The QR
+     is small here on purpose — people tap a link, they don't scan their own
+     screen — but it stays so a screenshot or a printed repost still works.     */
+  function drawSocialSquare(ctx, spec, dpi, QR){
+    const S = 1080;
+    const pad = 64;
+    const bandH = 208;
+    const by = S - bandH;
+
+    /* The ceiling, same rule as the flyers: the brokerage name gets the full
+       width of the footer on its own line, and nothing else on the piece may be
+       larger. A first pass had the price at 68px against a 44px brokerage name,
+       which is exactly the violation this is meant to prevent. */
+    const CAP = fitText(ctx, BROKERAGE_NAME, S - pad*2, 56,
+                        '600 %SIZE%px Georgia, serif', 24);
+
+    ctx.fillStyle = BRAND.paper;
+    ctx.fillRect(0, 0, S, S);
+
+    // photo runs to the footer, so there is no empty band
+    const photoH = by - 96;
+    if(!drawCover(ctx, spec._photoImg, 0, 0, S, photoH))
+      placeholder(ctx, 0, 0, S, photoH, 'Listing photo');
+
+    if(spec.banner){
+      const bp = Math.min(38, CAP);
+      ctx.font = `600 ${bp}px Georgia, serif`;
+      const tw = ctx.measureText(spec.banner).width;
+      ctx.fillStyle = BRAND.gold;
+      roundRect(ctx, pad, 44, tw + 52, bp * 1.75, 8);
+      ctx.fill();
+      ctx.fillStyle = BRAND.ink;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(spec.banner, pad + 26, 44 + bp * 0.88);
+      ctx.textBaseline = 'top';
+    }
+
+    const g = ctx.createLinearGradient(0, photoH - 210, 0, photoH);
+    g.addColorStop(0, 'rgba(27,32,67,0)');
+    g.addColorStop(1, 'rgba(27,32,67,.82)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, photoH - 210, S, 210);
+
+    ctx.textBaseline = 'bottom';
+    if(spec.price){
+      ctx.fillStyle = '#fff';
+      ctx.font = `500 ${Math.min(58, CAP)}px Georgia, serif`;
+      ctx.fillText(money(spec.price), pad, photoH - 74);
+    }
+    if(spec.address){
+      ctx.fillStyle = 'rgba(255,255,255,.93)';
+      const ap = fitText(ctx, spec.address, S - pad*2, 29,
+                         '%SIZE%px Helvetica, Arial, sans-serif', 17);
+      ctx.font = `${ap}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.address, pad, photoH - 30);
+    }
+    ctx.textBaseline = 'top';
+
+    // facts sit in the strip between photo and footer
+    const facts = [];
+    if(spec.beds)  facts.push(spec.beds  + (Number(spec.beds)===1?' bed':' beds'));
+    if(spec.baths) facts.push(spec.baths + (Number(spec.baths)===1?' bath':' baths'));
+    if(spec.sqft)  facts.push(Number(spec.sqft).toLocaleString('en-US') + ' sq ft');
+    if(facts.length){
+      ctx.fillStyle = BRAND.blue;
+      ctx.font = `500 32px Helvetica, Arial, sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(facts.join('   \u00b7   '), pad, photoH + 48);
+      ctx.textBaseline = 'top';
+    }
+
+    // ---- footer ----
+    ctx.fillStyle = BRAND.blue;
+    ctx.fillRect(0, by, S, bandH);
+    ctx.fillStyle = BRAND.gold;
+    ctx.fillRect(0, by, S, 6);
+
+    let ty = by + 30;
+    ctx.fillStyle = '#fff';
+    ctx.font = `600 ${CAP}px Georgia, serif`;
+    ctx.fillText(BROKERAGE_NAME, pad, ty);
+    ty += CAP * 1.2;
+
+    const qs = 92;
+    const qx = S - pad - qs, qy = by + bandH - qs - 26;
+    if(spec.qrUrl && QR){
+      ctx.fillStyle = '#fff';
+      roundRect(ctx, qx - 7, qy - 7, qs + 14, qs + 14, 7);
+      ctx.fill();
+      QR.draw(ctx, spec.qrUrl, qx, qy, qs, { dark: BRAND.blue, light:'#fff', quiet: 2 });
+    }
+
+    const innerW = qx - 24 - pad;
+    if(spec.agentName){
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      const nm = spec.agentName + (spec.phone ? '   \u00b7   ' + spec.phone : '');
+      const np = fitText(ctx, nm, innerW, Math.min(30, CAP * 0.6),
+                         '%SIZE%px Helvetica, Arial, sans-serif', 16);
+      ctx.font = `${np}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(nm, pad, ty);
+      ty += np * 1.35;
+    }
+    if(spec.licenseLine){
+      ctx.fillStyle = 'rgba(255,255,255,.62)';
+      ctx.font = `19px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.licenseLine, pad, ty);
+    }
+    return { W: S, H: S };
+  }
+
   const TEMPLATES = {
+    'social':    { label: 'Social post \u2014 square', dpi: 96, draw: drawSocialSquare,
+                   size: '1080 \u00d7 1080 px', listing: true, photo: true, social: true },
     'openhouse': { label: 'Open house flyer',         dpi: 200, draw: drawOpenHouse,
                    size: '8.5 \u00d7 11 in', listing: true, photo: true },
     'gallery':   { label: 'Open house \u2014 4 photos', dpi: 200, draw: drawOpenHouseGallery,
