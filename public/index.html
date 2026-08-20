@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v164">
+<meta name="build" content="index-v165">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1185,51 +1185,68 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 
 <style>
 /* ---------- clocks in the utility bar ----------
-   Two pieces. The four US zones sit still, because each shows a different time and
-   four short items read at a glance. Everywhere else cycles through one slot,
-   because that list is long and only one will fit.
+   Two pieces. The four US zones sit still, because each shows a different time.
+   Everywhere else cycles through one slot, because that list is long and only one
+   will fit.
 
-   What did not work, and why: six cities across the bar (a wall of numbers, and
-   half of them showed the same time as Gulf Shores) · a full-width band above the
-   page (greeted people with clocks before the property) · after </header> (the
-   header is position:fixed, so it landed under the hero) · between hero and search
-   (.search has margin:-34px and covered it). */
-.utility .wc-us{display:inline-flex;align-items:center;gap:13px;flex:0 0 auto}
-.utility .wc-us .z{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap}
-.utility .wc-us .lbl{font-size:8.5px;font-weight:700;letter-spacing:.1em;
-  color:rgba(255,255,255,.42)}
-.utility .wc-us .t{font-size:12px;font-variant-numeric:tabular-nums;
-  color:rgba(255,255,255,.82)}
+   Sized to the space that is actually there: on a wide screen the bar runs well
+   over 1400px and the first version left the clocks huddled in a corner of it.
+   Full city names and larger figures on desktop, abbreviations as it narrows.
+
+   What did not work, and why: six cities across the bar (a wall of numbers, half
+   of them showing the same time as Gulf Shores) · a full-width band above the page
+   (greeted visitors with clocks before the property) · after </header> (the header
+   is position:fixed, so it landed under the hero) · between hero and search
+   (.search has margin:-34px and covered it) · hidden behind a tap. */
+.utility .wc-us{display:inline-flex;align-items:center;gap:26px;flex:0 0 auto}
+.utility .wc-us .z{display:inline-flex;align-items:baseline;gap:8px;white-space:nowrap}
+.utility .wc-us .lbl{font-size:10px;font-weight:700;letter-spacing:.13em;
+  text-transform:uppercase;color:rgba(255,255,255,.5)}
+.utility .wc-us .lbl .abbr{display:none}
+.utility .wc-us .t{font-size:15px;font-variant-numeric:tabular-nums;
+  color:rgba(255,255,255,.88);letter-spacing:.01em}
 .utility .wc-us .z.day .t{color:#F0D9A6}
 .utility .wc-us .z.home .lbl{color:rgba(230,195,129,.95)}
 .utility .wc-us .z.home .t{color:#fff;font-weight:600}
 
-.utility .wc-one{display:inline-flex;align-items:center;gap:7px;background:none;border:none;
-  padding:0 0 0 13px;margin-left:13px;font:inherit;cursor:pointer;color:inherit;
-  border-left:1px solid rgba(252,252,253,.24);flex:0 0 auto;min-width:150px;text-align:left}
-.utility .wc-one .globe{font-size:12px;line-height:1;opacity:.85;flex:0 0 auto}
-.utility .wc-one .body{display:inline-flex;align-items:baseline;gap:6px;
+.utility .wc-one{display:inline-flex;align-items:center;gap:9px;background:none;border:none;
+  padding:0 0 0 26px;margin-left:26px;font:inherit;cursor:pointer;color:inherit;
+  border-left:1px solid rgba(252,252,253,.24);flex:0 0 auto;min-width:196px;text-align:left}
+.utility .wc-one .globe{font-size:14px;line-height:1;opacity:.9;flex:0 0 auto}
+.utility .wc-one .body{display:inline-flex;align-items:baseline;gap:8px;
   transition:opacity .3s ease;white-space:nowrap}
 .utility .wc-one.fade .body{opacity:0}
-.utility .wc-one .city{font-size:8.5px;font-weight:700;letter-spacing:.12em;
-  text-transform:uppercase;color:rgba(230,195,129,.88)}
-.utility .wc-one .t{font-size:12px;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.82)}
-.utility .wc-one .t .day{font-size:8.5px;color:rgba(255,255,255,.44);margin-left:4px}
+.utility .wc-one .city{font-size:10px;font-weight:700;letter-spacing:.13em;
+  text-transform:uppercase;color:rgba(230,195,129,.9)}
+.utility .wc-one .t{font-size:15px;font-variant-numeric:tabular-nums;
+  color:rgba(255,255,255,.88)}
+.utility .wc-one .t .day{font-size:10px;color:rgba(255,255,255,.46);margin-left:5px}
 .utility .wc-one:hover .city{color:var(--gold)}
 
-@media(max-width:1050px){
-  .utility .wc-us{gap:10px}
-  .utility .wc-one{min-width:132px;margin-left:9px;padding-left:9px}
+@media(max-width:1280px){
+  /* names give way to abbreviations before anything has to shrink */
+  .utility .wc-us{gap:19px}
+  .utility .wc-us .lbl .full{display:none}
+  .utility .wc-us .lbl .abbr{display:inline}
+  .utility .wc-one{margin-left:19px;padding-left:19px;min-width:170px}
+}
+@media(max-width:1040px){
+  .utility .wc-us{gap:14px}
+  .utility .wc-us .t,.utility .wc-one .t{font-size:13px}
+  .utility .wc-one{min-width:150px;margin-left:14px;padding-left:14px}
 }
 @media(max-width:880px){
   /* the world slot goes first — the US zones are the useful half */
   .utility .wc-one{display:none}
-  .utility .wc-us{gap:9px}
-  .utility .wc-us .t{font-size:11.5px}
+  .utility .wc-us{gap:11px}
+  .utility .wc-us .t{font-size:12px}
+  .utility .wc-us .lbl{font-size:8.5px;letter-spacing:.09em}
 }
 @media(max-width:620px){
-  /* then everything but home, which is the one that answers "what time is it there" */
+  /* then everything but home, which answers "what time is it there" */
   .utility .wc-us .z:not(.home){display:none}
+  .utility .wc-us .lbl .abbr{display:none}
+  .utility .wc-us .lbl .full{display:inline}
 }
 </style>
 
@@ -1742,11 +1759,14 @@ Call Jimmy · 251-229-3216
    looked so cluttered.
 
    The rest of the world is a long list where only one can fit, so it cycles. */
+/* Two names each: the full one when there is room, the abbreviation when there
+   isn't. The bar is 1400px+ on most desktops and the clocks were sitting in a
+   corner of it looking like an afterthought. */
 const US_ZONES = [
-  { label:'ET', tz:'America/New_York' },
-  { label:'CT', tz:'America/Chicago', home:true },   // Gulf Shores
-  { label:'MT', tz:'America/Denver' },
-  { label:'PT', tz:'America/Los_Angeles' },
+  { label:'ET', full:'New York',    tz:'America/New_York' },
+  { label:'CT', full:'Gulf Shores', tz:'America/Chicago', home:true },
+  { label:'MT', full:'Denver',      tz:'America/Denver' },
+  { label:'PT', full:'Los Angeles', tz:'America/Los_Angeles' },
 ];
 
 const WC_ZONES = [
@@ -1806,7 +1826,8 @@ function wcPaintUS(){
     const h = wcHour(z.tz);
     const night = h < 6 || h >= 19;
     return `<span class="z ${z.home?'home':''} ${night?'night':'day'}">
-      <span class="lbl">${z.label}</span><span class="t">${wcShort(z.tz)}</span></span>`;
+      <span class="lbl"><span class="full">${escapeHtml(z.full)}</span><span class="abbr">${z.label}</span></span>
+      <span class="t">${wcShort(z.tz)}</span></span>`;
   }).join('');
 }
 
@@ -3141,7 +3162,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v164';
+window.BUILD = 'index-v165';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
