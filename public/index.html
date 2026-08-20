@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v113">
+<meta name="build" content="index-v116">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1618,6 +1618,8 @@ Call Jimmy · 251-229-3216
 <button class="btn-sm" onclick="logoutAgent()">Log out</button>
 </div>
 <nav class="crm-nav" id="crm-nav"></nav>
+<div id="crm-version" style="font-size:11.5px;letter-spacing:.03em;padding:8px 4px 0;
+  color:rgba(27,32,67,.5);font-variant-numeric:tabular-nums" title="Deployed versions"></div>
 <div id="celebrations"></div>
 
 <div id="sec-today" class="crm-sec"></div>
@@ -2631,7 +2633,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v113';
+window.BUILD = 'index-v116';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5260,6 +5262,7 @@ function showCrmSection(id){
     el.style.display = ok ? '' : 'none';
   });
   renderCrmNav();
+  if(typeof renderVersionStamp === 'function') renderVersionStamp();
   injectSectionHeader(id);
   pushCrmHistory(id);
   if(typeof renderAgentSwitcher === 'function') renderAgentSwitcher();
@@ -7054,6 +7057,8 @@ function removeMyPhoto(){
 
 <div id="mkStudio">
   <div class="mk-bar">
+    <button class="btn ghost" onclick="mkClose()" title="Back to Marketing"
+      style="padding:5px 12px">&larr; Back</button>
     <h3>Marketing studio</h3>
     <span class="sp"></span>
     <button class="btn ghost" onclick="mkSaveProject()">Save project</button>
@@ -7081,7 +7086,17 @@ function removeMyPhoto(){
       project. Agent photos are already data URIs; do not put artwork there too.
 */
 /* ---------- studio state ---------- */
-let mkState = { tpl: 'card-front', projectId: null, name: '', fields: {} };
+let mkState = { tpl: 'openhouse', projectId: null, name: '', fields: {} };
+let mkListings = [];
+let mkPolicy = { bannerFree: false };
+
+async function mkLoadPolicy(){
+  try{
+    const p = await storeGet('settings:marketingPolicy');
+    if(p && typeof p === 'object') mkPolicy = { bannerFree: !!p.bannerFree };
+  }catch(e){}
+  return mkPolicy;
+}
 let mkProjects = [];
 
 function mkDefaults(){
@@ -7093,10 +7108,12 @@ function mkDefaults(){
     phone: p.publicPhone || a.phone || '251-229-3216',
     email: p.publicEmail || a.email || '',
     licenseLine: mkLicenseLine(p),
-    headline: 'Thinking of selling?',
-    tagline: 'Gulf Shores \u00b7 Orange Beach \u00b7 Baldwin County',
+    banner: 'OPEN HOUSE',
+    when: '',
     scanLine: AvaniTemplates.SCAN_LINES[0],
     campaign: '',
+    price: '', address: '', beds: '', baths: '', sqft: '', remarks: '',
+    listingKey: '', photo: '',
   };
 }
 
@@ -7114,9 +7131,97 @@ function mkLicenseLine(p){
 function mkQrUrl(){
   const slug = (typeof publicSlug === 'function' && currentAgent)
     ? publicSlug(currentAgent.name) : '';
-  const src = mkState.tpl.startsWith('card') ? 'card' : 'rider';
+  const src = mkState.tpl;
   const c = (mkState.fields.campaign || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
   return location.origin + '/' + slug + '?src=' + src + (c ? '&c=' + c : '');
+}
+
+/* ---------- listing picker ----------
+   The point of building this in-house rather than using a print vendor: the
+   flyer fills itself from the live feed. */
+async function mkLoadListings(){
+  if(mkListings.length) return mkListings;
+  try{
+    const r = await fetch('/api/listings?limit=300');
+    if(!r.ok) return [];
+    const j = await r.json();
+    mkListings = (j.value || []).filter(l => l.ListPrice);
+  }catch(e){ console.error('listing load failed', e); }
+  return mkListings;
+}
+
+function mkListingLabel(l){
+  const addr = l.UnparsedAddress || '';
+  const city = l.City ? ', ' + l.City : '';
+  const price = l.ListPrice ? ' \u00b7 $' + Number(l.ListPrice).toLocaleString('en-US') : '';
+  return (addr + city + price).slice(0, 90);
+}
+
+async function mkPickListing(key){
+  const l = mkListings.find(x => String(x.ListingKey) === String(key));
+  if(!l){ mkState.fields.listingKey = ''; return; }
+  const f = mkState.fields;
+  f.listingKey = String(l.ListingKey);
+  f.price   = l.ListPrice || '';
+  f.address = [l.UnparsedAddress, l.City, l.StateOrProvince, l.PostalCode].filter(Boolean).join(', ');
+  f.beds    = l.BedroomsTotal || '';
+  f.baths   = l.BathroomsTotalInteger || '';
+  f.sqft    = l.LivingArea || '';
+  f.remarks = (l.PublicRemarks || '').slice(0, 700);
+  // MLS photos are cross-origin, which taints the canvas and breaks export —
+  // so they come back through our own origin instead.
+  const photos = (typeof extractPhotos === 'function') ? extractPhotos(l) : [];
+  f.photo = photos.length ? '/api/listing-photo?u=' + encodeURIComponent(photos[0]) : '';
+  window.__mkPhotoImg = null; window.__mkPhotoSrc = null;
+  mkLoadPhoto(() => { mkSide(); mkRender(); });
+}
+
+/* ---------- photo ----------
+   Reuses the same resize path as the agent page: cropped, capped, JPEG. Print
+   wants more pixels than a web headshot, so this caps higher — but still bounded,
+   because these ride along in the saved project. */
+function mkPhotoPick(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const targetW = 900, targetH = 1200;          // 3:4, enough for 300dpi at card size
+      const scale = Math.max(targetW / img.width, targetH / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      const cv = document.createElement('canvas');
+      cv.width = targetW; cv.height = targetH;
+      const cx = cv.getContext('2d');
+      cx.imageSmoothingQuality = 'high';
+      cx.drawImage(img, (targetW - w) / 2, (targetH - h) / 2, w, h);
+      let q = 0.85, data = cv.toDataURL('image/jpeg', q);
+      while(data.length > 900000 && q > 0.4){ q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
+      mkState.fields.photo = data;
+      mkLoadPhoto(() => { mkSide(); mkRender(); });
+    };
+    img.onerror = () => showToast("Couldn't read that image.");
+    img.src = e.target.result;
+  };
+  reader.onerror = () => showToast("Couldn't read that file.");
+  reader.readAsDataURL(file);
+}
+
+function mkClearPhoto(){
+  mkState.fields.photo = '';
+  window.__mkPhotoImg = null;
+  mkSide(); mkRender();
+}
+
+/* Canvas needs a decoded Image, not a data URI, so this resolves before drawing. */
+function mkLoadPhoto(done){
+  const src = mkState.fields.photo;
+  if(!src){ window.__mkPhotoImg = null; return done && done(); }
+  if(window.__mkPhotoImg && window.__mkPhotoSrc === src) return done && done();
+  const img = new Image();
+  img.onload = () => { window.__mkPhotoImg = img; window.__mkPhotoSrc = src; done && done(); };
+  img.onerror = () => { window.__mkPhotoImg = null; done && done(); };
+  img.src = src;
 }
 
 /* ---------- render ---------- */
@@ -7126,7 +7231,11 @@ function mkRender(){
   const t = AvaniTemplates.TEMPLATES[mkState.tpl];
   if(!t){ stage.innerHTML = ''; return; }
 
-  const spec = Object.assign({}, mkState.fields, { qrUrl: mkQrUrl() });
+  const spec = Object.assign({}, mkState.fields, {
+    qrUrl: mkQrUrl(),
+    _photoImg: window.__mkPhotoImg || null,
+    _bannerFree: !!mkPolicy.bannerFree,
+  });
 
   // measure first, then draw at the real size
   const probe = document.createElement('canvas').getContext('2d');
@@ -7167,62 +7276,81 @@ function mkSide(){
   const el = document.getElementById('mkSide');
   if(!el) return;
   const f = mkState.fields;
+  const T = AvaniTemplates.TEMPLATES[mkState.tpl] || {};
   const tplBtns = Object.entries(AvaniTemplates.TEMPLATES).map(([id, t]) =>
     `<button class="${mkState.tpl===id?'on':''}" onclick="mkPick('${id}')">${escapeHtml(t.label)}</button>`
   ).join('');
-
   const scanOpts = AvaniTemplates.SCAN_LINES.map(l =>
     `<option${f.scanLine===l?' selected':''}>${escapeHtml(l)}</option>`).join('');
-
-  const isCard = mkState.tpl.startsWith('card');
-  const isBack = mkState.tpl === 'card-back';
+  const listOpts = mkListings.map(l =>
+    `<option value="${escapeHtml(String(l.ListingKey))}"${String(f.listingKey)===String(l.ListingKey)?' selected':''}>${escapeHtml(mkListingLabel(l))}</option>`
+  ).join('');
 
   el.innerHTML = `
     <div class="mk-tpl">${tplBtns}</div>
-    <div class="mk-note">The brokerage name is sized automatically so it is never smaller
-      than anything else on the piece. Alabama license law requires that, and it is
-      the broker's exposure — so it is not editable.</div>
+    <div class="mk-note">The brokerage name is sized automatically and is always the
+      largest text on the piece \u2014 headlines are capped beneath it. Alabama license
+      law requires that and it is the broker's exposure, so it is not editable.</div>
 
     <div class="mk-field"><label>Project name</label>
-      <input id="mkName" value="${escapeHtml(mkState.name)}" placeholder="e.g. Christina cards 2026"></div>
+      <input id="mkName" value="${escapeHtml(mkState.name)}" placeholder="e.g. Sandpiper open house"></div>
 
-    ${isBack ? '' : `
-    <div class="mk-field"><label>Your name</label>
-      <input id="f_agentName" value="${escapeHtml(f.agentName||'')}"></div>
-    <div class="mk-field"><label>Title</label>
-      <input id="f_title" value="${escapeHtml(f.title||'')}"></div>`}
+    <div class="mk-field"><label>Listing</label>
+      <select id="mkListing" onchange="mkPickListing(this.value)">
+        <option value="">\u2014 choose a listing, or fill in by hand \u2014</option>
+        ${listOpts}
+      </select>
+      <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-top:4px">
+        Pulls price, address, beds, baths, size, photo and remarks from the live feed.</div>
+    </div>
 
-    ${isCard && !isBack ? `
-    <div class="mk-field"><label>Phone</label>
-      <input id="f_phone" value="${escapeHtml(f.phone||'')}"></div>
-    <div class="mk-field"><label>Email</label>
-      <input id="f_email" value="${escapeHtml(f.email||'')}"></div>` : ''}
-
-    ${!isCard ? `
     <div class="mk-field"><label>Headline</label>
-      <input id="f_headline" value="${escapeHtml(f.headline||'')}"></div>
-    <div class="mk-field"><label>Phone</label>
-      <input id="f_phone" value="${escapeHtml(f.phone||'')}"></div>` : ''}
+      <input id="f_banner" value="${escapeHtml(f.banner||'')}"></div>
 
-    ${isBack ? `
-    <div class="mk-field"><label>Tagline</label>
-      <input id="f_tagline" value="${escapeHtml(f.tagline||'')}"></div>` : ''}
+    ${mkState.tpl !== 'feature' ? `
+    <div class="mk-field"><label>When</label>
+      <input id="f_when" value="${escapeHtml(f.when||'')}" placeholder="Saturday, June 14 \u00b7 1\u20133pm"></div>` : ''}
 
-    ${isBack ? '' : `
+    <div class="mk-field"><label>Address</label>
+      <input id="f_address" value="${escapeHtml(f.address||'')}"></div>
+
+    ${mkState.tpl !== 'signin' ? `
+    <div class="mk-field"><label>Price</label>
+      <input id="f_price" value="${escapeHtml(String(f.price||''))}" placeholder="459900"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">
+      <div class="mk-field"><label>Beds</label><input id="f_beds" value="${escapeHtml(String(f.beds||''))}"></div>
+      <div class="mk-field"><label>Baths</label><input id="f_baths" value="${escapeHtml(String(f.baths||''))}"></div>
+      <div class="mk-field"><label>Sq ft</label><input id="f_sqft" value="${escapeHtml(String(f.sqft||''))}"></div>
+    </div>
+    <div class="mk-field"><label>Description</label>
+      <textarea id="f_remarks" rows="5">${escapeHtml(f.remarks||'')}</textarea></div>` : ''}
+
+    ${T.photo ? `
+    <div class="mk-field"><label>Photo</label>
+      ${f.photo ? `<div style="display:flex;gap:9px;align-items:center;margin-bottom:6px">
+          <img src="${escapeHtml(f.photo)}" style="width:74px;height:50px;object-fit:cover;border-radius:5px">
+          <button class="btn ghost" style="padding:5px 11px;font-size:12.5px" onclick="mkClearPhoto()">Remove</button>
+        </div>` : `<div style="font-size:12.5px;color:rgba(27,32,67,.6);margin-bottom:6px">
+          No photo \u2014 a placeholder shows instead.</div>`}
+      <input type="file" accept="image/*" onchange="mkPhotoPick(this)" style="font-size:12.5px">
+      <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-top:4px">
+        Or pick a listing above to use its MLS photo.</div>
+    </div>` : ''}
+
     <div class="mk-field"><label>Scan line</label>
       <select id="f_scanLine">${scanOpts}<option value="">(none)</option></select></div>
-    <div class="mk-field"><label>Campaign tag <span style="font-weight:400;text-transform:none;opacity:.7">— shows which piece pulled</span></label>
-      <input id="f_campaign" value="${escapeHtml(f.campaign||'')}" placeholder="e.g. spring26"></div>`}
 
-    ${isBack || !f.licenseLine ? '' : `
+    <div class="mk-field"><label>Campaign tag <span style="font-weight:400;text-transform:none;opacity:.7">\u2014 shows which piece pulled</span></label>
+      <input id="f_campaign" value="${escapeHtml(f.campaign||'')}" placeholder="e.g. sandpiper"></div>
+
+    ${f.licenseLine ? `
     <div class="mk-field"><label>License line</label>
-      <input value="${escapeHtml(f.licenseLine)}" disabled
-        style="background:#F0F1F8;color:rgba(27,32,67,.6)">
+      <input value="${escapeHtml(f.licenseLine)}" disabled style="background:#F0F1F8;color:rgba(27,32,67,.6)">
       <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-top:4px">
-        From your license record. Ask the broker to change it.</div></div>`}
+        From your license record. Ask the broker to change it.</div></div>` : ''}
   `;
 
-  el.querySelectorAll('input[id^="f_"], select[id^="f_"]').forEach(inp => {
+  el.querySelectorAll('input[id^="f_"], select[id^="f_"], textarea[id^="f_"]').forEach(inp => {
     inp.addEventListener('input', () => {
       mkState.fields[inp.id.slice(2)] = inp.value;
       mkRender();
@@ -7251,14 +7379,40 @@ function mkOpen(project){
   }
   document.getElementById('mkStudio').classList.add('on');
   document.body.style.overflow = 'hidden';
+  document.addEventListener('keydown', mkEscHandler);
+  window.__mkPhotoImg = null; window.__mkPhotoSrc = null;
+  mkLoadPhoto(() => mkRender());
+  mkLoadListings().then(() => mkSide());
+  mkLoadPolicy().then(() => mkRender());
+  try{ history.pushState({ mk:1 }, '', location.href); window.__mkPushed = true; }catch(e){}
   mkSide(); mkRender();
 }
 
-function mkClose(){
-  document.getElementById('mkStudio').classList.remove('on');
+function mkClose(opts){
+  const el = document.getElementById('mkStudio');
+  if(!el || !el.classList.contains('on')) return;
+  el.classList.remove('on');
   document.body.style.overflow = '';
+  document.removeEventListener('keydown', mkEscHandler);
+  // Only unwind history when the user closed it from a button. When the browser
+  // back button fired this, the entry is already gone and popping again would
+  // throw them out of the CRM entirely.
+  if(!(opts && opts.fromPop) && window.__mkPushed){
+    window.__mkPushed = false;
+    try{ history.back(); }catch(e){}
+  }
+  window.__mkPushed = false;
   if(typeof renderMarketingSection === 'function') renderMarketingSection();
 }
+
+function mkEscHandler(e){
+  if(e.key === 'Escape'){ e.preventDefault(); mkClose(); }
+}
+
+window.addEventListener('popstate', () => {
+  const el = document.getElementById('mkStudio');
+  if(el && el.classList.contains('on')) mkClose({ fromPop:true });
+});
 
 /* ---------- projects ---------- */
 function mkProjectKey(agentId, id){ return 'marketing:' + agentId + ':' + id; }
@@ -7283,7 +7437,7 @@ async function mkSaveProject(){
     const ok = await storeSet(mkProjectKey(currentAgent.id, id), rec);
     if(!ok) throw new Error('the server refused the save');
     mkState.projectId = id;
-    alert('Project saved.');
+    if(typeof showToast === 'function') showToast('Project saved.'); else alert('Project saved.');
   }catch(e){ alert('Could not save: ' + e.message); }
 }
 
@@ -7395,10 +7549,35 @@ async function mkShare(){
 }
 
 /* ---------- CRM section ---------- */
+/* Version stamps, on screen. Chasing "is this actually deployed" through view-source
+   wastes more time than the check is worth. */
+async function renderVersionStamp(){
+  const el = document.getElementById('crm-version');
+  if(!el) return;
+  let sv = '?';
+  try{
+    const r = await fetch('/api/health');
+    if(r.ok){ const j = await r.json(); sv = j.serverVersion || '?'; }
+  }catch(e){ sv = 'unreachable'; }
+  const iv = (window.BUILD || 'index-?').replace('index-','');
+  el.textContent = 'index ' + iv + '  \u00b7  server ' + sv;
+  el.style.color = (sv === 'unreachable') ? '#B4232A' : 'rgba(27,32,67,.5)';
+}
+
+async function mkSavePolicy(on){
+  const ok = await storeSet('settings:marketingPolicy', { bannerFree: !!on });
+  if(!ok){ alert('Could not save that.'); return; }
+  mkPolicy.bannerFree = !!on;
+  if(typeof showToast === 'function')
+    showToast(on ? 'Headlines may now exceed the brokerage name.'
+                 : 'Headlines are capped at the brokerage name again.');
+}
+
 async function renderMarketingSection(){
   const el = document.getElementById('sec-marketing');
   if(!el || !currentAgent) return;
   const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
+  await mkLoadPolicy();
 
   el.innerHTML = `<div class="card"><div style="padding:18px">
       <p style="margin:0 0 14px;color:rgba(27,32,67,.72);max-width:640px">
@@ -7407,6 +7586,33 @@ async function renderMarketingSection(){
         rebuilding it.</p>
       <button class="btn" onclick="mkOpen()">New piece</button>
     </div></div>
+    <div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 8px;font-size:16px">Business cards, signs and branded goods</h3>
+      <p style="margin:0 0 12px;color:rgba(27,32,67,.72);max-width:620px;font-size:14px">
+        Those are printed and shipped by Markful, who already hold our brand artwork.
+        Order there rather than building them here.</p>
+      <a class="btn ghost" href="https://www.markful.com/avani-real-estate-southern-sands"
+         target="_blank" rel="noopener">Open the Avani &amp; Co shop &rarr;</a>
+    </div></div>
+    ${staff ? `<div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 8px;font-size:16px">Advertising policy</h3>
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;max-width:660px">
+        <input type="checkbox" id="mkBannerFree" ${mkPolicy.bannerFree?'checked':''}
+          onchange="mkSavePolicy(this.checked)" style="margin-top:3px;flex:0 0 auto">
+        <span style="font-size:13.5px;line-height:1.5;color:rgba(27,32,67,.75)">
+          <strong>Allow event headlines larger than the brokerage name.</strong><br>
+          AREC 790-X-3-.16 says the brokerage name must be at least as large as any other
+          text in an advertisement, and does not carve out headlines like &ldquo;OPEN HOUSE&rdquo;.
+          The argument the other way is that the rule targets an agent branding themselves
+          over the brokerage, and a generic event word is not competing branding.
+          It is a judgment call and the exposure is the qualifying broker&rsquo;s, so only you
+          can set it. Off by default. Either way the brokerage name still renders as large
+          as the layout allows &mdash; it is never shrunk to make room.
+        </span>
+      </label>
+      <div style="margin-top:10px;font-size:12px;color:rgba(27,32,67,.58)">
+        Worth putting to the attorney alongside the compensation language.</div>
+    </div></div>` : ''}
     <div class="card" style="margin-top:14px"><div style="padding:18px">
       <h3 style="margin:0 0 12px;font-size:16px">Saved projects</h3>
       <div id="mkList" class="mk-projects">Loading…</div>
@@ -7744,13 +7950,15 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
 </script>
 <script>
 /* ---------- marketing material renderers ----------
-   Every template draws to a canvas at print resolution so the same code produces
-   the on-screen preview and the downloadable file.
+   Printable pieces built around live MLS data. Business cards and yard signs are
+   deliberately NOT here — Markful stocks the brand and actually prints and ships.
+   What this does that a print vendor cannot: pull the real listing, and put a QR
+   on it that carries the agent's attribution.
 
    AREC 790-X-3-.16: the brokerage name must be set at a font size equal to or
-   larger than any other text or logo on the piece. That is enforced here in code
-   — BROKERAGE_PT is computed from the largest other element on the layout and an
-   agent cannot override it. Do not add a control that lets them.                */
+   larger than any other text or logo on the piece. brokeragePt() computes that
+   from the largest other element. There is deliberately no control to override
+   it — do not add one.                                                          */
 (function(global){
   'use strict';
 
@@ -7764,8 +7972,6 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
 
   const BROKERAGE_NAME = 'Avani & Co Real Estate Southern Sands';
 
-  /* Scan-me lines. Kept short — a rider is read from a moving car and a card is
-     read at arm's length. */
   const SCAN_LINES = [
     "Don't waste paper — scan me",
     'In a hurry? Scan me, look later',
@@ -7807,218 +8013,405 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     ctx.closePath();
   }
 
-  /* The compliance rule, in one place. Returns the point size the brokerage name
-     must use, given every other text size on the piece. */
-  function brokeragePt(otherSizes){
-    const largest = Math.max.apply(null, otherSizes.concat([0]));
-    return Math.ceil(largest);   // equal to the largest other element, never less
+  function money(v){
+    const n = Number(v);
+    if(!n) return '';
+    return '$' + n.toLocaleString('en-US');
   }
 
-  // ================= BUSINESS CARD =================
-  // 3.5 x 2 in. Bleed 0.125 in each side -> 3.75 x 2.25 trim box.
-  const CARD = { w: 3.5, h: 2.0, bleed: 0.125 };
+  function brokeragePt(otherSizes){
+    return Math.ceil(Math.max.apply(null, otherSizes.concat([0])));
+  }
 
-  function drawBusinessCardFront(ctx, spec, dpi, QR){
-    const bl = CARD.bleed * dpi;
-    const W = (CARD.w + CARD.bleed * 2) * dpi;
-    const H = (CARD.h + CARD.bleed * 2) * dpi;
-    const safe = 0.14 * dpi;                 // keep type this far inside the trim
-    const L = bl + safe, R = W - bl - safe;
-    const T = bl + safe, B = H - bl - safe;
+  /* The compliance ceiling for a whole page.
+
+     The brokerage name lives in the footer, where the QR limits how wide it can
+     be — so there is a hard cap on how large it can render. Every other piece of
+     text on the flyer has to sit at or below that cap, or the name is no longer
+     the largest thing on the page. Headline sizes are therefore derived from
+     this, never chosen freely.                                                  */
+  /* Event banners — "OPEN HOUSE", "JUST LISTED" — are a judgment call.
+
+     790-X-3-.16 says the brokerage name must be at least as large as any other
+     text in the advertisement, and does not carve out headlines. The argument
+     the other way is that the rule targets an agent branding themselves over
+     the brokerage, and a generic event word is not competing branding.
+
+     That call belongs to the qualifying broker, not to this file and not to the
+     agent. bannerFree comes from settings:marketingPolicy, is off by default,
+     and only the broker can change it. Whatever the setting, the brokerage name
+     is always rendered as large as the layout allows — it is never shrunk to
+     make room for a headline.                                                   */
+  function bannerSize(ctx, spec, dpi, W, CAP){
+    if(!spec._bannerFree) return CAP;
+    const pad = 0.5 * dpi;
+    return fitText(ctx, spec.banner || 'OPEN HOUSE', W - pad*2, 0.62 * dpi,
+                   '600 %SIZE%px Georgia, serif', 0.2 * dpi);
+  }
+
+  function firmCeiling(ctx, dpi, W, H){
+    const pad  = 0.5 * dpi;
+    const band = 1.55 * dpi;
+    const qs   = band - pad * 0.9;
+    const scan = 0.13 * dpi * 1.6 + 0.28 * dpi;
+    const innerW = W - pad * 2 - qs - scan;
+    // largest size at which the full name still fits on one line
+    let px = Math.floor(0.42 * dpi);
+    while(px > 0.12 * dpi){
+      ctx.font = `600 ${px}px Georgia, serif`;
+      if(ctx.measureText(BROKERAGE_NAME).width <= innerW) break;
+      px -= 1;
+    }
+    return px;
+  }
+
+  function drawCover(ctx, img, x, y, w, h){
+    if(!img) return false;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    const scale = Math.max(w / img.width, h / img.height);
+    const iw = img.width * scale, ih = img.height * scale;
+    ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+    ctx.restore();
+    return true;
+  }
+
+  function placeholder(ctx, x, y, w, h, label){
+    ctx.fillStyle = BRAND.mist;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(27,32,67,.35)';
+    ctx.font = `${Math.round(h * 0.055)}px Helvetica, Arial, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label || 'Photo', x + w / 2, y + h / 2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  }
+
+  /* Facts row shared by the flyers. Returns the height it used. */
+  function drawFacts(ctx, spec, x, y, w, dpi){
+    const facts = [];
+    if(spec.beds)  facts.push([String(spec.beds),  Number(spec.beds) === 1 ? 'bed' : 'beds']);
+    if(spec.baths) facts.push([String(spec.baths), Number(spec.baths) === 1 ? 'bath' : 'baths']);
+    if(spec.sqft)  facts.push([Number(spec.sqft).toLocaleString('en-US'), 'sq ft']);
+    if(!facts.length) return 0;
+
+    const numPt = 0.30 * dpi, labPt = 0.115 * dpi;
+    const cellW = w / facts.length;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    facts.forEach((f, i) => {
+      const cx = x + cellW * i + cellW / 2;
+      ctx.fillStyle = BRAND.blue;
+      ctx.font = `500 ${numPt}px Georgia, serif`;
+      ctx.fillText(f[0], cx, y);
+      ctx.fillStyle = 'rgba(27,32,67,.6)';
+      ctx.font = `${labPt}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(f[1], cx, y + numPt * 1.12);
+      if(i){
+        ctx.strokeStyle = 'rgba(27,32,67,.16)';
+        ctx.lineWidth = Math.max(1, dpi / 150);
+        ctx.beginPath();
+        ctx.moveTo(x + cellW * i, y + numPt * 0.1);
+        ctx.lineTo(x + cellW * i, y + numPt * 1.3);
+        ctx.stroke();
+      }
+    });
+    ctx.textAlign = 'left';
+    return numPt * 1.12 + labPt * 1.4;
+  }
+
+  /* Footer band: brokerage name, agent, QR. This carries the required
+     identification, so every flyer shares it. */
+  function drawFooter(ctx, spec, dpi, W, H, QR){
+    const bandH = 1.55 * dpi;
+    const y = H - bandH;
+    ctx.fillStyle = BRAND.blue;
+    ctx.fillRect(0, y, W, bandH);
+    ctx.fillStyle = BRAND.gold;
+    ctx.fillRect(0, y, W, 0.035 * dpi);
+
+    const pad = 0.5 * dpi;
+    const qs = bandH - pad * 0.9;
+    const qx = W - pad - qs, qy = y + (bandH - qs) / 2;
+    if(spec.qrUrl && QR){
+      ctx.fillStyle = '#fff';
+      roundRect(ctx, qx - 0.06*dpi, qy - 0.06*dpi, qs + 0.12*dpi, qs + 0.12*dpi, 0.05*dpi);
+      ctx.fill();
+      QR.draw(ctx, spec.qrUrl, qx, qy, qs, { dark: BRAND.blue, light:'#fff', quiet:2 });
+    }
+
+    let sx = qx - 0.28 * dpi;
+    if(spec.scanLine){
+      // rotated, so the band HEIGHT is the constraint on its length
+      const sp = fitText(ctx, spec.scanLine, bandH - 0.24 * dpi, 0.13 * dpi,
+                         '600 %SIZE%px Helvetica, Arial, sans-serif', 0.06 * dpi);
+      ctx.save();
+      ctx.fillStyle = BRAND.gold;
+      ctx.font = `600 ${sp}px Helvetica, Arial, sans-serif`;
+      ctx.translate(sx - sp * 0.3, y + bandH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(spec.scanLine, 0, 0);
+      ctx.restore();
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      sx -= sp * 1.6;
+    }
+
+    const innerW = sx - pad;
+    const firmPt  = spec._firmPt || firmCeiling(ctx, dpi, W, H);
+    // agent line stays clearly under the brokerage name
+    const agentPt = Math.min(0.185 * dpi, firmPt * 0.62);
+    const metaPt  = Math.min(0.135 * dpi, firmPt * 0.46);
+
+    let ty = y + (bandH - (firmPt * 1.14 + agentPt * 1.16 + metaPt * 1.2)) / 2;
+    ctx.fillStyle = '#fff';
+    const fp = fitText(ctx, BROKERAGE_NAME, innerW, firmPt, '600 %SIZE%px Georgia, serif', 0.14*dpi);
+    ctx.font = `600 ${fp}px Georgia, serif`;
+    ctx.fillText(BROKERAGE_NAME, pad, ty);
+    ty += fp * 1.14;
+
+    if(spec.agentName){
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.font = `${agentPt}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.agentName + (spec.title ? '  \u00b7  ' + spec.title : ''), pad, ty);
+      ty += agentPt * 1.16;
+    }
+    const meta = [spec.phone, spec.email].filter(Boolean).join('   \u00b7   ');
+    if(meta){
+      ctx.fillStyle = 'rgba(255,255,255,.8)';
+      ctx.font = `${metaPt}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(meta, pad, ty);
+    }
+    if(spec.licenseLine){
+      ctx.fillStyle = 'rgba(255,255,255,.6)';
+      ctx.font = `${0.1*dpi}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.licenseLine, pad, y + bandH - 0.24 * dpi);
+    }
+    return bandH;
+  }
+
+  const LETTER = { w: 8.5, h: 11 };
+
+  // ================= OPEN HOUSE FLYER =================
+  function drawOpenHouse(ctx, spec, dpi, QR){
+    const W = LETTER.w * dpi, H = LETTER.h * dpi;
+    const pad = 0.5 * dpi;
+
+    // Nothing on the page may exceed this — see firmCeiling.
+    const CAP = firmCeiling(ctx, dpi, W, H);
+    spec._firmPt = CAP;
 
     ctx.fillStyle = BRAND.paper;
     ctx.fillRect(0, 0, W, H);
 
+    const banPt = bannerSize(ctx, spec, dpi, W, CAP);
+    const banH = Math.max(CAP * 1.5, banPt * 1.5);
     ctx.fillStyle = BRAND.gold;
-    ctx.fillRect(bl, bl, 0.05 * dpi, H - bl * 2);
-
-    const textL = L + 0.09 * dpi;
-    const qs    = 0.60 * dpi;                // QR block, bottom right
-    const qx    = R - qs, qy = B - qs;
-
-    const agentPt   = 0.135 * dpi;
-    const titlePt   = 0.068 * dpi;
-    const contactPt = 0.066 * dpi;
-    const licPt     = 0.052 * dpi;
-    const firmPt    = brokeragePt([agentPt, titlePt, contactPt, licPt]);
-
-    ctx.textBaseline = 'top';
-
-    // --- brokerage name leads, largest text on the card by rule ---
-    ctx.fillStyle = BRAND.blue;
-    ctx.font = `600 ${firmPt}px Georgia, serif`;
-    const firmLines = wrapLines(ctx, BROKERAGE_NAME, R - textL);
-    let y = T;
-    firmLines.forEach(line => { ctx.fillText(line, textL, y); y += firmPt * 1.1; });
-
-    // --- agent sits just under it ---
-    y += 0.07 * dpi;
+    ctx.fillRect(0, 0, W, banH);
     ctx.fillStyle = BRAND.ink;
-    ctx.font = `500 ${agentPt}px Georgia, serif`;
-    ctx.fillText(spec.agentName || '', textL, y);
-    y += agentPt * 1.1;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const bp = fitText(ctx, spec.banner || 'OPEN HOUSE', W - pad*2, banPt,
+                       '600 %SIZE%px Georgia, serif', 0.2*dpi);
+    ctx.font = `600 ${bp}px Georgia, serif`;
+    ctx.fillText(spec.banner || 'OPEN HOUSE', W/2, banH/2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
 
-    if(spec.title){
-      ctx.fillStyle = 'rgba(27,32,67,.68)';
-      ctx.font = `${titlePt}px Helvetica, Arial, sans-serif`;
-      ctx.fillText(spec.title, textL, y);
-    }
-
-    // --- contact block anchored to the bottom, level with the QR ---
-    const contact = [spec.phone, spec.email, 'bamacoast.com'].filter(Boolean);
-    const licH = spec.licenseLine ? licPt * 1.5 : 0;
-    let cy = B - licH - contact.length * contactPt * 1.32;
-    ctx.fillStyle = BRAND.ink;
-    ctx.font = `${contactPt}px Helvetica, Arial, sans-serif`;
-    contact.forEach(line => { ctx.fillText(line, textL, cy); cy += contactPt * 1.32; });
-
-    if(spec.licenseLine){
-      ctx.fillStyle = 'rgba(27,32,67,.58)';
-      ctx.font = `${licPt}px Helvetica, Arial, sans-serif`;
-      ctx.fillText(spec.licenseLine, textL, B - licPt * 1.05);
-    }
-
-    // --- QR ---
-    if(spec.qrUrl && QR){
-      QR.draw(ctx, spec.qrUrl, qx, qy, qs, { dark: BRAND.blue, light: '#fff', quiet: 2 });
-      if(spec.scanLine){
-        ctx.fillStyle = 'rgba(27,32,67,.68)';
-        const sp = 0.048 * dpi;
-        ctx.font = `${sp}px Helvetica, Arial, sans-serif`;
-        ctx.textAlign = 'center';
-        const sl = fitText(ctx, spec.scanLine, qs + 0.25 * dpi, sp,
-                           '%SIZE%px Helvetica, Arial, sans-serif', 0.032 * dpi);
-        ctx.font = `${sl}px Helvetica, Arial, sans-serif`;
-        ctx.fillText(spec.scanLine, qx + qs / 2, qy - sl * 1.6);
-        ctx.textAlign = 'left';
-      }
-    }
-    return { W, H };
-  }
-
-  function drawBusinessCardBack(ctx, spec, dpi, QR){
-    const bl = CARD.bleed * dpi;
-    const W = (CARD.w + CARD.bleed * 2) * dpi;
-    const H = (CARD.h + CARD.bleed * 2) * dpi;
-
-    ctx.fillStyle = BRAND.blue;
-    ctx.fillRect(0, 0, W, H);
-
-    const firmPt = 0.16 * dpi;
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `600 ${firmPt}px Georgia, serif`;
-    const lines = wrapLines(ctx, BROKERAGE_NAME, W - 0.7 * dpi);
-    const blockH = lines.length * firmPt * 1.15;
-    let y = H / 2 - blockH / 2 + firmPt * 0.55;
-    lines.forEach(l => { ctx.fillText(l, W / 2, y); y += firmPt * 1.15; });
-
-    ctx.fillStyle = BRAND.gold;
-    ctx.font = `${0.062 * dpi}px Helvetica, Arial, sans-serif`;
-    ctx.fillText(spec.tagline || 'Gulf Shores · Orange Beach · Baldwin County',
-                 W / 2, y + 0.06 * dpi);
-
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    return { W, H };
-  }
-
-  // ================= YARD SIGN RIDER =================
-  // 6 x 24 in. Read from a moving car, so 100 dpi is ample and keeps the file
-  // manageable — a 300 dpi rider is 1800 x 7200 and most browsers choke.
-  const RIDER = { w: 24, h: 6 };
-
-  function drawYardRider(ctx, spec, dpi, QR){
-    const W = RIDER.w * dpi, H = RIDER.h * dpi;
-    const pad = 0.42 * dpi;
-    const bar = 0.15 * dpi;
-
-    ctx.fillStyle = BRAND.blue;
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = BRAND.gold;
-    ctx.fillRect(0, 0, W, bar);
-    ctx.fillRect(0, H - bar, W, bar);
-
-    // --- QR panel, right side, fully inside the gold bars ---
-    const panelPad = 0.12 * dpi;
-    const qs = H - (bar + pad) * 2 - panelPad * 2;
-    const qx = W - pad - qs, qy = (H - qs) / 2;
-    if(spec.qrUrl && QR){
-      ctx.fillStyle = '#fff';
-      roundRect(ctx, qx - panelPad, qy - panelPad,
-                qs + panelPad * 2, qs + panelPad * 2, 0.1 * dpi);
-      ctx.fill();
-      QR.draw(ctx, spec.qrUrl, qx, qy, qs, { dark: BRAND.blue, light: '#fff', quiet: 2 });
-    }
-
-    // --- scan line sits to the LEFT of the panel, vertically centred ---
-    let textRight = qx - panelPad - 0.35 * dpi;
-    if(spec.scanLine){
-      const sp = 0.26 * dpi;
-      ctx.font = `600 ${sp}px Helvetica, Arial, sans-serif`;
-      ctx.fillStyle = BRAND.gold;
-      ctx.save();
-      ctx.translate(textRight - sp * 0.4, H / 2);
-      ctx.rotate(-Math.PI / 2);
+    let y = banH + 0.26 * dpi;
+    if(spec.when){
+      ctx.fillStyle = BRAND.blue;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(spec.scanLine, 0, 0);
-      ctx.restore();
+      const wp = fitText(ctx, spec.when, W - pad*2, 0.26*dpi,
+                         '600 %SIZE%px Helvetica, Arial, sans-serif', 0.13*dpi);
+      ctx.font = `600 ${wp}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.when, W/2, y);
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      textRight -= sp * 1.5;
+      y += wp * 1.5;
     }
 
-    const innerW = textRight - pad;
+    // the photo takes whatever the text below does not need, so there is no
+    // dead band above the footer
+    const belowPhoto = Math.min(0.44*dpi, CAP) * 1.24 + 0.2*dpi*1.6 + 0.62*dpi
+                     + (spec.remarks ? 0.145*dpi*1.42*3 : 0) + 0.5*dpi;
+    const footTopA = H - 1.55 * dpi;
+    const photoH = Math.max(2.6 * dpi, footTopA - y - belowPhoto);
+    if(!drawCover(ctx, spec._photoImg, pad, y, W - pad*2, photoH))
+      placeholder(ctx, pad, y, W - pad*2, photoH, 'Listing photo');
+    y += photoH + 0.30 * dpi;
 
-    const headlinePt = 0.90 * dpi;
-    const agentPt    = 0.52 * dpi;
-    const firmPt     = brokeragePt([headlinePt, agentPt]);
-
-    // measure the stack so it can be vertically centred
-    ctx.font = `600 ${firmPt}px Georgia, serif`;
-    const fp = fitText(ctx, BROKERAGE_NAME, innerW, firmPt,
-                       '600 %SIZE%px Georgia, serif', 0.34 * dpi);
-    const headline = spec.headline || '';
-    ctx.font = `600 ${headlinePt}px Helvetica, Arial, sans-serif`;
-    const hp = headline ? fitText(ctx, headline, innerW, agentPt,
-                       '600 %SIZE%px Helvetica, Arial, sans-serif', 0.24 * dpi) : 0;
-    const line3 = [spec.agentName, spec.phone].filter(Boolean).join('   \u00b7   ');
-    const ap = line3 ? fitText(ctx, line3, innerW, agentPt * 0.86,
-                       '%SIZE%px Helvetica, Arial, sans-serif', 0.2 * dpi) : 0;
-
-    const stackH = fp * 1.16 + (hp ? hp * 1.28 : 0) + (ap ? ap * 1.2 : 0);
-    let y = (H - stackH) / 2;
-
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#fff';
-    ctx.font = `600 ${fp}px Georgia, serif`;
-    ctx.fillText(BROKERAGE_NAME, pad, y);
-    y += fp * 1.16;
-
-    if(hp){
-      ctx.fillStyle = BRAND.gold;
-      ctx.font = `600 ${hp}px Helvetica, Arial, sans-serif`;
-      ctx.fillText(headline, pad, y);
-      y += hp * 1.28;
+    if(spec.price){
+      ctx.fillStyle = BRAND.ink;
+      ctx.textAlign = 'center';
+      const pp = Math.min(0.44 * dpi, CAP);
+      ctx.font = `500 ${pp}px Georgia, serif`;
+      ctx.fillText(money(spec.price), W/2, y);
+      ctx.textAlign = 'left';
+      y += pp * 1.24;
     }
-    if(ap){
-      ctx.fillStyle = 'rgba(255,255,255,.94)';
+
+    if(spec.address){
+      ctx.fillStyle = 'rgba(27,32,67,.78)';
+      ctx.textAlign = 'center';
+      const ap = fitText(ctx, spec.address, W - pad*2, 0.2*dpi,
+                         '%SIZE%px Helvetica, Arial, sans-serif', 0.11*dpi);
       ctx.font = `${ap}px Helvetica, Arial, sans-serif`;
-      ctx.fillText(line3, pad, y);
+      ctx.fillText(spec.address, W/2, y);
+      ctx.textAlign = 'left';
+      y += ap * 1.6;
     }
+
+    y += drawFacts(ctx, spec, pad, y, W - pad*2, dpi) + 0.2 * dpi;
+
+    const footTop = H - 1.55 * dpi - 0.26 * dpi;
+    if(spec.remarks && y < footTop - 0.4 * dpi){
+      ctx.fillStyle = 'rgba(27,32,67,.72)';
+      const rp = 0.145 * dpi;
+      ctx.font = `${rp}px Helvetica, Arial, sans-serif`;
+      const lines = wrapLines(ctx, spec.remarks, W - pad*2);
+      const room = Math.floor((footTop - y) / (rp * 1.42));
+      lines.slice(0, Math.max(0, room)).forEach(l => { ctx.fillText(l, pad, y); y += rp * 1.42; });
+    }
+
+    drawFooter(ctx, spec, dpi, W, H, QR);
     return { W, H };
   }
 
-  // ---------- registry ----------
+  // ================= FEATURE SHEET =================
+  function drawFeatureSheet(ctx, spec, dpi, QR){
+    const W = LETTER.w * dpi, H = LETTER.h * dpi;
+    const pad = 0.5 * dpi;
+    const CAP = firmCeiling(ctx, dpi, W, H);
+    spec._firmPt = CAP;
+
+    ctx.fillStyle = BRAND.paper;
+    ctx.fillRect(0, 0, W, H);
+
+    const heroH = 4.1 * dpi;
+    if(!drawCover(ctx, spec._photoImg, 0, 0, W, heroH))
+      placeholder(ctx, 0, 0, W, heroH, 'Listing photo');
+    const grad = ctx.createLinearGradient(0, heroH * 0.45, 0, heroH);
+    grad.addColorStop(0, 'rgba(27,32,67,0)');
+    grad.addColorStop(1, 'rgba(27,32,67,.82)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, heroH * 0.45, W, heroH * 0.55);
+
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'bottom';
+    if(spec.price){
+      ctx.font = `500 ${Math.min(0.42*dpi, CAP)}px Georgia, serif`;
+      ctx.fillText(money(spec.price), pad, heroH - 0.55 * dpi);
+    }
+    if(spec.address){
+      const ap = fitText(ctx, spec.address, W - pad*2, 0.18*dpi,
+                         '%SIZE%px Helvetica, Arial, sans-serif', 0.1*dpi);
+      ctx.font = `${ap}px Helvetica, Arial, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,.92)';
+      ctx.fillText(spec.address, pad, heroH - 0.26 * dpi);
+    }
+    ctx.textBaseline = 'top';
+
+    let y = heroH + 0.34 * dpi;
+    y += drawFacts(ctx, spec, pad, y, W - pad*2, dpi) + 0.26 * dpi;
+
+    ctx.strokeStyle = 'rgba(27,32,67,.15)';
+    ctx.lineWidth = Math.max(1, dpi/150);
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
+    y += 0.28 * dpi;
+
+    const footTop = H - 1.55 * dpi - 0.26 * dpi;
+    if(spec.remarks){
+      ctx.fillStyle = 'rgba(27,32,67,.75)';
+      const rp = 0.15 * dpi;
+      ctx.font = `${rp}px Helvetica, Arial, sans-serif`;
+      const lines = wrapLines(ctx, spec.remarks, W - pad*2);
+      const room = Math.floor((footTop - y) / (rp * 1.45));
+      lines.slice(0, Math.max(0, room)).forEach(l => { ctx.fillText(l, pad, y); y += rp * 1.45; });
+    }
+
+    drawFooter(ctx, spec, dpi, W, H, QR);
+    return { W, H };
+  }
+
+  // ================= SIGN-IN SHEET =================
+  function drawSignIn(ctx, spec, dpi, QR){
+    const W = LETTER.w * dpi, H = LETTER.h * dpi;
+    const pad = 0.55 * dpi;
+
+    ctx.fillStyle = BRAND.paper;
+    ctx.fillRect(0, 0, W, H);
+
+    const firmPt  = 0.30 * dpi;
+    const titlePt = firmPt * 0.82;   // stays under the brokerage name
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = BRAND.blue;
+    const qs = 1.15 * dpi;
+    const headW = W - pad*2 - qs - 0.3*dpi;
+    const fp = fitText(ctx, BROKERAGE_NAME, headW, firmPt, '600 %SIZE%px Georgia, serif', 0.16*dpi);
+    ctx.font = `600 ${fp}px Georgia, serif`;
+    ctx.fillText(BROKERAGE_NAME, pad, pad);
+    let y = pad + fp * 1.2;
+
+    ctx.fillStyle = BRAND.ink;
+    ctx.font = `500 ${titlePt}px Georgia, serif`;
+    ctx.fillText(spec.banner || 'Open house sign-in', pad, y);
+    y += titlePt * 1.25;
+
+    if(spec.address){
+      ctx.fillStyle = 'rgba(27,32,67,.7)';
+      ctx.font = `${0.16*dpi}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(spec.address + (spec.when ? '   \u00b7   ' + spec.when : ''), pad, y);
+      y += 0.16 * dpi * 1.7;
+    }
+
+    if(spec.qrUrl && QR){
+      QR.draw(ctx, spec.qrUrl, W - pad - qs, pad, qs, { dark: BRAND.blue, light:'#fff', quiet:2 });
+      ctx.fillStyle = 'rgba(27,32,67,.62)';
+      ctx.font = `${0.1*dpi}px Helvetica, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('Or scan to send it', W - pad - qs/2, pad + qs + 0.06*dpi);
+      ctx.textAlign = 'left';
+    }
+
+    y = Math.max(y, pad + qs + 0.3 * dpi);
+    const cols = [['Name', 0.30], ['Phone', 0.22], ['Email', 0.30], ['Have an agent?', 0.18]];
+    const tableW = W - pad*2;
+    const headPt = 0.115 * dpi;
+    ctx.fillStyle = BRAND.blue;
+    ctx.fillRect(pad, y, tableW, headPt * 2.1);
+    ctx.fillStyle = '#fff';
+    ctx.font = `600 ${headPt}px Helvetica, Arial, sans-serif`;
+    let cx = pad;
+    cols.forEach(c => { ctx.fillText(c[0], cx + 0.08*dpi, y + headPt * 0.5); cx += tableW * c[1]; });
+    y += headPt * 2.1;
+
+    const top = y;
+    const rowH = 0.42 * dpi;
+    const bottom = H - pad - 0.4 * dpi;
+    ctx.strokeStyle = 'rgba(27,32,67,.22)';
+    ctx.lineWidth = Math.max(1, dpi/200);
+    let rows = 0;
+    while(y + rowH < bottom){
+      ctx.beginPath(); ctx.moveTo(pad, y + rowH); ctx.lineTo(pad + tableW, y + rowH); ctx.stroke();
+      let vx = pad;
+      cols.forEach((c, i) => {
+        if(i){ ctx.beginPath(); ctx.moveTo(vx, y); ctx.lineTo(vx, y + rowH); ctx.stroke(); }
+        vx += tableW * c[1];
+      });
+      y += rowH; rows++;
+    }
+    ctx.strokeRect(pad, top, tableW, rows * rowH);
+
+    ctx.fillStyle = 'rgba(27,32,67,.55)';
+    ctx.font = `${0.1*dpi}px Helvetica, Arial, sans-serif`;
+    ctx.fillText(BROKERAGE_NAME + (spec.licenseLine ? '  \u00b7  ' + spec.licenseLine : ''),
+                 pad, H - pad - 0.14*dpi);
+    return { W, H };
+  }
+
   const TEMPLATES = {
-    'card-front': { label: 'Business card — front', dpi: 300, draw: drawBusinessCardFront,
-                    size: '3.5 × 2 in + bleed' },
-    'card-back':  { label: 'Business card — back',  dpi: 300, draw: drawBusinessCardBack,
-                    size: '3.5 × 2 in + bleed' },
-    'rider':      { label: 'Yard sign rider',       dpi: 100, draw: drawYardRider,
-                    size: '24 × 6 in' },
+    'openhouse': { label: 'Open house flyer',         dpi: 200, draw: drawOpenHouse,
+                   size: '8.5 \u00d7 11 in', listing: true, photo: true },
+    'feature':   { label: 'Property feature sheet',   dpi: 200, draw: drawFeatureSheet,
+                   size: '8.5 \u00d7 11 in', listing: true, photo: true },
+    'signin':    { label: 'Open house sign-in sheet', dpi: 200, draw: drawSignIn,
+                   size: '8.5 \u00d7 11 in', listing: true },
   };
 
   global.AvaniTemplates = { TEMPLATES, BRAND, BROKERAGE_NAME, SCAN_LINES, brokeragePt };
@@ -8062,6 +8455,10 @@ const RESOURCE_DEFAULTS = [
     { t:'Alabama Real Estate Commission', u:'https://arec.alabama.gov',
       d:'License lookup, renewals, rules and advertising law' },
     { t:'Matrix (MLS login)', u:'', d:'Add your MLS Matrix login URL', check:true },
+  ]},
+  { group:'Print & branded merchandise', items:[
+    { t:'Markful \u2014 Avani & Co shop', u:'https://www.markful.com/avani-real-estate-southern-sands',
+      d:'Business cards, signs, name badges and branded goods, printed and shipped. Our brand is already loaded.' },
   ]},
   { group:'Transaction platforms', items:[
     { t:'Dotloop', u:'https://www.dotloop.com', d:'Transaction management and e-sign' },
