@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v166">
+<meta name="build" content="index-v167">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1252,7 +1252,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 
 <div class="utility">
   <div class="wc-us" id="wc-us" title="Across the States"></div>
-  <button class="wc-one" id="wc-one" onclick="wcNext()" title="Around the world \u2014 tap to skip">
+  <button class="wc-one" id="wc-one" onclick="wcNext()" title="Around the world — tap to skip">
     <span class="globe">&#127758;</span>
     <span class="body"><span class="city" id="wc-city"></span><span class="t" id="wc-t">--:--</span></span>
   </button>
@@ -3162,7 +3162,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v166';
+window.BUILD = 'index-v167';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6380,7 +6380,7 @@ function renderCrmNav(){
     }).join('')
     + (previewing()
         ? `<button class="crm-arrange" style="--tab:#8C93AD;opacity:.5;cursor:default"
-             onclick="showToast('You\\u2019re previewing ' + currentAgent.name + '. Their layout is theirs to change.')"
+             onclick="showToast('You’re previewing ' + currentAgent.name + '. Their layout is theirs to change.')"
              title="Previewing \u2014 this is their view">
              <span class="ti">${icon('arrange')}</span><span class="tl">Their view</span></button>`
         : arrangeMode
@@ -12124,7 +12124,7 @@ function peRenderLines(){
       </div>
       <div class="pe-row" style="margin-bottom:8px">
         <input type="text" maxlength="42" value="${escapeHtml(l.t)}"
-          placeholder="${i===0?'Christina Thies':i===1?'Your REALTOR\\u00AE':'251-229-3216'}"
+          placeholder="${i===0?'Christina Thies':i===1?'Your REALTOR®':'251-229-3216'}"
           oninput="peSetText(${i}, this.value)">
       </div>
       <div class="pe-two" style="align-items:end">
@@ -12859,7 +12859,7 @@ async function renderCalendarSection(){
           `<span><i style="background:${t.color}"></i>${t.label}</span>`).join('')}
       </div>
       <div style="font-size:12px;color:var(--driftwood);margin-top:9px">
-        Closings, birthdays, work anniversaries and licence expiries appear on their own \\u2014
+        Closings, birthdays, work anniversaries and licence expiries appear on their own —
         they come from records you already keep, so they can't be edited here.
         ${staff ? 'Anything marked as an Office event shows on every calendar.' : ''}
       </div>
@@ -12876,8 +12876,8 @@ async function renderCalendarSection(){
             <div style="flex:1">
               <div style="font-size:14px;font-weight:600">${escapeHtml(e.title||'Untitled')}</div>
               <div style="font-size:12.5px;color:var(--driftwood)">
-                ${t.label}${e.note ? ' \\u00b7 ' + escapeHtml(e.note) : ''}
-                ${e.office ? ' \\u00b7 office-wide' : ''}</div>
+                ${t.label}${e.note ? ' · ' + escapeHtml(e.note) : ''}
+                ${e.office ? ' · office-wide' : ''}</div>
             </div>
             <div class="wh">${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
               ${e.time ? '<br>' + escapeHtml(e.time) : ''}</div>
@@ -12958,7 +12958,7 @@ async function calDelete(id, office){
 <button class="modal-close" onclick="calCloseAdd()">&times;</button>
 <h3>Add to the calendar</h3>
 <div class="sub">Showings, open houses, closings, whatever you need to remember.</div>
-<div class="field"><label>What is it?</label><input id="cal-title" placeholder="412 Sandpiper \u2014 showing"></div>
+<div class="field"><label>What is it?</label><input id="cal-title" placeholder="412 Sandpiper — showing"></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
   <div class="field"><label>Date</label><input type="date" id="cal-date"></div>
   <div class="field"><label>Time</label><input type="time" id="cal-time"></div>
@@ -13079,17 +13079,29 @@ body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
 <h3>Start a tracker</h3>
 <div class="sub">Your client sees a live timeline. You tap a step when it happens.</div>
 <div class="field"><label>Which side?</label>
-  <select id="tk-side">
+  <select id="tk-side" onchange="tkSyncSide()">
     <option value="buy">They're buying</option>
     <option value="sell">They're selling</option>
     <option value="both">We have both sides</option>
   </select></div>
 <div class="field"><label>Property</label><input id="tk-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
-<div class="field"><label>Client name</label><input id="tk-client" placeholder="Dawn Whitfield"></div>
-<div class="field"><label>Client email</label><input id="tk-email" type="email" placeholder="dawn@example.com">
+<div class="field"><label id="tk-lbl-1">Client name</label>
+  <input id="tk-client" placeholder="Dawn Whitfield"></div>
+<div class="field"><label>Their email</label>
+  <input id="tk-email" placeholder="dawn@example.com, marcus@example.com">
   <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px">
-    Marking steps never emails on its own \u2014 you press send when you're ready, and
-    everything since the last message goes in one.</div></div>
+    More than one? Separate them with commas &mdash; a side is rarely one person.</div></div>
+
+<div id="tk-party2" style="display:none;border-top:1px solid var(--line);padding-top:12px">
+  <div class="field"><label id="tk-lbl-2">The other side</label>
+    <input id="tk-client2" placeholder="Ray Delacroix"></div>
+  <div class="field"><label>Their email</label>
+    <input id="tk-email2" placeholder="ray@example.com"></div>
+</div>
+
+<div style="font-size:11.5px;color:var(--driftwood);margin:2px 0 12px;line-height:1.5">
+  Marking steps never emails on its own &mdash; you press send when you're ready, and everything
+  since the last message goes out in one.</div>
 <div class="field"><label>Expected closing <span style="font-weight:400;text-transform:none;opacity:.75">— shown as an estimate</span></label>
   <input id="tk-close" type="date"></div>
 <button class="submit-btn" onclick="tkCreate()">Start it</button>
@@ -13111,10 +13123,14 @@ body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
   <span><strong>Keep this note to myself.</strong> Otherwise your client will read it
   on their timeline and in the email.</span>
 </label>
-<div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+<div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center">
   <button class="btn-sm" id="tk-undo" onclick="tkUndo()">Not done after all</button>
-  <button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);
-    border-color:var(--marsh)" onclick="tkSaveStep()">Mark it done</button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn-sm" onclick="tkJustSave()"
+      title="Keep the date and notes without changing whether it is done">Save</button>
+    <button class="btn-sm" id="tk-mark" style="background:var(--marsh);color:var(--sand-light);
+      border-color:var(--marsh)" onclick="tkSaveStep()">Mark it done</button>
+  </div>
 </div>
 </div>
 </div>
@@ -13127,10 +13143,22 @@ body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
    Notes are shown to the client unless explicitly marked private — the checkbox
    says so plainly, because "seller being difficult" appearing on someone's phone
    is the obvious way this goes wrong. */
-let tkList = [], tkCur = null, tkCurStep = null, tkExtras = [], tkEditing = null;
+let tkList = [], tkCur = null, tkCurStep = null, tkExtras = [], tkEditing = null, tkDragFrom = null;
 
 /* Steps live on the tracker itself so they can be edited per deal. Anything made
    before that falls back to the template. */
+/* Every address on the deal, both sides, de-duplicated — mirrors the server. */
+function tkRecipients(t){
+  const out = [];
+  [t.clientEmail, t.clientEmail2].forEach(f => {
+    String(f || '').split(/[,;]/).forEach(e => {
+      const v = e.trim();
+      if(v && v.indexOf('@') > 0 && out.indexOf(v) < 0) out.push(v);
+    });
+  });
+  return out;
+}
+
 function tkStepsOf(t){
   if(Array.isArray(t.steps) && t.steps.length) return t.steps;
   const defs = TK_STEPS[t.side] || TK_STEPS.buy;
@@ -13182,7 +13210,8 @@ function tkRenderEdit(){
   if(!tkEditing) return;
   const host = document.getElementById('tk-edit-list');
   host.innerHTML = tkEditing.steps.map((st, i) => `
-    <div class="tke-row">
+    <div class="tke-row" data-i="${i}">
+      <span class="tke-grip" title="Drag to move">\u2807</span>
       <div class="tke-mv">
         <button onclick="tkMoveStep(${i},-1)" ${i===0?'disabled':''}>\u2191</button>
         <button onclick="tkMoveStep(${i},1)" ${i===tkEditing.steps.length-1?'disabled':''}>\u2193</button>
@@ -13195,6 +13224,8 @@ function tkRenderEdit(){
       </div>
       <button class="tke-x" onclick="tkRemoveStep(${i})">\u2715</button>
     </div>`).join('');
+
+  tkBindStepDrag(host);
 
   const have = {};
   tkEditing.steps.forEach(st => { have[st.k] = true; });
@@ -13223,26 +13254,90 @@ function tkRemoveStep(i){
   tkRenderEdit();
 }
 
+/* Drop it after the last completed step, not at the very bottom. An addendum that
+   turns up mid-deal belongs where the deal actually is — landing after "Closed"
+   meant dragging it up thirteen rows. */
+function tkInsertAt(){
+  const a = tkEditing.steps;
+  let last = -1;
+  a.forEach((st, i) => { if(st.done) last = i; });
+  return last + 1;
+}
+
+function tkFlashRow(i){
+  const host = document.getElementById('tk-edit-list');
+  if(!host) return;
+  const row = host.querySelector('.tke-row[data-i="' + i + '"]');
+  if(!row) return;
+  row.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  row.classList.add('flash');
+  setTimeout(() => row.classList.remove('flash'), 900);
+}
+
+/* Pointer-based rather than HTML5 drag — HTML5 drag does not fire on touch. */
+function tkBindStepDrag(host){
+  host.querySelectorAll('.tke-grip').forEach(grip => {
+    const row = grip.closest('.tke-row');
+    const start = e => {
+      tkDragFrom = parseInt(row.dataset.i, 10);
+      row.classList.add('dragging');
+      e.preventDefault();
+    };
+    grip.addEventListener('mousedown', start);
+    grip.addEventListener('touchstart', start, { passive:false });
+  });
+  if(host.__dragBound) return;
+  const move = e => {
+    if(tkDragFrom === null) return;
+    e.preventDefault();
+    const p = e.touches ? e.touches[0] : e;
+    let over = null;
+    host.querySelectorAll('.tke-row').forEach(r => {
+      const b = r.getBoundingClientRect();
+      if(p.clientY >= b.top && p.clientY <= b.bottom) over = r;
+    });
+    if(!over) return;
+    const to = parseInt(over.dataset.i, 10);
+    if(isNaN(to) || to === tkDragFrom) return;
+    const a = tkEditing.steps;
+    a.splice(to, 0, a.splice(tkDragFrom, 1)[0]);
+    tkDragFrom = to;
+    tkRenderEdit();
+    const again = host.querySelector('.tke-row[data-i="' + to + '"]');
+    if(again) again.classList.add('dragging');
+  };
+  const end = () => {
+    if(tkDragFrom === null) return;
+    tkDragFrom = null;
+    host.querySelectorAll('.tke-row').forEach(r => r.classList.remove('dragging'));
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchmove', move, { passive:false });
+  document.addEventListener('touchend', end);
+  host.__dragBound = true;
+}
+
 function tkAddExtra(k){
   const e = tkExtras.find(x => x.k === k);
   if(!e || !tkEditing) return;
-  tkEditing.steps.push({ k:e.k, label:e.label, blurb:e.blurb, done:false, custom:true });
+  const at = tkInsertAt();
+  tkEditing.steps.splice(at, 0, { k:e.k, label:e.label, blurb:e.blurb, done:false, custom:true });
   tkRenderEdit();
-  const host = document.getElementById('tk-edit-list');
-  if(host) host.scrollTop = host.scrollHeight;
+  tkFlashRow(at);
 }
 
 function tkAddBlank(){
   if(!tkEditing) return;
-  tkEditing.steps.push({ k:'s_' + Math.random().toString(36).slice(2,8),
+  const at = tkInsertAt();
+  tkEditing.steps.splice(at, 0, { k:'s_' + Math.random().toString(36).slice(2,8),
     label:'', blurb:'', done:false, custom:true });
   tkRenderEdit();
+  tkFlashRow(at);
   const host = document.getElementById('tk-edit-list');
-  if(host){
-    host.scrollTop = host.scrollHeight;
-    const ins = host.querySelectorAll('input');
-    if(ins.length >= 2) ins[ins.length - 2].focus();
-  }
+  const row = host && host.querySelector('.tke-row[data-i="' + at + '"]');
+  const inp = row && row.querySelector('input');
+  if(inp) inp.focus();
 }
 
 async function tkSaveSteps(){
@@ -13363,9 +13458,10 @@ function tkCardHtml(t){
 
     ${pending ? `<div class="tk-pending">
       <span><b>${pending}</b> ${pending === 1 ? 'update' : 'updates'} not sent yet</span>
-      ${t.clientEmail
-        ? `<button onclick="tkNotify('${t.id}')">Send ${pending === 1 ? 'it' : 'them'} now</button>`
-        : `<span style="font-size:12px;opacity:.75">No email on file for them</span>`}
+      ${tkRecipients(t).length
+        ? `<button onclick="tkNotify('${t.id}')">Send to ${tkRecipients(t).length === 1
+             ? 'them' : tkRecipients(t).length + ' people'}</button>`
+        : `<span style="font-size:12px;opacity:.75">No email on file</span>`}
     </div>` : ''}
 
     <div class="tk-steps">
@@ -13392,7 +13488,24 @@ function tkCardHtml(t){
   </div>`;
 }
 
-function tkOpenNew(){ document.getElementById('tk-new').classList.add('active'); }
+function tkOpenNew(){
+  document.getElementById('tk-new').classList.add('active');
+  tkSyncSide();
+}
+
+/* A both-sides deal has two parties, so the form grows a second half and the
+   labels stop saying "client" and start saying which side. */
+function tkSyncSide(){
+  const sel = document.getElementById('tk-side');
+  if(!sel) return;
+  const both = sel.value === 'both';
+  const p2 = document.getElementById('tk-party2');
+  if(p2) p2.style.display = both ? '' : 'none';
+  const l1 = document.getElementById('tk-lbl-1');
+  const l2 = document.getElementById('tk-lbl-2');
+  if(l1) l1.textContent = both ? 'Buyer' : 'Client name';
+  if(l2) l2.textContent = 'Seller';
+}
 function tkCloseNew(){ document.getElementById('tk-new').classList.remove('active'); }
 
 async function tkCreate(){
@@ -13402,15 +13515,17 @@ async function tkCreate(){
     const r = await fetch('/api/tracker', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ side: g('tk-side'), address: g('tk-address'),
-        clientName: g('tk-client'), clientEmail: g('tk-email'), expectedClose: g('tk-close') }),
+        clientName: g('tk-client'), clientEmail: g('tk-email'),
+        clientName2: g('tk-client2'), clientEmail2: g('tk-email2'),
+        expectedClose: g('tk-close') }),
     });
     const d = await r.json().catch(()=>({}));
     if(!r.ok){ showToast(d.error || "Couldn't start that."); return; }
     tkCloseNew();
-    ['tk-address','tk-client','tk-email','tk-close'].forEach(i => {
+    ['tk-address','tk-client','tk-email','tk-client2','tk-email2','tk-close'].forEach(i => {
       const e = document.getElementById(i); if(e) e.value = '';
     });
-    showToast('Tracker started. Send them the link when you\\u2019re ready.');
+    showToast('Tracker started. Send them the link when you’re ready.');
     renderTrackerSection();
   }catch(e){ showToast("Couldn't start that."); }
 }
@@ -13431,11 +13546,20 @@ function tkOpenStep(trackerId, stepKey){
   document.getElementById('tk-step-note').value = m.note || '';
   document.getElementById('tk-step-private').checked = !!m.private;
   document.getElementById('tk-undo').style.display = m.done ? '' : 'none';
+  const mark = document.getElementById('tk-mark');
+  if(mark) mark.style.display = m.done ? 'none' : '';   // already done: Save is the only sensible action
   document.getElementById('tk-step-modal').classList.add('active');
 }
 function tkCloseStep(){ document.getElementById('tk-step-modal').classList.remove('active'); }
 
 async function tkSaveStep(){ await tkPutStep(true); }
+
+/* Save the date and the note without touching whether the step is done. Useful
+   when you are jotting something down mid-deal, or fixing a note after the fact. */
+async function tkJustSave(){
+  const cur = tkCur && tkStepsOf(tkCur).find(x => x.k === tkCurStep);
+  await tkPutStep(cur ? !!cur.done : false);
+}
 async function tkUndo(){
   if(!confirm('Mark this as not done? Your client will see it come back off the timeline.')) return;
   await tkPutStep(false);
@@ -13456,7 +13580,7 @@ async function tkPutStep(done){
     tkCloseStep();
     showToast(done
       ? (d.pending > 1
-          ? `Marked \\u2014 ${d.pending} updates waiting to send.`
+          ? `Marked — ${d.pending} updates waiting to send.`
           : 'Marked. Send it when you are ready.')
       : 'Taken back off.');
     renderTrackerSection();
@@ -13471,13 +13595,13 @@ async function tkCopyLink(link){
 async function tkSendLink(id){
   const t = tkList.find(x => x.id === id);
   if(!t || !t.clientEmail){ showToast('No email on file for them.'); return; }
-  showToast('Sending\\u2026');
+  showToast('Sending…');
   try{
     const r = await fetch('/api/marketing/email', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         to: t.clientEmail,
-        subject: `Following your ${t.side === 'sell' ? 'sale' : 'purchase'}${t.address ? ' \\u2014 ' + t.address : ''}`,
+        subject: `Following your ${t.side === 'sell' ? 'sale' : 'purchase'}${t.address ? ' — ' + t.address : ''}`,
         message: `Hi ${(t.clientName||'there').split(' ')[0]},\\n\\n`
           + `You can see exactly where things stand any time, here:\\n`
           + `${location.origin}/?track=${t.token}\\n\\n`
@@ -13642,7 +13766,7 @@ function renderTrackerView(t){
     <div class="tv-line">
       ${t.steps.map((s, i) => `
         <div class="tv-item ${s.done?'done':''} ${i===nextIdx?'now':''}">
-          <span class="pip">${s.done?'\\u2713':''}</span>
+          <span class="pip">${s.done?'✓':''}</span>
           <div class="lb">${escapeHtml(s.label)}</div>
           <div class="bl">${escapeHtml(s.blurb)}</div>
           ${s.done && s.date ? `<div class="dt">${escapeHtml(fmtLongDate(s.date))}</div>` : ''}
@@ -13691,7 +13815,12 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenTracker(); }
   color:#9A6B14;background:#F6E7C6;border-radius:20px;padding:2px 7px;white-space:nowrap}
 
 .tke-row{display:flex;gap:9px;align-items:flex-start;padding:9px 0;
-  border-bottom:1px solid var(--line)}
+  border-bottom:1px solid var(--line);background:#fff;transition:background .2s}
+.tke-row.dragging{opacity:.45}
+.tke-row.flash{background:#F1F6FF}
+.tke-grip{cursor:grab;color:rgba(27,32,67,.3);font-size:15px;line-height:1.4;
+  letter-spacing:-2px;padding:2px 1px;flex:0 0 auto;touch-action:none;user-select:none}
+.tke-grip:active{cursor:grabbing}
 .tke-mv{display:flex;flex-direction:column;gap:2px;flex:0 0 auto}
 .tke-mv button{border:1px solid var(--line);background:#fff;border-radius:5px;width:26px;height:20px;
   cursor:pointer;font-size:10px;line-height:1;padding:0;color:#1B2043}
