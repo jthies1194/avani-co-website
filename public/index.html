@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v163">
+<meta name="build" content="index-v164">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2041,6 +2041,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-tracker"></div>
 <div class="crm-sec" id="sec-calendar"></div>
 <div class="crm-sec" id="sec-taxes"></div>
 <div class="crm-sec" id="sec-marketing"></div>
@@ -3140,7 +3141,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v163';
+window.BUILD = 'index-v164';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5311,7 +5312,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(h === 'client-login'){
     setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
   }
-  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes','calendar'].includes(h)){
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes','calendar','tracker'].includes(h)){
     try{
       switchView('crm');
       if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
@@ -6033,6 +6034,7 @@ const ICON = {
   details: '<path d="M4 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="10" cy="7" r="4"/><path d="M17 8h5M19.5 5.5v5"/>',
   key:     '<circle cx="8" cy="14" r="4.5"/><path d="M11.2 10.8L20 2M17 5l2.5 2.5M14.5 7.5L17 10"/>',
   arrange: '<path d="M12 3l1.9 4 4.4.6-3.2 3 .8 4.3-3.9-2-3.9 2 .8-4.3-3.2-3 4.4-.6z"/><path d="M5 20h14"/>',
+  track:   '<path d="M4 18h16"/><circle cx="7" cy="18" r="2.4"/><circle cx="12" cy="18" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M7 15.5V9M12 15.5V6M17 15.5v-4"/>',
   calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8.5" cy="14.5" r="1.2"/><circle cx="13" cy="14.5" r="1.2"/>',
   tick:    '<path d="M4 12.5l5 5L20 6.5"/>',
   grip:    '<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',
@@ -6053,6 +6055,7 @@ const CRM_SECTIONS = [
   { id:'sec-commissions', label:'Commissions', icon:'money',    color:'#2E8C5A' },  // seagrass
   { id:'sec-expenses',    label:'Expenses',    icon:'expense',  color:'#B4527A' },  // sea urchin
   { id:'sec-taxes',       label:'Taxes',       icon:'taxes',    color:'#6B4FBF' },  // deep water
+  { id:'sec-tracker',     label:'Tracker',     icon:'track',    color:'#2A9D8F' },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
   { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', brokerOnly:true },  // sign blue
@@ -6421,6 +6424,7 @@ function showCrmSection(id){
     if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
     if(id === 'sec-marketing' && typeof renderMarketingSection === 'function') renderMarketingSection();
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
+    if(id === 'sec-tracker' && typeof renderTrackerSection === 'function') renderTrackerSection();
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function') renderResourcesSection();
     if(id === 'sec-today') renderDashboard();
@@ -13014,6 +13018,473 @@ body.crm-dark .pals .pal,
 body.crm-dark .bgsw{background:#232941;color:#EEF0F8;border-color:rgba(238,240,248,.18)}
 body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
 </style>
+
+<style>
+.tk-card{border:1px solid var(--line);border-radius:12px;padding:15px;margin-bottom:12px;
+  background:var(--paper)}
+.tk-top{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.tk-top .who{flex:1;min-width:180px}
+.tk-top .who b{font-size:15.5px;display:block}
+.tk-top .who span{font-size:12.5px;color:var(--driftwood)}
+.tk-side{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 9px;border-radius:20px;flex:0 0 auto}
+.tk-side.buy{background:#EAF1FB;color:#2E3CB0}
+.tk-side.sell{background:#EAF6EE;color:#2E8C5A}
+.tk-bar{height:7px;border-radius:5px;background:rgba(27,32,67,.1);overflow:hidden;margin:12px 0 5px}
+.tk-bar i{display:block;height:100%;border-radius:5px;
+  background:linear-gradient(90deg,#2E3CB0,#1E9AA8);transition:width .5s ease}
+.tk-pct{font-size:12px;color:var(--driftwood);display:flex;justify-content:space-between}
+.tk-steps{margin-top:13px;display:grid;gap:5px}
+.tk-step{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;
+  border:1px solid var(--line);cursor:pointer;background:var(--paper);text-align:left;
+  font:inherit;width:100%;transition:.14s}
+.tk-step:hover{border-color:#2E3CB0}
+.tk-step.done{background:#F2F8F4;border-color:rgba(46,140,90,.35)}
+.tk-step .tick{width:20px;height:20px;border-radius:50%;border:2px solid rgba(27,32,67,.22);
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff}
+.tk-step.done .tick{background:#2E8C5A;border-color:#2E8C5A}
+.tk-step .lb{flex:1;font-size:13.5px}
+.tk-step.done .lb{color:#1B2043;font-weight:600}
+.tk-step .dt{font-size:11.5px;color:var(--driftwood);white-space:nowrap}
+.tk-note{font-size:12px;color:var(--driftwood);margin:2px 0 0 30px;line-height:1.45}
+.tk-note .priv{color:#8A4B12;font-weight:600}
+.tk-acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.tk-link{font-size:12px;color:var(--driftwood);margin-top:9px;word-break:break-all}
+</style>
+
+<div class="modal-overlay" id="tk-new">
+<div class="modal" style="max-width:440px">
+<button class="modal-close" onclick="tkCloseNew()">&times;</button>
+<h3>Start a tracker</h3>
+<div class="sub">Your client sees a live timeline. You tap a step when it happens.</div>
+<div class="field"><label>Are they buying or selling?</label>
+  <select id="tk-side"><option value="buy">Buying</option><option value="sell">Selling</option></select></div>
+<div class="field"><label>Property</label><input id="tk-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
+<div class="field"><label>Client name</label><input id="tk-client" placeholder="Dawn Whitfield"></div>
+<div class="field"><label>Client email</label><input id="tk-email" type="email" placeholder="dawn@example.com">
+  <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px">
+    They get an email each time you mark a step. Leave blank and they won't.</div></div>
+<div class="field"><label>Expected closing <span style="font-weight:400;text-transform:none;opacity:.75">— shown as an estimate</span></label>
+  <input id="tk-close" type="date"></div>
+<button class="submit-btn" onclick="tkCreate()">Start it</button>
+</div>
+</div>
+
+<div class="modal-overlay" id="tk-step-modal">
+<div class="modal" style="max-width:420px">
+<button class="modal-close" onclick="tkCloseStep()">&times;</button>
+<h3 id="tk-step-title">Mark this step</h3>
+<div class="sub" id="tk-step-blurb"></div>
+<div class="field"><label>When did it happen?</label><input type="date" id="tk-step-date"></div>
+<div class="field"><label>Anything to add?</label>
+  <textarea id="tk-step-note" rows="3" placeholder="Optional"></textarea></div>
+<label style="display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.45;
+  cursor:pointer;margin-bottom:12px;padding:9px 11px;background:#FBF6EA;
+  border-left:3px solid #E6C381;border-radius:0 6px 6px 0">
+  <input type="checkbox" id="tk-step-private" style="margin-top:3px">
+  <span><strong>Keep this note to myself.</strong> Otherwise your client will read it
+  on their timeline and in the email.</span>
+</label>
+<div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+  <button class="btn-sm" id="tk-undo" onclick="tkUndo()">Not done after all</button>
+  <button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);
+    border-color:var(--marsh)" onclick="tkSaveStep()">Mark it done</button>
+</div>
+</div>
+</div>
+
+<script>
+/* ---------- transaction tracker (agent side) ----------
+   One tap per milestone. The client watches a timeline rather than wondering, and
+   the agent types nothing unless they want to.
+
+   Notes are shown to the client unless explicitly marked private — the checkbox
+   says so plainly, because "seller being difficult" appearing on someone's phone
+   is the obvious way this goes wrong. */
+let tkList = [], tkCur = null, tkCurStep = null;
+
+const TK_STEPS = {
+  buy: [
+    ['offer','Offer submitted','Your offer is with the seller.'],
+    ['accepted','Offer accepted','They said yes. The clock starts here.'],
+    ['earnest','Earnest money delivered','Your deposit is held in escrow.'],
+    ['inspection','Inspection scheduled','An inspector is booked to look the house over.'],
+    ['inspected','Inspection complete','The report is in.'],
+    ['contingency','Inspection period passed','Anything to be fixed has been agreed.'],
+    ['appraisal','Appraisal ordered','The lender is checking the value.'],
+    ['appraised','Appraisal received','The value came back.'],
+    ['loan','Loan approved','The lender has approved your financing.'],
+    ['title','Title work submitted','The title company is checking ownership records.'],
+    ['cleartoclose','Clear to close','Everything is signed off.'],
+    ['walkthrough','Final walkthrough','One last look before it is yours.'],
+    ['keys','Keys','It is yours.'],
+  ],
+  sell: [
+    ['listed','Listed','Your home is on the market.'],
+    ['showings','Showings underway','Buyers are coming through.'],
+    ['offer','Offer received','An offer has come in.'],
+    ['accepted','Offer accepted','Under contract.'],
+    ['earnest','Buyer\u2019s deposit received','Their earnest money is in escrow.'],
+    ['inspection','Inspection period','The buyer is having the home inspected.'],
+    ['repairs','Repairs agreed','Any repairs have been settled.'],
+    ['appraised','Appraisal complete','The lender\u2019s valuation is done.'],
+    ['loan','Buyer financing cleared','Their loan is approved.'],
+    ['title','Title work submitted','The title company is checking ownership records.'],
+    ['cleartoclose','Clear to close','Everything is signed off.'],
+    ['closed','Closed','Sold. Congratulations.'],
+  ],
+};
+
+async function renderTrackerSection(){
+  const el = document.getElementById('sec-tracker');
+  if(!el || !currentAgent) return;
+  el.innerHTML = `<div class="card"><div style="padding:18px">
+      <p style="margin:0 0 13px;font-size:14px;color:var(--driftwood);max-width:640px;line-height:1.55">
+        Between contract and closing your client hears nothing for weeks and assumes the worst.
+        This gives them something to watch \u2014 you tap a step, they see it move.</p>
+      <button class="btn-sm primary" onclick="tkOpenNew()">+ Start a tracker</button>
+    </div></div>
+    <div id="tk-list" style="margin-top:14px">Loading&hellip;</div>`;
+
+  let list = [];
+  try{
+    const r = await fetch('/api/tracker/mine');
+    if(r.ok) list = (await r.json()).trackers || [];
+  }catch(e){}
+  tkList = list;
+
+  const host = document.getElementById('tk-list');
+  if(!list.length){
+    host.innerHTML = `<div class="card"><div style="padding:18px;font-size:13.5px;
+      color:var(--driftwood);line-height:1.55">Nothing running yet. Start one when a deal goes
+      under contract \u2014 it is the stretch where people worry most.</div></div>`;
+    return;
+  }
+  host.innerHTML = list.map(t => tkCardHtml(t)).join('');
+}
+
+function tkCardHtml(t){
+  const steps = TK_STEPS[t.side] || TK_STEPS.buy;
+  const done = steps.filter(s => ((t.milestones||{})[s[0]]||{}).done).length;
+  const pct = Math.round(done / steps.length * 100);
+  const nextStep = steps.find(s => !((t.milestones||{})[s[0]]||{}).done);
+  const link = location.origin + '/?track=' + t.token;
+
+  return `<div class="tk-card">
+    <div class="tk-top">
+      <div class="who">
+        <b>${escapeHtml(t.clientName || 'Client')}</b>
+        <span>${escapeHtml(t.address || 'No address given')}</span>
+      </div>
+      <span class="tk-side ${t.side}">${t.side === 'sell' ? 'Selling' : 'Buying'}</span>
+    </div>
+    <div class="tk-bar"><i style="width:${pct}%"></i></div>
+    <div class="tk-pct">
+      <span>${done} of ${steps.length} done</span>
+      <span>${nextStep ? 'Next: ' + escapeHtml(nextStep[1]) : 'All the way through'}</span>
+    </div>
+    <div class="tk-steps">
+      ${steps.map(([k,label]) => {
+        const m = (t.milestones||{})[k] || {};
+        return `<button class="tk-step ${m.done?'done':''}" onclick="tkOpenStep('${t.id}','${k}')">
+          <span class="tick">${m.done?'\\u2713':''}</span>
+          <span class="lb">${escapeHtml(label)}</span>
+          <span class="dt">${m.date ? escapeHtml(fmtDate(m.date)) : ''}</span>
+        </button>
+        ${m.note ? `<div class="tk-note">${m.private?'<span class="priv">Private \\u00b7 </span>':''}${escapeHtml(m.note)}</div>` : ''}`;
+      }).join('')}
+    </div>
+    <div class="tk-acts">
+      <button class="btn-sm" onclick="tkCopyLink('${escapeHtml(link)}')">Copy their link</button>
+      ${t.clientEmail ? `<button class="btn-sm" onclick="tkSendLink('${t.id}')">Email them the link</button>` : ''}
+      <button class="btn-sm" onclick="tkDelete('${t.id}')">Remove</button>
+    </div>
+    <div class="tk-link">${escapeHtml(link)}</div>
+  </div>`;
+}
+
+function tkOpenNew(){ document.getElementById('tk-new').classList.add('active'); }
+function tkCloseNew(){ document.getElementById('tk-new').classList.remove('active'); }
+
+async function tkCreate(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  if(!g('tk-client')){ showToast('Who is it for?'); return; }
+  try{
+    const r = await fetch('/api/tracker', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ side: g('tk-side'), address: g('tk-address'),
+        clientName: g('tk-client'), clientEmail: g('tk-email'), expectedClose: g('tk-close') }),
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error || "Couldn't start that."); return; }
+    tkCloseNew();
+    ['tk-address','tk-client','tk-email','tk-close'].forEach(i => {
+      const e = document.getElementById(i); if(e) e.value = '';
+    });
+    showToast('Tracker started. Send them the link when you\\u2019re ready.');
+    renderTrackerSection();
+  }catch(e){ showToast("Couldn't start that."); }
+}
+
+function tkOpenStep(trackerId, stepKey){
+  const t = tkList.find(x => x.id === trackerId);
+  if(!t) return;
+  const steps = TK_STEPS[t.side] || TK_STEPS.buy;
+  const def = steps.find(s => s[0] === stepKey);
+  if(!def) return;
+  tkCur = t; tkCurStep = stepKey;
+  const m = (t.milestones||{})[stepKey] || {};
+
+  document.getElementById('tk-step-title').textContent = def[1];
+  document.getElementById('tk-step-blurb').textContent = 'Your client will read: \u201c' + def[2] + '\u201d';
+  document.getElementById('tk-step-date').value = m.date || new Date().toISOString().slice(0,10);
+  document.getElementById('tk-step-note').value = m.note || '';
+  document.getElementById('tk-step-private').checked = !!m.private;
+  document.getElementById('tk-undo').style.display = m.done ? '' : 'none';
+  document.getElementById('tk-step-modal').classList.add('active');
+}
+function tkCloseStep(){ document.getElementById('tk-step-modal').classList.remove('active'); }
+
+async function tkSaveStep(){ await tkPutStep(true); }
+async function tkUndo(){
+  if(!confirm('Mark this as not done? Your client will see it come back off the timeline.')) return;
+  await tkPutStep(false);
+}
+
+async function tkPutStep(done){
+  if(!tkCur || !tkCurStep) return;
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  try{
+    const r = await fetch('/api/tracker/' + encodeURIComponent(tkCur.id) + '/step', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ step: tkCurStep, done,
+        date: g('tk-step-date'), note: g('tk-step-note'),
+        private: !!(document.getElementById('tk-step-private')||{}).checked }),
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error || "Couldn't save that."); return; }
+    tkCloseStep();
+    showToast(done
+      ? (d.emailed ? 'Done \\u2014 and your client has been told.' : 'Done.')
+      : 'Taken back off.');
+    renderTrackerSection();
+  }catch(e){ showToast("Couldn't save that."); }
+}
+
+async function tkCopyLink(link){
+  try{ await navigator.clipboard.writeText(link); showToast('Link copied.'); }
+  catch(e){ prompt('Their link:', link); }
+}
+
+async function tkSendLink(id){
+  const t = tkList.find(x => x.id === id);
+  if(!t || !t.clientEmail){ showToast('No email on file for them.'); return; }
+  showToast('Sending\\u2026');
+  try{
+    const r = await fetch('/api/marketing/email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to: t.clientEmail,
+        subject: `Following your ${t.side === 'sell' ? 'sale' : 'purchase'}${t.address ? ' \\u2014 ' + t.address : ''}`,
+        message: `Hi ${(t.clientName||'there').split(' ')[0]},\\n\\n`
+          + `You can see exactly where things stand any time, here:\\n`
+          + `${location.origin}/?track=${t.token}\\n\\n`
+          + `I'll update it as each step happens, so you won't have to wonder.\\n\\n`
+          + `${currentAgent.name}\\n${AvaniTemplates.BROKERAGE_NAME}`,
+        attachments: [],
+      }),
+    });
+    // no attachment on this one, so the route may refuse — fall back to the mail client
+    if(!r.ok){
+      window.location.href = 'mailto:' + encodeURIComponent(t.clientEmail)
+        + '?subject=' + encodeURIComponent('Following your move')
+        + '&body=' + encodeURIComponent(location.origin + '/?track=' + t.token);
+      return;
+    }
+    showToast('Sent to ' + t.clientEmail);
+  }catch(e){ showToast("Couldn't send that."); }
+}
+
+async function tkDelete(id){
+  if(!confirm('Remove this tracker? Their link will stop working.')) return;
+  try{
+    await fetch('/api/tracker/' + encodeURIComponent(id), { method:'DELETE' });
+    renderTrackerSection();
+  }catch(e){}
+}
+</script>
+
+<style>
+#tv-view{display:none;min-height:70vh;background:linear-gradient(#F7F9FC,#EEF2F8)}
+#tv-view.on{display:block}
+.tv-wrap{max-width:720px;margin:0 auto;padding:38px 22px 70px}
+.tv-head{text-align:center;margin-bottom:26px}
+.tv-head .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+  color:#1E9AA8}
+.tv-head h1{font-family:'Cormorant Garamond',serif;font-size:38px;font-weight:500;
+  color:#1B2043;margin:6px 0 4px;line-height:1.12}
+.tv-head p{font-size:14.5px;color:#5A6288;margin:0}
+.tv-prog{background:#fff;border-radius:15px;padding:20px 22px;box-shadow:0 3px 18px rgba(27,32,67,.08);
+  margin-bottom:24px}
+.tv-prog .pc{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px}
+.tv-prog .big{font-family:'Cormorant Garamond',serif;font-size:34px;color:#2E3CB0;line-height:1}
+.tv-prog .of{font-size:13px;color:#5A6288}
+.tv-bar{height:11px;border-radius:7px;background:#E9EDF6;overflow:hidden}
+.tv-bar i{display:block;height:100%;border-radius:7px;
+  background:linear-gradient(90deg,#2E3CB0,#1E9AA8);transition:width .9s cubic-bezier(.2,.8,.3,1)}
+.tv-next{margin-top:13px;font-size:14px;color:#1B2043;background:#F4F7FC;border-radius:10px;
+  padding:11px 13px;line-height:1.5}
+.tv-next b{color:#2E3CB0}
+.tv-line{position:relative;padding-left:34px}
+.tv-line::before{content:'';position:absolute;left:11px;top:8px;bottom:22px;width:2px;
+  background:#DDE3EF}
+.tv-item{position:relative;margin-bottom:18px}
+.tv-item .pip{position:absolute;left:-34px;top:1px;width:24px;height:24px;border-radius:50%;
+  background:#fff;border:2px solid #DDE3EF;display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:#fff}
+.tv-item.done .pip{background:#2E8C5A;border-color:#2E8C5A}
+.tv-item.now .pip{border-color:#2E3CB0;box-shadow:0 0 0 4px rgba(46,60,176,.14)}
+.tv-item .lb{font-size:15.5px;font-weight:600;color:#1B2043}
+.tv-item:not(.done) .lb{color:#8A90A8;font-weight:500}
+.tv-item.now .lb{color:#2E3CB0}
+.tv-item .bl{font-size:13.5px;color:#5A6288;line-height:1.5;margin-top:2px}
+.tv-item .dt{font-size:12px;color:#8A90A8;margin-top:3px}
+.tv-item .nt{margin-top:7px;background:#fff;border-left:3px solid #E6C381;padding:9px 12px;
+  border-radius:0 8px 8px 0;font-size:13.5px;color:#1B2043;line-height:1.5}
+.tv-agent{background:#fff;border-radius:15px;padding:19px 22px;margin-top:26px;
+  box-shadow:0 3px 18px rgba(27,32,67,.08);text-align:center}
+.tv-agent .nm{font-family:'Cormorant Garamond',serif;font-size:22px;color:#1B2043}
+.tv-agent .br{font-size:12px;color:#5A6288;margin-top:2px}
+.tv-agent .acts{display:flex;gap:9px;justify-content:center;margin-top:13px;flex-wrap:wrap}
+.tv-agent a{padding:9px 17px;border-radius:9px;font-size:13.5px;font-weight:600;
+  text-decoration:none;border:1px solid #2E3CB0;color:#2E3CB0}
+.tv-agent a.solid{background:#2E3CB0;color:#fff}
+.tv-foot{text-align:center;font-size:12px;color:#8A90A8;margin-top:22px;line-height:1.6}
+@media(max-width:560px){
+  .tv-wrap{padding:26px 16px 50px}
+  .tv-head h1{font-size:29px}
+  .tv-prog .big{font-size:28px}
+}
+</style>
+
+<div id="tv-view"><div class="tv-wrap" id="tv-body"></div></div>
+
+<script>
+/* ---------- transaction tracker (client side) ----------
+   Reached by ?track=<token>. No login: someone wanting reassurance late at night
+   will not reset a forgotten password, and a tracker nobody opens is worth
+   nothing. The token is the only secret, and the server returns only what the
+   client should see.
+
+   Language is deliberately plain. "The lender has approved your financing", not
+   "underwriting cleared". */
+async function maybeOpenTracker(){
+  const token = new URLSearchParams(location.search).get('track');
+  if(!token) return false;
+
+  document.querySelectorAll('#view-site > *, #view-crm').forEach(el => {
+    if(el.id !== 'tv-view') el.style.display = 'none';
+  });
+  const site = document.getElementById('view-site');
+  if(site) site.classList.add('active');
+  const view = document.getElementById('tv-view');
+  view.classList.add('on');
+  const fab = document.getElementById('chat-fab');
+  if(fab) fab.style.display = 'none';
+
+  const body = document.getElementById('tv-body');
+  body.innerHTML = '<div style="text-align:center;padding:60px 0;color:#5A6288">Loading\u2026</div>';
+
+  let t = null;
+  try{
+    const r = await fetch('/api/track/' + encodeURIComponent(token));
+    if(r.ok) t = (await r.json()).tracker;
+  }catch(e){}
+
+  if(!t){
+    body.innerHTML = `<div class="tv-head">
+      <h1>We couldn't find that</h1>
+      <p>The link may have expired, or it may have been mistyped. Ask your agent for a fresh one
+      \u2014 or call ${escapeHtml('251-229-3216')} and we'll sort it out.</p></div>`;
+    return true;
+  }
+  renderTrackerView(t);
+  return true;
+}
+
+function renderTrackerView(t){
+  const done = t.steps.filter(s => s.done).length;
+  const total = t.steps.length;
+  const pct = Math.round(done / total * 100);
+  const nextIdx = t.steps.findIndex(s => !s.done);
+  const next = nextIdx >= 0 ? t.steps[nextIdx] : null;
+  const finished = !next;
+
+  const heading = t.side === 'sell' ? 'Selling your home' : 'Buying your home';
+  const first = String(t.clientName || '').trim().split(/\s+/)[0];
+
+  document.getElementById('tv-body').innerHTML = `
+    <div class="tv-head">
+      <div class="eyebrow">${escapeHtml(heading)}</div>
+      <h1>${escapeHtml(t.address || 'Your move')}</h1>
+      ${first ? `<p>Where things stand for you, ${escapeHtml(first)}.</p>` : ''}
+    </div>
+
+    <div class="tv-prog">
+      <div class="pc">
+        <span class="big">${pct}%</span>
+        <span class="of">${done} of ${total} steps done</span>
+      </div>
+      <div class="tv-bar"><i style="width:${pct}%"></i></div>
+      <div class="tv-next">
+        ${finished
+          ? `<b>All the way through.</b> Congratulations \u2014 and thank you.`
+          : `<b>Next:</b> ${escapeHtml(next.label)}. ${escapeHtml(next.blurb)}`}
+        ${t.expectedClose && !finished
+          ? `<div style="margin-top:7px;font-size:13px;color:#5A6288">
+              Closing is expected around ${escapeHtml(fmtLongDate(t.expectedClose))}.
+              Dates can move \u2014 we'll tell you if they do.</div>` : ''}
+      </div>
+    </div>
+
+    <div class="tv-line">
+      ${t.steps.map((s, i) => `
+        <div class="tv-item ${s.done?'done':''} ${i===nextIdx?'now':''}">
+          <span class="pip">${s.done?'\\u2713':''}</span>
+          <div class="lb">${escapeHtml(s.label)}</div>
+          <div class="bl">${escapeHtml(s.blurb)}</div>
+          ${s.done && s.date ? `<div class="dt">${escapeHtml(fmtLongDate(s.date))}</div>` : ''}
+          ${s.note ? `<div class="nt">${escapeHtml(s.note)}</div>` : ''}
+        </div>`).join('')}
+    </div>
+
+    <div class="tv-agent">
+      <div class="nm">${escapeHtml(t.agentName || '')}</div>
+      <div class="br">${escapeHtml(t.brokerage || '')}</div>
+      <div class="acts">
+        ${t.agentPhone ? `<a class="solid" href="tel:${escapeHtml(String(t.agentPhone).replace(/[^0-9]/g,''))}">Call ${escapeHtml(t.agentPhone)}</a>` : ''}
+        ${t.agentEmail ? `<a href="mailto:${escapeHtml(t.agentEmail)}">Email</a>` : ''}
+      </div>
+      <div style="font-size:13px;color:#5A6288;margin-top:12px;line-height:1.55">
+        Anything at all, just ask. That is what we are here for.</div>
+    </div>
+
+    <div class="tv-foot">
+      Updated ${t.updatedAt ? escapeHtml(fmtLongDate(t.updatedAt)) : 'recently'}.<br>
+      This page updates itself as each step happens \u2014 keep the link.
+    </div>`;
+}
+
+function fmtLongDate(v){
+  try{
+    const d = new Date(String(v).length <= 10 ? v + 'T12:00:00' : v);
+    if(isNaN(d)) return String(v);
+    return d.toLocaleDateString('en-US',{ weekday:'long', month:'long', day:'numeric' });
+  }catch(e){ return String(v); }
+}
+
+document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenTracker(); }catch(e){} });
+</script>
 
 </body>
 </html>
