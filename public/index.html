@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v149">
+<meta name="build" content="index-v151">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1668,6 +1668,136 @@ Call Jimmy · 251-229-3216
 <div class="testimonials-grid" id="testimonials-grid"></div>
 </div>
 
+<style>
+.wc-band{background:linear-gradient(135deg,#1B2043 0%,#25306B 45%,#1E5F7A 100%);
+  color:#fff;padding:34px 0 30px;position:relative;overflow:hidden}
+.wc-band::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 78% 18%, rgba(230,195,129,.16), transparent 55%);
+  pointer-events:none}
+.wc-inner{max-width:1180px;margin:0 auto;padding:0 26px;position:relative}
+.wc-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;
+  flex-wrap:wrap;margin-bottom:20px}
+.wc-here .lbl{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(230,195,129,.9)}
+.wc-here .big{font-family:'Cormorant Garamond',serif;font-size:52px;line-height:1;
+  font-weight:400;font-variant-numeric:tabular-nums;margin-top:5px}
+.wc-here .sm{font-size:13.5px;color:rgba(255,255,255,.72);margin-top:4px}
+.wc-note{font-size:12.5px;color:rgba(255,255,255,.6);max-width:280px;line-height:1.55;text-align:right}
+.wc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px}
+.wc-c{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  border-radius:11px;padding:11px 10px;text-align:center;backdrop-filter:blur(2px);
+  transition:background .2s}
+.wc-c:hover{background:rgba(255,255,255,.12)}
+.wc-c .city{font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:rgba(255,255,255,.62);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wc-c .t{font-size:20px;font-variant-numeric:tabular-nums;margin-top:4px;letter-spacing:.01em}
+.wc-c .d{font-size:10.5px;color:rgba(255,255,255,.48);margin-top:2px}
+.wc-c.night .t{color:#BFC8E8}
+.wc-c.day .t{color:#F4DFAF}
+@media(max-width:640px){
+  .wc-band{padding:26px 0 24px}
+  .wc-here .big{font-size:40px}
+  .wc-note{display:none}
+  .wc-row{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+
+<section class="wc-band" id="worldclocks">
+  <div class="wc-inner">
+    <div class="wc-top">
+      <div class="wc-here">
+        <div class="lbl">Right now on the Gulf</div>
+        <div class="big" id="wc-local">--:--</div>
+        <div class="sm" id="wc-localdate"></div>
+      </div>
+      <div class="wc-note">Buyers find us from all over. If you're reading this
+        somewhere else, here's what the clock says at home.</div>
+    </div>
+    <div class="wc-row" id="wc-row"></div>
+  </div>
+</section>
+
+<script>
+/* ---------- world clocks ----------
+   Local time large, then the places buyers here actually come from. Kept to
+   Intl.DateTimeFormat with IANA zones so daylight saving is handled by the
+   browser rather than by arithmetic that quietly goes wrong twice a year. */
+const WC_ZONES = [
+  { city:'Gulf Shores', tz:'America/Chicago' },
+  { city:'Nashville',   tz:'America/Chicago' },
+  { city:'Atlanta',     tz:'America/New_York' },
+  { city:'Chicago',     tz:'America/Chicago' },
+  { city:'Dallas',      tz:'America/Chicago' },
+  { city:'Denver',      tz:'America/Denver' },
+  { city:'Los Angeles', tz:'America/Los_Angeles' },
+  { city:'New York',    tz:'America/New_York' },
+  { city:'Toronto',     tz:'America/Toronto' },
+  { city:'London',      tz:'Europe/London' },
+];
+
+function wcTime(tz){
+  try{
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour:'numeric', minute:'2-digit', hour12:true
+    }).format(new Date());
+  }catch(e){ return '--:--'; }
+}
+function wcHour(tz){
+  try{
+    return Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour:'numeric', hour12:false }).format(new Date()));
+  }catch(e){ return 12; }
+}
+function wcDayLabel(tz){
+  try{
+    const here = new Intl.DateTimeFormat('en-US',{ timeZone:'America/Chicago', day:'numeric' }).format(new Date());
+    const there = new Intl.DateTimeFormat('en-US',{ timeZone:tz, day:'numeric' }).format(new Date());
+    if(here === there) return '';
+    // a different date is worth flagging — it's the thing people get wrong
+    return new Intl.DateTimeFormat('en-US',{ timeZone:tz, weekday:'short' }).format(new Date());
+  }catch(e){ return ''; }
+}
+
+function wcTick(){
+  const local = document.getElementById('wc-local');
+  const ld = document.getElementById('wc-localdate');
+  if(local) local.textContent = wcTime('America/Chicago');
+  if(ld) ld.textContent = new Intl.DateTimeFormat('en-US', {
+    timeZone:'America/Chicago', weekday:'long', month:'long', day:'numeric'
+  }).format(new Date()) + ' \u00b7 Central';
+
+  const row = document.getElementById('wc-row');
+  if(!row) return;
+  if(!row.children.length){
+    row.innerHTML = WC_ZONES.map(z =>
+      `<div class="wc-c" data-tz="${z.tz}">
+         <div class="city">${z.city}</div>
+         <div class="t">--:--</div>
+         <div class="d"></div>
+       </div>`).join('');
+  }
+  Array.from(row.children).forEach((el, i) => {
+    const z = WC_ZONES[i];
+    const h = wcHour(z.tz);
+    el.querySelector('.t').textContent = wcTime(z.tz);
+    el.querySelector('.d').textContent = wcDayLabel(z.tz);
+    el.classList.toggle('day', h >= 6 && h < 19);
+    el.classList.toggle('night', h < 6 || h >= 19);
+  });
+}
+
+(function(){
+  const start = () => {
+    wcTick();
+    // tick on the minute rather than every second — nothing here needs seconds
+    setTimeout(function loop(){ wcTick(); setTimeout(loop, 60000); },
+      (60 - new Date().getSeconds()) * 1000);
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+
 <footer class="site-footer">
   <div class="foot">
     <div>
@@ -1833,6 +1963,7 @@ Call Jimmy · 251-229-3216
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-calendar"></div>
 <div class="crm-sec" id="sec-taxes"></div>
 <div class="crm-sec" id="sec-marketing"></div>
 <div class="crm-sec" id="sec-resources"></div>
@@ -2926,7 +3057,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v149';
+window.BUILD = 'index-v151';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5083,7 +5214,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(h === 'client-login'){
     setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
   }
-  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes'].includes(h)){
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes','calendar'].includes(h)){
     try{
       switchView('crm');
       if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
@@ -5804,7 +5935,10 @@ const ICON = {
   mypage:  '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2.2"/><path d="M5.5 17.5c.6-2 1.9-3 3.5-3s2.9 1 3.5 3"/><path d="M15 9h4M15 12.5h4"/>',
   details: '<path d="M4 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="10" cy="7" r="4"/><path d="M17 8h5M19.5 5.5v5"/>',
   key:     '<circle cx="8" cy="14" r="4.5"/><path d="M11.2 10.8L20 2M17 5l2.5 2.5M14.5 7.5L17 10"/>',
-  arrange: '<path d="M4 7h10M4 12h16M4 17h7"/><path d="M17 5l3 3-3 3"/>',
+  arrange: '<path d="M12 3l1.9 4 4.4.6-3.2 3 .8 4.3-3.9-2-3.9 2 .8-4.3-3.2-3 4.4-.6z"/><path d="M5 20h14"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8.5" cy="14.5" r="1.2"/><circle cx="13" cy="14.5" r="1.2"/>',
+  tick:    '<path d="M4 12.5l5 5L20 6.5"/>',
+  grip:    '<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',
 };
 function icon(k){
   return `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
@@ -5822,6 +5956,7 @@ const CRM_SECTIONS = [
   { id:'sec-commissions', label:'Commissions', icon:'money',    color:'#2E8C5A' },  // seagrass
   { id:'sec-expenses',    label:'Expenses',    icon:'expense',  color:'#B4527A' },  // sea urchin
   { id:'sec-taxes',       label:'Taxes',       icon:'taxes',    color:'#6B4FBF' },  // deep water
+  { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
   { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', brokerOnly:true },  // sign blue
   { id:'sec-reviews',     label:'Reviews',     icon:'reviews',  color:'#C9971F' },   // agents see their own  // gold
@@ -5850,6 +5985,27 @@ function allowedSections(){
    Order is stored as a list of section ids. Anything not in the list (a tab added
    in a later version) falls to the end rather than disappearing. */
 let crmTabOrder = null;
+let arrangeMode = false;
+let crmSeenArrange = false;   // stop nudging once they've found it
+
+/* ---------- arrange mode ----------
+   Reordering used to mean opening a dialog and clicking arrows, which is a lot of
+   steps to move one tile. Now the tiles themselves become draggable in place. */
+function enterArrangeMode(){
+  if(previewing()) return;
+  arrangeMode = true;
+  crmSeenArrange = true;
+  try{ localStorage.setItem('crmSeenArrange','1'); }catch(e){}
+  renderCrmNav();
+  showToast('Drag your tabs where you want them. Tap one to change its color.');
+}
+
+async function exitArrangeMode(){
+  arrangeMode = false;
+  const ok = await saveTabOrder();
+  renderCrmNav();
+  if(ok) showToast('Saved \u2014 that\u2019s yours now.');
+}
 
 /* ---------- make it yours ----------
    A CRM is somewhere people spend hours. Everyone gets the same tools; the way
@@ -5875,6 +6031,12 @@ const SWATCHES = ['#E0982C','#D2604A','#C94F3D','#B4527A','#D9767F','#A8478C','#
                   '#2E3CB0','#4C6BA0','#4A7A9B','#1E9AA8','#2A9D8F','#2E8C5A','#7A9B2E',
                   '#C9971F','#8C6A5E','#6A7290','#3F4560'];
 
+/* Backgrounds, including game-day colour schemes.
+
+   Deliberately named by colour rather than by team. Team names and logos are
+   trademarks, and a brokerage putting them on its own software is a licensing
+   question nobody needs. The colours are just colours — anyone who follows a
+   team will know which is which. */
 const BACKGROUNDS = {
   paper: { label:'Paper',  css:'#FCFCFD' },
   sand:  { label:'Sand',   css:'linear-gradient(#FBF7EF,#F7F4EC)' },
@@ -5882,6 +6044,20 @@ const BACKGROUNDS = {
   shell: { label:'Shell',  css:'linear-gradient(#FCF4F4,#F8EFF1)' },
   sea:   { label:'Sea',    css:'linear-gradient(#EFF7F7,#E9F3F4)' },
   dusk:  { label:'Dusk',   css:'linear-gradient(#EDEEF6,#E6E8F3)' },
+
+  // game day
+  crimson:{ label:'Crimson & white', css:'linear-gradient(160deg,#FBEFF0,#F6E4E6)' },
+  navyor: { label:'Navy & orange',   css:'linear-gradient(160deg,#EDF1F7,#FBEFE4)' },
+  garnet: { label:'Garnet & gold',   css:'linear-gradient(160deg,#F8EEF0,#FBF4E4)' },
+  green:  { label:'Green & gold',    css:'linear-gradient(160deg,#EDF6EE,#FBF5E2)' },
+  purple: { label:'Purple & gold',   css:'linear-gradient(160deg,#F2EFF8,#FBF5E2)' },
+  royal:  { label:'Royal & silver',  css:'linear-gradient(160deg,#EDF0FA,#F2F3F5)' },
+
+  // seasons
+  spring: { label:'Spring',  css:'linear-gradient(160deg,#F2F9EF,#FBF4F6)' },
+  summer: { label:'Summer',  css:'linear-gradient(160deg,#EFF8FA,#FDF6E8)' },
+  autumn: { label:'Autumn',  css:'linear-gradient(160deg,#FBF2E6,#F7EDE4)' },
+  winter: { label:'Winter',  css:'linear-gradient(160deg,#F1F5FA,#EFF1F6)' },
 };
 
 let crmTheme = { palette:'coastal', bg:'paper', custom:{} };
@@ -5958,6 +6134,7 @@ async function applyPrefsFor(){
 
 async function loadTabOrder(){
   if(!currentAgent) return;
+  try{ crmSeenArrange = !!localStorage.getItem('crmSeenArrange'); }catch(e){}
   try{
     const p = await storeGet('crmPrefs:' + prefsOwnerId());
     if(p && Array.isArray(p.tabOrder)) crmTabOrder = p.tabOrder;
@@ -5989,9 +6166,16 @@ function renderCrmNav(){
   // switching to an agent view leaves broker content on screen.
   const allowed = allowedSections().map(sc => sc.id);
   if(!allowed.includes(crmSection)) crmSection = 'sec-today';
+  nav.classList.toggle('arranging', !!arrangeMode);
   nav.innerHTML = visibleOrderedSections()
     .map((sc, idx) => {
       const n = sc.badge ? sc.badge() : 0;
+      if(arrangeMode){
+        return `<button class="tile-arr" data-id="${sc.id}" style="--tab:${tabColor(sc, idx)}"
+          onclick="openTileColor('${sc.id}')">
+          <span class="grip">${icon('grip')}</span>
+          <span class="ti">${icon(sc.icon)}</span><span class="tl">${sc.label}</span></button>`;
+      }
       return `<button class="${crmSection===sc.id?'on':''}" onclick="showCrmSection('${sc.id}')"
         style="--tab:${tabColor(sc, idx)}">
         <span class="ti">${icon(sc.icon)}</span><span class="tl">${sc.label}</span>${n?`<span class="pill">${n}</span>`:''}</button>`;
@@ -6001,9 +6185,15 @@ function renderCrmNav(){
              onclick="showToast('You\\u2019re previewing ' + currentAgent.name + '. Their layout is theirs to change.')"
              title="Previewing \u2014 this is their view">
              <span class="ti">${icon('arrange')}</span><span class="tl">Their view</span></button>`
-        : `<button class="crm-arrange" onclick="openTabArrange()" style="--tab:#8C93AD"
-             title="Put these in the order you like">
-             <span class="ti">${icon('arrange')}</span><span class="tl">Arrange</span></button>`);
+        : arrangeMode
+          ? `<button class="crm-arrange live" onclick="openTabArrange('color')"
+               title="Color sets and backgrounds">
+               <span class="ti">${icon('arrange')}</span><span class="tl">Themes</span></button>`
+            + `<button class="crm-arrange done" onclick="exitArrangeMode()" title="Finished">
+               <span class="ti">${icon('tick')}</span><span class="tl">Done</span></button>`
+          : `<button class="crm-arrange live${crmSeenArrange ? '' : ' nudge'}"
+               onclick="enterArrangeMode()" title="Drag your tabs into the order you like, pick colors">
+               <span class="ti">${icon('arrange')}</span><span class="tl">Make it yours</span></button>`);
 }
 
 function showCrmSection(id){
@@ -6054,6 +6244,7 @@ function showCrmSection(id){
     if(id === 'sec-myprofile') renderMyProfileSection();
     if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
     if(id === 'sec-marketing' && typeof renderMarketingSection === 'function') renderMarketingSection();
+    if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function') renderResourcesSection();
     if(id === 'sec-today') renderDashboard();
@@ -11190,12 +11381,13 @@ async function buildTaxDoc(which, year){
    same list. */
 let arrDraft = [], arrTheme = null, arrPane = 'order';
 
-function openTabArrange(){
+function openTabArrange(pane){
   // same source of truth as the nav and the section colouring
   arrDraft = visibleOrderedSections().map(sc => sc.id);
   arrTheme = JSON.parse(JSON.stringify(crmTheme));   // edit a copy, so Cancel means cancel
   document.getElementById('arrange-overlay').classList.add('active');
-  arrTab('order');
+  // dragging now happens on the tiles themselves, so this opens on colours
+  arrTab(pane || 'color');
 }
 
 function closeTabArrange(){
@@ -11320,12 +11512,19 @@ function pickTabColor(id, c){
 function renderBgPane(){
   const host = document.getElementById('arr-bgs');
   if(!host) return;
-  host.innerHTML = `<div class="lbl">Workspace</div><div class="bgs">` +
-    Object.entries(BACKGROUNDS).map(([k, b]) => `
-      <button class="bgsw ${arrTheme.bg===k?'on':''}" onclick="pickBg('${k}')">
+  const groups = [
+    ['Everyday', ['paper','sand','mist','shell','sea','dusk']],
+    ['Game day', ['crimson','navyor','garnet','green','purple','royal']],
+    ['Seasons',  ['spring','summer','autumn','winter']],
+  ];
+  host.innerHTML = groups.map(([title, keys]) => `
+    <div class="lbl">${title}</div><div class="bgs" style="margin-bottom:14px">` +
+    keys.map(k => {
+      const b = BACKGROUNDS[k]; if(!b) return '';
+      return `<button class="bgsw ${arrTheme.bg===k?'on':''}" onclick="pickBg('${k}')">
         <span class="sq" style="background:${b.css}"></span>
-        <span>${escapeHtml(b.label)}</span>
-      </button>`).join('') + `</div>
+        <span>${escapeHtml(b.label)}</span></button>`;
+    }).join('') + `</div>`).join('') + `<div>
     <div style="font-size:12px;color:var(--driftwood);margin-top:10px;line-height:1.5">
       Only your CRM changes. The public site stays on the brand.</div>`;
 }
@@ -12078,6 +12277,447 @@ async function eiSubmit(e){
 
 document.addEventListener('DOMContentLoaded', () => { try{ eiInit(); }catch(e){} });
 </script>
+
+<style>
+/* ---------- arrange mode ---------- */
+.crm-nav.arranging button.tile-arr{position:relative;cursor:grab;touch-action:none;
+  animation:tileWiggle 2.4s ease-in-out infinite}
+.crm-nav.arranging button.tile-arr:nth-child(even){animation-delay:-1.2s}
+@keyframes tileWiggle{0%,100%{transform:rotate(-.5deg)}50%{transform:rotate(.5deg)}}
+.crm-nav.arranging button.tile-arr .grip{position:absolute;top:4px;left:5px;opacity:.4}
+.crm-nav.arranging button.tile-arr .grip svg{width:13px;height:13px}
+.crm-nav.arranging button.tile-arr.dragging{opacity:.35;animation:none;cursor:grabbing}
+.crm-nav.arranging button.tile-arr.slot{outline:2.5px dashed color-mix(in srgb, var(--tab) 55%, transparent);
+  outline-offset:2px}
+@media(prefers-reduced-motion:reduce){ .crm-nav.arranging button.tile-arr{animation:none} }
+
+/* ---------- the button that invites it ---------- */
+.crm-nav button.crm-arrange.live{--tab:#2E3CB0;
+  background:linear-gradient(135deg,#EEF0FC,#F6EFFA)!important;
+  border-color:rgba(107,79,191,.4)!important;
+  color:#4A3B8C!important}
+.crm-nav button.crm-arrange.live .ti{background:linear-gradient(135deg,#6B4FBF,#2E3CB0)!important;
+  color:#fff!important}
+.crm-nav button.crm-arrange.live:hover{box-shadow:0 5px 18px rgba(107,79,191,.3)!important}
+.crm-nav button.crm-arrange.nudge{animation:arrGlow 2.6s ease-in-out infinite}
+@keyframes arrGlow{
+  0%,100%{box-shadow:0 0 0 0 rgba(107,79,191,.32)}
+  50%{box-shadow:0 0 0 7px rgba(107,79,191,0)}
+}
+.crm-nav button.crm-arrange.done{--tab:#2E8C5A;
+  background:#2E8C5A!important;border-color:#2E8C5A!important;color:#fff!important}
+.crm-nav button.crm-arrange.done .ti{background:rgba(255,255,255,.24)!important;color:#fff!important}
+@media(prefers-reduced-motion:reduce){ .crm-nav button.crm-arrange.nudge{animation:none} }
+
+/* ---------- quick colour picker on a tile ---------- */
+#tc-pop{position:fixed;z-index:9700;background:#fff;border-radius:12px;padding:12px;
+  box-shadow:0 12px 40px rgba(15,18,40,.28);display:none;max-width:250px}
+#tc-pop.on{display:block}
+#tc-pop .hd{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:rgba(27,32,67,.6);margin-bottom:8px}
+#tc-pop .sw{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+#tc-pop .sw i{aspect-ratio:1;border-radius:6px;cursor:pointer;display:block;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+#tc-pop .sw i.on{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1B2043}
+</style>
+<div id="tc-pop"><div class="hd" id="tc-name">Color</div><div class="sw" id="tc-sw"></div></div>
+
+<script>
+/* ---------- drag to reorder, in place ----------
+   Pointer events rather than HTML5 drag, because HTML5 drag does not fire on
+   touch screens and half the people using this are on a phone. */
+(function(){
+  let dragEl = null, dragId = null, startX = 0, startY = 0, moved = false;
+
+  function navEl(){ return document.getElementById('crm-nav'); }
+
+  function tileUnder(x, y){
+    const nav = navEl(); if(!nav) return null;
+    for(const b of nav.querySelectorAll('button.tile-arr')){
+      const r = b.getBoundingClientRect();
+      if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return b;
+    }
+    return null;
+  }
+
+  function onDown(e){
+    if(!arrangeMode) return;
+    const b = e.target.closest && e.target.closest('button.tile-arr');
+    if(!b) return;
+    dragEl = b; dragId = b.dataset.id; moved = false;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY;
+  }
+
+  function onMove(e){
+    if(!dragEl) return;
+    const p = e.touches ? e.touches[0] : e;
+    if(!moved){
+      if(Math.abs(p.clientX - startX) < 6 && Math.abs(p.clientY - startY) < 6) return;
+      moved = true;
+      dragEl.classList.add('dragging');
+    }
+    e.preventDefault();
+    const over = tileUnder(p.clientX, p.clientY);
+    navEl().querySelectorAll('button.tile-arr').forEach(x => x.classList.remove('slot'));
+    if(over && over !== dragEl){
+      over.classList.add('slot');
+      // reorder live so the layout shows where it will land
+      const ids = Array.from(navEl().querySelectorAll('button.tile-arr')).map(x => x.dataset.id);
+      const from = ids.indexOf(dragId), to = ids.indexOf(over.dataset.id);
+      if(from >= 0 && to >= 0 && from !== to){
+        const list = crmTabOrder && crmTabOrder.length ? crmTabOrder.slice() : ids.slice();
+        const fi = list.indexOf(dragId), ti = list.indexOf(over.dataset.id);
+        if(fi >= 0 && ti >= 0){
+          list.splice(ti, 0, list.splice(fi, 1)[0]);
+          crmTabOrder = list;
+          renderCrmNav();
+          const again = navEl().querySelector(`button.tile-arr[data-id="${dragId}"]`);
+          if(again){ dragEl = again; dragEl.classList.add('dragging'); }
+        }
+      }
+    }
+  }
+
+  function onUp(){
+    if(!dragEl) return;
+    dragEl.classList.remove('dragging');
+    navEl().querySelectorAll('button.tile-arr').forEach(x => x.classList.remove('slot'));
+    // a tap rather than a drag opens the colour picker, handled by onclick
+    dragEl = null; dragId = null;
+  }
+
+  document.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchstart', onDown, { passive:true });
+  document.addEventListener('touchmove', onMove, { passive:false });
+  document.addEventListener('touchend', onUp);
+})();
+
+/* ---------- tapping a tile in arrange mode sets its colour ---------- */
+let tcId = null;
+function openTileColor(id){
+  tcId = id;
+  const pop = document.getElementById('tc-pop');
+  const sec = CRM_SECTIONS.find(s => s.id === id);
+  const ordered = visibleOrderedSections();
+  const idx = ordered.findIndex(s => s.id === id);
+  const cur = tabColor(ordered[idx] || sec, idx);
+  document.getElementById('tc-name').textContent = (sec ? sec.label : 'Tab') + ' color';
+  document.getElementById('tc-sw').innerHTML = SWATCHES.map(c =>
+    `<i class="${c.toLowerCase()===String(cur).toLowerCase()?'on':''}" style="background:${c}"
+      onclick="setTileColor('${c}')"></i>`).join('');
+
+  const btn = document.querySelector(`button.tile-arr[data-id="${id}"]`);
+  const r = btn ? btn.getBoundingClientRect() : { left:20, bottom:80 };
+  pop.classList.add('on');
+  const pw = pop.offsetWidth || 230;
+  pop.style.left = Math.max(10, Math.min(innerWidth - pw - 10, r.left)) + 'px';
+  pop.style.top = Math.min(innerHeight - 140, r.bottom + 8) + 'px';
+}
+
+function setTileColor(c){
+  if(!tcId) return;
+  if(!crmTheme.custom) crmTheme.custom = {};
+  crmTheme.custom[tcId] = c;
+  renderCrmNav();
+  openTileColor(tcId);      // keep it open so several can be tried quickly
+}
+
+document.addEventListener('click', e => {
+  const pop = document.getElementById('tc-pop');
+  if(!pop || !pop.classList.contains('on')) return;
+  if(pop.contains(e.target)) return;
+  if(e.target.closest && e.target.closest('button.tile-arr')) return;
+  pop.classList.remove('on');
+  tcId = null;
+});
+</script>
+
+<style>
+.cal-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.cal-head h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;
+  color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A);min-width:190px}
+.cal-head .sp{flex:1}
+.cal-nav{display:flex;gap:5px}
+.cal-nav button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 11px;
+  font:inherit;font-size:13px;cursor:pointer;color:#1B2043}
+.cal-nav button:hover{border-color:var(--sec,#2E3CB0)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:rgba(27,32,67,.5);text-align:center;padding:4px 0}
+.cal-day{min-height:78px;border:1px solid var(--line);border-radius:8px;padding:5px 6px;
+  background:#fff;cursor:pointer;overflow:hidden;transition:.13s}
+.cal-day:hover{border-color:var(--sec,#2E3CB0)}
+.cal-day.out{background:#FAFAFC;opacity:.5}
+.cal-day.today{border-color:var(--sec,#2E3CB0);border-width:2px;
+  background:color-mix(in srgb, var(--sec,#2E3CB0) 5%, #fff)}
+.cal-day .dn{font-size:12px;font-weight:600;color:rgba(27,32,67,.62);margin-bottom:3px}
+.cal-day.today .dn{color:var(--sec,#2E3CB0)}
+.cal-ev{font-size:10.5px;line-height:1.3;padding:2px 4px;border-radius:4px;margin-bottom:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.cal-more{font-size:10px;color:rgba(27,32,67,.5);padding-left:3px}
+.cal-key{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 0;font-size:12px;color:var(--driftwood)}
+.cal-key span{display:flex;align-items:center;gap:5px}
+.cal-key i{width:11px;height:11px;border-radius:3px;display:block}
+.cal-list{margin-top:6px}
+.cal-item{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line);
+  border-radius:9px;margin-bottom:7px;background:#fff}
+.cal-item .bar{width:4px;align-self:stretch;border-radius:3px;flex:0 0 auto}
+.cal-item .wh{font-size:11.5px;color:var(--driftwood);white-space:nowrap}
+@media(max-width:640px){
+  .cal-day{min-height:56px;padding:4px}
+  .cal-day .dn{font-size:11px}
+  .cal-ev{font-size:9px}
+}
+</style>
+<script>
+/* ---------- calendar ----------
+   Showings, open houses, closings and office events in one place. Closings,
+   birthdays, work anniversaries and licence expiries are drawn in automatically
+   from records that already exist — they are shown but not editable here,
+   because the real record lives elsewhere and two copies would drift.
+
+   Personal events live at calendar:<agentId>; office-wide ones at
+   settings:officeCalendar, which the broker writes and everyone reads. */
+const CAL_TYPES = {
+  showing:  { label:'Showing',     color:'#2E3CB0' },
+  openhouse:{ label:'Open house',  color:'#1E9AA8' },
+  closing:  { label:'Closing',     color:'#2E8C5A' },
+  office:   { label:'Office',      color:'#B4527A' },
+  personal: { label:'Personal',    color:'#6A7290' },
+  auto:     { label:'From records',color:'#C9971F' },
+};
+
+let calMonth = new Date().getMonth(), calYear = new Date().getFullYear();
+let calEvents = [], calAuto = [];
+
+function calKeyFor(){ return 'calendar:' + (currentAgent ? currentAgent.id : ''); }
+const calISO = d => new Date(d).toISOString().slice(0,10);
+
+async function loadCalendar(){
+  calEvents = [];
+  try{
+    const mine = (await storeGet(calKeyFor())) || [];
+    if(Array.isArray(mine)) calEvents = calEvents.concat(mine.map(e => ({ ...e, own:true })));
+  }catch(e){}
+  try{
+    const office = (await storeGet('settings:officeCalendar')) || [];
+    if(Array.isArray(office)) calEvents = calEvents.concat(office.map(e => ({ ...e, office:true })));
+  }catch(e){}
+  calAuto = buildAutoEvents();
+}
+
+/* Pulled from what the CRM already knows, so nobody types a closing date twice. */
+function buildAutoEvents(){
+  const out = [];
+  const staff = isAdminOrOwner();
+  try{
+    (cdData.deals || []).forEach(d => {
+      if(!d.closeDate) return;
+      if(!staff && d.agentId !== currentAgent.id) return;
+      out.push({ id:'auto_deal_'+d.id, date: calISO(d.closeDate), type:'closing', auto:true,
+        title: (d.address || 'Closing'), note: 'Closed transaction' });
+    });
+  }catch(e){}
+  try{
+    (CELEBRATIONS || []).forEach(c => {
+      if(!c.date) return;
+      out.push({ id:'auto_cel_'+(c.id||Math.random()), date: calISO(c.date), type:'auto', auto:true,
+        title: c.label || c.title || 'Reminder', note: c.kind || '' });
+    });
+  }catch(e){}
+  return out;
+}
+
+function calAll(){ return calEvents.concat(calAuto); }
+
+async function renderCalendarSection(){
+  const el = document.getElementById('sec-calendar');
+  if(!el || !currentAgent) return;
+  await loadCalendar();
+  const staff = isAdminOrOwner();
+
+  const first = new Date(calYear, calMonth, 1);
+  const startDow = first.getDay();
+  const days = new Date(calYear, calMonth + 1, 0).getDate();
+  const prevDays = new Date(calYear, calMonth, 0).getDate();
+  const todayISO = calISO(new Date());
+
+  const byDate = {};
+  calAll().forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+
+  const cell = (dnum, iso, out) => {
+    const evs = (byDate[iso] || []).slice(0, 3);
+    const extra = (byDate[iso] || []).length - evs.length;
+    return `<div class="cal-day ${out?'out':''} ${iso===todayISO?'today':''}"
+      onclick="calAddOn('${iso}')">
+      <div class="dn">${dnum}</div>
+      ${evs.map(e => `<div class="cal-ev" style="background:${(CAL_TYPES[e.type]||CAL_TYPES.personal).color}"
+        title="${escapeHtml(e.title||'')}">${escapeHtml(e.title||'')}</div>`).join('')}
+      ${extra > 0 ? `<div class="cal-more">+${extra} more</div>` : ''}
+    </div>`;
+  };
+
+  let cells = '';
+  for(let i = startDow - 1; i >= 0; i--){
+    const d = prevDays - i;
+    cells += cell(d, calISO(new Date(calYear, calMonth - 1, d)), true);
+  }
+  for(let d = 1; d <= days; d++) cells += cell(d, calISO(new Date(calYear, calMonth, d)), false);
+  const filled = startDow + days;
+  for(let d = 1; filled + d - 1 < Math.ceil(filled / 7) * 7; d++)
+    cells += cell(d, calISO(new Date(calYear, calMonth + 1, d)), true);
+
+  const upcoming = calAll()
+    .filter(e => e.date >= todayISO)
+    .sort((a,b) => a.date.localeCompare(b.date) || String(a.time||'').localeCompare(String(b.time||'')))
+    .slice(0, 8);
+
+  const monthName = first.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+
+  el.innerHTML = `
+    <div class="card"><div style="padding:18px">
+      <div class="cal-head">
+        <h3>${monthName}</h3>
+        <div class="cal-nav">
+          <button onclick="calShift(-1)">&larr;</button>
+          <button onclick="calToday()">Today</button>
+          <button onclick="calShift(1)">&rarr;</button>
+        </div>
+        <span class="sp"></span>
+        <button class="btn-sm primary" onclick="calAddOn('${todayISO}')">+ Add something</button>
+      </div>
+      <div class="cal-grid">
+        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('')}
+        ${cells}
+      </div>
+      <div class="cal-key">
+        ${Object.entries(CAL_TYPES).map(([k,t]) =>
+          `<span><i style="background:${t.color}"></i>${t.label}</span>`).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--driftwood);margin-top:9px">
+        Closings, birthdays, work anniversaries and licence expiries appear on their own \\u2014
+        they come from records you already keep, so they can't be edited here.
+        ${staff ? 'Anything marked as an Office event shows on every calendar.' : ''}
+      </div>
+    </div></div>
+
+    <div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 10px;font-size:16px">Coming up</h3>
+      <div class="cal-list">
+        ${upcoming.length ? upcoming.map(e => {
+          const t = CAL_TYPES[e.type] || CAL_TYPES.personal;
+          const d = new Date(e.date + 'T12:00:00');
+          return `<div class="cal-item">
+            <span class="bar" style="background:${t.color}"></span>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600">${escapeHtml(e.title||'Untitled')}</div>
+              <div style="font-size:12.5px;color:var(--driftwood)">
+                ${t.label}${e.note ? ' \\u00b7 ' + escapeHtml(e.note) : ''}
+                ${e.office ? ' \\u00b7 office-wide' : ''}</div>
+            </div>
+            <div class="wh">${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+              ${e.time ? '<br>' + escapeHtml(e.time) : ''}</div>
+            ${e.auto ? '' : `<button class="btn-sm" style="padding:3px 9px;font-size:12px"
+              onclick="calDelete('${e.id}',${e.office?'true':'false'})">Remove</button>`}
+          </div>`;
+        }).join('')
+        : `<div style="font-size:13.5px;color:var(--driftwood)">Nothing on the books.
+            Add a showing or an open house and it'll appear here.</div>`}
+      </div>
+    </div></div>`;
+}
+
+function calShift(n){
+  calMonth += n;
+  if(calMonth < 0){ calMonth = 11; calYear--; }
+  if(calMonth > 11){ calMonth = 0; calYear++; }
+  renderCalendarSection();
+}
+function calToday(){
+  const d = new Date();
+  calMonth = d.getMonth(); calYear = d.getFullYear();
+  renderCalendarSection();
+}
+
+function calAddOn(iso){
+  const staff = isAdminOrOwner();
+  const box = document.getElementById('cal-add');
+  document.getElementById('cal-date').value = iso;
+  document.getElementById('cal-title').value = '';
+  document.getElementById('cal-time').value = '';
+  document.getElementById('cal-note').value = '';
+  const off = document.getElementById('cal-office-wrap');
+  if(off) off.style.display = staff ? '' : 'none';
+  box.classList.add('active');
+  setTimeout(() => document.getElementById('cal-title').focus(), 80);
+}
+function calCloseAdd(){ document.getElementById('cal-add').classList.remove('active'); }
+
+async function calSave(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  const title = g('cal-title');
+  if(!title){ showToast('Give it a name.'); return; }
+  const officeWide = !!(document.getElementById('cal-office')||{}).checked && isAdminOrOwner();
+  const ev = {
+    id: 'ev_' + Date.now(),
+    date: g('cal-date'), time: g('cal-time'),
+    title, note: g('cal-note'),
+    type: g('cal-type') || 'showing',
+    agentId: currentAgent.id,
+    createdAt: new Date().toISOString(),
+  };
+  const key = officeWide ? 'settings:officeCalendar' : calKeyFor();
+  let list = [];
+  try{ list = (await storeGet(key)) || []; }catch(e){}
+  if(!Array.isArray(list)) list = [];
+  list.push(ev);
+  const ok = await storeSet(key, list);
+  if(!ok){ showToast("Couldn't save that."); return; }
+  calCloseAdd();
+  showToast('Added.');
+  renderCalendarSection();
+}
+
+async function calDelete(id, office){
+  const key = office ? 'settings:officeCalendar' : calKeyFor();
+  let list = [];
+  try{ list = (await storeGet(key)) || []; }catch(e){}
+  if(!Array.isArray(list)) return;
+  const next = list.filter(e => e.id !== id);
+  await storeSet(key, next);
+  renderCalendarSection();
+}
+</script>
+
+<div class="modal-overlay" id="cal-add">
+<div class="modal" style="max-width:430px">
+<button class="modal-close" onclick="calCloseAdd()">&times;</button>
+<h3>Add to the calendar</h3>
+<div class="sub">Showings, open houses, closings, whatever you need to remember.</div>
+<div class="field"><label>What is it?</label><input id="cal-title" placeholder="412 Sandpiper \u2014 showing"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+  <div class="field"><label>Date</label><input type="date" id="cal-date"></div>
+  <div class="field"><label>Time</label><input type="time" id="cal-time"></div>
+</div>
+<div class="field"><label>Type</label>
+  <select id="cal-type">
+    <option value="showing">Showing</option>
+    <option value="openhouse">Open house</option>
+    <option value="closing">Closing</option>
+    <option value="office">Office</option>
+    <option value="personal">Personal</option>
+  </select></div>
+<div class="field"><label>Notes</label><input id="cal-note" placeholder="Optional"></div>
+<label id="cal-office-wrap" style="display:flex;gap:8px;align-items:center;font-size:13.5px;
+  margin:4px 0 10px;cursor:pointer">
+  <input type="checkbox" id="cal-office"> Show this on everyone's calendar
+</label>
+<button class="submit-btn" onclick="calSave()">Add it</button>
+</div>
+</div>
 
 </body>
 </html>
