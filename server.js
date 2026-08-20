@@ -169,6 +169,8 @@ function keyAllowedForAgent(key, sess, write) {
   if (k === 'settings:adminRequests' || k === 'settings:adminBypass') return false;
   if (k.startsWith('session:') || k.startsWith('clientSession:')
       || k.startsWith('clientReset:')) return false;
+  // HR records hold taxpayer IDs and go through their own routes only
+  if (k.startsWith('agentHR:')) return false;
   // Anything not named above was previously readable by any signed-in agent —
   // including settings:leadArchive, the entire archived lead history. Shared
   // keys are now allowlisted, so a new key is private until it is listed.
@@ -211,7 +213,7 @@ app.get('/api/kv/:key', async (req, res) => {
   if (sess && !isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
     return res.status(403).json({ error: 'Not permitted.' });
   }
-  if (String(req.params.key || '').match(/^(session|clientSession|clientReset):/)) {
+  if (String(req.params.key || '').match(/^(session|clientSession|clientReset|agentHR):/)) {
     console.warn(`[security] blocked direct read of a session token`);
     return res.status(403).json({ error: 'Not permitted.' });
   }
@@ -258,7 +260,7 @@ app.get('/api/kv', async (req, res) => {
     // these could read one and assume the broker's session, defeating every
     // broker-account protection below.
     if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')
-        || prefix.startsWith('clientReset:')) {
+        || prefix.startsWith('clientReset:') || prefix.startsWith('agentHR:')) {
       console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from listing session tokens`);
       return res.status(403).json({ error: 'Not permitted.' });
     }
@@ -834,6 +836,173 @@ app.post('/api/client/login', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+/* ---------- agent HR records ----------
+   Address, emergency contact, licence dates, W-9 status and the taxpayer ID
+   needed to produce a 1099. Everything the broker currently keeps asking agents
+   to re-send.
+
+   The TIN is the most sensitive thing in this system. It is encrypted at rest
+   with AES-256-GCM and only ever leaves the server as last-four, except in the
+   1099 worksheet, which the broker alone can generate. If HR_ENCRYPTION_KEY is
+   not configured the server REFUSES to store a TIN rather than writing it in
+   clear text — a missing environment variable must not quietly downgrade this.
+
+   To generate the key:  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   then set HR_ENCRYPTION_KEY in the hosting environment variables.            */
+const HR_KEY_HEX = process.env.HR_ENCRYPTION_KEY || '';
+const HR_KEY = /^[0-9a-f]{64}$/i.test(HR_KEY_HEX) ? Buffer.from(HR_KEY_HEX, 'hex') : null;
+if (!HR_KEY && HR_KEY_HEX) console.warn('[hr] HR_ENCRYPTION_KEY is set but is not 64 hex characters — ignoring it.');
+
+function encryptTin(plain){
+  if (!HR_KEY) throw new Error('HR_ENCRYPTION_KEY is not configured.');
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', HR_KEY, iv);
+  const enc = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+  return [iv.toString('hex'), c.getAuthTag().toString('hex'), enc.toString('hex')].join(':');
+}
+
+function decryptTin(blob){
+  if (!HR_KEY || !blob) return null;
+  try {
+    const [ivh, tagh, dh] = String(blob).split(':');
+    const d = crypto.createDecipheriv('aes-256-gcm', HR_KEY, Buffer.from(ivh, 'hex'));
+    d.setAuthTag(Buffer.from(tagh, 'hex'));
+    return Buffer.concat([d.update(Buffer.from(dh, 'hex')), d.final()]).toString('utf8');
+  } catch (e) {
+    console.error('[hr] TIN decrypt failed — wrong key, or the record was written under a different one');
+    return null;
+  }
+}
+
+const HR_FIELDS = ['legalName','entityName','address1','address2','city','state','zip',
+                   'personalPhone','personalEmail','dob','startDate','endDate',
+                   'emergencyName','emergencyPhone','emergencyRelation',
+                   'licenseExpiry','w9OnFile','w9Date','tinType','notes'];
+
+/* What comes back to the browser: never the TIN itself, only the last four. */
+function hrPublic(rec){
+  const out = {};
+  HR_FIELDS.forEach(f => { out[f] = (rec && rec[f]) || ''; });
+  out.tinLast4 = (rec && rec.tinLast4) || '';
+  out.tinOnFile = !!(rec && rec.tinEnc);
+  out.updatedAt = (rec && rec.updatedAt) || '';
+  return out;
+}
+
+app.get('/api/agent/:id/hr', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  // staff see anyone's; an agent sees only their own
+  if (!isStaff(sess) && sess.agentId !== req.params.id) {
+    console.warn(`[security] agent ${sess.agentId} blocked reading HR record ${req.params.id}`);
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
+  const rec = await getSetting('agentHR:' + req.params.id);
+  res.json({ ok: true, hr: hrPublic(rec), keyConfigured: !!HR_KEY });
+});
+
+app.post('/api/agent/:id/hr', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess) && sess.agentId !== req.params.id) {
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
+  const b = req.body || {};
+  const existing = (await getSetting('agentHR:' + req.params.id)) || {};
+  const clean = v => String(v == null ? '' : v).slice(0, 300).trim();
+
+  const rec = { ...existing };
+  HR_FIELDS.forEach(f => { if (f in b) rec[f] = clean(b[f]); });
+  rec.w9OnFile = b.w9OnFile === true || b.w9OnFile === 'true' || b.w9OnFile === 'yes';
+
+  // Only the broker touches the taxpayer ID. An admin can keep the rest of the
+  // record current without ever being handed someone's SSN.
+  if (typeof b.tin === 'string' && b.tin.trim()) {
+    if (sess.role !== 'broker') {
+      return res.status(403).json({ error: 'Only the broker can enter a taxpayer ID.' });
+    }
+    const digits = b.tin.replace(/[^0-9]/g, '');
+    if (digits.length !== 9) {
+      return res.status(400).json({ error: 'A TIN is nine digits — an SSN or an EIN.' });
+    }
+    if (!HR_KEY) {
+      return res.status(503).json({
+        error: 'HR_ENCRYPTION_KEY is not set on the server, so a taxpayer ID cannot be stored securely. '
+             + 'Everything else on this record saved. Add the key in the hosting environment variables first.',
+        code: 'no_encryption_key',
+      });
+    }
+    rec.tinEnc = encryptTin(digits);
+    rec.tinLast4 = digits.slice(-4);
+    console.log(`[hr] broker set a taxpayer ID for ${req.params.id}`);
+  }
+  if (b.clearTin === true && sess.role === 'broker') {
+    delete rec.tinEnc; delete rec.tinLast4;
+    console.log(`[hr] broker cleared the taxpayer ID for ${req.params.id}`);
+  }
+
+  rec.updatedAt = new Date().toISOString();
+  const ok = await setSetting('agentHR:' + req.params.id, rec);
+  if (!ok) return res.status(500).json({ error: 'Could not save.' });
+  console.log(`[hr] ${sess.name} updated the record for ${req.params.id}`);
+  res.json({ ok: true, hr: hrPublic(rec) });
+});
+
+/* ---------- 1099 data ----------
+   The only route that decrypts a taxpayer ID, and only for the broker.
+
+   IMPORTANT, and the reason this is called a worksheet: you cannot lawfully
+   print your own Copy A of a Form 1099-NEC. The IRS requires the scannable
+   red-ink original or electronic filing, and a printed substitute Copy A can
+   draw a penalty. Copy B — the agent's copy — may be a substitute if it follows
+   IRS Publication 1179. So this produces the recipient copy and the figures for
+   filing; the filing itself goes through your accountant or a filing service. */
+app.post('/api/tax/1099-data', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role !== 'broker') {
+    console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from 1099 data`);
+    return res.status(403).json({ error: 'Only the broker can see taxpayer IDs.' });
+  }
+  const ids = Array.isArray((req.body || {}).agentIds) ? req.body.agentIds.slice(0, 200) : [];
+  if (!ids.length) return res.status(400).json({ error: 'No agents given.' });
+
+  const out = [];
+  for (const id of ids) {
+    const hr = (await getSetting('agentHR:' + id)) || {};
+    const tin = hr.tinEnc ? decryptTin(hr.tinEnc) : null;
+    out.push({
+      agentId: id,
+      legalName: hr.legalName || '',
+      entityName: hr.entityName || '',
+      address1: hr.address1 || '', address2: hr.address2 || '',
+      city: hr.city || '', state: hr.state || '', zip: hr.zip || '',
+      tinType: hr.tinType || '',
+      tin: tin || '',
+      tinFormatted: tin
+        ? (hr.tinType === 'EIN' ? tin.slice(0,2) + '-' + tin.slice(2)
+                                : tin.slice(0,3) + '-' + tin.slice(3,5) + '-' + tin.slice(5))
+        : '',
+      w9OnFile: !!hr.w9OnFile, w9Date: hr.w9Date || '',
+      missing: [
+        hr.legalName ? null : 'legal name',
+        hr.address1 ? null : 'address',
+        tin ? null : 'taxpayer ID',
+        hr.w9OnFile ? null : 'W-9 on file',
+      ].filter(Boolean),
+    });
+  }
+  console.log(`[tax] broker generated 1099 data for ${out.length} agent(s)`);
+  res.json({
+    ok: true, rows: out,
+    payer: {
+      name: BROKERAGE_LEGAL_ENTITY,
+      tradeName: BROKERAGE_NAME,
+      phone: BROKERAGE_PHONE,
+      ein: process.env.BROKERAGE_EIN || '',
+    },
+    note: 'Copy A must be filed on the official scannable form or electronically. '
+        + 'This worksheet is for the recipient copy and for your accountant.',
+  });
 });
 
 /* ---------- client password reset ----------
@@ -1767,7 +1936,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v58',
+    serverVersion: 'v59',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
