@@ -201,6 +201,8 @@ function keyAllowedForAgent(key, sess, write) {
      an agent can keep whatever notes they like without any risk of moving a
      number the brokerage counts. */
   if (k.startsWith('agentDeals:')) return k === 'agentDeals:' + sess.agentId;
+  // personal task list, what has been ticked, and the end-of-day log
+  if (k.startsWith('crmTasks:')) return k === 'crmTasks:' + sess.agentId;
   // Marketing projects are per agent: marketing:<agentId>:<projectId>.
   // Staff bypass this function entirely, which is how the broker sees all of them.
   if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
@@ -2474,7 +2476,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v74',
+    serverVersion: 'v75',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
