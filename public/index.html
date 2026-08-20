@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v173">
+<meta name="build" content="index-v176">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1407,8 +1407,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="f"><label for="f-city">Where</label>
     <input id="f-city" list="city-options" placeholder="City, community, or ZIP" onkeydown="if(event.key==='Enter') runSearch()">
     <datalist id="city-options">
-      <option value="Gulf Shores"><option value="Orange Beach"><option value="Fairhope"><option value="Foley">
-      <option value="Daphne"><option value="Mobile"><option value="Spanish Fort"><option value="Perdido Key">
+      <option value="Gulf Shores"><option value="Orange Beach"><option value="Fort Morgan"><option value="Ono Island"><option value="Perdido Beach"><option value="Bon Secour"><option value="Dauphin Island"><option value="Laguna Key"><option value="Fairhope"><option value="Daphne"><option value="Spanish Fort"><option value="Point Clear"><option value="Montrose"><option value="Magnolia Springs"><option value="Barnwell"><option value="Belforest"><option value="Battles Wharf"><option value="Malbis"><option value="Foley"><option value="Robertsdale"><option value="Loxley"><option value="Summerdale"><option value="Silverhill"><option value="Elberta"><option value="Bay Minette"><option value="Stapleton"><option value="Seminole"><option value="Lillian"><option value="Josephine"><option value="Rosinton"><option value="Bromley"><option value="Miflin"><option value="Mobile"><option value="Saraland"><option value="Satsuma"><option value="Semmes"><option value="Chickasaw"><option value="Prichard"><option value="Creola"><option value="Citronelle"><option value="Mount Vernon"><option value="Bayou La Batre"><option value="Theodore"><option value="Tillmans Corner"><option value="Grand Bay"><option value="Irvington"><option value="Wilmer"><option value="Eight Mile"><option value="Axis"><option value="Chunchula"><option value="St. Elmo"><option value="Coden"><option value="Calvert"><option value="Perdido Key"><option value="Innerarity Point"><option value="Pensacola"><option value="Pensacola Beach"><option value="Gulf Breeze"><option value="Navarre"><option value="Navarre Beach"><option value="Cantonment"><option value="Molino"><option value="Beulah"><option value="Bellview"><option value="Myrtle Grove"><option value="Warrington"><option value="Gonzalez"><option value="Ferry Pass"><option value="Brent"><option value="Pace"><option value="Milton"><option value="Jay"><option value="Century">
     </datalist>
   </div>
   <div class="f"><label for="f-beds">Beds</label>
@@ -1781,7 +1780,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <section class="reel" id="reel" style="display:none"></section>
 
-<section class="sect-v2 dark" id="communities">
+<section class="sect-v2 dark comm-collapsed" id="communities">
   <div class="wrap">
     <div class="sec-head center rv">
       <div class="eyebrow">Where We Work</div>
@@ -1791,7 +1790,9 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 
     <div class="comm-tools rv">
-      <input id="commSearch" type="search" placeholder="Type a town — e.g. Fairhope, Perdido Key" aria-label="Search communities">
+      <!-- The text box that was here duplicated the property search at the top of
+           the page. Every town below is now in that search instead, so there is
+           one place to type a place name rather than two. -->
       <div class="comm-pills">
         <button class="on" data-b="all">All</button>
         <button data-b="0">Gulf &amp; Beaches</button>
@@ -1841,6 +1842,8 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="no-hits" id="noHits" style="display:none">No community by that name — try another spelling, or call 251-229-3216.</div>
   </div>
+      <button class="comm-more" onclick="commShowAll()">Show every town we cover</button>
+      <div class="comm-hint">Or just type a place name into the search at the top.</div>
 </section>
 
 <div class="lead-band" id="value">
@@ -3609,7 +3612,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v173';
+window.BUILD = 'index-v176';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5677,7 +5680,8 @@ addEventListener('scroll', () => {
   let region = 'all';
 
   function apply(){
-    const q = (box.value || '').trim().toLowerCase();
+    // the text box was removed — its job moved to the main property search
+    const q = box ? (box.value || '').trim().toLowerCase() : '';
     let hits = 0;
     bands.forEach((b,i) => {
       const inRegion = region === 'all' || String(i) === region;
@@ -5692,7 +5696,7 @@ addEventListener('scroll', () => {
     });
     document.getElementById('noHits').style.display = hits ? 'none' : 'block';
   }
-  box.addEventListener('input', apply);
+  if(box) box.addEventListener('input', apply);
   pills.forEach(p => p.addEventListener('click', () => {
     pills.forEach(x => x.classList.remove('on'));
     p.classList.add('on');
@@ -6895,8 +6899,16 @@ function showCrmSection(id){
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
     if(id === 'sec-tracker' && typeof renderTrackerSection === 'function') renderTrackerSection();
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
-    if(id === 'sec-resources' && typeof renderResourcesSection === 'function') renderResourcesSection();
-    if(id === 'sec-today') renderDashboard();
+    if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
+      renderResourcesSection().then(() => {
+        if(typeof renderCePanel === 'function') renderCePanel();
+      });
+    }
+    if(id === 'sec-today'){
+      renderDashboard();
+      // only appears when a licence is actually closing in
+      if(typeof renderCeNudge === 'function') setTimeout(renderCeNudge, 60);
+    }
   }catch(e){}
   const main = document.getElementById('crm-main');
   if(main) window.scrollTo({top: Math.max(0, main.offsetTop - 40), behavior:'smooth'});
@@ -7300,6 +7312,7 @@ async function renderDashboard(){
     </button>`;
 
   el.innerHTML = `
+    <div id="ce-nudge-slot"></div>
     <div class="dash-hero">
       <div>
         <div class="eyebrow-sm">${new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})}</div>
@@ -8075,27 +8088,33 @@ async function loadMarketStats(){
     const o = d.overall;
     const cities = Object.entries(d.byCity).sort((a,b) => b[1].count - a[1].count);
 
+    /* Four numbers and a row of town links. The full table was a lot of page for
+       something people glance at \u2014 and the $/sq ft column was showing a dash on
+       nearly every row, because the feed does not carry living area for most
+       listings. A column of dashes reads as broken software, so it only appears
+       when there is something to put in it. */
+    const haveSqft = o.pricePerSqft || cities.some(([,c]) => c.pricePerSqft);
+
     el.innerHTML = `
       <div class="mkt-top">
         ${mktStat('Homes for sale', o.count.toLocaleString(), 'Active listings in Baldwin County')}
         ${mktStat('Median price', fmtMoney(o.median), 'Half list above, half below')}
-        ${mktStat('Price per sq ft', o.pricePerSqft ? '$' + o.pricePerSqft : '\u2014', 'Median, homes with square footage')}
+        ${haveSqft ? mktStat('Price per sq ft', '$' + o.pricePerSqft, 'Median, homes with square footage') : ''}
         ${mktStat('New this week', o.new7.toLocaleString(), o.new30.toLocaleString() + ' in the last 30 days')}
       </div>
 
-      ${cities.length ? `<div class="mkt-table-wrap">
-        <table class="mkt-table">
-          <thead><tr><th>Community</th><th class="r">For sale</th><th class="r">Median price</th>
-            <th class="r">$/sq ft</th><th class="r">New in 30 days</th></tr></thead>
-          <tbody>${cities.map(([city,c]) => `<tr onclick="searchTown('${city.replace(/'/g,"\\'")}')">
-            <td><span class="mkt-city">${escapeHtml(city)}</span></td>
-            <td class="r">${c.count.toLocaleString()}</td>
-            <td class="r">${fmtMoney(c.median)}</td>
-            <td class="r">${c.pricePerSqft ? '$' + c.pricePerSqft : '\u2014'}</td>
-            <td class="r">${c.new30.toLocaleString()}</td>
-          </tr>`).join('')}</tbody>
-        </table>
-      </div>` : ''}
+      ${cities.length ? `
+        <div class="mkt-towns">
+          <div class="mkt-towns-h">By town &mdash; tap one to see what's for sale</div>
+          <div class="mkt-chips">
+            ${cities.map(([city,c]) => `
+              <button class="mkt-chip" onclick="searchTown('${city.replace(/'/g,"\\'")}')">
+                <span class="c">${escapeHtml(city)}</span>
+                <span class="n">${c.count.toLocaleString()}</span>
+                <span class="m">${fmtMoney(c.median)}</span>
+              </button>`).join('')}
+          </div>
+        </div>` : ''}
 
       <p class="mkt-note">
         ${escapeHtml(d.basis)} Data courtesy of ${escapeHtml(d.source)}.
@@ -11266,6 +11285,7 @@ async function renderResourcesSection(){
      run to fifty-odd documents and would bury everything else if they shared a
      list. */
   el.innerHTML = `
+    <div id="ce-panel"></div>
     <div class="rs-tabs">
       <button id="rst-links" class="on" onclick="rsTab('links')">Links &amp; contacts</button>
       <button id="rst-forms" onclick="rsTab('forms')">Baldwin REALTORS&reg; forms</button>
@@ -14550,6 +14570,242 @@ body.crm-dark .rs-tabs{background:#1A1E30}
 body.crm-dark .rs-tabs button.on{background:#2C3350;color:#EEF0F8}
 body.crm-dark .rs-caution{background:#2A2413;color:#E8DCC0}
 @media(max-width:520px){ .rs-tabs{max-width:none} .rs-tabs button{font-size:12.5px;padding:8px 6px} }
+</style>
+
+<style>
+/* ---------- continuing education ----------
+   Prominent on purpose: an agent whose licence lapses cannot work, and the
+   brokerage carries that. */
+.ce-card{background:linear-gradient(135deg,#1B2043 0%,#2E3CB0 55%,#1E5F7A 100%);
+  color:#fff;border-radius:15px;padding:22px 24px;position:relative;overflow:hidden;
+  margin-bottom:16px}
+.ce-card::after{content:'';position:absolute;right:-50px;top:-50px;width:210px;height:210px;
+  border-radius:50%;background:radial-gradient(circle,rgba(230,195,129,.2),transparent 68%);
+  pointer-events:none}
+.ce-card .k{font-size:10.5px;font-weight:700;letter-spacing:.19em;text-transform:uppercase;
+  color:rgba(230,195,129,.95);position:relative}
+.ce-card h3{font-family:'Cormorant Garamond',serif;font-size:29px;font-weight:500;
+  margin:6px 0 6px;line-height:1.15;position:relative;color:#fff}
+.ce-card p{font-size:14px;line-height:1.6;color:rgba(255,255,255,.86);margin:0 0 16px;
+  max-width:560px;position:relative}
+.ce-card .acts{display:flex;gap:9px;flex-wrap:wrap;position:relative}
+.ce-btn{display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#1B2043;
+  border:none;border-radius:10px;padding:12px 20px;font:inherit;font-size:14.5px;font-weight:700;
+  cursor:pointer;text-decoration:none}
+.ce-btn:hover{background:#DCB569}
+.ce-ghost{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.12);
+  color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:12px 17px;
+  font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;text-decoration:none}
+.ce-ghost:hover{background:rgba(255,255,255,.22)}
+.ce-note{font-size:11.5px;color:rgba(255,255,255,.62);margin-top:13px;line-height:1.55;
+  position:relative;max-width:600px}
+.ce-due{display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.11);
+  border-radius:10px;padding:11px 14px;margin:0 0 15px;position:relative;flex-wrap:wrap}
+.ce-due .n{font-family:'Cormorant Garamond',serif;font-size:30px;line-height:1}
+.ce-due .t{font-size:13px;color:rgba(255,255,255,.85);line-height:1.4}
+.ce-due.urgent{background:rgba(212,90,74,.28)}
+
+/* the nudge that appears on Today when a licence is closing in */
+.ce-nudge{display:flex;align-items:center;gap:13px;flex-wrap:wrap;
+  background:linear-gradient(100deg,#FBF6EA,#FDF9F0);
+  border:1px solid rgba(230,195,129,.6);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.ce-nudge .ic{font-size:20px;flex:0 0 auto}
+.ce-nudge .tx{flex:1;min-width:190px;font-size:13.5px;line-height:1.5;color:#5A4520}
+.ce-nudge .tx b{color:#1B2043}
+.ce-nudge a{background:#2E3CB0;color:#fff;border-radius:9px;padding:9px 16px;
+  font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
+.ce-nudge a:hover{background:#232C8E}
+body.crm-dark .ce-nudge{background:#2A2413;border-color:rgba(230,195,129,.4);color:#E8DCC0}
+body.crm-dark .ce-nudge .tx{color:#E8DCC0}
+</style>
+
+<script>
+/* ---------- continuing education ----------
+   One link, hard to miss, plus a prompt that appears on Today when someone's
+   licence is closing in. Alabama and Florida both require CE before renewal and
+   an agent who lets it lapse cannot work \u2014 which is the brokerage's problem as
+   much as theirs. */
+const CE_SHOP_URL = 'https://share.theceshop.com/x/xrbamL';
+
+/* Days until a licence expires, or null if nothing is on file. */
+function ceDaysLeft(expiry){
+  if(!expiry) return null;
+  const d = new Date(String(expiry).length <= 10 ? expiry + 'T12:00:00' : expiry);
+  if(isNaN(d)) return null;
+  return Math.ceil((d - new Date()) / 86400000);
+}
+
+async function ceMyExpiry(){
+  if(!currentAgent) return null;
+  try{
+    const r = await fetch('/api/agent/' + encodeURIComponent(currentAgent.id) + '/hr');
+    if(!r.ok) return null;
+    const d = await r.json();
+    return (d.hr && d.hr.licenseExpiry) || null;
+  }catch(e){ return null; }
+}
+
+function ceCardHtml(days){
+  let due = '';
+  if(days !== null){
+    const urgent = days <= 90;
+    due = `<div class="ce-due ${urgent?'urgent':''}">
+      <span class="n">${days < 0 ? '!' : days}</span>
+      <span class="t">${days < 0
+        ? '<strong>Your licence shows as expired.</strong> Sort this today \\u2014 you cannot practise on a lapsed licence.'
+        : days === 0 ? '<strong>Your licence expires today.</strong>'
+        : `days until your licence expires${urgent ? ' \\u2014 leave CE any later and it gets tight' : ''}`}</span>
+    </div>`;
+  }
+  return `<div class="ce-card">
+    <div class="k">Continuing education</div>
+    <h3>Keep your licence current</h3>
+    ${due}
+    <p>Alabama and Florida both want CE finished before you renew, and the courses take
+      longer than anyone plans for. The CE Shop covers both states and you can work through
+      it at your own pace.</p>
+    <div class="acts">
+      <a class="ce-btn" href="${CE_SHOP_URL}" target="_blank" rel="noopener">
+        Start your CE &rarr;</a>
+      <button class="ce-ghost" onclick="ceCopyLink()">Copy the link</button>
+      ${(typeof isAdminOrOwner === 'function' && isAdminOrOwner())
+        ? `<button class="ce-ghost" onclick="ceEmailAgents()">Send it to my agents</button>` : ''}
+    </div>
+    <div class="ce-note">
+      This is the brokerage's referral link to The CE Shop, so we may receive a commission
+      or credit if you enrol through it. It costs you nothing extra, and you are welcome to
+      use any approved provider you prefer \u2014 what matters is that the CE gets done.
+    </div>
+  </div>`;
+}
+
+async function renderCePanel(){
+  const host = document.getElementById('ce-panel');
+  if(!host) return;
+  const expiry = await ceMyExpiry();
+  host.innerHTML = ceCardHtml(ceDaysLeft(expiry));
+}
+
+async function ceCopyLink(){
+  try{
+    await navigator.clipboard.writeText(CE_SHOP_URL);
+    showToast('Link copied.');
+  }catch(e){ prompt('The CE Shop:', CE_SHOP_URL); }
+}
+
+/* Broker sends it round, with each agent's own expiry date in their copy. */
+async function ceEmailAgents(){
+  if(!isAdminOrOwner()) return;
+  let agents = [];
+  try{
+    const r = await fetch('/api/agent/list');
+    if(r.ok) agents = ((await r.json()).agents || []).filter(a => a.active !== false);
+  }catch(e){}
+  if(!agents.length){ showToast('No agents to send to.'); return; }
+  if(!confirm(`Send the CE link to ${agents.length} agent${agents.length===1?'':'s'}?`)) return;
+
+  showToast('Sending\\u2026');
+  let sent = 0;
+  for(const a of agents){
+    if(!a.email) continue;
+    let tail = '';
+    try{
+      const r = await fetch('/api/agent/' + encodeURIComponent(a.id) + '/hr');
+      if(r.ok){
+        const d = await r.json();
+        const days = ceDaysLeft(d.hr && d.hr.licenseExpiry);
+        if(days !== null && days <= 180){
+          tail = days < 0
+            ? `\\n\\nOur records show your licence as expired \\u2014 please speak to me today.`
+            : `\\n\\nOur records show your licence expiring in ${days} days.`;
+        }
+      }
+    }catch(e){}
+    try{
+      const r = await fetch('/api/marketing/email', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to: a.email,
+          subject: 'Your continuing education \\u2014 ' + AvaniTemplates.BROKERAGE_NAME,
+          message: `Hi ${String(a.name||'').split(' ')[0]},\\n\\n`
+            + `A reminder to get your CE done before renewal comes round. The CE Shop covers `
+            + `both Alabama and Florida and you can work at your own pace:\\n\\n${CE_SHOP_URL}`
+            + tail
+            + `\\n\\nThat is the brokerage's referral link, so we may receive a commission or `
+            + `credit if you enrol through it. Use any approved provider you like \\u2014 what `
+            + `matters is that it gets done before your renewal.\\n\\n`
+            + `Shout if you want a hand.\\n\\n${currentAgent.name}\\n${AvaniTemplates.BROKERAGE_NAME}`,
+        }),
+      });
+      if(r.ok) sent++;
+    }catch(e){}
+  }
+  showToast(sent ? `Sent to ${sent} agent${sent===1?'':'s'}.` : "Couldn't send those.");
+}
+
+/* The prompt on Today. Only appears when it is actually relevant \u2014 a reminder
+   that is always there stops being a reminder. */
+async function renderCeNudge(){
+  const host = document.getElementById('ce-nudge-slot');
+  if(!host || !currentAgent) return;
+  const days = ceDaysLeft(await ceMyExpiry());
+  if(days === null || days > 150){ host.innerHTML = ''; return; }
+  host.innerHTML = `<div class="ce-nudge">
+    <span class="ic">${days < 0 ? '\\u26A0' : '\\u23F1'}</span>
+    <span class="tx">${days < 0
+      ? '<b>Your licence shows as expired.</b> You cannot practise until it is renewed.'
+      : days === 0 ? '<b>Your licence expires today.</b>'
+      : `<b>Your licence expires in ${days} days.</b> CE has to be finished before you renew, and it takes longer than people expect.`}</span>
+    <a href="${CE_SHOP_URL}" target="_blank" rel="noopener">Start CE</a>
+  </div>`;
+}
+</script>
+
+<style>
+/* ---------- communities, shortened ----------
+   Seventy-three towns is a lot of page. Collapsed it shows the first two bands
+   and a button; every town is still there, and every one of them is now in the
+   property search at the top, which is where people actually look. */
+#communities.comm-collapsed .band:nth-of-type(n+3){display:none}
+#communities .comm-more{display:none;margin:22px auto 0;background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.34);color:#fff;border-radius:10px;padding:11px 22px;
+  font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+#communities.comm-collapsed .comm-more{display:block}
+#communities .comm-more:hover{background:rgba(255,255,255,.2)}
+#communities .comm-hint{text-align:center;font-size:12.5px;color:rgba(255,255,255,.6);
+  margin-top:11px}
+</style>
+<script>
+/* Nothing is hidden permanently — one press shows the rest. */
+function commShowAll(){
+  const el = document.getElementById('communities');
+  if(el) el.classList.remove('comm-collapsed');
+}
+</script>
+
+<style>
+/* ---------- market, by town ----------
+   A chip per town instead of a five-column table. Same information people
+   actually use — where, how many, roughly what price — in a fraction of the
+   height, and every one of them runs a real search. */
+.mkt-towns{margin-top:26px}
+.mkt-towns-h{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--driftwood);margin-bottom:12px}
+.mkt-chips{display:flex;gap:9px;flex-wrap:wrap}
+.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
+  border:1px solid rgba(27,32,67,.14);border-radius:11px;padding:10px 14px;
+  font:inherit;cursor:pointer;transition:.15s;text-align:left}
+.mkt-chip:hover{border-color:#2E3CB0;transform:translateY(-1px);
+  box-shadow:0 4px 14px rgba(27,32,67,.1)}
+.mkt-chip .c{font-size:14px;font-weight:600;color:#1B2043;white-space:nowrap}
+.mkt-chip .n{font-size:12px;color:#2E3CB0;font-weight:700;font-variant-numeric:tabular-nums}
+.mkt-chip .m{font-size:12px;color:var(--driftwood);font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+@media(max-width:620px){
+  .mkt-chip{padding:9px 11px;gap:6px}
+  .mkt-chip .c{font-size:13px}
+  .mkt-chip .m{display:none}
+}
 </style>
 
 </body>
