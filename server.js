@@ -1171,6 +1171,18 @@ function trackerPublic(t){
   };
 }
 
+/* Every address on the deal, both sides, de-duplicated. */
+function trackerRecipients(t){
+  const out = [];
+  [t.clientEmail, t.clientEmail2].forEach(field => {
+    String(field || '').split(/[,;]/).forEach(e => {
+      const v = e.trim();
+      if (v && v.includes('@') && !out.includes(v)) out.push(v);
+    });
+  });
+  return out.slice(0, 8);
+}
+
 function newTrackerToken(){
   return crypto.randomBytes(18).toString('hex');
 }
@@ -1192,6 +1204,11 @@ app.post('/api/tracker', async (req, res) => {
     address: clean(b.address),
     clientName: clean(b.clientName),
     clientEmail: clean(b.clientEmail),
+    /* A side of a transaction is rarely one person \u2014 spouses, partners, a parent
+       helping with the purchase. Emails are comma-separated, and a both-sides deal
+       carries a second party as well. */
+    clientName2: clean(b.clientName2),
+    clientEmail2: clean(b.clientEmail2),
     expectedClose: clean(b.expectedClose),
     steps: (TRACK_STEPS[side] || TRACK_STEPS.buy).map(d => ({
       k:d.k, label:d.label, blurb:d.blurb,
@@ -1250,7 +1267,8 @@ app.post('/api/tracker/:id/notify', async (req, res) => {
   const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
   const t = await getSetting(key);
   if (!t) return res.status(404).json({ error: 'Tracker not found.' });
-  if (!t.clientEmail) return res.status(400).json({ error: 'No client email on this one.' });
+  const recipients = trackerRecipients(t);
+  if (!recipients.length) return res.status(400).json({ error: 'No client email on this one.' });
   if (!mailer) return res.status(503).json({ error: 'Email is not set up.' });
 
   const steps = trackerSteps(t);
@@ -1260,7 +1278,11 @@ app.post('/api/tracker/:id/notify', async (req, res) => {
 
   const origin = `${req.protocol}://${req.get('host')}`;
   const link = `${origin}/?track=${t.token}`;
-  const first = String(t.clientName || '').trim().split(/\s+/)[0] || 'there';
+  // "Hi Dawn and Marcus" when both sides are on the same deal
+  const names = [t.clientName, t.clientName2].map(x => String(x||'').trim().split(/\s+/)[0])
+                  .filter(Boolean);
+  const first = names.length > 1 ? names.slice(0,-1).join(', ') + ' and ' + names.slice(-1)
+              : (names[0] || 'there');
   const done = steps.filter(s => s.done).length;
 
   const lines = pending.map(s => {
@@ -1274,7 +1296,7 @@ app.post('/api/tracker/:id/notify', async (req, res) => {
 
   try {
     await mailer.sendMail({
-      to: t.clientEmail,
+      to: recipients,
       subject: `${headline}${pending.length === 1 && t.address ? ' \u2014 ' + t.address : ''}`,
       text: `Hi ${first},\n\n`
           + (pending.length === 1 ? `Progress:\n\n` : `A few things have moved:\n\n`)
@@ -1292,7 +1314,7 @@ app.post('/api/tracker/:id/notify', async (req, res) => {
   t.pending = [];
   t.lastNotified = new Date().toISOString();
   await setSetting(key, t);
-  console.log(`[tracker] ${sess.name} sent ${pending.length} update(s) to ${t.clientEmail}`);
+  console.log(`[tracker] ${sess.name} sent ${pending.length} update(s) to ${recipients.length} recipient(s)`);
   res.json({ ok: true, sent: pending.length });
 });
 
@@ -2374,7 +2396,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v69',
+    serverVersion: 'v70',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
