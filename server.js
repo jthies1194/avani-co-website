@@ -33,7 +33,8 @@ const BROKERAGE_LEGAL_ENTITY = 'Avani & Co Real Estate LLC';
 const BROKERAGE_PHONE = '251-229-3216';
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+// Flyer PDFs run to a few megabytes, so the old 2mb ceiling rejected them.
+app.use(express.json({ limit: '14mb' }));
 
 // ---------- Supabase (leads / agents / settings storage) ----------
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -70,6 +71,7 @@ async function createSession(agent) {
   const token = newToken();
   const rec = {
     agentId: agent.id, role: agent.role || 'agent', name: agent.name || '',
+    email: agent.email || '',            // so replies to a sent flyer reach the agent
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + SESSION_HOURS * 3600 * 1000).toISOString(),
   };
@@ -1679,7 +1681,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v55',
+    serverVersion: 'v56',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -1822,6 +1824,49 @@ function teamNameProblem(title) {
 function slugify(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
+
+/* Email a flyer as a real attachment. mailto: cannot attach a file, so the only
+   honest way to "email this flyer" is to send it server-side. */
+app.post('/api/marketing/email', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mailer) return res.status(503).json({ error: 'Email is not configured.' });
+
+  const { to, subject, message, filename, dataBase64, mimeType } = req.body || {};
+  const recipients = String(to || '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
+  if (!recipients.length) return res.status(400).json({ error: 'Who should it go to?' });
+  if (recipients.length > 10) return res.status(400).json({ error: 'Ten recipients at most.' });
+  if (!dataBase64) return res.status(400).json({ error: 'Nothing attached.' });
+
+  const bytes = Math.ceil(String(dataBase64).length * 3 / 4);
+  if (bytes > 10 * 1024 * 1024) return res.status(413).json({ error: 'That file is too large to email.' });
+
+  const safeName = String(filename || 'flyer.pdf').replace(/[^A-Za-z0-9._-]/g, '');
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: recipients,
+        reply_to: sess.email || undefined,
+        subject: String(subject || '').slice(0, 200) || 'A flyer from ' + BROKERAGE_NAME,
+        text: (String(message || '').slice(0, 4000) || 'Attached.') +
+              `\n\n\u2014 ${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\nbamacoast.com`,
+        attachments: [{ filename: safeName, content: String(dataBase64), content_type: mimeType || 'application/pdf' }],
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      console.error('[marketing email] Resend error:', r.status, t.slice(0, 200));
+      return res.status(502).json({ error: 'The mail service refused it.' });
+    }
+    console.log(`[marketing] ${sess.name} emailed ${safeName} to ${recipients.length} recipient(s)`);
+    res.json({ ok: true, sent: recipients.length });
+  } catch (e) {
+    console.error('[marketing email] failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 /* A scan from a card or a rider lands on the agent's page carrying ?src= and an
    optional ?c= campaign tag. Recording it is what makes printed material
