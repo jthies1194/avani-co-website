@@ -172,6 +172,9 @@ function keyAllowedForAgent(key, sess, write) {
       || k.startsWith('clientReset:')) return false;
   // HR records hold taxpayer IDs and go through their own routes only
   if (k.startsWith('agentHR:')) return false;
+  // trackers go through their own routes; the token index must never be listable
+  if (k.startsWith('trackerTok:')) return false;
+  if (k.startsWith('tracker:')) return k.startsWith('tracker:' + sess.agentId + ':');
   // Anything not named above was previously readable by any signed-in agent —
   // including settings:leadArchive, the entire archived lead history. Shared
   // keys are now allowlisted, so a new key is private until it is listed.
@@ -267,7 +270,8 @@ app.get('/api/kv', async (req, res) => {
     // these could read one and assume the broker's session, defeating every
     // broker-account protection below.
     if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')
-        || prefix.startsWith('clientReset:') || prefix.startsWith('agentHR:')) {
+        || prefix.startsWith('clientReset:') || prefix.startsWith('agentHR:')
+        || prefix.startsWith('trackerTok:')) {
       console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from listing session tokens`);
       return res.status(403).json({ error: 'Not permitted.' });
     }
@@ -1046,6 +1050,193 @@ app.get('/api/tax/my-1099', async (req, res) => {
       ein: process.env.BROKERAGE_EIN || '',
     },
   });
+});
+
+/* ---------- transaction tracker ----------
+   A client-facing timeline the agent drives with one tap per milestone.
+
+   Reached by a signed link rather than a login: someone looking for reassurance
+   late at night will not reset a forgotten password, and a tracker nobody opens
+   is worth nothing. The token is the only secret, so it is long, it is never
+   listed, and the public view returns only what the client should see — no agent
+   notes marked private, no internal ids, no other deals.
+
+   Stored as tracker:<agentId>:<id>, with trackerTok:<token> as a pointer so the
+   public route can find it without scanning. */
+const TRACK_STEPS = {
+  buy: [
+    { k:'offer',       label:'Offer submitted',            blurb:'Your offer is with the seller.' },
+    { k:'accepted',    label:'Offer accepted',             blurb:'They said yes. The clock starts here.' },
+    { k:'earnest',     label:'Earnest money delivered',    blurb:'Your deposit is held in escrow.' },
+    { k:'inspection',  label:'Inspection scheduled',       blurb:'An inspector is booked to look the house over.' },
+    { k:'inspected',   label:'Inspection complete',        blurb:'The report is in.' },
+    { k:'contingency', label:'Inspection period passed',   blurb:'Anything to be fixed has been agreed.' },
+    { k:'appraisal',   label:'Appraisal ordered',          blurb:'The lender is checking the value.' },
+    { k:'appraised',   label:'Appraisal received',         blurb:'The value came back.' },
+    { k:'loan',        label:'Loan approved',              blurb:'The lender has approved your financing.' },
+    { k:'title',       label:'Title work submitted',       blurb:'The title company is checking ownership records.' },
+    { k:'cleartoclose',label:'Clear to close',             blurb:'Everything is signed off. Closing can be scheduled.' },
+    { k:'walkthrough', label:'Final walkthrough',          blurb:'One last look before it is yours.' },
+    { k:'keys',        label:'Keys',                       blurb:'It is yours.' },
+  ],
+  sell: [
+    { k:'listed',      label:'Listed',                     blurb:'Your home is on the market.' },
+    { k:'showings',    label:'Showings underway',          blurb:'Buyers are coming through.' },
+    { k:'offer',       label:'Offer received',             blurb:'An offer has come in.' },
+    { k:'accepted',    label:'Offer accepted',             blurb:'Under contract.' },
+    { k:'earnest',     label:'Buyer\u2019s deposit received',  blurb:'Their earnest money is in escrow.' },
+    { k:'inspection',  label:'Inspection period',          blurb:'The buyer is having the home inspected.' },
+    { k:'repairs',     label:'Repairs agreed',             blurb:'Any repairs have been settled.' },
+    { k:'appraised',   label:'Appraisal complete',         blurb:'The lender\u2019s valuation is done.' },
+    { k:'loan',        label:'Buyer financing cleared',    blurb:'Their loan is approved.' },
+    { k:'title',       label:'Title work submitted',       blurb:'The title company is checking ownership records.' },
+    { k:'cleartoclose',label:'Clear to close',             blurb:'Everything is signed off.' },
+    { k:'closed',      label:'Closed',                     blurb:'Sold. Congratulations.' },
+  ],
+};
+
+function trackerPublic(t){
+  const steps = TRACK_STEPS[t.side] || TRACK_STEPS.buy;
+  return {
+    id: t.id,
+    side: t.side,
+    address: t.address || '',
+    clientName: t.clientName || '',
+    agentName: t.agentName || '',
+    agentPhone: t.agentPhone || BROKERAGE_PHONE,
+    agentEmail: t.agentEmail || '',
+    agentSlug: t.agentSlug || '',
+    expectedClose: t.expectedClose || '',
+    brokerage: BROKERAGE_NAME,
+    updatedAt: t.updatedAt || '',
+    steps: steps.map(sdef => {
+      const m = (t.milestones || {})[sdef.k] || {};
+      return {
+        k: sdef.k, label: sdef.label, blurb: sdef.blurb,
+        done: !!m.done,
+        date: m.date || '',
+        // notes marked private stay in the CRM
+        note: (m.note && !m.private) ? m.note : '',
+        at: m.at || '',
+      };
+    }),
+  };
+}
+
+function newTrackerToken(){
+  return crypto.randomBytes(18).toString('hex');
+}
+
+/* Agent creates a tracker. */
+app.post('/api/tracker', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const side = b.side === 'sell' ? 'sell' : 'buy';
+  const clean = v => String(v == null ? '' : v).slice(0, 200).trim();
+
+  const id = 'tr_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
+  const token = newTrackerToken();
+  const rec = {
+    id, token, side,
+    agentId: sess.agentId,
+    agentName: sess.name || '',
+    agentEmail: sess.email || '',
+    address: clean(b.address),
+    clientName: clean(b.clientName),
+    clientEmail: clean(b.clientEmail),
+    expectedClose: clean(b.expectedClose),
+    milestones: {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await setSetting('tracker:' + sess.agentId + ':' + id, rec);
+  await setSetting('trackerTok:' + token, { key: 'tracker:' + sess.agentId + ':' + id });
+  console.log(`[tracker] ${sess.name} started a ${side} tracker for ${rec.clientName || 'a client'}`);
+  res.json({ ok: true, tracker: rec });
+});
+
+/* Agent marks a milestone. */
+app.post('/api/tracker/:id/step', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
+  const t = await getSetting(key);
+  if (!t) return res.status(404).json({ error: 'Tracker not found.' });
+
+  const b = req.body || {};
+  const stepKey = String(b.step || '');
+  const defs = TRACK_STEPS[t.side] || TRACK_STEPS.buy;
+  const def = defs.find(d => d.k === stepKey);
+  if (!def) return res.status(400).json({ error: 'Unknown step.' });
+
+  t.milestones = t.milestones || {};
+  const was = !!(t.milestones[stepKey] || {}).done;
+  const done = b.done !== false;
+
+  t.milestones[stepKey] = {
+    done,
+    date: String(b.date || '').slice(0, 20),
+    note: String(b.note || '').slice(0, 600),
+    private: !!b.private,
+    at: new Date().toISOString(),
+  };
+  t.updatedAt = new Date().toISOString();
+  await setSetting(key, t);
+
+  // tell the client, but only when a step is newly completed
+  let emailed = false;
+  if (done && !was && t.clientEmail && mailer) {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const link = `${origin}/?track=${t.token}`;
+    const first = String(t.clientName || '').trim().split(/\s+/)[0] || 'there';
+    const shown = (b.note && !b.private) ? `\n\n${b.note}` : '';
+    try {
+      await mailer.sendMail({
+        to: t.clientEmail,
+        subject: `${def.label} \u2014 ${t.address || 'your move'}`,
+        text: `Hi ${first},\n\n${def.label}. ${def.blurb}${shown}\n\n`
+            + `You can see where everything stands here, any time:\n${link}\n\n`
+            + `Any questions, just reply or call.\n\n`
+            + `${t.agentName || ''}\n${BROKERAGE_NAME}\n${t.agentPhone || BROKERAGE_PHONE}`,
+      });
+      emailed = true;
+      console.log(`[tracker] told ${t.clientEmail} about "${def.label}"`);
+    } catch (e) { console.error('[tracker] client email failed:', e.message); }
+  }
+  res.json({ ok: true, emailed, tracker: t });
+});
+
+app.get('/api/tracker/mine', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const out = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value')
+      .ilike('key', 'tracker:' + sess.agentId + ':%');
+    (data || []).forEach(r => { if (r.value) out.push(r.value); });
+  } catch (e) { console.error('[tracker] list failed:', e.message); }
+  out.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  res.json({ ok: true, trackers: out });
+});
+
+app.delete('/api/tracker/:id', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
+  const t = await getSetting(key);
+  if (t && t.token) {
+    try { await supabase.from(KV_TABLE).delete().eq('key', 'trackerTok:' + t.token); } catch (e) {}
+  }
+  try { await supabase.from(KV_TABLE).delete().eq('key', key); } catch (e) {}
+  res.json({ ok: true });
+});
+
+/* The client's view. No session \u2014 the token is the key. */
+app.get('/api/track/:token', async (req, res) => {
+  const token = String(req.params.token || '').replace(/[^a-f0-9]/gi, '');
+  if (token.length < 20) return res.status(404).json({ error: 'Not found.' });
+  const ptr = await getSetting('trackerTok:' + token);
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const t = await getSetting(ptr.key);
+  if (!t) return res.status(404).json({ error: 'Not found.' });
+  res.json({ ok: true, tracker: trackerPublic(t) });
 });
 
 /* ---------- public review submission ----------
@@ -2050,7 +2241,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v67',
+    serverVersion: 'v68',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -2238,7 +2429,11 @@ app.post('/api/marketing/email', async (req, res) => {
   const list = Array.isArray(b.attachments) && b.attachments.length
     ? b.attachments
     : (b.dataBase64 ? [{ filename: b.filename, dataBase64: b.dataBase64, mimeType: b.mimeType }] : []);
-  if (!list.length) return res.status(400).json({ error: 'Nothing attached.' });
+  // an email with nothing attached is perfectly valid — sending someone a link,
+  // for instance — so only the message itself is actually required
+  if (!list.length && !String(message || '').trim() && !htmlBody) {
+    return res.status(400).json({ error: 'Nothing to send.' });
+  }
   if (list.length > 12) return res.status(400).json({ error: 'Twelve attachments at most.' });
 
   let total = 0;
@@ -2252,7 +2447,6 @@ app.post('/api/marketing/email', async (req, res) => {
       content_type: a.mimeType || 'application/pdf',
     });
   }
-  if (!attachments.length) return res.status(400).json({ error: 'Nothing attached.' });
   if (total > 18 * 1024 * 1024) {
     return res.status(413).json({ error: 'Those files are too large to email together.' });
   }
@@ -2268,7 +2462,7 @@ app.post('/api/marketing/email', async (req, res) => {
         text: (String(message || '').slice(0, 4000) || 'Attached.') +
               `\n\n\u2014 ${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\nbamacoast.com`,
         ...(htmlBody ? { html: htmlBody } : {}),
-        attachments,
+        ...(attachments.length ? { attachments } : {}),
       }),
     });
     if (!r.ok) {
