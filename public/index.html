@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v178">
+<meta name="build" content="index-v179">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3613,7 +3613,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v178';
+window.BUILD = 'index-v179';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -11817,7 +11817,9 @@ async function printMy1099(){
 
   let d = null;
   try{
-    const res = await fetch('/api/tax/my-1099');
+    // name the agent, so a broker previewing gets the agent's details rather
+    // than their own against the agent's figures
+    const res = await fetch('/api/tax/my-1099?agentId=' + encodeURIComponent(currentAgent.id));
     if(res.ok) d = await res.json();
   }catch(e){}
   if(!d){ showToast("Couldn't load your details."); return; }
@@ -11839,7 +11841,7 @@ async function printMy1099(){
   printReport('My 1099 summary ' + year, `
     <h1>1099 summary \u2014 ${year}</h1>
     <div class="sub">${escapeHtml(rec.legalName || currentAgent.name)}
-      \u00b7 prepared ${new Date().toLocaleDateString()}</div>
+      \u00b7 ${new Date().toLocaleDateString()}</div>
 
     <div style="background:#FBF6EA;border-left:3px solid #E6C381;padding:11px 13px;
       border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.55">
@@ -15280,26 +15282,52 @@ function plTrackerBlock(d){
 }
 
 /* Turning a deal into something the client can follow. */
-async function plAddTracker(id){
+let plTrackFor = null;
+
+/* Setting up the client's view. This used to be a one-line prompt asking only for
+   an email, which is no use when a side has two people on it or when the deal has
+   both sides. */
+function plAddTracker(id){
   const d = plDeals.find(x => x.id === id);
   if(!d) return;
-  const email = prompt('Their email, so they get the updates. Leave blank to just have a link.',
-                       d.clientEmail || '');
-  if(email === null) return;
+  plTrackFor = d;
+  const set = (el, v) => { const e = document.getElementById(el); if(e) e.value = v || ''; };
+  set('pt-name', d.client || '');
+  set('pt-email', d.clientEmail || '');
+  set('pt-name2', d.client2 || '');
+  set('pt-email2', d.clientEmail2 || '');
+  const both = (d.side === 'both');
+  const w = document.getElementById('pt-second');
+  if(w) w.style.display = both ? '' : 'none';
+  const l1 = document.getElementById('pt-lbl1');
+  if(l1) l1.textContent = both ? 'Buyer' : 'Your client';
+  document.getElementById('pt-modal').classList.add('active');
+}
+function plTrackClose(){ document.getElementById('pt-modal').classList.remove('active'); plTrackFor = null; }
+
+async function plTrackCreate(){
+  const d = plTrackFor;
+  if(!d) return;
+  const g = id => (document.getElementById(id)||{}).value.trim();
   try{
     const r = await fetch('/api/tracker', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         side: d.side || 'buy', address: d.address || '',
-        clientName: d.client || '', clientEmail: (email||'').trim(),
+        clientName: g('pt-name'), clientEmail: g('pt-email'),
+        clientName2: g('pt-name2'), clientEmail2: g('pt-email2'),
         expectedClose: (d.dates||{}).closing || '',
       }),
     });
     const j = await r.json().catch(()=>({}));
     if(!r.ok || !j.tracker){ showToast(j.error || "Couldn't set that up."); return; }
     d.tracker = j.tracker;
-    d.clientEmail = (email||'').trim();
+    d.client = g('pt-name') || d.client;
+    d.clientEmail = g('pt-email');
+    d.client2 = g('pt-name2');
+    d.clientEmail2 = g('pt-email2');
     await storeSet(plKey(), plDeals);
+    plTrackClose();
     showToast('Ready \u2014 send them the link when you like.');
     renderPipelineSection();
   }catch(e){ showToast("Couldn't set that up."); }
@@ -15509,6 +15537,31 @@ function taskAck(sectionId){
   try{ sessionStorage.setItem('taskSeen', JSON.stringify(taskSeen)); }catch(e){}
 }
 </script>
+
+<div class="modal-overlay" id="pt-modal">
+<div class="modal" style="max-width:440px">
+<button class="modal-close" onclick="plTrackClose()">&times;</button>
+<h3>Let them follow it</h3>
+<div class="sub">They get a link to a live timeline. You decide when each update goes out
+  &mdash; marking steps never emails on its own.</div>
+
+<div class="field"><label id="pt-lbl1">Your client</label>
+  <input id="pt-name" placeholder="Dawn Whitfield"></div>
+<div class="field"><label>Their email</label>
+  <input id="pt-email" placeholder="dawn@example.com, marcus@example.com">
+  <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px">
+    More than one? Separate them with commas.</div></div>
+
+<div id="pt-second" style="display:none;border-top:1px solid var(--line);padding-top:12px">
+  <div class="field"><label>Seller</label><input id="pt-name2" placeholder="Ray Delacroix"></div>
+  <div class="field"><label>Their email</label><input id="pt-email2" placeholder="ray@example.com"></div>
+</div>
+
+<div style="font-size:12px;color:var(--driftwood);margin:0 0 12px;line-height:1.5">
+  Leave the emails blank if you just want a link to send yourself.</div>
+<button class="submit-btn" onclick="plTrackCreate()">Set it up</button>
+</div>
+</div>
 
 </body>
 </html>
