@@ -184,6 +184,9 @@ function keyAllowedForAgent(key, sess, write) {
   if (k.startsWith('lead:')) return true;                 // ownership checked separately
   if (k.startsWith('agentAlerts:')) return k === 'agentAlerts:' + sess.agentId;
   if (k.startsWith('agentPublic:')) return true;          // public profile data
+  // personal CRM preferences — tab order and the like. Own record only: without
+  // this the catch-all below would let any agent read or overwrite anyone else's.
+  if (k.startsWith('crmPrefs:')) return k === 'crmPrefs:' + sess.agentId;
   // Marketing projects are per agent: marketing:<agentId>:<projectId>.
   // Staff bypass this function entirely, which is how the broker sees all of them.
   if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
@@ -879,7 +882,10 @@ function decryptTin(blob){
 const HR_FIELDS = ['legalName','entityName','address1','address2','city','state','zip',
                    'personalPhone','personalEmail','dob','startDate','endDate',
                    'emergencyName','emergencyPhone','emergencyRelation',
-                   'licenseExpiry','w9OnFile','w9Date','tinType','notes'];
+                   'licenseExpiry','w9OnFile','w9Date','tinType','notes',
+                   // an agent's own accountant, so they can send their year-end
+                   // documents themselves rather than asking the broker for them
+                   'cpaEmail'];
 
 /* What comes back to the browser: never the TIN itself, only the last four. */
 function hrPublic(rec){
@@ -1936,7 +1942,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v59',
+    serverVersion: 'v61',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
