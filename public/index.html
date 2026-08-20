@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v176">
+<meta name="build" content="index-v177">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2512,6 +2512,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-pipeline"></div>
 <div class="crm-sec" id="sec-tracker"></div>
 <div class="crm-sec" id="sec-calendar"></div>
 <div class="crm-sec" id="sec-taxes"></div>
@@ -3612,7 +3613,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v176';
+window.BUILD = 'index-v177';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5784,7 +5785,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(h === 'client-login'){
     setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
   }
-  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes','calendar','tracker'].includes(h)){
+  if(h === 'crm' || ['today','leads','commissions','expenses','agents','reviews','setup','password','myprofile','mypage','marketing','resources','taxes','calendar','tracker','pipeline'].includes(h)){
     try{
       switchView('crm');
       if(h && h !== 'crm') setTimeout(() => showCrmSection('sec-' + h), 300);
@@ -6506,6 +6507,7 @@ const ICON = {
   details: '<path d="M4 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="10" cy="7" r="4"/><path d="M17 8h5M19.5 5.5v5"/>',
   key:     '<circle cx="8" cy="14" r="4.5"/><path d="M11.2 10.8L20 2M17 5l2.5 2.5M14.5 7.5L17 10"/>',
   arrange: '<path d="M12 3l1.9 4 4.4.6-3.2 3 .8 4.3-3.9-2-3.9 2 .8-4.3-3.2-3 4.4-.6z"/><path d="M5 20h14"/>',
+  pipeline:'<path d="M4 6h16M4 12h11M4 18h6"/><circle cx="19" cy="12" r="1.6"/><circle cx="11" cy="18" r="1.6"/>',
   track:   '<path d="M4 18h16"/><circle cx="7" cy="18" r="2.4"/><circle cx="12" cy="18" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M7 15.5V9M12 15.5V6M17 15.5v-4"/>',
   calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8.5" cy="14.5" r="1.2"/><circle cx="13" cy="14.5" r="1.2"/>',
   tick:    '<path d="M4 12.5l5 5L20 6.5"/>',
@@ -6527,6 +6529,7 @@ const CRM_SECTIONS = [
   { id:'sec-commissions', label:'Commissions', icon:'money',    color:'#2E8C5A' },  // seagrass
   { id:'sec-expenses',    label:'Expenses',    icon:'expense',  color:'#B4527A' },  // sea urchin
   { id:'sec-taxes',       label:'Taxes',       icon:'taxes',    color:'#6B4FBF' },  // deep water
+  { id:'sec-pipeline',    label:'My deals',    icon:'pipeline', color:'#4A7A9B' },
   { id:'sec-tracker',     label:'Tracker',     icon:'track',    color:'#2A9D8F' },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
@@ -6898,6 +6901,7 @@ function showCrmSection(id){
     if(id === 'sec-marketing' && typeof renderMarketingSection === 'function') renderMarketingSection();
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
     if(id === 'sec-tracker' && typeof renderTrackerSection === 'function') renderTrackerSection();
+    if(id === 'sec-pipeline' && typeof renderPipelineSection === 'function') renderPipelineSection();
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
       renderResourcesSection().then(() => {
@@ -13433,6 +13437,13 @@ const calISO = d => new Date(d).toISOString().slice(0,10);
 
 async function loadCalendar(){
   calEvents = [];
+  /* The calendar draws from the pipeline. That block is declared further down the
+     file, so this must not assume the binding exists yet. */
+  try{
+    if(typeof loadPipeline === 'function' && typeof plDeals !== 'undefined' && !plDeals.length){
+      await loadPipeline();
+    }
+  }catch(e){}
   try{
     const mine = (await storeGet(calKeyFor())) || [];
     if(Array.isArray(mine)) calEvents = calEvents.concat(mine.map(e => ({ ...e, own:true })));
@@ -13448,6 +13459,23 @@ async function loadCalendar(){
 function buildAutoEvents(){
   const out = [];
   const staff = isAdminOrOwner();
+
+  /* Dates from the agent's own pipeline. Entered once when the deal is set up,
+     then they simply appear — which is the whole point of asking for them. */
+  try{
+    const LABEL = { earnest:'Earnest money due', inspection:'Inspection contingency ends',
+                    financing:'Financing deadline', closing:'Closing' };
+    (typeof plDeals !== 'undefined' ? plDeals : []).forEach(d => {
+      if(['cancelled'].includes(d.stage)) return;
+      Object.entries(d.dates || {}).forEach(([k, v]) => {
+        if(!v) return;
+        out.push({ id:'auto_pl_' + d.id + '_' + k, date: calISO(v),
+          type: k === 'closing' ? 'closing' : 'auto', auto:true,
+          title: (LABEL[k] || k) + (d.address ? ' \u2014 ' + d.address : ''),
+          note: d.client || '' });
+      });
+    });
+  }catch(e){}
   try{
     (cdData.deals || []).forEach(d => {
       if(!d.closeDate) return;
@@ -14807,6 +14835,283 @@ function commShowAll(){
   .mkt-chip .m{display:none}
 }
 </style>
+
+<style>
+.pl-stages{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.pl-stage{display:flex;flex-direction:column;gap:2px;border:1.5px solid var(--line);
+  border-radius:12px;padding:11px 16px;background:var(--paper);cursor:pointer;min-width:104px;
+  font:inherit;text-align:left;transition:.15s}
+.pl-stage:hover{border-color:var(--sec,#2E3CB0)}
+.pl-stage.on{border-color:var(--sec,#2E3CB0);
+  background:color-mix(in srgb, var(--sec,#2E3CB0) 8%, var(--paper))}
+.pl-stage .n{font-family:'Cormorant Garamond',serif;font-size:26px;line-height:1;
+  font-variant-numeric:tabular-nums;color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)}
+.pl-stage .l{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--driftwood)}
+
+.pl-deal{border:1px solid var(--line);border-left:4px solid var(--dot,#8C93AD);
+  border-radius:11px;padding:14px 16px;margin-bottom:10px;background:var(--paper)}
+.pl-deal .top{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.pl-deal .addr{flex:1;min-width:180px}
+.pl-deal .addr b{font-size:15.5px;display:block}
+.pl-deal .addr span{font-size:12.5px;color:var(--driftwood)}
+.pl-tag{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:3px 9px;border-radius:20px;white-space:nowrap;background:var(--dot,#8C93AD);color:#fff}
+.pl-dates{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;padding-top:11px;
+  border-top:1px solid var(--line)}
+.pl-dates div{font-size:12.5px}
+.pl-dates span{display:block;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--driftwood);margin-bottom:2px}
+.pl-dates .soon{color:#B4232A;font-weight:700}
+.pl-dates .past{color:var(--driftwood);text-decoration:line-through;opacity:.6}
+.pl-people{font-size:12.5px;color:var(--driftwood);margin-top:9px;line-height:1.55}
+.pl-acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.pl-acts button{font-size:12.5px;padding:6px 12px}
+.pl-empty{font-size:13.5px;color:var(--driftwood);line-height:1.6;padding:4px}
+@media(max-width:560px){ .pl-stage{flex:1 1 calc(50% - 4px);min-width:0} }
+</style>
+
+<div class="modal-overlay" id="pl-edit">
+<div class="modal" style="max-width:520px">
+<button class="modal-close" onclick="plClose()">&times;</button>
+<h3 id="pl-title">Add a deal</h3>
+<div class="sub">Your own record. Nothing here touches the brokerage ledger &mdash;
+  submit closings for commission the way you always have.</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+  <div class="field"><label>Stage</label>
+    <select id="pl-stage">
+      <option value="open">Working on it</option>
+      <option value="pending">Under contract</option>
+      <option value="closed">Closed</option>
+      <option value="cancelled">Fell through</option>
+    </select></div>
+  <div class="field"><label>Which side</label>
+    <select id="pl-side">
+      <option value="buy">I have the buyer</option>
+      <option value="sell">I have the seller</option>
+      <option value="both">Both sides</option>
+    </select></div>
+</div>
+<div class="field"><label>Property</label>
+  <input id="pl-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+  <div class="field"><label>Client</label><input id="pl-client" placeholder="Dawn Whitfield"></div>
+  <div class="field"><label>Price</label><input id="pl-price" placeholder="425,000"></div>
+</div>
+
+<div class="field-label" style="margin-top:6px">Dates that matter</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+  <div class="field"><label>Earnest money due</label><input type="date" id="pl-d-earnest"></div>
+  <div class="field"><label>Inspection contingency</label><input type="date" id="pl-d-inspection"></div>
+  <div class="field"><label>Financing deadline</label><input type="date" id="pl-d-financing"></div>
+  <div class="field"><label>Closing</label><input type="date" id="pl-d-closing"></div>
+</div>
+<div style="font-size:11.5px;color:var(--driftwood);margin:-4px 0 12px">
+  These appear on your calendar automatically, and you'll be told if a date is coming up.</div>
+
+<div class="field-label">Who else is involved</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+  <div class="field"><label>Other agent</label><input id="pl-p-agent" placeholder="Name &amp; brokerage"></div>
+  <div class="field"><label>Lender</label><input id="pl-p-lender"></div>
+  <div class="field"><label>Title company</label><input id="pl-p-title"></div>
+  <div class="field"><label>Inspector</label><input id="pl-p-inspector"></div>
+</div>
+<div class="field"><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Anything you want to remember"></textarea></div>
+
+<button class="submit-btn" onclick="plSave()">Save it</button>
+</div>
+</div>
+
+<script>
+/* ---------- pipeline ----------
+   The agent's own record of their deals, kept at agentDeals:<agentId>.
+
+   \u26a0 Deliberately separate from settings:closedDeals, which is the broker's
+   ledger. Nothing an agent does here changes a number the brokerage counts, and
+   closings are still submitted for approval the way they always were. That means
+   entering a deal twice, which is the price of the broker's figures being safe
+   from someone else's typo \u2014 and it was the choice made on purpose. */
+const PL_STAGES = [
+  { k:'open',      label:'Working',        dot:'#2E3CB0' },
+  { k:'pending',   label:'Under contract', dot:'#1E9AA8' },
+  { k:'closed',    label:'Closed',         dot:'#2E8C5A' },
+  { k:'cancelled', label:'Fell through',   dot:'#8C93AD' },
+];
+const PL_DATES = [
+  ['earnest','Earnest money'],
+  ['inspection','Inspection ends'],
+  ['financing','Financing'],
+  ['closing','Closing'],
+];
+
+let plDeals = [], plFilter = 'open', plEditing = null;
+
+function plKey(){ return 'agentDeals:' + (currentAgent ? currentAgent.id : ''); }
+
+async function loadPipeline(){
+  try{
+    const d = await storeGet(plKey());
+    plDeals = Array.isArray(d) ? d : [];
+  }catch(e){ plDeals = []; }
+}
+
+function plDaysTo(v){
+  if(!v) return null;
+  const d = new Date(String(v).length <= 10 ? v + 'T12:00:00' : v);
+  if(isNaN(d)) return null;
+  return Math.ceil((d - new Date()) / 86400000);
+}
+
+async function renderPipelineSection(){
+  const el = document.getElementById('sec-pipeline');
+  if(!el || !currentAgent) return;
+  await loadPipeline();
+
+  const counts = {};
+  PL_STAGES.forEach(s => { counts[s.k] = plDeals.filter(d => (d.stage||'open') === s.k).length; });
+  const shown = plDeals.filter(d => (d.stage||'open') === plFilter);
+
+  el.innerHTML = `
+    <div class="card"><div style="padding:18px">
+      <p style="margin:0 0 14px;font-size:14px;color:var(--driftwood);max-width:640px;line-height:1.55">
+        Your own record of what you're working on \u2014 dates, who's involved, where it stands.
+        Separate from the brokerage ledger, so keep submitting closings for commission the
+        way you always have.</p>
+      <div class="pl-stages">
+        ${PL_STAGES.map(s => `
+          <button class="pl-stage ${plFilter===s.k?'on':''}" onclick="plShow('${s.k}')">
+            <span class="n">${counts[s.k]}</span>
+            <span class="l">${s.label}</span>
+          </button>`).join('')}
+      </div>
+      <button class="btn-sm primary" onclick="plOpen()">+ Add a deal</button>
+    </div></div>
+    <div id="pl-list" style="margin-top:14px">
+      ${shown.length ? shown.map(plDealHtml).join('') : `
+        <div class="card"><div style="padding:18px" class="pl-empty">
+          ${plFilter === 'open'
+            ? "Nothing here yet. Add anything you're working on \u2014 even a maybe. It is easier to keep track of a deal from the start than to reconstruct it later."
+            : 'Nothing at this stage.'}
+        </div></div>`}
+    </div>`;
+}
+
+function plDealHtml(d){
+  const st = PL_STAGES.find(s => s.k === (d.stage||'open')) || PL_STAGES[0];
+  const side = d.side === 'sell' ? 'Listing' : d.side === 'both' ? 'Both sides' : 'Buyer';
+  const people = [
+    d.pAgent && 'Other agent: ' + d.pAgent,
+    d.pLender && 'Lender: ' + d.pLender,
+    d.pTitle && 'Title: ' + d.pTitle,
+    d.pInspector && 'Inspector: ' + d.pInspector,
+  ].filter(Boolean);
+
+  const dates = PL_DATES.map(([k,label]) => {
+    const v = (d.dates||{})[k];
+    if(!v) return '';
+    const n = plDaysTo(v);
+    const cls = n === null ? '' : n < 0 ? 'past' : n <= 5 ? 'soon' : '';
+    const when = n === null ? '' : n < 0 ? '' : n === 0 ? ' \u00b7 today' : n <= 5 ? ` \u00b7 ${n}d` : '';
+    return `<div><span>${label}</span><em class="${cls}" style="font-style:normal">${fmtDate(v)}${when}</em></div>`;
+  }).filter(Boolean).join('');
+
+  return `<div class="pl-deal" style="--dot:${st.dot}">
+    <div class="top">
+      <div class="addr">
+        <b>${escapeHtml(d.address || 'No address yet')}</b>
+        <span>${escapeHtml(side)}${d.client ? ' \u00b7 ' + escapeHtml(d.client) : ''}${
+          d.price ? ' \u00b7 ' + escapeHtml(String(d.price)) : ''}</span>
+      </div>
+      <span class="pl-tag">${st.label}</span>
+    </div>
+    ${dates ? `<div class="pl-dates">${dates}</div>` : ''}
+    ${people.length ? `<div class="pl-people">${people.map(escapeHtml).join(' \u00b7 ')}</div>` : ''}
+    ${d.notes ? `<div class="pl-people" style="font-style:italic">${escapeHtml(d.notes)}</div>` : ''}
+    <div class="pl-acts">
+      <button class="btn-sm" onclick="plOpen('${d.id}')">Edit</button>
+      ${(d.stage||'open') === 'pending'
+        ? `<button class="btn-sm" onclick="plToTracker('${d.id}')">Start a client tracker</button>` : ''}
+      <button class="btn-sm" onclick="plDelete('${d.id}')">Remove</button>
+    </div>
+  </div>`;
+}
+
+function plShow(k){ plFilter = k; renderPipelineSection(); }
+
+function plOpen(id){
+  plEditing = id ? plDeals.find(d => d.id === id) : null;
+  const d = plEditing || {};
+  const set = (el, v) => { const e = document.getElementById(el); if(e) e.value = v || ''; };
+  document.getElementById('pl-title').textContent = plEditing ? 'Edit this deal' : 'Add a deal';
+  set('pl-stage', d.stage || 'open');
+  set('pl-side', d.side || 'buy');
+  set('pl-address', d.address); set('pl-client', d.client); set('pl-price', d.price);
+  PL_DATES.forEach(([k]) => set('pl-d-' + k, (d.dates||{})[k]));
+  set('pl-p-agent', d.pAgent); set('pl-p-lender', d.pLender);
+  set('pl-p-title', d.pTitle); set('pl-p-inspector', d.pInspector);
+  set('pl-notes', d.notes);
+  document.getElementById('pl-edit').classList.add('active');
+}
+function plClose(){ document.getElementById('pl-edit').classList.remove('active'); plEditing = null; }
+
+async function plSave(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  if(!g('pl-address') && !g('pl-client')){ showToast('An address or a name, at least.'); return; }
+
+  const dates = {};
+  PL_DATES.forEach(([k]) => { const v = g('pl-d-' + k); if(v) dates[k] = v; });
+
+  const rec = {
+    id: plEditing ? plEditing.id : 'pd_' + Date.now().toString(36),
+    stage: g('pl-stage'), side: g('pl-side'),
+    address: g('pl-address'), client: g('pl-client'), price: g('pl-price'),
+    dates,
+    pAgent: g('pl-p-agent'), pLender: g('pl-p-lender'),
+    pTitle: g('pl-p-title'), pInspector: g('pl-p-inspector'),
+    notes: g('pl-notes'),
+    updatedAt: new Date().toISOString(),
+  };
+  if(plEditing) Object.assign(plEditing, rec);
+  else plDeals.push(rec);
+
+  const ok = await storeSet(plKey(), plDeals);
+  if(!ok){ showToast("Couldn't save that."); return; }
+  plFilter = rec.stage;
+  plClose();
+  showToast('Saved.');
+  renderPipelineSection();
+}
+
+async function plDelete(id){
+  if(!confirm('Remove this from your pipeline? It does not affect anything you have submitted to the brokerage.')) return;
+  plDeals = plDeals.filter(d => d.id !== id);
+  await storeSet(plKey(), plDeals);
+  renderPipelineSection();
+}
+
+/* One press turns a deal under contract into a client-facing tracker, with the
+   address, side and closing date already filled in. */
+async function plToTracker(id){
+  const d = plDeals.find(x => x.id === id);
+  if(!d) return;
+  try{
+    const r = await fetch('/api/tracker', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        side: d.side || 'buy',
+        address: d.address || '',
+        clientName: d.client || '',
+        clientEmail: '',
+        expectedClose: (d.dates||{}).closing || '',
+      }),
+    });
+    if(!r.ok){ showToast("Couldn't start that."); return; }
+    showToast('Tracker started \u2014 add their email on the Tracker tab.');
+    showCrmSection('sec-tracker');
+  }catch(e){ showToast("Couldn't start that."); }
+}
+</script>
 
 </body>
 </html>
