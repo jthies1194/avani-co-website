@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v148">
+<meta name="build" content="index-v149">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1765,7 +1765,35 @@ Call Jimmy · 251-229-3216
 </div>
 </div>
 
-<div class="crm-sec" id="sec-setup"><div class="setup-panel" id="setup-panel">
+<div class="crm-sec" id="sec-setup">
+<div class="setup-panel">
+  <div class="setup-head" onclick="this.parentNode.querySelector('.setup-body').style.display =
+    this.parentNode.querySelector('.setup-body').style.display==='none'?'':'none'">
+    <h3>&#9993; When someone is about to leave</h3><span>&#9662;</span>
+  </div>
+  <div class="setup-body" id="ei-setup-body">
+    <p>A quiet prompt as a visitor heads for the door, asking where to send new
+      listings. It shows once, never to anyone who already has an account or has
+      been in touch, and a "no thanks" is remembered for two weeks.</p>
+    <label style="display:flex;gap:9px;align-items:center;margin:10px 0 14px;cursor:pointer">
+      <input type="checkbox" id="ei-enabled" checked> Show it
+    </label>
+    <div class="field-label">Headline</div>
+    <input id="ei-cfg-headline" placeholder="Leaving the beach already?">
+    <div class="field-label" style="margin-top:10px">Underneath</div>
+    <input id="ei-cfg-sub" placeholder="Tell us where to send the good ones…">
+    <div class="field-label" style="margin-top:10px">Button</div>
+    <input id="ei-cfg-button" placeholder="Keep me posted">
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn-sm primary" onclick="saveExitIntent()">Save wording</button>
+      <button class="btn-sm" onclick="previewExitIntent()">Show me</button>
+    </div>
+    <p style="font-size:12px;color:var(--driftwood);margin-top:10px">
+      These arrive in Leads with the source <strong>exit-intent</strong>, so you can
+      see how many the prompt actually brings in.</p>
+  </div>
+</div>
+<div class="setup-panel" id="setup-panel">
 <div class="setup-head" onclick="toggleSetup()">
 <h3>⚙ Data connection &amp; lead notification setup</h3>
 <span id="setup-caret">▾</span>
@@ -2898,7 +2926,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v148';
+window.BUILD = 'index-v149';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6012,6 +6040,7 @@ function showCrmSection(id){
     if(id === 'sec-commissions') loadClosedDeals();
     if(id === 'sec-expenses')    loadExpenses();
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
+    if(id === 'sec-setup' && typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
     if(id === 'sec-reviews'){
       // everyone sees their own; the approval queue is the broker's
       const mine = document.getElementById('my-reviews-card');
@@ -10859,6 +10888,43 @@ async function printMy1099(){
   `);
 }
 
+async function loadExitIntentCfg(){
+  let c = null;
+  try{ c = await storeGet('settings:exitIntent'); }catch(e){}
+  c = c || {};
+  const set = (id, v) => { const e = document.getElementById(id); if(e) e.value = v || ''; };
+  const en = document.getElementById('ei-enabled');
+  if(en) en.checked = c.enabled !== false;
+  set('ei-cfg-headline', c.headline);
+  set('ei-cfg-sub', c.sub);
+  set('ei-cfg-button', c.button);
+}
+
+async function saveExitIntent(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  const cfg = {
+    enabled: !!(document.getElementById('ei-enabled')||{}).checked,
+    headline: g('ei-cfg-headline'), sub: g('ei-cfg-sub'), button: g('ei-cfg-button'),
+  };
+  const ok = await storeSet('settings:exitIntent', cfg);
+  showToast(ok ? 'Saved.' : "Couldn't save that.");
+}
+
+/* Lets the broker see it without having to fake leaving the page. */
+function previewExitIntent(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  const h = document.getElementById('ei-headline');
+  const s = document.getElementById('ei-sub');
+  const b = document.getElementById('ei-go');
+  if(h && g('ei-cfg-headline')) h.textContent = g('ei-cfg-headline');
+  if(s && g('ei-cfg-sub')) s.textContent = g('ei-cfg-sub');
+  if(b && g('ei-cfg-button')) b.textContent = g('ei-cfg-button');
+  eiShown = false;
+  try{ sessionStorage.removeItem('eiDone'); }catch(e){}
+  document.getElementById('ei-overlay').classList.add('on');
+  eiShown = true;
+}
+
 async function saveCpaEmail(){
   const v = ((document.getElementById('tx-cpa') || {}).value || '').trim();
   const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
@@ -11828,6 +11894,190 @@ function peUse(){
 }
 </script>
 
+
+<style>
+#ei-overlay{position:fixed;inset:0;z-index:9600;background:rgba(12,16,38,.66);display:none;
+  align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(3px)}
+#ei-overlay.on{display:flex;animation:eiIn .28s ease}
+@keyframes eiIn{from{opacity:0}to{opacity:1}}
+.ei-card{background:#fff;border-radius:16px;max-width:480px;width:100%;overflow:hidden;
+  box-shadow:0 24px 70px rgba(12,16,38,.4);animation:eiUp .32s cubic-bezier(.2,.8,.3,1)}
+@keyframes eiUp{from{transform:translateY(18px)}to{transform:translateY(0)}}
+.ei-top{background:linear-gradient(150deg,#2E3CB0,#1E5F8C 55%,#1E9AA8);color:#fff;
+  padding:26px 26px 22px;position:relative}
+.ei-top h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:500;
+  line-height:1.12;letter-spacing:.005em}
+.ei-top p{margin:8px 0 0;font-size:14.5px;line-height:1.55;color:rgba(255,255,255,.88)}
+.ei-close{position:absolute;top:12px;right:14px;background:rgba(255,255,255,.16);border:none;
+  color:#fff;width:30px;height:30px;border-radius:50%;font-size:17px;line-height:1;cursor:pointer}
+.ei-close:hover{background:rgba(255,255,255,.28)}
+.ei-body{padding:20px 26px 24px}
+.ei-body .row{display:flex;gap:8px;flex-wrap:wrap}
+.ei-body input{flex:1 1 190px;padding:12px 13px;border:1px solid rgba(27,32,67,.22);
+  border-radius:9px;font:inherit;font-size:14.5px}
+.ei-body input:focus{outline:none;border-color:#2E3CB0;box-shadow:0 0 0 3px rgba(46,60,176,.13)}
+.ei-go{width:100%;margin-top:10px;padding:13px;border:none;border-radius:9px;background:#E6C381;
+  color:#1B2043;font:inherit;font-size:14.5px;font-weight:700;letter-spacing:.03em;cursor:pointer}
+.ei-go:hover{background:#DCB569}
+.ei-no{display:block;width:100%;margin-top:11px;background:none;border:none;font:inherit;
+  font-size:13px;color:rgba(27,32,67,.55);cursor:pointer;text-decoration:underline}
+.ei-fine{font-size:11.5px;color:rgba(27,32,67,.5);margin:11px 0 0;line-height:1.5;text-align:center}
+</style>
+
+<div id="ei-overlay">
+  <div class="ei-card">
+    <div class="ei-top">
+      <button class="ei-close" onclick="eiDismiss()" aria-label="Close">&times;</button>
+      <h3 id="ei-headline">Leaving the beach already?</h3>
+      <p id="ei-sub">Tell us where to send the good ones and we'll keep you posted
+        when something worth seeing comes up on the coast.</p>
+    </div>
+    <div class="ei-body">
+      <form onsubmit="eiSubmit(event)">
+        <div class="row">
+          <input id="ei-name" type="text" placeholder="First name" autocomplete="given-name">
+          <input id="ei-email" type="email" required placeholder="Email" autocomplete="email">
+        </div>
+        <button class="ei-go" type="submit" id="ei-go">Keep me posted</button>
+        <button class="ei-no" type="button" onclick="eiDismiss(true)">No thanks, just browsing</button>
+      </form>
+      <p class="ei-fine" id="ei-fine">No spam, and we won't hand your details to anyone.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- exit intent ----------
+   Catches someone on their way out with something worth staying for. The rules
+   matter more than the popup: it appears once, it never appears for people who
+   have already signed up or already got in touch, and dismissing it is
+   remembered for a fortnight. A popup that reappears is worse than none.
+
+   The wording is editable by the broker under Settings, because "leaving the
+   beach" suits this brokerage and might not suit the next campaign. */
+const EI_KEY = 'eiSeen';
+const EI_QUIET_DAYS = 14;
+let eiArmed = false, eiShown = false;
+
+function eiSuppressed(){
+  try{
+    if(currentClient) return true;                       // already has an account
+    if(sessionStorage.getItem('eiDone')) return true;    // already handled this visit
+    const raw = localStorage.getItem(EI_KEY);
+    if(raw){
+      const when = Number(raw);
+      if(when && (Date.now() - when) < EI_QUIET_DAYS * 86400000) return true;
+    }
+  }catch(e){}
+  // not while the CRM is open, and not on a modal-heavy moment
+  if(document.querySelector('.modal-overlay.active')) return true;
+  const crm = document.getElementById('crm-main');
+  if(crm && crm.style.display !== 'none') return true;
+  return false;
+}
+
+async function eiInit(){
+  let cfg = null;
+  try{ cfg = await storeGet('settings:exitIntent'); }catch(e){}
+  if(cfg && cfg.enabled === false) return;
+  if(cfg){
+    const h = document.getElementById('ei-headline');
+    const s = document.getElementById('ei-sub');
+    const g = document.getElementById('ei-go');
+    if(h && cfg.headline) h.textContent = cfg.headline;
+    if(s && cfg.sub) s.textContent = cfg.sub;
+    if(g && cfg.button) g.textContent = cfg.button;
+  }
+
+  // Give people a moment to actually look at the site first.
+  setTimeout(() => { eiArmed = true; }, 12000);
+
+  // Desktop: the pointer leaving the top of the window is the honest signal.
+  document.addEventListener('mouseout', e => {
+    if(!eiArmed || eiShown) return;
+    if(e.clientY > 6) return;
+    if(e.relatedTarget || e.toElement) return;
+    eiShow();
+  });
+
+  /* Phones have no cursor, so there is no exit signal. Rather than inventing one
+     and interrupting people mid-scroll, this waits until someone has read a fair
+     amount and then paused \u2014 which at least means they were interested. */
+  if(matchMedia('(hover: none)').matches){
+    let deep = false, idle = null;
+    window.addEventListener('scroll', () => {
+      const pct = (window.scrollY + innerHeight) / document.body.scrollHeight;
+      if(pct > 0.55) deep = true;
+      clearTimeout(idle);
+      if(deep && eiArmed && !eiShown){
+        idle = setTimeout(() => eiShow(), 9000);
+      }
+    }, { passive:true });
+  }
+}
+
+function eiShow(){
+  if(eiShown || eiSuppressed()) return;
+  eiShown = true;
+  document.getElementById('ei-overlay').classList.add('on');
+  const f = document.getElementById('ei-email');
+  if(f && !matchMedia('(hover: none)').matches) setTimeout(() => f.focus(), 300);
+}
+
+function eiDismiss(hard){
+  document.getElementById('ei-overlay').classList.remove('on');
+  try{
+    sessionStorage.setItem('eiDone', '1');
+    // "no thanks" is a clearer answer than closing, so it's remembered for longer
+    if(hard) localStorage.setItem(EI_KEY, String(Date.now()));
+  }catch(e){}
+}
+
+async function eiSubmit(e){
+  e.preventDefault();
+  const email = (document.getElementById('ei-email')||{}).value.trim();
+  if(!email) return;
+  const name = (document.getElementById('ei-name')||{}).value.trim();
+  const btn = document.getElementById('ei-go');
+  if(btn){ btn.disabled = true; btn.textContent = 'One moment\u2026'; }
+
+  const lead = {
+    id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    name: name || '(no name given)',
+    email, phone: '',
+    message: 'Asked to hear about new listings on the way out of the site.',
+    source: 'exit-intent',
+    mlsKey: '', listingLabel: '',
+    stage: 'New', notes: '',
+    assignedAgentId: '',
+    createdAt: new Date().toISOString(),
+  };
+  try{
+    lead.assignedAgentId = await defaultAssigneeId();
+    const r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+    if(r && r.id){ lead.referredBy = r.name; lead.referredById = r.id; lead.assignedAgentId = r.id; }
+    await storeSet('lead:' + lead.id, lead);
+    if(typeof sendLeadNotification === 'function') sendLeadNotification(lead);
+  }catch(err){ console.error('exit lead failed', err); }
+
+  try{ localStorage.setItem(EI_KEY, String(Date.now())); sessionStorage.setItem('eiDone','1'); }catch(e){}
+
+  const card = document.querySelector('#ei-overlay .ei-card');
+  if(card){
+    card.innerHTML = `<div class="ei-top" style="padding:30px 26px">
+        <h3>Got it \u2014 thank you.</h3>
+        <p>We'll be in touch when something good comes up.
+        If you'd rather talk to a person, call ${escapeHtml('251-229-3216')} any time.</p>
+      </div>
+      <div class="ei-body" style="text-align:center">
+        <button class="ei-go" onclick="eiDismiss()">Back to browsing</button>
+      </div>`;
+  }
+  setTimeout(() => eiDismiss(), 3200);
+}
+
+document.addEventListener('DOMContentLoaded', () => { try{ eiInit(); }catch(e){} });
+</script>
 
 </body>
 </html>
