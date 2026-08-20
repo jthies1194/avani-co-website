@@ -167,7 +167,8 @@ function keyAllowedForAgent(key, sess, write) {
   if (k === 'settings:closedDeals') return !write;
   // admin machinery is off limits
   if (k === 'settings:adminRequests' || k === 'settings:adminBypass') return false;
-  if (k.startsWith('session:') || k.startsWith('clientSession:')) return false;
+  if (k.startsWith('session:') || k.startsWith('clientSession:')
+      || k.startsWith('clientReset:')) return false;
   // Anything not named above was previously readable by any signed-in agent —
   // including settings:leadArchive, the entire archived lead history. Shared
   // keys are now allowlisted, so a new key is private until it is listed.
@@ -210,7 +211,7 @@ app.get('/api/kv/:key', async (req, res) => {
   if (sess && !isStaff(sess) && !keyAllowedForAgent(req.params.key, sess, false)) {
     return res.status(403).json({ error: 'Not permitted.' });
   }
-  if (String(req.params.key || '').match(/^(session|clientSession):/)) {
+  if (String(req.params.key || '').match(/^(session|clientSession|clientReset):/)) {
     console.warn(`[security] blocked direct read of a session token`);
     return res.status(403).json({ error: 'Not permitted.' });
   }
@@ -256,7 +257,8 @@ app.get('/api/kv', async (req, res) => {
     // Nobody lists session tokens, staff included. An admin who could enumerate
     // these could read one and assume the broker's session, defeating every
     // broker-account protection below.
-    if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')) {
+    if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')
+        || prefix.startsWith('clientReset:')) {
       console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from listing session tokens`);
       return res.status(403).json({ error: 'Not permitted.' });
     }
@@ -830,6 +832,90 @@ app.post('/api/client/login', async (req, res) => {
     const token = await createClientSession(data.id);
     res.json({ ok: true, token, client: clientPublic(data) });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- client password reset ----------
+   Agents have reset_token / reset_expires columns; the clients table does not,
+   and adding columns by hand in Supabase is a step that is easy to get wrong.
+   Tokens live in kv_store instead as clientReset:<token> — no schema change,
+   and they are deleted the moment they are used.
+
+   The reply is deliberately identical whether or not the email has an account,
+   so this cannot be used to discover which addresses are registered.         */
+app.post('/api/client/forgot-password', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  const generic = { ok: true, message: 'If that email has an account, a reset link is on its way.' };
+  if (!email) return res.json(generic);
+  try {
+    const { data } = await supabase.from('clients').select('id,name,email').eq('email', email).maybeSingle();
+    if (data) {
+      const token = crypto.randomBytes(24).toString('hex');
+      await setSetting('clientReset:' + token, {
+        clientId: data.id,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),   // 1 hour
+      });
+      if (mailer) {
+        const link = `${req.protocol}://${req.get('host')}/?creset=${token}`;
+        const first = String(data.name || '').trim().split(/\s+/)[0] || 'there';
+        await mailer.sendMail({
+          to: data.email,
+          subject: `Reset your ${BROKERAGE_NAME} password`,
+          text: `Hi ${first},
+
+Someone asked to reset the password on your bamacoast.com account. If that was you,
+set a new one here — the link works for one hour:
+
+${link}
+
+If it wasn't you, nothing has changed and you can ignore this.
+
+${BROKERAGE_NAME}
+${BROKERAGE_PHONE}
+bamacoast.com`,
+        }).catch(e => console.error('[client reset email] failed:', e.message));
+        console.log(`[client reset] link sent to ${data.email}`);
+      } else {
+        console.warn('[client reset] SKIPPED — mailer not configured.');
+      }
+    } else {
+      console.log('[client reset] request for an address with no account');
+    }
+  } catch (e) { console.error('[client reset] failed:', e.message); }
+  res.json(generic);
+});
+
+app.post('/api/client/reset-password', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: 'Missing token or password.' });
+  if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  try {
+    const rec = await getSetting('clientReset:' + token);
+    if (!rec || !rec.clientId)
+      return res.status(400).json({ error: 'This link is not valid, or it has already been used.' });
+    if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) {
+      await supabase.from('kv_store').delete().eq('key', 'clientReset:' + token);
+      return res.status(400).json({ error: 'This link has expired — please request a new one.' });
+    }
+    const { data: client } = await supabase.from('clients')
+      .select('id,name,email').eq('id', rec.clientId).maybeSingle();
+    if (!client) return res.status(400).json({ error: 'That account no longer exists.' });
+
+    await supabase.from('clients')
+      .update({ password_hash: hashPassword(String(password)) }).eq('id', client.id);
+    // single use
+    await supabase.from('kv_store').delete().eq('key', 'clientReset:' + token);
+    console.log(`[client reset] password changed for ${client.email}`);
+
+    // sign them straight in rather than making them type it again
+    const sessToken = await createClientSession(client.id);
+    const { data: full } = await supabase.from('clients').select('*').eq('id', client.id).maybeSingle();
+    res.json({ ok: true, token: sessToken, client: full ? clientPublic(full) : null });
+  } catch (e) {
+    console.error('[client reset] failed:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1681,7 +1767,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v56',
+    serverVersion: 'v58',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -1693,8 +1779,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // ---------- Social preview cards for shared listing links ----------
-// Mirrors the frontend's MOCK_LISTINGS — swap for real MLS data at the same
-// time the frontend's fetchListings() is swapped, so both stay in sync.
+// Sample data, kept only for /api/mock-listings so a demo or a smoke test works
+// without the MLS configured. Social cards and the site itself read the live feed.
 const MOCK_LISTINGS = [
   {ListingKey:"AL10234561", StandardStatus:"Active", ListPrice:459900, City:"Gulf Shores", UnparsedAddress:"412 Sandpiper Ln", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1820},
   {ListingKey:"AL10234498", StandardStatus:"Active", ListPrice:875000, City:"Orange Beach", UnparsedAddress:"29 Perdido Cove Dr", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2650},
@@ -1709,22 +1795,45 @@ const MOCK_LISTINGS = [
 
 const CRAWLER_UA_PATTERN = /facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|WhatsApp|Discordbot|TelegramBot|Pinterest|redditbot|Googlebot/i;
 
-app.get('/', (req, res, next) => {
+app.get('/', async (req, res, next) => {
   const ua = req.headers['user-agent'] || '';
   const listingKey = req.query.listing;
   if (!listingKey || !CRAWLER_UA_PATTERN.test(ua)) return next(); // normal visitors -> fall through to the SPA
 
-  const listing = MOCK_LISTINGS.find(l => l.ListingKey === listingKey);
+  // This read MOCK_LISTINGS, so sharing a real listing produced no card at all
+  // and the nine fake ones showed invented prices. It uses the live feed now.
+  let listing = null;
+  try {
+    const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
+    if (token && dataset) {
+      const key = String(listingKey).slice(0, 128).replace(/'/g, "''");
+      const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+        + `?access_token=${encodeURIComponent(token)}`
+        + `&$filter=${encodeURIComponent(`ListingKey eq '${key}'`)}&$top=1`;
+      const r = await fetch(url);
+      if (r.ok) listing = ((await r.json()).value || [])[0] || null;
+    }
+  } catch (e) { console.warn('[social card] lookup failed:', e.message); }
   if (!listing) return next();
 
+  const price = Number(listing.ListPrice) || 0;
+  const bits = [
+    listing.BedroomsTotal ? listing.BedroomsTotal + ' bd' : null,
+    listing.BathroomsTotalInteger ? listing.BathroomsTotalInteger + ' ba' : null,
+    listing.LivingArea ? Number(listing.LivingArea).toLocaleString() + ' sqft' : null,
+  ].filter(Boolean).join(' \u00b7 ');
+
   // Social platforms render og:title large and bold and og:description in small
-  // grey text. With the brokerage name only in the description it was displayed
-  // smaller than every other element of the card, which is the opposite of what
-  // AREC 790-X-3-.16 requires. It leads the title now.
-  const title = `${BROKERAGE_NAME} — ${listing.UnparsedAddress}, ${listing.City} · $${listing.ListPrice.toLocaleString()}`;
-  const desc = `${listing.BedroomsTotal} bd · ${listing.BathroomsTotalInteger} ba · ${listing.LivingArea.toLocaleString()} sqft`;
+  // grey text, so the brokerage name leads the title — AREC 790-X-3-.16.
+  const title = `${BROKERAGE_NAME} \u2014 ${listing.UnparsedAddress || ''}`
+              + `${listing.City ? ', ' + listing.City : ''}`
+              + `${price ? ' \u00b7 $' + price.toLocaleString() : ''}`;
+  const desc = bits || 'View this listing at bamacoast.com';
   const pageUrl = `${req.protocol}://${req.get('host')}/?listing=${encodeURIComponent(listingKey)}`;
-  const imageUrl = `${req.protocol}://${req.get('host')}/assets/logo.png`;
+  const photos = Array.isArray(listing.Media)
+    ? listing.Media.map(m => (typeof m === 'string' ? m : (m && (m.MediaURL || m.MediaUrl)))).filter(Boolean)
+    : [];
+  const imageUrl = photos[0] || `${req.protocol}://${req.get('host')}/assets/logo.png`;
 
   res.send(`<!DOCTYPE html><html><head>
 <meta charset="UTF-8">
@@ -2000,6 +2109,145 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   const ok = await setSetting('agentPublic:' + req.params.id, profile);
   if (!ok) return res.status(500).json({ error: 'Could not save.' });
   res.json({ ok: true, profile });
+});
+
+/* ---------- crawler-rendered agent pages ----------
+   The site is a single-page app, so a crawler asking for /christinathies used to
+   get the generic shell: same title, same description, nothing about the agent.
+   Google had nothing to index and a shared link previewed as a bare URL — which
+   matters now that printed material drives scans to these pages.
+
+   Served only to crawlers; real visitors still get the app. The wording comes
+   from the license record for the same reason the page itself does: a profile
+   must never imply practice in a state the agent isn't licensed in.           */
+function esc(t){
+  return String(t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function agentSeoHtml(a, origin){
+  const url = `${origin}/${a.slug}`;
+  const role = a.role === 'broker' ? 'Qualifying Broker' : (a.title || 'REALTOR\u00AE');
+  const area = a.serviceArea ? ` serving ${a.serviceArea}` : '';
+  const title = `${a.name} \u2014 ${role} | ${BROKERAGE_NAME}`;
+  const desc = (a.bio && a.bio.trim())
+    ? a.bio.trim().replace(/\s+/g, ' ').slice(0, 300)
+    : `${a.name}, ${role} with ${BROKERAGE_NAME}${area}. Call ${a.phone} or search every active listing at bamacoast.com.`;
+  const img = a.photo && /^https?:/.test(a.photo) ? a.photo : `${origin}/assets/logo.png`;
+
+  const areaServed = [];
+  if ((a.licensedStates || []).includes('AL'))
+    areaServed.push('Gulf Shores, AL', 'Orange Beach, AL', 'Fairhope, AL', 'Daphne, AL',
+                    'Foley, AL', 'Baldwin County, AL', 'Mobile County, AL');
+  if ((a.licensedStates || []).includes('FL'))
+    areaServed.push('Perdido Key, FL', 'Pensacola, FL');
+
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'RealEstateAgent',
+    name: a.name,
+    jobTitle: role,
+    url,
+    telephone: a.phone,
+    image: img,
+    worksFor: {
+      '@type': 'RealEstateAgent',
+      name: BROKERAGE_NAME,
+      url: origin,
+      telephone: BROKERAGE_PHONE,
+    },
+    areaServed: areaServed.map(x => ({ '@type': 'Place', name: x })),
+  };
+  if (a.email) ld.email = a.email;
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${esc(url)}">
+<meta property="og:type" content="profile">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${esc(img)}">
+<meta property="og:url" content="${esc(url)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(desc)}">
+<script type="application/ld+json">${JSON.stringify(ld)}</script>
+</head><body>
+<h1>${esc(BROKERAGE_NAME)}</h1>
+<h2>${esc(a.name)} \u2014 ${esc(role)}</h2>
+${a.serviceArea ? `<p>Serving ${esc(a.serviceArea)}.</p>` : ''}
+<p>${esc(desc)}</p>
+<p><a href="${esc(url)}">${esc(url)}</a> \u00b7 ${esc(a.phone)}</p>
+</body></html>`;
+}
+
+async function loadAgentForSeo(slug){
+  if (!supabase) return null;
+  const { data } = await supabase.from('agents')
+    .select('id,name,email,phone,role,active').order('name');
+  const match = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(slug));
+  if (!match) return null;
+  const p = (await getSetting('agentPublic:' + match.id)) || {};
+  const licensed = licensedStatesOf(p);
+  return {
+    name: match.name, role: match.role, slug: slugify(match.name),
+    phone: p.publicPhone || match.phone || BROKERAGE_PHONE,
+    email: p.publicEmail || '',
+    title: p.title || '', bio: p.bio || '', photo: p.photo || '',
+    licensedStates: licensed,
+    serviceArea: serviceAreaSentence(licensed),
+  };
+}
+
+app.get('/:slug', async (req, res, next) => {
+  const slug = req.params.slug || '';
+  if (slug.startsWith('api') || slug.includes('.')) return next();
+  if (!CRAWLER_UA_PATTERN.test(req.headers['user-agent'] || '')) return next();
+  try {
+    const a = await loadAgentForSeo(slug);
+    if (!a) return next();
+    const origin = `${req.protocol}://${req.get('host')}`;
+    console.log(`[seo] served agent page for ${slug}`);
+    res.set('Content-Type', 'text/html; charset=utf-8').send(agentSeoHtml(a, origin));
+  } catch (e) {
+    console.error('[seo] agent page failed:', e.message);
+    next();
+  }
+});
+
+app.get('/robots.txt', (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  res.type('text/plain').send(
+`User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: ${origin}/sitemap.xml
+`);
+});
+
+/* Agent pages are the ones worth indexing individually — listings come and go
+   and belong to the MLS, so they are deliberately left out. */
+app.get('/sitemap.xml', async (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const urls = [{ loc: origin + '/', pri: '1.0' }];
+  try {
+    if (supabase) {
+      const { data } = await supabase.from('agents').select('name,active').order('name');
+      (data || []).filter(a => a.active !== false).forEach(a => {
+        urls.push({ loc: origin + '/' + slugify(a.name), pri: '0.8' });
+      });
+    }
+  } catch (e) { console.warn('[sitemap] agent list failed:', e.message); }
+  const today = new Date().toISOString().slice(0, 10);
+  res.type('application/xml').send(
+`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map(u => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><priority>${u.pri}</priority></url>`).join('\n')}
+</urlset>
+`);
 });
 
 // ---------- static site ----------
