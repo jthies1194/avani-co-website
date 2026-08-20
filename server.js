@@ -1063,6 +1063,42 @@ app.get('/api/tax/my-1099', async (req, res) => {
 
    Stored as tracker:<agentId>:<id>, with trackerTok:<token> as a pointer so the
    public route can find it without scanning. */
+/* Both ends of the same deal. Most of a transaction is shared — contract, earnest
+   money, inspection, appraisal, financing, title, closing — so this is the common
+   spine rather than two lists stapled together. */
+const TRACK_STEPS_BOTH = [
+  { k:'accepted',    label:'Under contract',          blurb:'Both sides have signed.' },
+  { k:'earnest',     label:'Earnest money in escrow', blurb:'The deposit is held.' },
+  { k:'inspection',  label:'Inspection scheduled',    blurb:'An inspector is booked.' },
+  { k:'inspected',   label:'Inspection complete',     blurb:'The report is in.' },
+  { k:'repairs',     label:'Repairs agreed',          blurb:'Both sides have settled what gets fixed.' },
+  { k:'contingency', label:'Inspection period passed',blurb:'That window has closed.' },
+  { k:'appraisal',   label:'Appraisal ordered',       blurb:'The lender is checking the value.' },
+  { k:'appraised',   label:'Appraisal received',      blurb:'The value came back.' },
+  { k:'loan',        label:'Financing approved',      blurb:'The lender has signed off.' },
+  { k:'title',       label:'Title work submitted',    blurb:'Ownership records are being checked.' },
+  { k:'cleartoclose',label:'Clear to close',          blurb:'Everything is signed off.' },
+  { k:'closing',     label:'Closing scheduled',       blurb:'A date and time are set.' },
+  { k:'closed',      label:'Closed',                  blurb:'Done.' },
+];
+
+/* Things that come up mid-deal and cannot be predicted at the start. The agent
+   drops one in where it belongs rather than living with a fixed list. */
+const TRACK_EXTRAS = [
+  { k:'addendum_sent',   label:'Addendum sent',          blurb:'A change to the contract is with the other side.' },
+  { k:'addendum_signed', label:'Addendum signed',        blurb:'That change is agreed by everyone.' },
+  { k:'counter',         label:'Counter-offer sent',     blurb:'We have countered.' },
+  { k:'survey',          label:'Survey ordered',         blurb:'A surveyor is checking the boundaries.' },
+  { k:'hoa',             label:'HOA documents received', blurb:'The association paperwork has come through.' },
+  { k:'insurance',       label:'Insurance bound',        blurb:'Cover is in place for closing.' },
+  { k:'wind',            label:'Wind mitigation done',   blurb:'The inspection that affects your premium is complete.' },
+  { k:'flood',           label:'Flood determination',    blurb:'The flood zone has been confirmed.' },
+  { k:'repair_request',  label:'Repair request sent',    blurb:'We have asked for repairs in writing.' },
+  { k:'repair_done',     label:'Repairs completed',      blurb:'The work is finished.' },
+  { k:'utilities',       label:'Utilities transferred',  blurb:'Services are being switched over.' },
+  { k:'funds',           label:'Closing funds sent',     blurb:'The money is on its way to the closing table.' },
+];
+
 const TRACK_STEPS = {
   buy: [
     { k:'offer',       label:'Offer submitted',            blurb:'Your offer is with the seller.' },
@@ -1093,10 +1129,25 @@ const TRACK_STEPS = {
     { k:'cleartoclose',label:'Clear to close',             blurb:'Everything is signed off.' },
     { k:'closed',      label:'Closed',                     blurb:'Sold. Congratulations.' },
   ],
+  both: TRACK_STEPS_BOTH,
 };
 
+/* The step list lives on the tracker itself rather than in this file, so it can be
+   edited per deal. Older trackers were stored as a milestones map against the
+   template; this brings them forward without anyone having to do anything. */
+function trackerSteps(t){
+  if (Array.isArray(t.steps) && t.steps.length) return t.steps;
+  const defs = TRACK_STEPS[t.side] || TRACK_STEPS.buy;
+  return defs.map(d => {
+    const m = (t.milestones || {})[d.k] || {};
+    return { k:d.k, label:d.label, blurb:d.blurb,
+             done:!!m.done, date:m.date||'', note:m.note||'',
+             private:!!m.private, at:m.at||'' };
+  });
+}
+
 function trackerPublic(t){
-  const steps = TRACK_STEPS[t.side] || TRACK_STEPS.buy;
+  const steps = trackerSteps(t);
   return {
     id: t.id,
     side: t.side,
@@ -1109,17 +1160,14 @@ function trackerPublic(t){
     expectedClose: t.expectedClose || '',
     brokerage: BROKERAGE_NAME,
     updatedAt: t.updatedAt || '',
-    steps: steps.map(sdef => {
-      const m = (t.milestones || {})[sdef.k] || {};
-      return {
-        k: sdef.k, label: sdef.label, blurb: sdef.blurb,
-        done: !!m.done,
-        date: m.date || '',
-        // notes marked private stay in the CRM
-        note: (m.note && !m.private) ? m.note : '',
-        at: m.at || '',
-      };
-    }),
+    steps: steps.map(sd => ({
+      k: sd.k, label: sd.label, blurb: sd.blurb || '',
+      done: !!sd.done,
+      date: sd.date || '',
+      // notes marked private stay in the CRM
+      note: (sd.note && !sd.private) ? sd.note : '',
+      at: sd.at || '',
+    })),
   };
 }
 
@@ -1131,7 +1179,7 @@ function newTrackerToken(){
 app.post('/api/tracker', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const b = req.body || {};
-  const side = b.side === 'sell' ? 'sell' : 'buy';
+  const side = ['sell','both'].includes(b.side) ? b.side : 'buy';
   const clean = v => String(v == null ? '' : v).slice(0, 200).trim();
 
   const id = 'tr_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
@@ -1145,7 +1193,12 @@ app.post('/api/tracker', async (req, res) => {
     clientName: clean(b.clientName),
     clientEmail: clean(b.clientEmail),
     expectedClose: clean(b.expectedClose),
-    milestones: {},
+    steps: (TRACK_STEPS[side] || TRACK_STEPS.buy).map(d => ({
+      k:d.k, label:d.label, blurb:d.blurb,
+      done:false, date:'', note:'', private:false, at:'',
+    })),
+    pending: [],          // marked done but not yet sent to the client
+    milestones: {},       // kept for anything written before steps existed
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -1155,7 +1208,12 @@ app.post('/api/tracker', async (req, res) => {
   res.json({ ok: true, tracker: rec });
 });
 
-/* Agent marks a milestone. */
+/* Agent marks a step.
+
+   This deliberately does NOT email. Marking three things in a row used to fire
+   three emails back to back, which is exactly the sort of thing that makes a
+   client mute you. Completed steps queue up in `pending` and go out as one
+   message when the agent presses send. */
 app.post('/api/tracker/:id/step', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
@@ -1164,45 +1222,120 @@ app.post('/api/tracker/:id/step', async (req, res) => {
 
   const b = req.body || {};
   const stepKey = String(b.step || '');
-  const defs = TRACK_STEPS[t.side] || TRACK_STEPS.buy;
-  const def = defs.find(d => d.k === stepKey);
-  if (!def) return res.status(400).json({ error: 'Unknown step.' });
+  t.steps = trackerSteps(t);
+  const step = t.steps.find(x => x.k === stepKey);
+  if (!step) return res.status(400).json({ error: 'Unknown step.' });
 
-  t.milestones = t.milestones || {};
-  const was = !!(t.milestones[stepKey] || {}).done;
+  const was = !!step.done;
   const done = b.done !== false;
 
-  t.milestones[stepKey] = {
-    done,
-    date: String(b.date || '').slice(0, 20),
-    note: String(b.note || '').slice(0, 600),
-    private: !!b.private,
-    at: new Date().toISOString(),
-  };
+  step.done = done;
+  if (b.date !== undefined) step.date = String(b.date || '').slice(0, 20);
+  if (b.note !== undefined) step.note = String(b.note || '').slice(0, 600);
+  if (b.private !== undefined) step.private = !!b.private;
+  step.at = new Date().toISOString();
+
+  t.pending = Array.isArray(t.pending) ? t.pending : [];
+  if (done && !was && !t.pending.includes(stepKey)) t.pending.push(stepKey);
+  if (!done) t.pending = t.pending.filter(k => k !== stepKey);
+
   t.updatedAt = new Date().toISOString();
   await setSetting(key, t);
+  res.json({ ok: true, tracker: t, pending: t.pending.length });
+});
 
-  // tell the client, but only when a step is newly completed
-  let emailed = false;
-  if (done && !was && t.clientEmail && mailer) {
-    const origin = `${req.protocol}://${req.get('host')}`;
-    const link = `${origin}/?track=${t.token}`;
-    const first = String(t.clientName || '').trim().split(/\s+/)[0] || 'there';
-    const shown = (b.note && !b.private) ? `\n\n${b.note}` : '';
-    try {
-      await mailer.sendMail({
-        to: t.clientEmail,
-        subject: `${def.label} \u2014 ${t.address || 'your move'}`,
-        text: `Hi ${first},\n\n${def.label}. ${def.blurb}${shown}\n\n`
-            + `You can see where everything stands here, any time:\n${link}\n\n`
-            + `Any questions, just reply or call.\n\n`
-            + `${t.agentName || ''}\n${BROKERAGE_NAME}\n${t.agentPhone || BROKERAGE_PHONE}`,
-      });
-      emailed = true;
-      console.log(`[tracker] told ${t.clientEmail} about "${def.label}"`);
-    } catch (e) { console.error('[tracker] client email failed:', e.message); }
+/* One email covering everything marked since the last one. */
+app.post('/api/tracker/:id/notify', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
+  const t = await getSetting(key);
+  if (!t) return res.status(404).json({ error: 'Tracker not found.' });
+  if (!t.clientEmail) return res.status(400).json({ error: 'No client email on this one.' });
+  if (!mailer) return res.status(503).json({ error: 'Email is not set up.' });
+
+  const steps = trackerSteps(t);
+  const pending = (Array.isArray(t.pending) ? t.pending : [])
+    .map(k => steps.find(s => s.k === k)).filter(Boolean);
+  if (!pending.length) return res.status(400).json({ error: 'Nothing new to tell them.' });
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const link = `${origin}/?track=${t.token}`;
+  const first = String(t.clientName || '').trim().split(/\s+/)[0] || 'there';
+  const done = steps.filter(s => s.done).length;
+
+  const lines = pending.map(s => {
+    const note = (s.note && !s.private) ? `\n    ${s.note}` : '';
+    return `  \u2713 ${s.label}\n    ${s.blurb || ''}${note}`;
+  }).join('\n\n');
+
+  const headline = pending.length === 1
+    ? pending[0].label
+    : `${pending.length} updates on ${t.address || 'your move'}`;
+
+  try {
+    await mailer.sendMail({
+      to: t.clientEmail,
+      subject: `${headline}${pending.length === 1 && t.address ? ' \u2014 ' + t.address : ''}`,
+      text: `Hi ${first},\n\n`
+          + (pending.length === 1 ? `Progress:\n\n` : `A few things have moved:\n\n`)
+          + lines
+          + `\n\nThat puts you ${done} of ${steps.length} steps through.\n\n`
+          + `You can see the whole picture any time:\n${link}\n\n`
+          + `Any questions, just reply or call.\n\n`
+          + `${t.agentName || sess.name || ''}\n${BROKERAGE_NAME}\n${t.agentPhone || BROKERAGE_PHONE}`,
+    });
+  } catch (e) {
+    console.error('[tracker] notify failed:', e.message);
+    return res.status(500).json({ error: 'Could not send that.' });
   }
-  res.json({ ok: true, emailed, tracker: t });
+
+  t.pending = [];
+  t.lastNotified = new Date().toISOString();
+  await setSetting(key, t);
+  console.log(`[tracker] ${sess.name} sent ${pending.length} update(s) to ${t.clientEmail}`);
+  res.json({ ok: true, sent: pending.length });
+});
+
+/* Add, rename, reorder or remove steps. A deal throws up things no template
+   predicts \u2014 addendums going back and forth, a survey, an HOA packet. */
+app.post('/api/tracker/:id/steps', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
+  const t = await getSetting(key);
+  if (!t) return res.status(404).json({ error: 'Tracker not found.' });
+
+  const incoming = Array.isArray((req.body || {}).steps) ? req.body.steps : null;
+  if (!incoming) return res.status(400).json({ error: 'No steps given.' });
+  if (incoming.length > 40) return res.status(400).json({ error: 'Forty steps is plenty.' });
+
+  const existing = trackerSteps(t);
+  const seen = new Set();
+  t.steps = incoming.map(s => {
+    let k = String(s.k || '').replace(/[^a-z0-9_]/gi, '').slice(0, 40)
+            || 'step_' + Math.random().toString(36).slice(2, 8);
+    while (seen.has(k)) k += '_2';
+    seen.add(k);
+    const was = existing.find(x => x.k === k) || {};
+    return {
+      k,
+      label: String(s.label || was.label || 'Step').slice(0, 90),
+      blurb: String(s.blurb !== undefined ? s.blurb : (was.blurb || '')).slice(0, 200),
+      done: was.done || false,
+      date: was.date || '', note: was.note || '',
+      private: !!was.private, at: was.at || '',
+      custom: !!s.custom || !!was.custom,
+    };
+  });
+  // a step that has gone should not still be queued
+  t.pending = (Array.isArray(t.pending) ? t.pending : []).filter(k => seen.has(k));
+  t.updatedAt = new Date().toISOString();
+  await setSetting(key, t);
+  res.json({ ok: true, tracker: t });
+});
+
+app.get('/api/tracker/extras', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.json({ ok: true, extras: TRACK_EXTRAS });
 });
 
 app.get('/api/tracker/mine', async (req, res) => {
@@ -2241,7 +2374,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v68',
+    serverVersion: 'v69',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
