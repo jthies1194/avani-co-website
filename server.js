@@ -30,6 +30,9 @@ const { createClient } = require('@supabase/supabase-js');
 // The LLC below is the legal entity and belongs only in a copyright notice.
 const BROKERAGE_NAME = 'Avani & Co Real Estate Southern Sands';
 const BROKERAGE_LEGAL_ENTITY = 'Avani & Co Real Estate LLC';
+/* CAN-SPAM requires a real postal address in every commercial email. This is not
+   decoration — an email without it is a violation on its own. */
+const BROKERAGE_ADDRESS = '191 Northshore Circle, Suite 100-D, Gulf Shores, AL 36542';
 const BROKERAGE_PHONE = '251-229-3216';
 
 const app = express();
@@ -176,6 +179,8 @@ function keyAllowedForAgent(key, sess, write) {
   // trackers go through their own routes; the token index must never be listable
   if (k.startsWith('trackerTok:')) return false;
   if (k.startsWith('ohTok:')) return false;
+  if (k.startsWith('ssTok:')) return false;
+  if (k.startsWith('savedSearch:')) return k.startsWith('savedSearch:' + sess.agentId + ':');
   if (k.startsWith('openHouse:')) return k.startsWith('openHouse:' + sess.agentId + ':');
   if (k.startsWith('tracker:')) return k.startsWith('tracker:' + sess.agentId + ':');
   // Anything not named above was previously readable by any signed-in agent —
@@ -205,6 +210,8 @@ function keyAllowedForAgent(key, sess, write) {
   if (k.startsWith('agentDeals:')) return k === 'agentDeals:' + sess.agentId;
   // personal task list, what has been ticked, and the end-of-day log
   if (k.startsWith('crmTasks:')) return k === 'crmTasks:' + sess.agentId;
+  // each agent decides what reaches them, without asking the broker
+  if (k.startsWith('notify:')) return k === 'notify:' + sess.agentId;
   // Marketing projects are per agent: marketing:<agentId>:<projectId>.
   // Staff bypass this function entirely, which is how the broker sees all of them.
   if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
@@ -282,7 +289,8 @@ app.get('/api/kv', async (req, res) => {
     // broker-account protection below.
     if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')
         || prefix.startsWith('clientReset:') || prefix.startsWith('agentHR:')
-        || prefix.startsWith('trackerTok:') || prefix.startsWith('ohTok:')) {
+        || prefix.startsWith('trackerTok:') || prefix.startsWith('ohTok:')
+        || prefix.startsWith('ssTok:')) {
       console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from listing session tokens`);
       return res.status(403).json({ error: 'Not permitted.' });
     }
@@ -861,7 +869,7 @@ app.post('/api/client/login', async (req, res) => {
 });
 
 /* ---------- agent HR records ----------
-   Address, emergency contact, licence dates, W-9 status and the taxpayer ID
+   Address, emergency contact, license dates, W-9 status and the taxpayer ID
    needed to produce a 1099. Everything the broker currently keeps asking agents
    to re-send.
 
@@ -1474,6 +1482,474 @@ app.get('/api/track/:token', async (req, res) => {
   const t = await getSetting(ptr.key);
   if (!t) return res.status(404).json({ error: 'Not found.' });
   res.json({ ok: true, tracker: trackerPublic(t) });
+});
+
+/* ---------- playbooks ----------
+   Separate sequences per situation rather than one buyer drip and one seller
+   drip. A person who has looked at seventeen houses should not get the same
+   first message as somebody who filled in a form and left.
+
+   Stored at settings:playbooks so a broker edits wording, timing and questions
+   without anybody touching this file. These are the defaults it starts from.
+
+   \u26a0 Every question is one a person can answer in four words. That is the whole
+   trick: "Local or relocating?" gets a reply; "Would you like to schedule a
+   buyer consultation?" does not. */
+const PLAYBOOK_DEFAULTS = [
+  { id:'pb_prop', name:'Asked about one property', match:{ source:'listing' }, steps:[
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent}. Saw you were looking at {address}. Quick one \u2014 is it that one specifically, or are you looking at a few?" },
+    { d:1,  ch:'email', s:'{address}', t:"Hi {first},\n\nA few things about {address} that aren't in the listing \u2014 what the building's actually like, what the fees cover, and what's sold near it lately.\n\nWant me to send those over? And is it that one you're set on, or are you still comparing?" },
+    { d:3,  ch:'sms',   t:"{first} \u2014 one thing so I don't send you a load of stuff you don't want. Staying around {city}, or open to nearby?" },
+    { d:6,  ch:'task',  t:'Call them. Six days, no reply \u2014 a call gets through where texts do not.' },
+    { d:10, ch:'sms',   t:"Random one: what's the ONE thing a place has to have for you?" },
+    { d:18, ch:'email', s:'A few that are not just what came up first', t:"Hi {first},\n\nI've pulled a handful that don't just happen to be top of the search results. Want them?" },
+    { d:30, ch:'sms',   t:"{first}, I don't want to be the agent blowing up your phone. Shall I keep an eye out for you, or leave you be for now?" },
+  ]},
+  { id:'pb_buyer', name:'New buyer, no property named', match:{ source:'new' }, steps:[
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} at {brokerage}. Are you already local, or would this be a move down here?" },
+    { d:1,  ch:'sms',   t:"Also \u2014 rough idea on budget? Under $400k, $400\u2013500k, $500k+, or still working that out?" },
+    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nThe stretch from Fort Morgan to Perdido Key is really five or six different markets, and the difference matters more than people expect.\n\nTell me roughly what you're after and I'll tell you which bit fits." },
+    { d:8,  ch:'task',  t:'Call them.' },
+    { d:15, ch:'sms',   t:"{first} \u2014 this year, or more of a someday thing? Either is fine, it just changes what I send." },
+    { d:30, ch:'sms',   t:"Shall I keep looking for you, or leave you alone for now?" },
+  ]},
+  { id:'pb_seller', name:'Asked what their home is worth', match:{ source:'value' }, steps:[
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent}. Got your request about {address}. Before I send you automated numbers that may or may not be right \u2014 are you actually thinking of selling, or mostly curious what it'd fetch?" },
+    { d:1,  ch:'email', s:'About {address}', t:"Hi {first},\n\nI can give you a proper number, but an accurate one needs two things a computer doesn't know: what you've done to it, and when you'd want to move.\n\nTell me those and I'll do it properly rather than guessing." },
+    { d:4,  ch:'sms',   t:"{first} \u2014 would knowing what you'd actually WALK AWAY WITH after everything be more use than a sale price?" },
+    { d:9,  ch:'task',  t:'Call them. Sellers convert on the phone far more than by email.' },
+    { d:16, ch:'sms',   t:"If the number made sense, would you actually move? Or is it more of a maybe-someday?" },
+    { d:30, ch:'email', s:'What has sold near you', t:"Hi {first},\n\nHere's what's actually sold near {address} recently \u2014 useful whether you sell this year or in five.\n\nAnything changed on your end?" },
+  ]},
+  { id:'pb_oh', name:'Signed in at an open house', match:{ source:'open-house' }, steps:[
+    { d:0,  ch:'sms',   t:"Hey {first}, {agent} here \u2014 thanks for coming by {address} today. Was it close to what you're after, or not quite?" },
+    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through. Two questions and I'll leave you be:\n\nWas it close? And is there something you've seen elsewhere it should be measured against?" },
+    { d:7,  ch:'sms',   t:"{first} \u2014 a couple more have come up in that range. Want me to send them?" },
+    { d:14, ch:'task',  t:'Call them.' },
+    { d:30, ch:'sms',   t:"Shall I keep an eye out, or leave you to it?" },
+  ]},
+  { id:'pb_quiet', name:'Registered, then nothing', match:{ source:'exit-intent' }, steps:[
+    { d:0,  ch:'email', s:'Nothing to sign up for', t:"Hi {first},\n\nYou asked to hear about new listings, so that's what I'll send \u2014 nothing else, and you can stop them any time.\n\nOne question so they're useful: buying, selling, or just watching?" },
+    { d:5,  ch:'sms',   t:"{first} \u2014 house or condo? Helps me send the right things." },
+    { d:12, ch:'sms',   t:"This year, or just researching for now?" },
+    { d:28, ch:'sms',   t:"Want me to keep these coming, or stop them? Either's fine." },
+  ]},
+  { id:'pb_back', name:'Went quiet, then came back', match:{ source:'reactivated' }, steps:[
+    { d:0,  ch:'sms',   t:"Hey {first} \u2014 saw you were back on the site. Anything changed on your end, or still having a look?" },
+    { d:2,  ch:'task',  t:'Call them. Somebody who comes back after months is worth a call the same week.' },
+  ]},
+];
+
+/* ---------- lead scoring ----------
+   A number between 0 and 100 built from things the lead actually did, not a
+   prediction. Every point is traceable to an event, which is why the agent alert
+   can say WHY somebody went hot rather than just that they did.
+
+   \u26a0 The score never sends anything on its own. It sorts the list and it decides
+   when to fetch a human. Automation starts conversations; agents have them. */
+const SCORE_EVENTS = {
+  sms_reply:        { pts: 15, why: 'replied to a text' },
+  email_reply:      { pts: 15, why: 'replied to an email' },
+  showing_request:  { pts: 30, why: 'asked to see a property' },
+  agent_call_req:   { pts: 30, why: 'asked to speak to someone' },
+  seller_definite:  { pts: 25, why: 'has definite plans to sell' },
+  timeline_90:      { pts: 20, why: 'moving inside 90 days' },
+  financing:        { pts: 15, why: 'mentioned financing or pre-approval' },
+  favorited:        { pts:  8, why: 'saved a property' },
+  visits_multi:     { pts:  8, why: 'been back to the site several times' },
+  repeat_view:      { pts:  5, why: 'looked at the same property again' },
+  email_open:       { pts:  2, why: 'opened an email' },
+  form_again:       { pts: 10, why: 'filled in another form' },
+};
+
+const SCORE_BANDS = [
+  { at: 80, key: 'priority', label: 'Needs you now' },
+  { at: 60, key: 'hot',      label: 'Hot' },
+  { at: 40, key: 'warm',     label: 'Warm' },
+  { at: 20, key: 'engaged',  label: 'Engaged' },
+  { at:  0, key: 'nurture',  label: 'Nurture' },
+];
+
+function scoreBand(n){
+  return SCORE_BANDS.find(b => n >= b.at) || SCORE_BANDS[SCORE_BANDS.length - 1];
+}
+
+/* Quiet for a long time should cost something, or every old lead eventually
+   looks hot. Decays after three weeks of nothing, floored so it never inverts. */
+function scoreDecay(lastActivity){
+  if (!lastActivity) return 0;
+  const days = Math.floor((Date.now() - new Date(lastActivity).getTime()) / 86400000);
+  if (days < 21) return 0;
+  return Math.min(30, Math.floor((days - 21) / 7) * 5);
+}
+
+function leadScore(lead){
+  const events = Array.isArray(lead.events) ? lead.events : [];
+  const raw = events.reduce((a, e) => a + ((SCORE_EVENTS[e.k] || {}).pts || 0), 0);
+  const n = Math.max(0, Math.min(100, raw - scoreDecay(lead.lastActivity)));
+  return { score: n, band: scoreBand(n) };
+}
+
+/* The sentence the agent actually reads. Built from the highest-value events, so
+   it says what changed rather than that something did. */
+function scoreWhy(lead, limit){
+  const events = (Array.isArray(lead.events) ? lead.events : [])
+    .slice().reverse()
+    .filter((e, i, a) => a.findIndex(x => x.k === e.k) === i)
+    .sort((a, b) => ((SCORE_EVENTS[b.k]||{}).pts||0) - ((SCORE_EVENTS[a.k]||{}).pts||0))
+    .slice(0, limit || 3);
+  return events.map(e => (SCORE_EVENTS[e.k] || {}).why).filter(Boolean);
+}
+
+app.get('/api/playbooks', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const saved = await getSetting('settings:playbooks');
+  res.json({ ok: true, playbooks: Array.isArray(saved) && saved.length ? saved : PLAYBOOK_DEFAULTS,
+             usingDefaults: !(Array.isArray(saved) && saved.length) });
+});
+
+app.post('/api/playbooks', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Only the broker can change these.' });
+  const list = Array.isArray((req.body || {}).playbooks) ? req.body.playbooks : null;
+  if (!list) return res.status(400).json({ error: 'Nothing given.' });
+  await setSetting('settings:playbooks', list.slice(0, 40));
+  console.log(`[playbooks] ${sess.name} saved ${list.length}`);
+  res.json({ ok: true });
+});
+
+app.post('/api/lead/:id/event', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'lead:' + String(req.params.id || '');
+  const lead = await getSetting(key);
+  if (!lead) return res.status(404).json({ error: 'Lead not found.' });
+  if (!isStaff(sess) && lead.assignedAgentId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not permitted.' });
+  }
+  const k = String((req.body || {}).event || '');
+  if (!SCORE_EVENTS[k]) return res.status(400).json({ error: 'Unknown event.' });
+
+  lead.events = Array.isArray(lead.events) ? lead.events : [];
+  lead.events.push({ k, at: new Date().toISOString(), note: String((req.body||{}).note || '').slice(0,200) });
+  lead.lastActivity = new Date().toISOString();
+
+  /* A reply means a person is talking. Automation stops immediately \u2014 nothing is
+     worse than a canned nudge landing while the agent is mid-conversation. */
+  if (k === 'sms_reply' || k === 'email_reply' || k === 'showing_request' || k === 'agent_call_req') {
+    if (lead.drip) lead.drip.stopped = true;
+    lead.humanTakeover = new Date().toISOString();
+  }
+
+  const { score, band } = leadScore(lead);
+  lead.score = score; lead.band = band.key;
+  await setSetting(key, lead);
+  res.json({ ok: true, score, band, why: scoreWhy(lead) });
+});
+
+/* ---------- saved searches ----------
+   An agent sets up what a lead is looking for once. New listings that match are
+   emailed at whatever pace the lead wants. The lead can change that pace or stop
+   entirely from a link in every message, without anybody's help.
+
+   Runs off the same tick as the follow-up sequences — no scheduler on this host. */
+function searchFilter(c){
+  const parts = [ACTIVE_ONLY];
+  const esc = v => String(v).replace(/'/g, "''");
+  if (c.city)     parts.push(`contains(City,'${esc(c.city)}')`);
+  if (c.minPrice) parts.push(`ListPrice ge ${Number(c.minPrice)}`);
+  if (c.maxPrice) parts.push(`ListPrice le ${Number(c.maxPrice)}`);
+  if (c.beds)     parts.push(`BedroomsTotal ge ${Number(c.beds)}`);
+  if (c.baths)    parts.push(`BathroomsTotalInteger ge ${Number(c.baths)}`);
+  if (c.type)     parts.push(`PropertyType eq '${esc(c.type)}'`);
+  if (c.waterfront) parts.push('WaterfrontYN eq true');
+  if (c.since)    parts.push(`OnMarketDate gt ${c.since}`);
+  return parts.join(' and ');
+}
+
+function searchLabel(c){
+  const bits = [];
+  if (c.city) bits.push(c.city);
+  if (c.beds) bits.push(c.beds + '+ bed');
+  if (c.minPrice || c.maxPrice) {
+    const f = n => '$' + Number(n).toLocaleString();
+    bits.push(c.minPrice && c.maxPrice ? f(c.minPrice) + '\u2013' + f(c.maxPrice)
+      : c.maxPrice ? 'under ' + f(c.maxPrice) : 'over ' + f(c.minPrice));
+  }
+  if (c.waterfront) bits.push('waterfront');
+  if (c.type) bits.push(c.type);
+  return bits.join(' \u00b7 ') || 'anything new';
+}
+
+async function searchRun(criteria, sinceISO){
+  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
+  if (!token || !dataset) return [];
+  const c = Object.assign({}, criteria, { since: sinceISO });
+  const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+    + `?access_token=${encodeURIComponent(token)}`
+    + `&$filter=${encodeURIComponent(searchFilter(c))}`
+    + `&$orderby=OnMarketDate desc&$top=12`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { console.error('[search] MLS returned', r.status); return []; }
+    const j = await r.json();
+    return j.value || [];
+  } catch (e) { console.error('[search] failed:', e.message); return []; }
+}
+
+function searchToken(id){
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('search:' + id).digest('hex').slice(0, 24);
+}
+
+app.post('/api/search', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const clean = v => String(v == null ? '' : v).slice(0, 90).trim();
+  const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n) : ''; };
+  const id = 'ss_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  const rec = {
+    id, agentId: sess.agentId, agentName: sess.name || '', agentEmail: sess.email || '',
+    leadId: clean(b.leadId), name: clean(b.name), email: clean(b.email),
+    pace: ['instant','daily','weekly','paused'].includes(b.pace) ? b.pace : 'daily',
+    criteria: {
+      city: clean(b.city), type: clean(b.type),
+      minPrice: num(b.minPrice), maxPrice: num(b.maxPrice),
+      beds: num(b.beds), baths: num(b.baths),
+      waterfront: !!b.waterfront,
+    },
+    lastSent: new Date().toISOString(),
+    sentKeys: [],
+    createdAt: new Date().toISOString(),
+  };
+  if (!rec.email) return res.status(400).json({ error: 'An email address, at least.' });
+  await setSetting('savedSearch:' + sess.agentId + ':' + id, rec);
+  await setSetting('ssTok:' + searchToken(id), { key: 'savedSearch:' + sess.agentId + ':' + id });
+  console.log(`[search] ${sess.name} set up "${searchLabel(rec.criteria)}" for ${rec.name || rec.email}`);
+  res.json({ ok: true, search: rec });
+});
+
+app.get('/api/search/mine', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const out = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value')
+      .ilike('key', 'savedSearch:' + sess.agentId + ':%');
+    (data || []).forEach(r => { if (r.value) out.push(Object.assign({ label: searchLabel(r.value.criteria || {}) }, r.value)); });
+  } catch (e) {}
+  res.json({ ok: true, searches: out });
+});
+
+app.delete('/api/search/:id', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'savedSearch:' + sess.agentId + ':' + String(req.params.id || '');
+  const rec = await getSetting(key);
+  if (rec) {
+    try { await supabase.from(KV_TABLE).delete().eq('key', 'ssTok:' + searchToken(rec.id)); } catch (e) {}
+    try { await supabase.from(KV_TABLE).delete().eq('key', key); } catch (e) {}
+  }
+  res.json({ ok: true });
+});
+
+/* A preview so the agent sees what the lead will get before anything is sent. */
+app.post('/api/search/preview', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const rows = await searchRun({
+    city: b.city, type: b.type, minPrice: b.minPrice, maxPrice: b.maxPrice,
+    beds: b.beds, baths: b.baths, waterfront: b.waterfront,
+  }, since);
+  res.json({ ok: true, count: rows.length, label: searchLabel(b),
+    sample: rows.slice(0, 5).map(r => ({
+      key: r.ListingKey, address: r.UnparsedAddress || '', city: r.City || '',
+      price: r.ListPrice || 0, beds: r.BedroomsTotal || 0, baths: r.BathroomsTotalInteger || 0,
+    })) });
+});
+
+/* The lead's own controls. No login — the token in their email is the key. */
+app.get('/api/feed/:token', async (req, res) => {
+  const ptr = await getSetting('ssTok:' + String(req.params.token || '').replace(/[^a-f0-9]/gi, ''));
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const rec = await getSetting(ptr.key);
+  if (!rec) return res.status(404).json({ error: 'Not found.' });
+  res.json({ ok: true, name: rec.name, pace: rec.pace,
+    label: searchLabel(rec.criteria), agentName: rec.agentName, brokerage: BROKERAGE_NAME });
+});
+
+app.post('/api/feed/:token', async (req, res) => {
+  const ptr = await getSetting('ssTok:' + String(req.params.token || '').replace(/[^a-f0-9]/gi, ''));
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const rec = await getSetting(ptr.key);
+  if (!rec) return res.status(404).json({ error: 'Not found.' });
+  const pace = String((req.body || {}).pace || '');
+  if (!['instant','daily','weekly','paused'].includes(pace)) {
+    return res.status(400).json({ error: 'Unknown setting.' });
+  }
+  rec.pace = pace;
+  await setSetting(ptr.key, rec);
+  console.log(`[search] ${rec.email} set their own pace to ${pace}`);
+  res.json({ ok: true, pace });
+});
+
+/* ---------- follow-up sequences ----------
+   There is no cron on this host, so due steps are processed whenever a signed-in
+   agent loads the CRM. Agents log in daily, which is accurate enough for a
+   follow-up measured in days — and it means nothing runs for a brokerage that has
+   stopped using the system.
+
+   ⚠ EMAIL ONLY, AND NEVER AUTOMATED TEXTS. CAN-SPAM governs commercial email and
+   is satisfiable: a real address, an honest subject, and a working unsubscribe in
+   every message. TCPA governs automated texts and requires prior express written
+   consent — penalties run to $500–$1,500 per message. A "text" step here creates a
+   reminder for the agent to send one themselves, which is a different thing in law
+   and in tone. */
+function dripDue(lead, campaign, now){
+  if (!lead.drip || lead.drip.stopped || lead.unsubscribed) return [];
+  const started = new Date(lead.drip.startedAt || lead.createdAt).getTime();
+  const days = Math.floor((now - started) / 86400000);
+  const done = lead.drip.done || [];
+  return (campaign.steps || [])
+    .filter(st => st.day <= days && !done.includes(st.id));
+}
+
+function unsubToken(leadId){
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('unsub:' + leadId).digest('hex').slice(0, 24);
+}
+
+function dripFill(text, lead, agent){
+  const first = String(lead.name || '').trim().split(/\s+/)[0] || 'there';
+  return String(text || '')
+    .replace(/\{first\}/g, first)
+    .replace(/\{name\}/g, lead.name || '')
+    .replace(/\{agent\}/g, agent.name || '')
+    .replace(/\{brokerage\}/g, BROKERAGE_NAME)
+    .replace(/\{phone\}/g, BROKERAGE_PHONE)
+    .replace(/\{address\}/g, lead.listingLabel || 'the property');
+}
+
+/* Called when the CRM loads. Sends what is due, records what was sent. */
+app.post('/api/drip/tick', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const campaigns = (await getSetting('settings:dripCampaigns')) || [];
+  if (!Array.isArray(campaigns) || !campaigns.length) return res.json({ ok: true, sent: 0 });
+
+  const now = Date.now();
+  const origin = `${req.protocol}://${req.get('host')}`;
+  let sent = 0, tasks = [];
+
+  let leads = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    leads = (data || []).map(r => ({ key: r.key, lead: r.value })).filter(x => x.lead);
+  } catch (e) { return res.status(500).json({ error: 'Could not read leads.' }); }
+
+  for (const { key, lead } of leads) {
+    if (!isStaff(sess) && lead.assignedAgentId !== sess.agentId) continue;
+    if (!lead.drip || !lead.drip.campaignId) continue;
+    const camp = campaigns.find(c => c.id === lead.drip.campaignId);
+    if (!camp || camp.paused) continue;
+
+    const due = dripDue(lead, camp, now);
+    if (!due.length) continue;
+
+    let changed = false;
+    for (const step of due) {
+      if (step.type === 'email') {
+        if (!lead.email || !mailer) { continue; }
+        const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+        try {
+          await mailer.sendMail({
+            to: lead.email,
+            subject: dripFill(step.subject, lead, sess),
+            text: dripFill(step.body, lead, sess)
+                + `\n\n\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`
+                + `\n${BROKERAGE_ADDRESS}`
+                + `\n\nIf you would rather not hear from us, unsubscribe here: ${unsub}`,
+          });
+          sent++;
+        } catch (e) { console.error('[drip] send failed:', e.message); continue; }
+      } else {
+        // a reminder for the agent, not an automated message
+        tasks.push({ leadId: lead.id, name: lead.name, what: step.subject });
+      }
+      lead.drip.done = (lead.drip.done || []).concat(step.id);
+      lead.drip.lastAt = new Date().toISOString();
+      changed = true;
+    }
+    if (changed) { try { await setSetting(key, lead); } catch (e) {} }
+  }
+  /* Saved searches, same pass. A listing is never sent twice, and the pace the
+     lead chose is honored — including "paused", which they can set themselves. */
+  let feeds = 0;
+  const GAP = { instant: 0, daily: 20 * 3600000, weekly: 6.5 * 86400000 };
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value')
+      .ilike('key', 'savedSearch:' + (isStaff(sess) ? '%' : sess.agentId + ':%'));
+    for (const row of (data || [])) {
+      const rec = row.value;
+      if (!rec || rec.pace === 'paused' || !rec.email) continue;
+      const since = new Date(rec.lastSent || rec.createdAt).getTime();
+      if (Date.now() - since < (GAP[rec.pace] ?? GAP.daily)) continue;
+
+      const day = new Date(rec.lastSent || rec.createdAt).toISOString().slice(0, 10);
+      const rows = await searchRun(rec.criteria || {}, day);
+      const seen = rec.sentKeys || [];
+      const fresh = rows.filter(r => r.ListingKey && !seen.includes(r.ListingKey));
+      if (!fresh.length) { rec.lastSent = new Date().toISOString(); await setSetting(row.key, rec); continue; }
+
+      if (mailer) {
+        const link = `${origin}/?feed=${searchToken(rec.id)}`;
+        const lines = fresh.slice(0, 8).map(r => {
+          const price = r.ListPrice ? '$' + Number(r.ListPrice).toLocaleString() : 'Price on request';
+          const bb = [r.BedroomsTotal ? r.BedroomsTotal + ' bed' : '',
+                      r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' bath' : '']
+                      .filter(Boolean).join(', ');
+          return `  ${price} \u2014 ${r.UnparsedAddress || 'Address on request'}`
+               + (r.City ? `, ${r.City}` : '') + (bb ? `\n    ${bb}` : '')
+               + `\n    ${origin}/?listing=${encodeURIComponent(r.ListingKey)}`;
+        }).join('\n\n');
+        try {
+          await mailer.sendMail({
+            to: rec.email,
+            subject: fresh.length === 1
+              ? `One new listing \u2014 ${searchLabel(rec.criteria)}`
+              : `${fresh.length} new listings \u2014 ${searchLabel(rec.criteria)}`,
+            text: `Hi ${String(rec.name || '').split(' ')[0] || 'there'},\n\n`
+                + `New since I last wrote, matching ${searchLabel(rec.criteria)}:\n\n${lines}\n\n`
+                + `Want to see any of them? Just reply.\n\n`
+                + `${rec.agentName}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n${BROKERAGE_ADDRESS}\n\n`
+                + `Too many of these, or not enough? Change how often you hear from us, `
+                + `or stop them altogether: ${link}`,
+          });
+          feeds++;
+        } catch (e) { console.error('[search] send failed:', e.message); }
+      }
+      rec.sentKeys = seen.concat(fresh.map(r => r.ListingKey)).slice(-400);
+      rec.lastSent = new Date().toISOString();
+      await setSetting(row.key, rec);
+    }
+  } catch (e) { console.error('[search] pass failed:', e.message); }
+
+  if (sent || feeds) console.log(`[drip] ${sent} follow-up(s), ${feeds} listing alert(s) for ${sess.name}`);
+  res.json({ ok: true, sent, feeds, tasks });
+});
+
+/* Unsubscribe. Public, no session, and it must always work — a broken one is the
+   thing that turns a complaint into a penalty. */
+app.get('/api/unsub/:pair', async (req, res) => {
+  const [leadId, token] = String(req.params.pair || '').split('.');
+  if (!leadId || token !== unsubToken(leadId)) {
+    return res.status(404).json({ error: 'Not found.' });
+  }
+  const lead = await getSetting('lead:' + leadId);
+  if (!lead) return res.status(404).json({ error: 'Not found.' });
+  lead.unsubscribed = true;
+  lead.unsubscribedAt = new Date().toISOString();
+  if (lead.drip) lead.drip.stopped = true;
+  await setSetting('lead:' + leadId, lead);
+  console.log(`[drip] ${lead.email || leadId} unsubscribed`);
+  res.json({ ok: true, email: lead.email || '' });
 });
 
 /* ---------- open house sign-in ----------
@@ -2548,19 +3024,98 @@ Never state who pays commission or say representation is free. Commissions are n
 
 Keep replies short (2-4 sentences), warm, and conversational — never robotic or like a form. Never invent specific property details, prices, or availability. Once you've learned useful qualifying details (timeline, pre-approval status, or seller address/value/timeline), naturally suggest they leave their contact info so a real agent can follow up with exactly what they need.`;
 
+/* ---------- backend safety for anything the AI says ----------
+   The system prompt tells the model what not to do. This layer assumes the model
+   might do it anyway, and checks both what came in and what went out. Two
+   independent guards, because a prompt is guidance and this is a rule.
+
+   \u26a0 FAIR HOUSING. Steering does not require intent. Answering "is this a good
+   area for families?" or "what are the schools like?" with anything other than a
+   pointer to public data is a violation, and it is the brokerage's license.
+
+   \u26a0 LICENSED ADVICE. Opining on price, contract terms, or what somebody should
+   offer is licensed activity in Alabama and Florida. Software is not licensed. */
+const FH_TOPICS = [
+  /\bschool(s|ing|ed)?\b/i, /\bschool district\b/i,
+  /\b(safe|safety|crime|dangerous|sketchy|rough area|bad area)\b/i,
+  /\b(race|racial|ethnic|ethnicity|black|white|hispanic|asian|jewish|muslim|christian)\b/i,
+  /\b(church|churches|synagogue|synagogues|mosque|mosques|temple|temples|congregation)\b/i,
+  /\b(family|families|kids|children|child.friendly|good for kids)\b/i,
+  /\b(demographic|who lives|what kind of people|neighbors are|type of people)\b/i,
+  /\b(elderly|retirement community|singles|young professionals)\b/i,
+  /\b(disabled|disability|handicap)\b/i,
+  /\bnational origin\b/i, /\bimmigrant/i,
+];
+const ADVICE_TOPICS = [
+  /\bwhat should i offer\b/i, /\bhow much should i (offer|bid|pay)\b/i,
+  /\bis it worth\b/i, /\bwill it appraise\b/i, /\bgood (deal|investment|price)\b/i,
+  /\b(contract|contingency|addendum|clause|earnest money) (say|mean|work)/i,
+  /\bcan i (back out|cancel|get out of)\b/i,
+  /\b(legal|lawyer|attorney|sue|lawsuit|tax|taxes|capital gains|1031)\b/i,
+  /\bwhat('| i)?s (it|this|the (house|condo|property)) worth\b/i,
+];
+
+function guardTopic(text){
+  const t = String(text || '');
+  if (FH_TOPICS.some(r => r.test(t))) return 'fairhousing';
+  if (ADVICE_TOPICS.some(r => r.test(t))) return 'advice';
+  return null;
+}
+
+const GUARD_REPLY = {
+  fairhousing:
+    "That's a good question, and it's one I have to be careful with — fair housing rules mean "
+    + "I shouldn't characterize an area or who lives there, and honestly you'd get a better answer "
+    + "from the source anyway. School district sites, the census, and local crime statistics are "
+    + "all public, and they'll tell you more than my opinion would.\n\n"
+    + "What I can help with is the properties themselves. Want me to have "
+    + "someone call you about that?",
+  advice:
+    "That one really does need a licensed person rather than me — it depends on the specific "
+    + "property and the contract, and getting it slightly wrong could cost you real money.\n\n"
+    + "Let me get one of our agents to call you. What's the best number, and roughly when suits?",
+};
+
+/* Every AI message says it is AI, once, at the start of a conversation. */
+const AI_DISCLOSURE =
+  "Quick note so you know who you're talking to: I'm an automated assistant for "
+  + BROKERAGE_NAME + ", not a person. I can answer questions about properties and the area, "
+  + "and I'll get a licensed agent to call you for anything that needs one.";
+
 app.post('/api/chat', async (req, res) => {
   if (!ANTHROPIC_API_KEY) {
     return res.status(503).json({ error: 'AI chat is not configured yet. Set ANTHROPIC_API_KEY in the hosting environment variables.' });
   }
   const { message, history } = req.body || {};
   if (!message) return res.status(400).json({ error: 'message is required' });
+
+  /* Guard 1: what they asked. Caught before the model ever sees it. */
+  const asked = guardTopic(message);
+  if (asked) {
+    console.log(`[chat] ${asked} topic caught on the way in \u2014 handed to an agent`);
+    return res.json({ reply: GUARD_REPLY[asked], handoff: true, reason: asked });
+  }
+
   try {
     const messages = [
       ...(Array.isArray(history) ? history.slice(-10) : []),
       { role: 'user', content: message },
     ];
-    const reply = await callClaude(CHAT_SYSTEM_PROMPT, messages, 400);
-    res.json({ reply });
+    let reply = await callClaude(CHAT_SYSTEM_PROMPT, messages, 400);
+
+    /* Guard 2: what it answered. The model is well behaved, but this is the
+       brokerage's license and a prompt is not a guarantee. */
+    const said = guardTopic(reply);
+    if (said) {
+      console.warn(`[chat] model output tripped the ${said} guard \u2014 replaced`);
+      return res.json({ reply: GUARD_REPLY[said], handoff: true, reason: said });
+    }
+
+    // first message in a conversation says plainly that it is not a person
+    const first = !Array.isArray(history) || history.length === 0;
+    if (first) reply = AI_DISCLOSURE + '\n\n' + reply;
+
+    res.json({ reply, disclosed: first });
   } catch (e) {
     console.error('[POST /api/chat] failed:', e.message);
     res.status(500).json({ error: e.message });
@@ -2679,7 +3234,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v76',
+    serverVersion: 'v80',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -2736,7 +3291,7 @@ app.get('/', async (req, res, next) => {
   ].filter(Boolean).join(' \u00b7 ');
 
   // Social platforms render og:title large and bold and og:description in small
-  // grey text, so the brokerage name leads the title — AREC 790-X-3-.16.
+  // gray text, so the brokerage name leads the title — AREC 790-X-3-.16.
   const title = `${BROKERAGE_NAME} \u2014 ${listing.UnparsedAddress || ''}`
               + `${listing.City ? ', ' + listing.City : ''}`
               + `${price ? ' \u00b7 $' + price.toLocaleString() : ''}`;
@@ -3011,7 +3566,7 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
   };
 
   // Only the broker or an admin sets which states an agent is licensed in —
-  // an agent must not be able to grant themselves a licence.
+  // an agent must not be able to grant themselves a license.
   const existing = await getSetting('agentPublic:' + req.params.id) || {};
   const licensed = isStaff(sess)
     ? (Array.isArray(b.licensedStates) ? b.licensedStates.filter(x => STATE_NAMES[x]) : licensedStatesOf(existing))
@@ -3027,7 +3582,7 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
     [clean(b.bio), clean(b.title), clean(b.specialties)].join(' '), licensed);
   if (claims.length) {
     const c = claims[0];
-    console.warn(`[license] blocked profile for ${req.params.id}: mentions ${c.term} without a ${c.name} licence`);
+    console.warn(`[license] blocked profile for ${req.params.id}: mentions ${c.term} without a ${c.name} license`);
     return res.status(422).json({
       error: `This mentions "${c.term}" but there is no ${c.name} license on file for this agent. ` +
              `Remove the reference, or ask the broker to add the ${c.name} license first.`,
