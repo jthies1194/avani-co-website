@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v179">
+<meta name="build" content="index-v181">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1842,7 +1842,8 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="no-hits" id="noHits" style="display:none">No community by that name — try another spelling, or call 251-229-3216.</div>
   </div>
-      <button class="comm-more" onclick="commShowAll()">Show every town we cover</button>
+      <button class="comm-more" onclick="commToggle()">Show every town we cover</button>
+      <button class="comm-less" onclick="commToggle()">Show fewer</button>
       <div class="comm-hint">Or just type a place name into the search at the top.</div>
 </section>
 
@@ -3613,7 +3614,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v179';
+window.BUILD = 'index-v181';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6928,6 +6929,14 @@ function showCrmSection(id){
       renderDashboard();
       // only appears when a licence is actually closing in
       if(typeof renderCeNudge === 'function') setTimeout(renderCeNudge, 60);
+      // the briefing needs the deals and the tasks before it can say anything
+      (async () => {
+        try{
+          if(typeof loadPipeline === 'function') await loadPipeline();
+          if(typeof bfLoad === 'function') await bfLoad();
+          if(typeof renderBriefing === 'function') renderBriefing();
+        }catch(e){ console.error('[briefing]', e); }
+      })();
     }
   }catch(e){}
   const main = document.getElementById('crm-main');
@@ -7333,6 +7342,7 @@ async function renderDashboard(){
 
   el.innerHTML = `
     <div id="ce-nudge-slot"></div>
+    <div id="bf-slot"></div>
     <div class="dash-hero">
       <div>
         <div class="eyebrow-sm">${new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})}</div>
@@ -14822,20 +14832,47 @@ async function renderCeNudge(){
    and a button; every town is still there, and every one of them is now in the
    property search at the top, which is where people actually look. */
 #communities.comm-collapsed .band:nth-of-type(n+3){display:none}
-#communities .comm-more{display:none;margin:22px auto 0;background:rgba(255,255,255,.12);
+#communities .comm-more,
+#communities .comm-less{display:none;margin:22px auto 0;background:rgba(255,255,255,.12);
   border:1px solid rgba(255,255,255,.34);color:#fff;border-radius:10px;padding:11px 22px;
   font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 #communities.comm-collapsed .comm-more{display:block}
-#communities .comm-more:hover{background:rgba(255,255,255,.2)}
+#communities:not(.comm-collapsed) .comm-less{display:block}
+#communities .comm-more:hover,
+#communities .comm-less:hover{background:rgba(255,255,255,.2)}
 #communities .comm-hint{text-align:center;font-size:12.5px;color:rgba(255,255,255,.6);
   margin-top:11px}
+/* .sect-v2 carries 130px of padding, which left a stretch of empty blue under the
+   last row of towns. Less at the bottom, since the button already sits there. */
+#communities{padding-bottom:56px}
 </style>
 <script>
 /* Nothing is hidden permanently — one press shows the rest. */
-function commShowAll(){
+/* Opens and closes, and remembers which. Somebody who came here to read the
+   whole list should not have to press it again on their next visit — and once
+   opened there was no way back at all. */
+function commToggle(){
   const el = document.getElementById('communities');
-  if(el) el.classList.remove('comm-collapsed');
+  if(!el) return;
+  const nowOpen = el.classList.toggle('comm-collapsed') === false;
+  try{ localStorage.setItem('commOpen', nowOpen ? '1' : '0'); }catch(e){}
+  if(!nowOpen){
+    // collapsing from the bottom would leave them staring at the next section
+    const top = el.getBoundingClientRect().top + window.scrollY - 90;
+    window.scrollTo({ top, behavior:'smooth' });
+  }
 }
+
+(function(){
+  const apply = () => {
+    let open = false;
+    try{ open = localStorage.getItem('commOpen') === '1'; }catch(e){}
+    const el = document.getElementById('communities');
+    if(el && open) el.classList.remove('comm-collapsed');
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
 </script>
 
 <style>
@@ -15562,6 +15599,309 @@ function taskAck(sectionId){
 <button class="submit-btn" onclick="plTrackCreate()">Set it up</button>
 </div>
 </div>
+
+<style>
+/* ---------- the briefing ---------- */
+.bf{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+  margin-bottom:16px}
+.bf-h{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-bottom:4px}
+.bf-h h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:23px;font-weight:500;
+  color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)}
+.bf-h .c{font-size:12.5px;color:var(--driftwood)}
+.bf-sub{font-size:13.5px;color:var(--driftwood);line-height:1.55;margin:0 0 13px}
+
+.bf-group{margin-bottom:15px}
+.bf-group .lbl{font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  margin-bottom:7px}
+.bf-group.late .lbl{color:#B4232A}
+.bf-group.soon .lbl{color:#9A6B14}
+.bf-group.mine .lbl{color:var(--driftwood)}
+
+.bf-item{display:flex;align-items:flex-start;gap:11px;padding:9px 11px;border-radius:9px;
+  border:1px solid var(--line);margin-bottom:6px;background:var(--paper);cursor:pointer;
+  transition:.13s}
+.bf-item:hover{border-color:var(--sec,#2E3CB0)}
+.bf-item.done{opacity:.5;background:#F5F7F5}
+.bf-item.done .t{text-decoration:line-through}
+.bf-item.late{border-left:3px solid #B4232A}
+.bf-item.soon{border-left:3px solid #E0982C}
+.bf-box{width:19px;height:19px;border-radius:6px;border:2px solid rgba(27,32,67,.24);
+  flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:#fff}
+.bf-item.done .bf-box{background:#2E8C5A;border-color:#2E8C5A}
+.bf-item .tx{flex:1;min-width:0}
+.bf-item .t{font-size:14px;line-height:1.35}
+.bf-item .s{font-size:12px;color:var(--driftwood);margin-top:2px}
+.bf-item .go{font-size:11.5px;color:var(--sec,#2E3CB0);font-weight:600;white-space:nowrap;
+  align-self:center}
+
+.bf-add{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+.bf-add input{flex:1 1 200px;padding:9px 11px;border:1px solid rgba(27,32,67,.2);
+  border-radius:8px;font:inherit;font-size:13.5px}
+.bf-clear{background:linear-gradient(120deg,#EFF7F1,#F5FBF6);border:1px solid rgba(46,140,90,.35);
+  border-radius:12px;padding:16px 18px;text-align:center}
+.bf-clear .big{font-family:'Cormorant Garamond',serif;font-size:24px;color:#2E8C5A}
+.bf-done{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}
+.bf-carry{background:#FBF6EA;border:1px solid rgba(230,195,129,.6);border-radius:11px;
+  padding:12px 15px;margin-bottom:14px;font-size:13.5px;line-height:1.55;color:#5A4520}
+body.crm-dark .bf-item.done{background:#1D2234}
+body.crm-dark .bf-carry{background:#2A2413;color:#E8DCC0}
+</style>
+
+<script>
+/* ---------- the daily briefing ----------
+   Everything already in the CRM knows when something is due; nothing was telling
+   anybody. This gathers it into one list at the top of Today.
+
+   Derived items \u2014 a date on a deal, an unsent update \u2014 are computed fresh each
+   time rather than stored, so they cannot drift from the thing they describe.
+   Only what has been ticked, and what someone added themselves, is saved. */
+let bfData = { own: [], done: {}, days: [] };
+
+function bfKey(){ return 'crmTasks:' + (currentAgent ? currentAgent.id : ''); }
+const bfToday = () => new Date().toISOString().slice(0,10);
+
+async function bfLoad(){
+  try{
+    const d = await storeGet(bfKey());
+    if(d && typeof d === 'object'){
+      bfData = Object.assign({ own:[], done:{}, days:[] }, d);
+    }
+  }catch(e){}
+}
+async function bfSave(){ try{ await storeSet(bfKey(), bfData); }catch(e){} }
+
+/* Ticks only count for the day they were made \u2014 an inspection you ticked last
+   week should not stay ticked when a new deadline arrives. */
+function bfIsDone(k){ return bfData.done && bfData.done[k] === bfToday(); }
+
+async function bfTick(k){
+  bfData.done = bfData.done || {};
+  if(bfIsDone(k)) delete bfData.done[k];
+  else bfData.done[k] = bfToday();
+  await bfSave();
+  renderBriefing();
+}
+
+/* Builds today's list from what the CRM already holds. */
+function bfItems(){
+  const out = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const days = v => {
+    if(!v) return null;
+    const d = new Date(String(v).length <= 10 ? v + 'T12:00:00' : v);
+    return isNaN(d) ? null : Math.ceil((d - today) / 86400000);
+  };
+  const LABEL = { earnest:'Earnest money due', inspection:'Inspection contingency ends',
+                  financing:'Financing deadline', closing:'Closing' };
+
+  // dates on live deals
+  try{
+    (typeof plDeals !== 'undefined' ? plDeals : []).forEach(d => {
+      if(['closed','cancelled'].includes(d.stage)) return;
+      Object.entries(d.dates || {}).forEach(([k, v]) => {
+        const n = days(v);
+        if(n === null || n > 7) return;
+        out.push({
+          key: 'deal:' + d.id + ':' + k,
+          urgency: n < 0 ? 'late' : n <= 2 ? 'soon' : 'ok',
+          title: LABEL[k] || k,
+          sub: (d.address || d.client || 'a deal') + ' \u00b7 ' +
+               (n < 0 ? Math.abs(n) + ' day' + (Math.abs(n)===1?'':'s') + ' ago'
+                : n === 0 ? 'today' : 'in ' + n + ' day' + (n===1?'':'s')),
+          go: 'My deals', goTo: 'sec-pipeline',
+        });
+      });
+      // timeline updates marked but never sent
+      const pending = (d.tracker && d.tracker.pending) ? d.tracker.pending.length : 0;
+      if(pending) out.push({
+        key: 'send:' + d.id,
+        urgency: 'soon',
+        title: pending + ' update' + (pending===1?'':'s') + ' not sent to your client',
+        sub: d.address || d.client || 'a deal',
+        go: 'Send', goTo: 'sec-pipeline',
+      });
+    });
+  }catch(e){}
+
+  // leads nobody has touched
+  try{
+    (DASH_LEADS || []).filter(l => (l.stage||'New') === 'New').slice(0, 5).forEach(l => {
+      const age = daysAgo(l.createdAt);
+      out.push({
+        key: 'lead:' + l.id,
+        urgency: age >= 2 ? 'late' : age >= 1 ? 'soon' : 'ok',
+        title: 'Call ' + (l.name || 'a new lead'),
+        sub: (l.source || 'enquiry') + ' \u00b7 ' + (age === 0 ? 'today' : age + 'd ago'),
+        go: 'Leads', goTo: 'sec-leads',
+      });
+    });
+  }catch(e){}
+
+  // the broker's own decisions
+  try{
+    if(isAdminOrOwner() && Array.isArray(window.__pendingReviews) && window.__pendingReviews.length){
+      out.push({
+        key: 'reviews',
+        urgency: 'ok',
+        title: window.__pendingReviews.length + ' review'
+               + (window.__pendingReviews.length===1?'':'s') + ' waiting on you',
+        sub: 'Nothing shows publicly until you approve it',
+        go: 'Reviews', goTo: 'sec-reviews',
+      });
+    }
+  }catch(e){}
+
+  // anything they added themselves
+  (bfData.own || []).forEach(t => out.push({
+    key: 'own:' + t.id, urgency:'mine', title: t.text, sub: 'Yours', own:true,
+  }));
+
+  const rank = { late:0, soon:1, ok:2, mine:3 };
+  out.sort((a,b) => rank[a.urgency] - rank[b.urgency]);
+  return out;
+}
+
+function renderBriefing(){
+  const host = document.getElementById('bf-slot');
+  if(!host || !currentAgent) return;
+  const items = bfItems();
+  const open = items.filter(i => !bfIsDone(i.key));
+  const done = items.filter(i => bfIsDone(i.key));
+
+  // what was left over when they finished yesterday
+  const last = (bfData.days || [])[0];
+  const carry = (last && last.date !== bfToday() && last.outstanding)
+    ? last.outstanding : 0;
+
+  const groups = [
+    ['late', 'Overdue',  open.filter(i => i.urgency === 'late')],
+    ['soon', 'Today',    open.filter(i => i.urgency === 'soon')],
+    ['ok',   'This week', open.filter(i => i.urgency === 'ok')],
+    ['mine', 'Your own list', open.filter(i => i.urgency === 'mine')],
+  ].filter(g => g[2].length);
+
+  const row = i => `
+    <div class="bf-item ${bfIsDone(i.key)?'done':''} ${i.urgency}"
+      onclick="bfTick('${i.key}')">
+      <span class="bf-box">${bfIsDone(i.key)?'\\u2713':''}</span>
+      <span class="tx"><span class="t">${escapeHtml(i.title)}</span>
+        ${i.sub ? `<span class="s">${escapeHtml(i.sub)}</span>` : ''}</span>
+      ${i.goTo ? `<span class="go" onclick="event.stopPropagation();showCrmSection('${i.goTo}')">${escapeHtml(i.go)} \\u2192</span>` : ''}
+      ${i.own ? `<span class="go" onclick="event.stopPropagation();bfDropOwn('${i.key.slice(4)}')">Remove</span>` : ''}
+    </div>`;
+
+  host.innerHTML = `
+    <div class="bf">
+      <div class="bf-h">
+        <h3>What needs you</h3>
+        <span class="c">${open.length ? open.length + ' outstanding' : 'nothing outstanding'}${
+          done.length ? ' \u00b7 ' + done.length + ' done today' : ''}</span>
+      </div>
+      ${carry ? `<div class="bf-carry">You finished yesterday with <strong>${carry}</strong>
+        still open. ${open.length ? 'Some of it may be below.' : 'All clear now.'}</div>` : ''}
+
+      ${open.length ? groups.map(([k,label,list]) => `
+        <div class="bf-group ${k}">
+          <div class="lbl">${label}</div>
+          ${list.map(row).join('')}
+        </div>`).join('')
+      : `<div class="bf-clear">
+           <div class="big">Nothing needs you right now.</div>
+           <div style="font-size:13px;color:var(--driftwood);margin-top:5px">
+             Deadlines, unsent updates and new leads will show up here.</div>
+         </div>`}
+
+      ${done.length ? `<div class="bf-group">
+        <div class="lbl" style="color:#2E8C5A">Done today</div>
+        ${done.map(row).join('')}
+      </div>` : ''}
+
+      <div class="bf-add">
+        <input id="bf-new" placeholder="Add something of your own"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();bfAddOwn();}">
+        <button class="btn-sm" onclick="bfAddOwn()">Add</button>
+      </div>
+      <div class="bf-done">
+        <button class="btn-sm" onclick="bfWrapUp()">I'm done for the day</button>
+      </div>
+    </div>`;
+}
+
+async function bfAddOwn(){
+  const el = document.getElementById('bf-new');
+  const text = (el && el.value || '').trim();
+  if(!text) return;
+  bfData.own = bfData.own || [];
+  bfData.own.push({ id: 't_' + Date.now().toString(36), text, at: new Date().toISOString() });
+  if(el) el.value = '';
+  await bfSave();
+  renderBriefing();
+}
+
+async function bfDropOwn(id){
+  bfData.own = (bfData.own || []).filter(t => t.id !== id);
+  await bfSave();
+  renderBriefing();
+}
+
+/* End of day. Writes what was done and what was not, so tomorrow opens knowing. */
+async function bfWrapUp(){
+  const items = bfItems();
+  const done = items.filter(i => bfIsDone(i.key));
+  const open = items.filter(i => !bfIsDone(i.key));
+
+  bfData.days = bfData.days || [];
+  bfData.days = bfData.days.filter(d => d.date !== bfToday());
+  bfData.days.unshift({
+    date: bfToday(),
+    completed: done.length,
+    outstanding: open.length,
+    items: done.map(i => i.title).slice(0, 20),
+  });
+  bfData.days = bfData.days.slice(0, 30);
+  await bfSave();
+
+  const name = String(currentAgent.name || '').split(' ')[0];
+  showModalMessage(`
+    <h3 style="margin:0 0 4px;font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500">
+      That's the day, ${escapeHtml(name)}.</h3>
+    <div style="font-size:14px;color:var(--driftwood);line-height:1.6;margin-bottom:14px">
+      ${done.length
+        ? `<strong style="color:#2E8C5A">${done.length}</strong> seen to${
+            open.length ? `, <strong>${open.length}</strong> still open.` : ' and nothing left over.'}`
+        : open.length ? `<strong>${open.length}</strong> still open.`
+        : 'Nothing was outstanding.'}
+    </div>
+    ${done.length ? `<div style="font-size:13px;line-height:1.7;color:var(--driftwood)">
+      ${done.map(i => '\u2713 ' + escapeHtml(i.title)).join('<br>')}</div>` : ''}
+    ${open.length ? `<div style="margin-top:13px;font-size:13px;line-height:1.7;color:#8A6314">
+      Waiting for you tomorrow:<br>
+      ${open.slice(0,8).map(i => '\u00b7 ' + escapeHtml(i.title)).join('<br>')}
+      ${open.length > 8 ? `<br>\u00b7 and ${open.length - 8} more` : ''}</div>` : ''}
+  `);
+}
+
+/* A small reusable message box, since several things want one. */
+function showModalMessage(html){
+  let el = document.getElementById('msg-overlay');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'msg-overlay';
+    el.className = 'modal-overlay';
+    el.innerHTML = `<div class="modal" style="max-width:430px">
+      <button class="modal-close" onclick="document.getElementById('msg-overlay').classList.remove('active')">&times;</button>
+      <div id="msg-body"></div>
+      <div style="text-align:right;margin-top:16px">
+        <button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);border-color:var(--marsh)"
+          onclick="document.getElementById('msg-overlay').classList.remove('active')">Close</button>
+      </div></div>`;
+    document.body.appendChild(el);
+  }
+  document.getElementById('msg-body').innerHTML = html;
+  el.classList.add('active');
+}
+</script>
 
 </body>
 </html>
