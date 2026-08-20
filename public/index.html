@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v143">
+<meta name="build" content="index-v148">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2898,7 +2898,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v143';
+window.BUILD = 'index-v148';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3152,6 +3152,8 @@ if(!brokerIdentity) brokerIdentity = currentAgent;
 currentAgent = target;
 cdTab = 'agent:' + target.id;
 unlockCRM();
+// show their colours and layout too — that is what "view as" is for
+if(typeof applyPrefsFor === 'function') await applyPrefsFor();
 window.scrollTo({top: 0, behavior: 'smooth'});
 showToast(`Now viewing as ${target.name}.`);
 }catch(e){ showToast("Couldn't switch view \u2014 please try again."); }
@@ -3163,6 +3165,7 @@ currentAgent = brokerIdentity;
 brokerIdentity = null;
 cdTab = 'all';
 unlockCRM();
+if(typeof applyPrefsFor === 'function') applyPrefsFor();
 window.scrollTo({top: 0, behavior: 'smooth'});
 showToast("Back to your broker view.");
 }
@@ -5895,10 +5898,34 @@ function orderedSections(list){
 /* "View as" swaps currentAgent to the agent being previewed. Preferences must
    stay with the person actually signed in — otherwise a broker changing colours
    while previewing would silently overwrite that agent's own saved layout. */
+function previewing(){
+  return typeof brokerIdentity !== 'undefined' && !!brokerIdentity;
+}
+
+/* Whose settings are on screen. While previewing that is the agent being viewed,
+   because "View as" is meant to show the CRM exactly as they see it — their
+   colours included. Editing is switched off in that mode, so a broker can never
+   overwrite an agent's layout by fiddling with it while previewing. */
 function prefsOwnerId(){
-  if(typeof brokerIdentity !== 'undefined' && brokerIdentity && brokerIdentity.id)
-    return brokerIdentity.id;
   return currentAgent ? currentAgent.id : '';
+}
+
+/* Loads whoever's settings apply right now and repaints. */
+async function applyPrefsFor(){
+  crmTabOrder = null;
+  crmTheme = { palette:'coastal', bg:'paper', custom:{} };
+  await loadTabOrder();
+  applyCrmBackground();
+  renderCrmNav();
+  // the open section needs its colour recomputed under the new theme
+  if(typeof crmSection === 'string') {
+    try{
+      const ordered = visibleOrderedSections();
+      const idx = ordered.findIndex(sc => sc.id === crmSection);
+      const wrap = document.getElementById('crm-main');
+      if(wrap && idx >= 0) wrap.style.setProperty('--sec', tabColor(ordered[idx], idx));
+    }catch(e){}
+  }
 }
 
 async function loadTabOrder(){
@@ -5917,6 +5944,7 @@ async function loadTabOrder(){
 }
 
 async function saveTabOrder(){
+  if(previewing()) return false;      // previewing is look, not touch
   const owner = prefsOwnerId();
   if(!owner) return false;
   try{
@@ -5940,9 +5968,14 @@ function renderCrmNav(){
         style="--tab:${tabColor(sc, idx)}">
         <span class="ti">${icon(sc.icon)}</span><span class="tl">${sc.label}</span>${n?`<span class="pill">${n}</span>`:''}</button>`;
     }).join('')
-    + `<button class="crm-arrange" onclick="openTabArrange()" style="--tab:#8C93AD"
-         title="Put these in the order you like">
-         <span class="ti">${icon('arrange')}</span><span class="tl">Arrange</span></button>`;
+    + (previewing()
+        ? `<button class="crm-arrange" style="--tab:#8C93AD;opacity:.5;cursor:default"
+             onclick="showToast('You\\u2019re previewing ' + currentAgent.name + '. Their layout is theirs to change.')"
+             title="Previewing \u2014 this is their view">
+             <span class="ti">${icon('arrange')}</span><span class="tl">Their view</span></button>`
+        : `<button class="crm-arrange" onclick="openTabArrange()" style="--tab:#8C93AD"
+             title="Put these in the order you like">
+             <span class="ti">${icon('arrange')}</span><span class="tl">Arrange</span></button>`);
 }
 
 function showCrmSection(id){
@@ -7423,13 +7456,18 @@ async function renderMyPageSection(){
             : `<span>${escapeHtml((currentAgent.name||'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase())}</span>`}</div>
           <div class="photo-actions">
             <input type="file" id="mp-file" accept="image/*" style="display:none;" onchange="handlePhotoPick(this)">
-            <button class="btn-sm primary" onclick="document.getElementById('mp-file').click()">Choose a photo</button>
+            <button class="btn-sm primary" onclick="document.getElementById('mp-file').click()">${
+              p.photo ? 'Replace photo' : 'Choose a photo'}</button>
+            ${p.photo && p.photoSource
+              ? `<button class="btn-sm" onclick="editMyPhoto()">Edit this one</button>` : ''}
             ${p.photo ? `<button class="btn-sm" onclick="removeMyPhoto()">Remove</button>` : ''}
             <p class="photo-hint">A head-and-shoulders shot works best. We'll resize it for you \u2014
-              any size from your phone is fine.</p>
+              any size from your phone is fine.${p.photo && !p.photoSource
+                ? ' <em>This one was set before edits could be saved, so changing it means uploading again.</em>' : ''}</p>
           </div>
         </div>
         <input type="hidden" id="mp-photo" value="${escapeHtml(p.photo||'')}">
+        <input type="hidden" id="mp-photo-src" value="${escapeHtml(p.photoSource||'')}">
       </div>
       <div><div class="field-label">Phone shown publicly</div>
         <input id="mp-phone" value="${escapeHtml(p.phoneIsBrokerage ? '' : (p.phone||''))}" placeholder="251-229-3216 (brokerage line if blank)"></div>
@@ -7486,6 +7524,8 @@ async function saveMyPage(){
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         title: g('mp-title'), photo: g('mp-photo'), bio: g('mp-bio'),
+        photoSource: g('mp-photo-src'),
+        photoEdit: window.__mpPhotoEdit !== undefined ? window.__mpPhotoEdit : undefined,
         publicPhone: g('mp-phone'), publicEmail: g('mp-email'),
         specialties: g('mp-specialties'), languages: g('mp-languages'),
       })
@@ -7877,10 +7917,13 @@ function handlePhotoPick(input){
     img.onload = () => {
       /* Straight into the editor rather than a blind centre crop. A centre crop
          clips heads about half the time and there was no way to fix it. */
-      peOpen(img, data => {
+      peOpen(img, (data, source, recipe) => {
         const hidden = document.getElementById('mp-photo');
+        const src = document.getElementById('mp-photo-src');
         const prev = document.getElementById('mp-preview');
         if(hidden) hidden.value = data;
+        if(src) src.value = source || '';
+        window.__mpPhotoEdit = recipe || null;
         if(prev) prev.innerHTML = '<img src="' + data + '" alt="">';
         showToast("Looking good \u2014 press Save my page to publish it.");
       });
@@ -7893,10 +7936,43 @@ function handlePhotoPick(input){
   reader.readAsDataURL(file);
 }
 
+/* Reopens the editor on the original upload with the previous settings, so a
+   change is a change rather than starting again. */
+async function editMyPhoto(){
+  const src = (document.getElementById('mp-photo-src')||{}).value || '';
+  if(!src){ showToast('No original stored for this one \u2014 upload it again to edit.'); return; }
+  let recipe = window.__mpPhotoEdit;
+  if(recipe === undefined){
+    try{
+      const p = (await storeGet('agentPublic:' + currentAgent.id)) || {};
+      recipe = p.photoEdit || null;
+    }catch(e){ recipe = null; }
+  }
+  const img = new Image();
+  img.onload = () => {
+    peOpen(img, (data, source, rec) => {
+      const hidden = document.getElementById('mp-photo');
+      const s2 = document.getElementById('mp-photo-src');
+      const prev = document.getElementById('mp-preview');
+      if(hidden) hidden.value = data;
+      if(s2) s2.value = source || src;
+      window.__mpPhotoEdit = rec || null;
+      if(prev) prev.innerHTML = '<img src="' + data + '" alt="">';
+      showToast("Updated \u2014 press Save my page to publish it.");
+    }, recipe);
+  };
+  img.onerror = () => showToast("Couldn't reopen that photo.");
+  img.src = src;
+}
+
 function removeMyPhoto(){
   const hidden = document.getElementById('mp-photo');
   const prev = document.getElementById('mp-preview');
+  const src = document.getElementById('mp-photo-src');
   if(hidden) hidden.value = '';
+  // clear the stored original too, or a deleted photo lingers in the record
+  if(src) src.value = '';
+  window.__mpPhotoEdit = null;
   if(prev){
     const ini = (currentAgent.name||'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
     prev.innerHTML = '<span>' + ini + '</span>';
@@ -10805,6 +10881,31 @@ async function saveCpaEmail(){
 /* The reports are built as printable HTML, so that is what gets attached. A CPA
    opens it in any browser and prints to PDF \u2014 no special software, and the
    tables stay selectable, which they cannot do with a flattened image. */
+/* Mail clients strip <style>, so the handful of rules the reports rely on get
+   written directly onto the elements. Anything not covered still reads fine —
+   it just falls back to the client's defaults. */
+function inlineForEmail(html){
+  const TABLE = 'width:100%;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;'
+              + 'font-size:12.5px;margin:10px 0 18px';
+  const TH  = 'text-align:left;border-bottom:2px solid #171F63;padding:6px 8px;font-size:10.5px;'
+            + 'letter-spacing:.05em;text-transform:uppercase';
+  const TD  = 'border-bottom:1px solid #D8DBEC;padding:6px 8px;vertical-align:top';
+  const NUM = 'text-align:right';
+
+  return String(html || '')
+    // number cells first, so the general rules below don't double up on them
+    .replace(/<td class="num"(?![^>]*style)/g, `<td style="${TD};${NUM}"`)
+    .replace(/<th class="num"(?![^>]*style)/g, `<th style="${TH};${NUM}"`)
+    // (?=[\s>]) keeps <thead> and <tbody> from being caught by the <th> and <td> rules
+    .replace(/<table(?=[\s>])(?![^>]*style)/g, `<table style="${TABLE}"`)
+    .replace(/<th(?=[\s>])(?![^>]*style)/g, `<th style="${TH}"`)
+    .replace(/<td(?=[\s>])(?![^>]*style)/g, `<td style="${TD}"`)
+    .replace(/<h1(?=[\s>])(?![^>]*style)/g, '<h1 style="font-size:20px;margin:0 0 4px"')
+    .replace(/<h2(?=[\s>])(?![^>]*style)/g, '<h2 style="font-size:16px;font-weight:normal;margin:22px 0 4px"')
+    .replace(/<div class="sub"(?![^>]*style)/g,
+             '<div class="sub" style="font-size:12px;color:#5A6288;margin-bottom:16px"');
+}
+
 function taxDocHtml(title, inner){
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:Georgia,'Times New Roman',serif;color:#171F63;margin:40px;line-height:1.6}
@@ -10816,6 +10917,33 @@ letter-spacing:.05em;text-transform:uppercase}
 td{border-bottom:1px solid #D8DBEC;padding:6px 8px}
 .num{text-align:right}</style></head><body>${inner}</body></html>`;
 }
+
+/* Builds the email body from the same reports, with the styling inlined enough
+   to survive a mail client. Email strips <style> blocks in most readers, so the
+   shell used for the browser version is not reused verbatim here. */
+function taxEmailBody(files, year, who){
+  const divider = `<div style="border-top:2px solid #171F63;margin:34px 0 0"></div>`;
+  return `<div style="font-family:Georgia,'Times New Roman',serif;color:#171F63;
+    line-height:1.6;max-width:760px;margin:0 auto;padding:8px">
+    <div style="font-size:12px;color:#5A6288;letter-spacing:.05em;text-transform:uppercase">
+      ${escapeHtml(AvaniTemplates.BROKERAGE_NAME)}</div>
+    <h1 style="font-size:21px;margin:4px 0 2px">${year} year-end documents</h1>
+    <div style="font-size:13px;color:#5A6288;margin-bottom:6px">
+      Prepared by ${escapeHtml(who)} \u00b7 ${new Date().toLocaleDateString()}</div>
+    <div style="font-size:13px;color:#5A6288;border-left:3px solid #E6C381;
+      background:#FBF6EA;padding:9px 12px;border-radius:0 5px 5px 0">
+      Everything is below, and attached as files if you'd rather save them.
+      To keep a PDF, print this email and choose Save as PDF.
+    </div>
+    ${files.map(f => divider + f.inner).join('')}
+    <div style="border-top:1px solid #D8DBEC;margin-top:34px;padding-top:12px;
+      font-size:12px;color:#5A6288">
+      ${escapeHtml(AvaniTemplates.BROKERAGE_NAME)} \u00b7 ${escapeHtml(BROKERAGE_PHONE_FALLBACK)}
+      \u00b7 bamacoast.com
+    </div>
+  </div>`;
+}
+const BROKERAGE_PHONE_FALLBACK = '251-229-3216';
 
 async function emailTaxDoc(which){
   const to = ((document.getElementById('tx-cpa') || {}).value || taxCpaEmail || '').trim();
@@ -10836,27 +10964,26 @@ async function emailTaxDoc(which){
   }
   if(!files.length){ showToast('Nothing to send for ' + year + '.'); return; }
 
-  /* One email with every attachment. Four documents used to arrive as four
-     separate emails, which is a nuisance for whoever has to file them. */
   const many = files.length > 1;
   const subject = many
     ? `${AvaniTemplates.BROKERAGE_NAME} \u2014 ${year} year-end documents`
     : `${files[0].label} \u2014 ${year} \u2014 ${AvaniTemplates.BROKERAGE_NAME}`;
-  const body = (many
-      ? `Attached are the ${year} year-end documents:\n\n`
+
+  const plain = (many
+      ? `Attached and below are the ${year} year-end documents:\n\n`
         + files.map(f => '  \u2022 ' + f.label).join('\n')
-        + `\n\nEach opens in any browser and prints to PDF if you need it that way.`
-      : `Attached is the ${files[0].label.toLowerCase()} for ${year}. It opens in any browser `
-        + `and prints to PDF if you need it that way.`)
+      : `Below and attached is the ${files[0].label.toLowerCase()} for ${year}.`)
+    + `\n\nTo keep a PDF, print this email and choose Save as PDF.`
     + (files.some(f => f.label.indexOf('1099') >= 0)
         ? `\n\nNote on the 1099: Copy A must be filed on the official scannable form or `
-        + `electronically. What's attached is the worksheet and the recipient copies.` : '');
+        + `electronically. What's here is the worksheet and the recipient copies.` : '');
 
   try{
     const r = await fetch('/api/marketing/email', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        to, subject, message: body,
+        to, subject, message: plain,
+        html: taxEmailBody(files, year, (currentAgent && currentAgent.name) || ''),
         attachments: files.map(f => ({
           filename: f.filename, dataBase64: f.b64, mimeType: 'text/html',
         })),
@@ -10898,6 +11025,9 @@ async function buildTaxDoc(which, year){
 
   const label = LABEL[which] || which;
   const html = taxDocHtml(cap[0].title || label, cap[0].html);
+  // the same markup with table styling written onto the elements, because most
+  // mail clients drop a <style> block
+  const inner = inlineForEmail(cap[0].html);
   // btoa can't take characters above 255, and these reports contain \u00b7 and
   // similar, so encode to UTF-8 bytes first.
   const b64 = btoa(unescape(encodeURIComponent(html)));
@@ -10905,6 +11035,7 @@ async function buildTaxDoc(which, year){
     label,
     filename: (which + '-' + year + '.html'),
     b64,
+    inner,
   };
 }
 </script>
@@ -11199,94 +11330,122 @@ async function resetTabArrange(){
 
 <style>
 #pe-overlay{position:fixed;inset:0;z-index:9500;background:rgba(15,18,40,.62);display:none;
-  align-items:center;justify-content:center;padding:16px}
+  align-items:center;justify-content:center;padding:14px}
 #pe-overlay.on{display:flex}
-.pe-box{background:#fff;border-radius:14px;width:100%;max-width:820px;max-height:92vh;
+.pe-box{background:#fff;border-radius:14px;width:100%;max-width:900px;max-height:94vh;
   overflow:auto;padding:18px}
-.pe-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
 .pe-head h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:23px;font-weight:500;color:#1B2043}
-.pe-sub{font-size:12.5px;color:rgba(27,32,67,.62);margin-bottom:14px}
+.pe-sub{font-size:12.5px;color:rgba(27,32,67,.62);margin:2px 0 14px}
 .pe-body{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
 .pe-stage{flex:0 0 auto}
-.pe-canvas-wrap{position:relative;width:270px;height:360px;border-radius:10px;overflow:hidden;
+.pe-canvas-wrap{position:relative;width:288px;height:384px;border-radius:10px;overflow:hidden;
   box-shadow:0 4px 20px rgba(27,32,67,.2);cursor:grab;touch-action:none;background:#EEF0F6}
 .pe-canvas-wrap:active{cursor:grabbing}
 .pe-canvas-wrap canvas{display:block;width:100%;height:100%}
-.pe-hint{font-size:11.5px;color:rgba(27,32,67,.55);text-align:center;margin-top:7px;line-height:1.4}
-.pe-ctl{flex:1 1 300px;min-width:260px}
-.pe-row{margin-bottom:12px}
-.pe-row label{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;
+.pe-hint{font-size:11.5px;color:rgba(27,32,67,.55);text-align:center;margin-top:7px;line-height:1.45}
+.pe-ctl{flex:1 1 330px;min-width:280px}
+.pe-tabs{display:flex;gap:5px;background:#EFF0F6;padding:4px;border-radius:10px;margin-bottom:12px}
+.pe-tabs button{flex:1;border:none;background:transparent;padding:8px 6px;border-radius:7px;
+  font:inherit;font-size:13px;font-weight:600;color:rgba(27,32,67,.62);cursor:pointer}
+.pe-tabs button.on{background:#fff;color:#1B2043;box-shadow:0 1px 4px rgba(27,32,67,.12)}
+.pe-pane{display:none} .pe-pane.on{display:block}
+.pe-row{margin-bottom:11px}
+.pe-row > label{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;
   text-transform:uppercase;color:rgba(27,32,67,.6);margin-bottom:5px}
 .pe-row input[type=text],.pe-row select{width:100%;padding:8px 10px;
   border:1px solid rgba(27,32,67,.2);border-radius:7px;font:inherit;font-size:13.5px}
 .pe-row input[type=range]{width:100%}
 .pe-two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.pe-swatches{display:flex;gap:5px;flex-wrap:wrap}
-.pe-swatches i{width:24px;height:24px;border-radius:6px;cursor:pointer;display:block;
-  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
-.pe-swatches i.on{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1B2043}
-.pe-pos{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:120px}
-.pe-pos button{aspect-ratio:1;border:1px solid rgba(27,32,67,.2);background:#fff;border-radius:5px;
-  cursor:pointer;padding:0;font-size:0}
-.pe-pos button.on{background:#2E3CB0;border-color:#2E3CB0}
-.pe-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
-@media(max-width:660px){ .pe-body{flex-direction:column} .pe-canvas-wrap{width:100%;max-width:270px;height:auto;aspect-ratio:3/4} }
+.pe-sw{display:flex;gap:4px;flex-wrap:wrap}
+.pe-sw i{width:21px;height:21px;border-radius:6px;cursor:pointer;display:block;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
+.pe-sw i.on{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1B2043}
+.pe-line{border:1.5px solid rgba(27,32,67,.14);border-radius:10px;padding:10px 11px;margin-bottom:9px}
+.pe-line.on{border-color:#2E3CB0;background:#F7F8FD}
+.pe-line .hd{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.pe-line .hd b{font-size:12px;letter-spacing:.05em;text-transform:uppercase;
+  color:rgba(27,32,67,.6);font-weight:700}
+.pe-line .hd .sp{flex:1}
+.pe-line .hd button{border:1px solid rgba(27,32,67,.18);background:#fff;border-radius:6px;
+  padding:3px 8px;font:inherit;font-size:11.5px;cursor:pointer;color:#1B2043}
+.pe-filters{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.pe-filters button{border:1.5px solid rgba(27,32,67,.14);background:#fff;border-radius:9px;
+  padding:7px 4px;font:inherit;font-size:11.5px;font-weight:600;color:#1B2043;cursor:pointer}
+.pe-filters button.on{border-color:#2E3CB0;background:#F1F2FC}
+.pe-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:15px;flex-wrap:wrap}
+@media(max-width:700px){
+  .pe-body{flex-direction:column}
+  .pe-canvas-wrap{width:100%;max-width:288px;height:auto;aspect-ratio:3/4}
+}
 </style>
 
 <div id="pe-overlay">
 <div class="pe-box">
   <div class="pe-head"><h3>Your photo</h3></div>
-  <div class="pe-sub">Drag to move it, pinch or use the slider to zoom. Add a line or two
-    if you like — it's optional.</div>
+  <div class="pe-sub">Drag the photo to move it. Drag any line of text to place it
+    wherever it sits best.</div>
   <div class="pe-body">
     <div class="pe-stage">
       <div class="pe-canvas-wrap" id="pe-wrap"><canvas id="pe-canvas" width="600" height="800"></canvas></div>
-      <div class="pe-hint">Drag the photo to reposition</div>
+      <div class="pe-hint" id="pe-hint">Drag the photo to reposition</div>
     </div>
     <div class="pe-ctl">
-      <div class="pe-row">
-        <label>Zoom</label>
-        <input type="range" id="pe-zoom" min="100" max="300" value="100" oninput="peZoom(this.value)">
+      <div class="pe-tabs">
+        <button id="pet-photo" class="on" onclick="peTab('photo')">Photo</button>
+        <button id="pet-text" onclick="peTab('text')">Words</button>
       </div>
-      <div class="pe-row">
-        <label>Line 1</label>
-        <input type="text" id="pe-l1" maxlength="40" placeholder="Christina Thies" oninput="peDraw()">
+
+      <div id="pe-pane-photo" class="pe-pane on">
+        <div class="pe-row">
+          <label>Zoom <span id="pe-zoomval" style="font-weight:400;text-transform:none;
+            letter-spacing:0;opacity:.7"></span></label>
+          <input type="range" id="pe-zoom" min="45" max="300" value="100" oninput="peZoom(this.value)">
+          <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-top:3px">
+            Below 100% the photo pulls back from the edges — pick what fills the gap below.</div>
+        </div>
+        <div class="pe-row">
+          <label>Behind the photo</label>
+          <div class="pe-sw" id="pe-fills"></div>
+        </div>
+        <div class="pe-row">
+          <label>Look</label>
+          <div class="pe-filters" id="pe-filterset"></div>
+        </div>
+        <div class="pe-two">
+          <div class="pe-row"><label>Brightness</label>
+            <input type="range" id="pe-bright" min="70" max="135" value="100" oninput="peDraw()"></div>
+          <div class="pe-row"><label>Contrast</label>
+            <input type="range" id="pe-contrast" min="70" max="140" value="100" oninput="peDraw()"></div>
+        </div>
       </div>
-      <div class="pe-two">
-        <div class="pe-row"><label>Line 2</label>
-          <input type="text" id="pe-l2" maxlength="40" placeholder="Your REALTOR&reg;" oninput="peDraw()"></div>
-        <div class="pe-row"><label>Line 3</label>
-          <input type="text" id="pe-l3" maxlength="40" placeholder="251-229-3216" oninput="peDraw()"></div>
-      </div>
-      <div class="pe-two">
-        <div class="pe-row"><label>Lettering</label>
+
+      <div id="pe-pane-text" class="pe-pane">
+        <div class="pe-row">
+          <label>Lettering</label>
           <select id="pe-font" onchange="peDraw()">
             <option value="'Cormorant Garamond',Georgia,serif">Elegant serif</option>
             <option value="Fraunces,Georgia,serif">Warm serif</option>
             <option value="Jost,'Public Sans',sans-serif">Clean sans</option>
             <option value="'Public Sans',Helvetica,sans-serif">Plain sans</option>
-          </select></div>
-        <div class="pe-row"><label>Size</label>
-          <input type="range" id="pe-size" min="24" max="64" value="38" oninput="peDraw()"></div>
-      </div>
-      <div class="pe-two">
-        <div class="pe-row"><label>Color</label>
-          <div class="pe-swatches" id="pe-colors"></div></div>
-        <div class="pe-row"><label>Where</label>
-          <div class="pe-pos" id="pe-positions"></div></div>
-      </div>
-      <div class="pe-row">
-        <label style="display:flex;align-items:center;gap:8px;text-transform:none;
-          letter-spacing:0;font-size:13px;font-weight:500;cursor:pointer">
-          <input type="checkbox" id="pe-scrim" checked onchange="peDraw()">
-          Soften behind the words so they stay readable
-        </label>
+            <option value="Georgia,'Times New Roman',serif">Classic</option>
+            <option value="'IBM Plex Mono',monospace">Typewriter</option>
+          </select>
+        </div>
+        <div id="pe-lines"></div>
+        <div class="pe-row" style="margin-top:12px">
+          <label style="display:flex;align-items:center;gap:8px;text-transform:none;
+            letter-spacing:0;font-size:13px;font-weight:500;cursor:pointer">
+            <input type="checkbox" id="pe-scrim" checked onchange="peDraw()">
+            Soften behind the words so they stay readable
+          </label>
+        </div>
+        <button class="btn-sm" onclick="peResetText()" style="margin-top:4px">Restack the words</button>
       </div>
     </div>
   </div>
   <div class="pe-acts">
     <button class="btn-sm" onclick="peCancel()">Cancel</button>
-    <button class="btn-sm" onclick="peReset()">Recenter</button>
+    <button class="btn-sm" onclick="peReset()">Recenter photo</button>
     <button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);
       border-color:var(--marsh)" onclick="peUse()">Use this photo</button>
   </div>
@@ -11295,80 +11454,227 @@ async function resetTabArrange(){
 
 <script>
 /* ---------- photo editor ----------
-   Photos used to be centre-cropped on upload, which is wrong about half the time
-   — heads end up clipped, or the subject sits off to one side. This lets the
-   person place their own crop, and optionally set a line or two over it.
+   Crop, colour and caption in one place. Everything is drawn on a single canvas
+   at export size, so what is on screen is exactly what gets saved.
 
-   Everything is drawn on one canvas at export size, so what is on screen is
-   exactly what gets saved. */
-const PE_COLORS = ['#FFFFFF','#1B2043','#E6C381','#2E3CB0','#F4E3C1','#0F1228'];
-const PE_POS = ['tl','tc','tr','ml','mc','mr','bl','bc','br'];
+   Each line of text carries its own position, size, colour and slant, because a
+   fixed stack of three lines lands on top of a face about as often as not. */
+const PE_COLORS = ['#FFFFFF','#F7F1E6','#E6C381','#C9971F','#1B2043','#0F1228',
+                   '#2E3CB0','#1E9AA8','#2E8C5A','#D2604A','#B4527A','#6B4FBF'];
 
-let peImg = null, peScale = 1, peMin = 1, peX = 0, peY = 0;
-let peColor = '#FFFFFF', pePos = 'bl', peTarget = null;
+const PE_FILLS = [
+  { k:'blur',  label:'Blurred photo', css:'repeating-linear-gradient(45deg,#B9C2D4,#B9C2D4 4px,#CBD2E0 4px,#CBD2E0 8px)' },
+  { k:'#FFFFFF', label:'White', css:'#FFFFFF' },
+  { k:'#F7F1E6', label:'Sand',  css:'#F7F1E6' },
+  { k:'#1B2043', label:'Ink',   css:'#1B2043' },
+  { k:'#2E3CB0', label:'Blue',  css:'#2E3CB0' },
+  { k:'#E6C381', label:'Gold',  css:'#E6C381' },
+];
 
-function peOpen(img, onDone){
+const PE_FILTERS = [
+  { k:'none',  label:'As shot', css:'' },
+  { k:'bright',label:'Bright',  css:'brightness(1.08) saturate(1.12)' },
+  { k:'warm',  label:'Warm',    css:'sepia(.22) saturate(1.15) brightness(1.03)' },
+  { k:'cool',  label:'Cool',    css:'saturate(1.05) hue-rotate(-8deg) brightness(1.02)' },
+  { k:'soft',  label:'Soft',    css:'saturate(.88) brightness(1.06) contrast(.94)' },
+  { k:'bw',    label:'Black & white', css:'grayscale(1) contrast(1.06)' },
+  { k:'film',  label:'Film',    css:'sepia(.35) contrast(1.08) saturate(.9)' },
+  { k:'deep',  label:'Deep',    css:'contrast(1.16) saturate(1.1)' },
+];
+
+let peImg = null, peScale = 1, peCover = 1, peX = 0, peY = 0;
+let peFill = 'blur', peFilter = 'none', peTarget = null;
+let peLines = [], peSel = 0, peBoxes = [];
+let peBlurCanvas = null;
+
+function peDefaultLines(){
+  return [
+    { t:'', size:44, color:'#FFFFFF', italic:false, x:36, y:640 },
+    { t:'', size:26, color:'#FFFFFF', italic:false, x:36, y:696 },
+    { t:'', size:22, color:'#FFFFFF', italic:false, x:36, y:734 },
+  ];
+}
+
+function peOpen(img, onDone, recipe){
   peImg = img; peTarget = onDone;
-  peColor = '#FFFFFF'; pePos = 'bl';
-  ['pe-l1','pe-l2','pe-l3'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
-  document.getElementById('pe-scrim').checked = true;
-  document.getElementById('pe-size').value = 38;
+  peBlurCanvas = null; peSel = 0;
   peResetTransform();
-  peRenderSwatches();
-  peRenderPositions();
+
+  if(recipe && typeof recipe === 'object'){
+    // reopening a photo that was edited before — put everything back
+    peFill   = recipe.fill   || 'blur';
+    peFilter = recipe.filter || 'none';
+    peLines  = Array.isArray(recipe.lines) && recipe.lines.length
+      ? recipe.lines.map((l,i) => Object.assign(peDefaultLines()[i] || peDefaultLines()[0], l))
+      : peDefaultLines();
+    if(typeof recipe.zoom === 'number'){
+      peScale = peCover * recipe.zoom;
+      const z = document.getElementById('pe-zoom');
+      if(z) z.value = Math.round(recipe.zoom * 100);
+      const zv = document.getElementById('pe-zoomval');
+      if(zv) zv.textContent = Math.round(recipe.zoom * 100) + '%';
+    }
+    if(typeof recipe.x === 'number') peX = recipe.x;
+    if(typeof recipe.y === 'number') peY = recipe.y;
+    peClamp();
+    const f = document.getElementById('pe-font');
+    if(f && recipe.font) f.value = recipe.font;
+    const sc = document.getElementById('pe-scrim');
+    if(sc) sc.checked = recipe.scrim !== false;
+    const br = document.getElementById('pe-bright');
+    if(br) br.value = recipe.bright || 100;
+    const ct = document.getElementById('pe-contrast');
+    if(ct) ct.value = recipe.contrast || 100;
+  } else {
+    peFill = 'blur'; peFilter = 'none';
+    peLines = peDefaultLines();
+    const sc = document.getElementById('pe-scrim'); if(sc) sc.checked = true;
+    ['pe-bright','pe-contrast'].forEach(id => { const e = document.getElementById(id); if(e) e.value = 100; });
+  }
+
+  peRenderFills(); peRenderFilters(); peRenderLines();
+  peTab('photo');
   document.getElementById('pe-overlay').classList.add('on');
   document.body.style.overflow = 'hidden';
   peDraw();
 }
 
+/* Everything needed to reopen this exactly as it is. */
+function peRecipe(){
+  return {
+    zoom: peScale / peCover,
+    x: peX, y: peY,
+    fill: peFill, filter: peFilter,
+    font: (document.getElementById('pe-font')||{}).value || '',
+    scrim: !!(document.getElementById('pe-scrim')||{}).checked,
+    bright: Number((document.getElementById('pe-bright')||{}).value || 100),
+    contrast: Number((document.getElementById('pe-contrast')||{}).value || 100),
+    lines: peLines.map(l => ({ t:l.t, size:l.size, color:l.color, italic:!!l.italic, x:l.x, y:l.y })),
+  };
+}
+
+function peTab(which){
+  ['photo','text'].forEach(k => {
+    const b = document.getElementById('pet-' + k), p = document.getElementById('pe-pane-' + k);
+    if(b) b.classList.toggle('on', k === which);
+    if(p) p.classList.toggle('on', k === which);
+  });
+  const hint = document.getElementById('pe-hint');
+  if(hint) hint.textContent = which === 'text'
+    ? 'Drag any line to move it on its own'
+    : 'Drag the photo to reposition';
+}
+
 function peResetTransform(){
   const cv = document.getElementById('pe-canvas');
-  peMin = Math.max(cv.width / peImg.width, cv.height / peImg.height);
-  peScale = peMin;
+  peCover = Math.max(cv.width / peImg.width, cv.height / peImg.height);
+  peScale = peCover;
   peX = (cv.width - peImg.width * peScale) / 2;
   peY = (cv.height - peImg.height * peScale) / 2;
   const z = document.getElementById('pe-zoom');
   if(z) z.value = 100;
+  const zv = document.getElementById('pe-zoomval'); if(zv) zv.textContent = '100%';
 }
-
 function peReset(){ peResetTransform(); peDraw(); }
-
-function peRenderSwatches(){
-  const host = document.getElementById('pe-colors');
-  host.innerHTML = PE_COLORS.map(c =>
-    `<i class="${c===peColor?'on':''}" style="background:${c}"
-      onclick="peSetColor('${c}')" title="${c}"></i>`).join('');
+function peResetText(){ 
+  const keep = peLines.map(l => ({ t:l.t, size:l.size, color:l.color, italic:l.italic }));
+  peLines = peDefaultLines().map((d,i) => Object.assign(d, keep[i] || {}));
+  peRenderLines(); peDraw();
 }
-function peSetColor(c){ peColor = c; peRenderSwatches(); peDraw(); }
 
-function peRenderPositions(){
-  const host = document.getElementById('pe-positions');
-  host.innerHTML = PE_POS.map(p =>
-    `<button class="${p===pePos?'on':''}" onclick="peSetPos('${p}')" title="${p}"></button>`).join('');
+function peRenderFills(){
+  document.getElementById('pe-fills').innerHTML = PE_FILLS.map(f =>
+    `<i class="${f.k===peFill?'on':''}" style="background:${f.css}"
+      onclick="peSetFill('${f.k}')" title="${f.label}"></i>`).join('');
 }
-function peSetPos(p){ pePos = p; peRenderPositions(); peDraw(); }
+function peSetFill(k){ peFill = k; peRenderFills(); peDraw(); }
+
+function peRenderFilters(){
+  document.getElementById('pe-filterset').innerHTML = PE_FILTERS.map(f =>
+    `<button class="${f.k===peFilter?'on':''}" onclick="peSetFilter('${f.k}')">${f.label}</button>`).join('');
+}
+function peSetFilter(k){ peFilter = k; peBlurCanvas = null; peRenderFilters(); peDraw(); }
+
+function peRenderLines(){
+  const host = document.getElementById('pe-lines');
+  host.innerHTML = peLines.map((l, i) => `
+    <div class="pe-line ${i===peSel?'on':''}" onclick="peSelect(${i})">
+      <div class="hd"><b>Line ${i+1}</b><span class="sp"></span>
+        <button onclick="event.stopPropagation();peToggleItalic(${i})">${l.italic?'Slanted':'Upright'}</button>
+      </div>
+      <div class="pe-row" style="margin-bottom:8px">
+        <input type="text" maxlength="42" value="${escapeHtml(l.t)}"
+          placeholder="${i===0?'Christina Thies':i===1?'Your REALTOR\\u00AE':'251-229-3216'}"
+          oninput="peSetText(${i}, this.value)">
+      </div>
+      <div class="pe-two" style="align-items:end">
+        <div class="pe-row" style="margin-bottom:0"><label>Size</label>
+          <input type="range" min="14" max="90" value="${l.size}"
+            oninput="peSetSize(${i}, this.value)"></div>
+        <div class="pe-row" style="margin-bottom:0"><label>Color</label>
+          <div class="pe-sw">${PE_COLORS.map(c =>
+            `<i class="${c.toLowerCase()===l.color.toLowerCase()?'on':''}" style="background:${c}"
+              onclick="event.stopPropagation();peSetLineColor(${i},'${c}')"></i>`).join('')}</div></div>
+      </div>
+    </div>`).join('');
+}
+
+function peSelect(i){ peSel = i; peRenderLines(); peDraw(); }
+function peSetText(i, v){ peLines[i].t = v; peDraw(); }
+function peSetSize(i, v){ peLines[i].size = Number(v); peDraw(); }
+function peSetLineColor(i, c){ peLines[i].color = c; peSel = i; peRenderLines(); peDraw(); }
+function peToggleItalic(i){ peLines[i].italic = !peLines[i].italic; peSel = i; peRenderLines(); peDraw(); }
 
 function peZoom(v){
   const cv = document.getElementById('pe-canvas');
   const f = Number(v) / 100;
-  const cxBefore = (cv.width/2 - peX) / peScale;
-  const cyBefore = (cv.height/2 - peY) / peScale;
-  peScale = peMin * f;
-  // keep whatever was in the middle in the middle
-  peX = cv.width/2 - cxBefore * peScale;
-  peY = cv.height/2 - cyBefore * peScale;
+  const cx = (cv.width/2 - peX) / peScale, cy = (cv.height/2 - peY) / peScale;
+  peScale = peCover * f;
+  peX = cv.width/2 - cx * peScale;
+  peY = cv.height/2 - cy * peScale;
   peClamp();
+  const zv = document.getElementById('pe-zoomval'); if(zv) zv.textContent = v + '%';
   peDraw();
 }
 
-/* The frame must always be covered — no blank edges. */
+/* Above cover, the frame must stay filled. Below it, the photo is allowed to sit
+   inside the frame and the fill shows around it — that is the point of zooming out. */
 function peClamp(){
   const cv = document.getElementById('pe-canvas');
   const w = peImg.width * peScale, h = peImg.height * peScale;
-  peX = Math.min(0, Math.max(cv.width - w, peX));
-  peY = Math.min(0, Math.max(cv.height - h, peY));
-  if(w < cv.width)  peX = (cv.width - w) / 2;
-  if(h < cv.height) peY = (cv.height - h) / 2;
+  if(w >= cv.width)  peX = Math.min(0, Math.max(cv.width - w, peX));
+  else               peX = Math.max(0, Math.min(cv.width - w, peX));
+  if(h >= cv.height) peY = Math.min(0, Math.max(cv.height - h, peY));
+  else               peY = Math.max(0, Math.min(cv.height - h, peY));
+}
+
+function peFilterCss(){
+  const f = (PE_FILTERS.find(x => x.k === peFilter) || {}).css || '';
+  const b = Number((document.getElementById('pe-bright')||{}).value || 100) / 100;
+  const c = Number((document.getElementById('pe-contrast')||{}).value || 100) / 100;
+  const extra = [];
+  if(Math.abs(b - 1) > 0.001) extra.push(`brightness(${b})`);
+  if(Math.abs(c - 1) > 0.001) extra.push(`contrast(${c})`);
+  return [f, ...extra].filter(Boolean).join(' ');
+}
+
+/* A blurred, enlarged copy of the photo behind it — far kinder than a flat block
+   of colour when the photo doesn't reach the edges. */
+function peBlurFill(ctx, cv){
+  if(!peBlurCanvas){
+    const b = document.createElement('canvas');
+    b.width = cv.width; b.height = cv.height;
+    const bx = b.getContext('2d');
+    const s = Math.max(cv.width / peImg.width, cv.height / peImg.height) * 1.25;
+    bx.filter = 'blur(26px) saturate(1.1)';
+    bx.drawImage(peImg, (cv.width - peImg.width*s)/2, (cv.height - peImg.height*s)/2,
+                 peImg.width*s, peImg.height*s);
+    bx.filter = 'none';
+    bx.fillStyle = 'rgba(20,24,58,.12)';
+    bx.fillRect(0,0,cv.width,cv.height);
+    peBlurCanvas = b;
+  }
+  ctx.drawImage(peBlurCanvas, 0, 0);
 }
 
 function peDraw(){
@@ -11376,106 +11682,110 @@ function peDraw(){
   if(!cv || !peImg) return;
   const x = cv.getContext('2d');
   x.clearRect(0,0,cv.width,cv.height);
+
+  if(peFill === 'blur') peBlurFill(x, cv);
+  else { x.fillStyle = peFill; x.fillRect(0,0,cv.width,cv.height); }
+
+  x.save();
+  x.filter = peFilterCss() || 'none';
   x.imageSmoothingQuality = 'high';
   x.drawImage(peImg, peX, peY, peImg.width * peScale, peImg.height * peScale);
-
-  const lines = ['pe-l1','pe-l2','pe-l3']
-    .map(id => (document.getElementById(id)||{}).value || '')
-    .map(t => t.trim());
-  if(!lines.some(Boolean)) return;
+  x.restore();
 
   const font = (document.getElementById('pe-font')||{}).value || 'serif';
-  const base = Number((document.getElementById('pe-size')||{}).value) || 38;
   const scrim = (document.getElementById('pe-scrim')||{}).checked;
-  const pad = 34;
+  const live = peLines.map((l,i) => ({ l, i })).filter(o => o.l.t.trim());
 
-  // first line leads, the rest step down in size
-  const sizes = [base, base * 0.58, base * 0.5];
-  const gaps  = [base * 0.30, base * 0.20];
-  const shown = lines.map((t,i) => ({ t, size: sizes[i] })).filter(o => o.t);
-  const blockH = shown.reduce((a,o,i) => a + o.size + (i ? gaps[i-1] : 0), 0);
-
-  const vert = pePos[0], horz = pePos[1];
-  let y = vert === 't' ? pad
-        : vert === 'm' ? (cv.height - blockH) / 2
-        : cv.height - pad - blockH;
-
-  if(scrim){
-    /* A soft wash rather than a hard box, so it reads as photography and not a
-       label. It has to be solid at whichever edge the text is anchored to and
-       fade inward — fading at both ends left a visible band across the bottom. */
-    const dark = peColor === '#FFFFFF' || peColor === '#F4E3C1' || peColor === '#E6C381';
-    const c = dark ? '0,0,0' : '255,255,255';
-    const a = 0.46;
-    let top, hgt, g;
-    if(vert === 'b'){
-      hgt = Math.min(cv.height, blockH + pad * 2.6);
-      top = cv.height - hgt;
-      g = x.createLinearGradient(0, top, 0, cv.height);
-      g.addColorStop(0, `rgba(${c},0)`);
-      g.addColorStop(0.55, `rgba(${c},${a * 0.8})`);
-      g.addColorStop(1, `rgba(${c},${a})`);
-    } else if(vert === 't'){
-      top = 0;
-      hgt = Math.min(cv.height, blockH + pad * 2.6);
-      g = x.createLinearGradient(0, 0, 0, hgt);
-      g.addColorStop(0, `rgba(${c},${a})`);
-      g.addColorStop(0.45, `rgba(${c},${a * 0.8})`);
-      g.addColorStop(1, `rgba(${c},0)`);
-    } else {
-      top = Math.max(0, y - pad);
-      hgt = Math.min(cv.height - top, blockH + pad * 2);
-      g = x.createLinearGradient(0, top, 0, top + hgt);
-      g.addColorStop(0, `rgba(${c},0)`);
-      g.addColorStop(0.35, `rgba(${c},${a})`);
-      g.addColorStop(0.65, `rgba(${c},${a})`);
-      g.addColorStop(1, `rgba(${c},0)`);
-    }
+  if(scrim && live.length){
+    // shade only where the words actually are, since they no longer sit in one block
+    let top = Infinity, bot = -Infinity;
+    live.forEach(({l}) => { top = Math.min(top, l.y - l.size*0.2); bot = Math.max(bot, l.y + l.size*1.1); });
+    const light = live.some(({l}) => ['#FFFFFF','#F7F1E6','#E6C381','#C9971F'].includes(l.color.toUpperCase()));
+    const c = light ? '0,0,0' : '255,255,255';
+    const pad = 60;
+    const t0 = Math.max(0, top - pad), b0 = Math.min(cv.height, bot + pad);
+    const g = x.createLinearGradient(0, t0, 0, b0);
+    g.addColorStop(0, `rgba(${c},0)`);
+    g.addColorStop(0.28, `rgba(${c},.44)`);
+    g.addColorStop(0.72, `rgba(${c},.44)`);
+    g.addColorStop(1, `rgba(${c},0)`);
     x.fillStyle = g;
-    x.fillRect(0, top, cv.width, hgt);
+    x.fillRect(0, t0, cv.width, b0 - t0);
   }
 
-  x.textAlign = horz === 'l' ? 'left' : horz === 'c' ? 'center' : 'right';
-  const tx = horz === 'l' ? pad : horz === 'c' ? cv.width/2 : cv.width - pad;
+  peBoxes = [];
   x.textBaseline = 'top';
-  x.fillStyle = peColor;
-
-  shown.forEach((o,i) => {
-    if(i) y += gaps[i-1];
-    const weight = i === 0 ? '500' : '400';
-    x.font = `${weight} ${Math.round(o.size)}px ${font}`;
-    if(i > 0) x.globalAlpha = 0.92;
-    x.fillText(o.t, tx, y);
-    x.globalAlpha = 1;
-    y += o.size;
+  x.textAlign = 'left';
+  peLines.forEach((l, i) => {
+    if(!l.t.trim()){ peBoxes.push(null); return; }
+    x.font = `${l.italic?'italic ':''}${i===0?'500':'400'} ${l.size}px ${font}`;
+    x.fillStyle = l.color;
+    x.fillText(l.t, l.x, l.y);
+    const w = x.measureText(l.t).width;
+    peBoxes.push({ x:l.x, y:l.y, w, h:l.size*1.2 });
+    if(i === peSel && peTabIsText()){
+      x.strokeStyle = 'rgba(255,255,255,.75)';
+      x.lineWidth = 2; x.setLineDash([6,5]);
+      x.strokeRect(l.x - 8, l.y - 6, w + 16, l.size*1.2 + 12);
+      x.setLineDash([]);
+    }
   });
 }
 
-/* ---------- dragging ---------- */
+function peTabIsText(){
+  const b = document.getElementById('pet-text');
+  return b && b.classList.contains('on');
+}
+
+/* ---------- dragging: a line if one is under the pointer, otherwise the photo ---------- */
 (function(){
   const wrap = document.getElementById('pe-wrap');
   if(!wrap) return;
-  let dragging = false, lastX = 0, lastY = 0;
-  const scaleFactor = () => {
+  let mode = null, lastX = 0, lastY = 0, lineIdx = -1;
+  const factor = () => {
     const cv = document.getElementById('pe-canvas');
     return cv.width / wrap.getBoundingClientRect().width;
   };
-  const down = e => {
-    dragging = true;
+  const at = e => {
     const p = e.touches ? e.touches[0] : e;
-    lastX = p.clientX; lastY = p.clientY;
+    const r = wrap.getBoundingClientRect();
+    const f = factor();
+    return { cx:(p.clientX - r.left) * f, cy:(p.clientY - r.top) * f, sx:p.clientX, sy:p.clientY };
+  };
+  const hit = (cx, cy) => {
+    for(let i = peBoxes.length - 1; i >= 0; i--){
+      const b = peBoxes[i];
+      if(!b) continue;
+      if(cx >= b.x - 10 && cx <= b.x + b.w + 10 && cy >= b.y - 8 && cy <= b.y + b.h + 8) return i;
+    }
+    return -1;
+  };
+  const down = e => {
+    const p = at(e);
+    lineIdx = hit(p.cx, p.cy);
+    mode = lineIdx >= 0 ? 'line' : 'photo';
+    if(lineIdx >= 0){ peSel = lineIdx; peRenderLines(); peTab('text'); peDraw(); }
+    lastX = p.sx; lastY = p.sy;
   };
   const move = e => {
-    if(!dragging) return;
+    if(!mode) return;
     e.preventDefault();
-    const p = e.touches ? e.touches[0] : e;
-    const f = scaleFactor();
-    peX += (p.clientX - lastX) * f;
-    peY += (p.clientY - lastY) * f;
-    lastX = p.clientX; lastY = p.clientY;
-    peClamp(); peDraw();
+    const p = at(e), f = factor();
+    const dx = (p.sx - lastX) * f, dy = (p.sy - lastY) * f;
+    if(mode === 'line' && peLines[lineIdx]){
+      const cv = document.getElementById('pe-canvas');
+      const b = peBoxes[lineIdx] || { w: 100 };
+      const L = peLines[lineIdx];
+      // keep a grip on it — a line dragged fully off the edge can't be got back
+      L.x = Math.max(24 - b.w, Math.min(cv.width - 24, L.x + dx));
+      L.y = Math.max(-L.size * 0.4, Math.min(cv.height - L.size * 0.5, L.y + dy));
+    } else {
+      peX += dx; peY += dy; peClamp();
+    }
+    lastX = p.sx; lastY = p.sy;
+    peDraw();
   };
-  const up = () => { dragging = false; };
+  const up = () => { mode = null; lineIdx = -1; };
   wrap.addEventListener('mousedown', down);
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
@@ -11487,18 +11797,37 @@ function peDraw(){
 function peCancel(){
   document.getElementById('pe-overlay').classList.remove('on');
   document.body.style.overflow = '';
-  peImg = null; peTarget = null;
+  peImg = null; peTarget = null; peBlurCanvas = null;
 }
 
 function peUse(){
   const cv = document.getElementById('pe-canvas');
+  const wasSel = peSel;
+  peSel = -1; peDraw();                 // no selection outline in the saved file
   let q = 0.86, data = cv.toDataURL('image/jpeg', q);
   while(data.length > 700000 && q > 0.4){ q -= 0.08; data = cv.toDataURL('image/jpeg', q); }
+  peSel = wasSel;
+
+  /* A copy of the untouched upload travels with it, bounded so it doesn't bloat
+     the record. Without it, changing one word later means starting over. */
+  const src = document.createElement('canvas');
+  const LONG = 1200;
+  const s = Math.min(1, LONG / Math.max(peImg.width, peImg.height));
+  src.width = Math.round(peImg.width * s);
+  src.height = Math.round(peImg.height * s);
+  const sx = src.getContext('2d');
+  sx.imageSmoothingQuality = 'high';
+  sx.drawImage(peImg, 0, 0, src.width, src.height);
+  let sq = 0.82, source = src.toDataURL('image/jpeg', sq);
+  while(source.length > 400000 && sq > 0.4){ sq -= 0.08; source = src.toDataURL('image/jpeg', sq); }
+
+  const recipe = peRecipe();
   const cb = peTarget;
   peCancel();
-  if(cb) cb(data);
+  if(cb) cb(data, source, recipe);
 }
 </script>
+
 
 </body>
 </html>
