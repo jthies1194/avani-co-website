@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v182">
+<meta name="build" content="index-v183">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3622,7 +3622,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v182';
+window.BUILD = 'index-v183';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9323,7 +9323,10 @@ function mkRender(){
 
   const cv = document.createElement('canvas');
   cv.width = Math.round(dims.W); cv.height = Math.round(dims.H);
-  t.draw(cv.getContext('2d'), spec, t.dpi, AvaniQR);
+  const cx = cv.getContext('2d');
+  t.draw(cx, spec, t.dpi, AvaniQR);
+  // anything the agent added goes on top of the finished piece
+  try{ if(typeof mkoPaint === 'function') mkoPaint(cx, cv.width, cv.height); }catch(e){}
   window.__mkCanvas = cv;
 
   stage.innerHTML = '';
@@ -11174,7 +11177,20 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
                    size: '8.5 \u00d7 11 in', listing: true },
   };
 
-  global.AvaniTemplates = { TEMPLATES, BRAND, BROKERAGE_NAME, SCAN_LINES, brokeragePt };
+  /* The studio needs the size the brokerage name is drawn at, because nothing an
+     agent adds on top may exceed it — AREC 790-X-3-.16. */
+  function firmSizeFor(tplKey, dpi){
+    const t = TEMPLATES[tplKey];
+    if(!t) return 999;
+    try{
+      const probe = document.createElement('canvas').getContext('2d');
+      const d = t.draw(probe, { qrUrl:'x' }, dpi || t.dpi, null);
+      return firmCeiling(probe, dpi || t.dpi, d.W, d.H);
+    }catch(e){ return 999; }
+  }
+
+  global.AvaniTemplates = { TEMPLATES, BRAND, BROKERAGE_NAME, SCAN_LINES, brokeragePt,
+                            firmSizeFor };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -16497,6 +16513,303 @@ async function awKudos(agentId){
     });
     showToast(r.ok ? 'Sent.' : "Couldn't send that.");
   }catch(e){ showToast("Couldn't send that."); }
+}
+</script>
+
+<style>
+.mko{border:1px solid var(--line);border-radius:11px;padding:14px 15px;margin-top:14px;
+  background:var(--paper)}
+.mko h4{margin:0 0 3px;font-size:14.5px}
+.mko .sub{font-size:12.5px;color:var(--driftwood);line-height:1.5;margin-bottom:11px}
+.mko-add{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}
+.mko-el{border:1px solid var(--line);border-radius:9px;padding:10px 11px;margin-bottom:7px;
+  background:var(--paper)}
+.mko-el.on{border-color:#2E3CB0;background:#F7F8FD}
+.mko-el .hd{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.mko-el .hd b{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--driftwood)}
+.mko-el .hd .sp{flex:1}
+.mko-el .hd button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 9px;
+  font:inherit;font-size:11.5px;cursor:pointer;color:#1B2043}
+.mko-el input[type=text]{width:100%;padding:7px 9px;border:1px solid rgba(27,32,67,.2);
+  border-radius:7px;font:inherit;font-size:13.5px;margin-bottom:7px}
+.mko-two{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.mko-two label{display:block;font-size:10.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--driftwood);margin-bottom:3px}
+.mko-two select,.mko-two input[type=range]{width:100%}
+.mko-sw{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.mko-sw i{width:20px;height:20px;border-radius:5px;cursor:pointer;display:block;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.mko-sw i.on{box-shadow:0 0 0 2px #fff,0 0 0 3px #1B2043}
+.mko-cap{font-size:11.5px;color:#8A6314;background:#FBF6EA;border-radius:7px;padding:7px 9px;
+  margin-top:7px;line-height:1.45}
+#mkStage{position:relative}
+#mkStage .mko-hit{position:absolute;border:1.5px dashed rgba(46,60,176,.7);border-radius:4px;
+  cursor:move;touch-action:none}
+#mkStage .mko-hit.sel{border-color:#2E3CB0;background:rgba(46,60,176,.09)}
+.mko-hint{font-size:12px;color:var(--driftwood);margin-top:8px;line-height:1.5}
+</style>
+
+<script>
+/* ---------- your own touches ----------
+   Agents add whatever they like on top of a template: their own words, their own
+   fonts and colours, their photograph, their team logo, dragged wherever it works.
+
+   \u26a0 One rule holds, and it is not a design preference. AREC 790-X-3-.16 requires
+   the brokerage name to be at least as large as any other text on the piece. So a
+   custom line is capped at the size the brokerage name is drawn at, and nothing may
+   be dropped over the brokerage band. Everything else is theirs. */
+const MKO_FONTS = [
+  ['Georgia, serif', 'Classic serif'],
+  ["'Cormorant Garamond', Georgia, serif", 'Elegant serif'],
+  ['Fraunces, Georgia, serif', 'Warm serif'],
+  ["Jost, 'Public Sans', sans-serif", 'Clean sans'],
+  ["'Public Sans', Helvetica, sans-serif", 'Plain sans'],
+  ["'IBM Plex Mono', monospace", 'Typewriter'],
+];
+const MKO_COLOURS = ['#FFFFFF','#1B2043','#2E3CB0','#E6C381','#C9971F','#1E9AA8',
+                     '#2E8C5A','#D2604A','#B4527A','#6B4FBF','#000000','#F7F1E6'];
+
+let mkoSel = null, mkoDrag = null;
+
+function mkoList(){
+  if(!Array.isArray(mkState.fields.custom)) mkState.fields.custom = [];
+  return mkState.fields.custom;
+}
+
+/* The size the brokerage name is drawn at. Nothing an agent adds may exceed it. */
+function mkoCeiling(){
+  try{
+    const t = AvaniTemplates.TEMPLATES[mkState.tpl];
+    return AvaniTemplates.firmSizeFor(mkState.tpl, t.dpi);
+  }catch(e){ return 999; }
+}
+
+function mkoAddText(){
+  mkoList().push({ id:'e' + Date.now().toString(36), type:'text', text:'Your words here',
+    font: MKO_FONTS[0][0], size: Math.min(34, mkoCeiling()), colour:'#FFFFFF',
+    italic:false, x:0.08, y:0.5 });
+  mkoSel = mkoList().length - 1;
+  mkoRender(); mkRender();
+}
+
+function mkoAddImage(kind){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if(!f) return;
+    const rd = new FileReader();
+    rd.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // scaled down before it is kept \u2014 a phone photograph is several megabytes
+        const cv = document.createElement('canvas');
+        const W = kind === 'logo' ? 600 : 900;
+        const s = Math.min(1, W / img.width);
+        cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        let q = 0.85, data = cv.toDataURL(kind === 'logo' ? 'image/png' : 'image/jpeg', q);
+        while(data.length > 450000 && q > 0.4){ q -= 0.08; data = cv.toDataURL('image/jpeg', q); }
+        mkoList().push({ id:'e' + Date.now().toString(36), type:'image', kind,
+          src:data, w:0.24, x:0.06, y:0.06, round: kind === 'photo' });
+        mkoSel = mkoList().length - 1;
+        mkoRender(); mkRender();
+      };
+      img.src = e.target.result;
+    };
+    rd.readAsDataURL(f);
+  };
+  inp.click();
+}
+
+function mkoSet(i, k, v){
+  const el = mkoList()[i];
+  if(!el) return;
+  if(k === 'size'){
+    const cap = mkoCeiling();
+    v = Math.min(Number(v), cap);
+  }
+  el[k] = v;
+  mkRender();
+  if(k !== 'text') mkoRender();
+}
+
+function mkoDrop(i){
+  mkoList().splice(i, 1);
+  mkoSel = null;
+  mkoRender(); mkRender();
+}
+
+function mkoRender(){
+  const host = document.getElementById('mko-list');
+  if(!host) return;
+  const cap = mkoCeiling();
+  const els = mkoList();
+
+  host.innerHTML = els.length ? els.map((el, i) => el.type === 'text' ? `
+    <div class="mko-el ${mkoSel===i?'on':''}" onclick="mkoSel=${i};mkoRender()">
+      <div class="hd"><b>Your text</b><span class="sp"></span>
+        <button onclick="event.stopPropagation();mkoSet(${i},'italic',${!el.italic})">${el.italic?'Slanted':'Upright'}</button>
+        <button onclick="event.stopPropagation();mkoDrop(${i})">Remove</button></div>
+      <input type="text" value="${escapeHtml(el.text)}"
+        onclick="event.stopPropagation()"
+        oninput="mkoSet(${i},'text',this.value)">
+      <div class="mko-two">
+        <div><label>Lettering</label>
+          <select onclick="event.stopPropagation()" onchange="mkoSet(${i},'font',this.value)">
+            ${MKO_FONTS.map(([v,l]) => `<option value="${v}" ${el.font===v?'selected':''}>${l}</option>`).join('')}
+          </select></div>
+        <div><label>Size \u2014 ${Math.round(el.size)}</label>
+          <input type="range" min="10" max="${Math.round(cap)}" value="${Math.round(el.size)}"
+            onclick="event.stopPropagation()" oninput="mkoSet(${i},'size',this.value)"></div>
+      </div>
+      <div class="mko-sw">${MKO_COLOURS.map(c =>
+        `<i class="${el.colour===c?'on':''}" style="background:${c}"
+          onclick="event.stopPropagation();mkoSet(${i},'colour','${c}')"></i>`).join('')}</div>
+    </div>` : `
+    <div class="mko-el ${mkoSel===i?'on':''}" onclick="mkoSel=${i};mkoRender()">
+      <div class="hd"><b>${el.kind === 'logo' ? 'Your logo' : 'Your photo'}</b><span class="sp"></span>
+        ${el.kind === 'photo' ? `<button onclick="event.stopPropagation();mkoSet(${i},'round',${!el.round})">${el.round?'Round':'Square'}</button>` : ''}
+        <button onclick="event.stopPropagation();mkoDrop(${i})">Remove</button></div>
+      <div class="mko-two">
+        <div><label>Size</label>
+          <input type="range" min="8" max="55" value="${Math.round(el.w*100)}"
+            onclick="event.stopPropagation()"
+            oninput="mkoSet(${i},'w',Number(this.value)/100)"></div>
+        <div style="font-size:11.5px;color:var(--driftwood)">Drag it on the preview</div>
+      </div>
+    </div>`).join('')
+  : '<div style="font-size:13px;color:var(--driftwood)">Nothing added yet.</div>';
+
+  const capped = els.some(e => e.type === 'text' && e.size >= cap - 0.5);
+  const note = document.getElementById('mko-cap');
+  if(note) note.innerHTML = capped
+    ? `Text stops at ${Math.round(cap)} because Alabama requires the brokerage name to be the
+       largest thing on the piece. Everything else is yours.`
+    : '';
+  mkoHandles();
+}
+
+/* Drag handles sitting over the preview. */
+function mkoHandles(){
+  const stage = document.getElementById('mkStage');
+  const cv = window.__mkCanvas;
+  if(!stage || !cv) return;
+  stage.querySelectorAll('.mko-hit').forEach(n => n.remove());
+  const shown = stage.querySelector('canvas, img');
+  if(!shown) return;
+  const box = shown.getBoundingClientRect();
+  const sw = box.width / cv.width, sh = box.height / cv.height;
+
+  mkoList().forEach((el, i) => {
+    const d = document.createElement('div');
+    d.className = 'mko-hit' + (mkoSel === i ? ' sel' : '');
+    const w = el.type === 'image' ? el.w * cv.width : Math.max(120, el.size * 8);
+    const h = el.type === 'image' ? el.w * cv.width : el.size * 1.4;
+    d.style.left = (el.x * cv.width * sw) + 'px';
+    d.style.top  = (el.y * cv.height * sh) + 'px';
+    d.style.width = (w * sw) + 'px';
+    d.style.height = (h * sh) + 'px';
+    d.onpointerdown = e => {
+      mkoDrag = { i, sx:e.clientX, sy:e.clientY, ox:el.x, oy:el.y, sw:box.width, sh:box.height };
+      mkoSel = i; mkoRender();
+      d.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    };
+    d.onpointermove = e => {
+      if(!mkoDrag || mkoDrag.i !== i) return;
+      const el2 = mkoList()[i];
+      el2.x = Math.max(0, Math.min(0.94, mkoDrag.ox + (e.clientX - mkoDrag.sx) / mkoDrag.sw));
+      el2.y = Math.max(0, Math.min(mkoFloor(), mkoDrag.oy + (e.clientY - mkoDrag.sy) / mkoDrag.sh));
+      mkRender();
+      mkoHandles();
+    };
+    d.onpointerup = () => { mkoDrag = null; };
+    stage.appendChild(d);
+  });
+}
+
+/* Nothing may sit over the brokerage band along the bottom. */
+function mkoFloor(){
+  const t = AvaniTemplates.TEMPLATES[mkState.tpl] || {};
+  return t.social ? 0.80 : 0.82;
+}
+
+/* Painted after the template, so the piece underneath is untouched. */
+function mkoPaint(ctx, W, H){
+  mkoList().forEach(el => {
+    if(el.type === 'image'){
+      const img = mkoImg(el.src);
+      if(!img || !img.complete) return;
+      const w = el.w * W, h = w * (img.height / img.width);
+      ctx.save();
+      if(el.round){
+        ctx.beginPath();
+        ctx.arc(el.x * W + w/2, el.y * H + w/2, w/2, 0, Math.PI*2);
+        ctx.clip();
+        ctx.drawImage(img, el.x * W, el.y * H, w, w);
+      } else {
+        ctx.drawImage(img, el.x * W, el.y * H, w, h);
+      }
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.font = `${el.italic ? 'italic ' : ''}600 ${el.size}px ${el.font}`;
+      ctx.fillStyle = el.colour;
+      ctx.textBaseline = 'top';
+      ctx.shadowColor = 'rgba(0,0,0,.35)';
+      ctx.shadowBlur = el.size * 0.25;
+      ctx.fillText(el.text, el.x * W, el.y * H);
+      ctx.restore();
+    }
+  });
+}
+
+/* The panel is appended after the studio builds its own, rather than spliced into
+   a long template literal that would be easy to break. */
+function mkoPanel(){
+  const side = document.getElementById('mkSide');
+  if(!side || side.querySelector('.mko')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'mko';
+  wrap.innerHTML = `
+    <h4>Make it yours</h4>
+    <div class="sub">Add your own words, your photograph, your logo \u2014 then drag them
+      wherever they work on the preview.</div>
+    <div class="mko-add">
+      <button class="btn-sm" onclick="mkoAddText()">+ Text</button>
+      <button class="btn-sm" onclick="mkoAddImage('photo')">+ Your photo</button>
+      <button class="btn-sm" onclick="mkoAddImage('logo')">+ Your logo</button>
+    </div>
+    <div id="mko-list"></div>
+    <div id="mko-cap" class="mko-cap" style="display:block"></div>
+    <div class="mko-hint">The brokerage line at the bottom stays where it is and stays the
+      largest text \u2014 Alabama requires that, and it is the broker's licence on the piece.
+      Everything above it is yours.</div>`;
+  side.appendChild(wrap);
+  mkoRender();
+}
+
+/* Wrap the studio's own panel builder so ours follows it. */
+(function(){
+  const orig = window.mkSide;
+  if(typeof orig !== 'function') return;
+  window.mkSide = function(){
+    const r = orig.apply(this, arguments);
+    try{ mkoPanel(); }catch(e){ console.error('[studio]', e); }
+    return r;
+  };
+})();
+
+const mkoImgs = {};
+function mkoImg(src){
+  if(!mkoImgs[src]){
+    const i = new Image();
+    i.onload = () => mkRender();
+    i.src = src;
+    mkoImgs[src] = i;
+  }
+  return mkoImgs[src];
 }
 </script>
 
