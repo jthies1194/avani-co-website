@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v170">
+<meta name="build" content="index-v172">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1372,6 +1372,315 @@ Call Jimmy · 251-229-3216
 <div class="grid" id="listing-grid"></div>
 </div>
 
+<style>
+/* ---------- on the coast right now ----------
+   Weather and cams together, because someone deciding whether to drive down
+   wants both. The reel sits under them as the emotional half. */
+.coast{background:linear-gradient(#F7FAFC,#EFF4F9);padding:64px 0 58px}
+.coast-in{max-width:1180px;margin:0 auto;padding:0 26px}
+.coast-head{text-align:center;margin-bottom:30px}
+.coast-head .eyebrow{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+  color:#1E9AA8}
+.coast-head h2{font-family:'Cormorant Garamond',serif;font-size:40px;font-weight:500;
+  color:#1B2043;margin:7px 0 6px;line-height:1.12}
+.coast-head p{font-size:15px;color:#5A6288;margin:0}
+
+.coast-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:20px;
+  align-items:stretch}
+@media(max-width:880px){ .coast-grid{grid-template-columns:1fr} }
+
+.wx{background:linear-gradient(145deg,#1B2043,#25306B 55%,#1E5F7A);color:#fff;border-radius:16px;
+  padding:24px 26px;position:relative;overflow:hidden;min-height:236px}
+.wx::after{content:'';position:absolute;right:-40px;top:-40px;width:190px;height:190px;
+  border-radius:50%;background:radial-gradient(circle,rgba(230,195,129,.22),transparent 68%)}
+.wx .place{display:flex;align-items:center;gap:9px;flex-wrap:wrap;position:relative}
+.wx .place b{font-size:15px;letter-spacing:.02em}
+.wx .zipbtn{background:rgba(255,255,255,.14);border:none;color:rgba(255,255,255,.9);
+  border-radius:20px;padding:4px 11px;font:inherit;font-size:11.5px;cursor:pointer}
+.wx .zipbtn:hover{background:rgba(255,255,255,.24)}
+.wx .zipform{display:none;gap:7px;margin-top:11px;position:relative}
+.wx .zipform.on{display:flex}
+.wx .zipform input{width:110px;padding:8px 11px;border-radius:8px;border:none;font:inherit;
+  font-size:14px;font-variant-numeric:tabular-nums}
+.wx .zipform button{background:var(--gold);border:none;border-radius:8px;padding:8px 14px;
+  font:inherit;font-size:13.5px;font-weight:700;color:#1B2043;cursor:pointer}
+.wx .now{display:flex;align-items:flex-start;gap:18px;margin-top:16px;position:relative}
+.wx .temp{font-family:'Cormorant Garamond',serif;font-size:72px;line-height:.9;
+  font-variant-numeric:tabular-nums}
+.wx .cond{padding-top:8px}
+.wx .cond .d{font-size:16px}
+.wx .cond .f{font-size:13px;color:rgba(255,255,255,.7);margin-top:3px}
+.wx .strip{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;padding-top:15px;
+  border-top:1px solid rgba(255,255,255,.16);position:relative}
+.wx .strip div{font-size:13px;color:rgba(255,255,255,.78)}
+.wx .strip span{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(255,255,255,.45);margin-bottom:2px}
+.wx .err{font-size:13.5px;color:rgba(255,255,255,.75);margin-top:14px;line-height:1.5}
+
+.cams{display:grid;gap:11px;align-content:start}
+.cam{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid rgba(27,32,67,.1);
+  border-radius:13px;padding:14px 16px;text-decoration:none;transition:.16s}
+.cam:hover{border-color:#1E9AA8;transform:translateY(-1px);box-shadow:0 5px 18px rgba(27,32,67,.09)}
+.cam .ic{width:40px;height:40px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;
+  justify-content:center;background:linear-gradient(140deg,#1E9AA8,#2E3CB0);color:#fff;font-size:17px}
+.cam .tx{flex:1;min-width:0}
+.cam .tx b{display:block;font-size:15px;color:#1B2043}
+.cam .tx span{font-size:12.5px;color:#5A6288}
+.cam .go{font-size:12px;color:#1E9AA8;font-weight:600;white-space:nowrap}
+.cam.pending{opacity:.6;cursor:default}
+.cams .note{font-size:12px;color:#5A6288;line-height:1.5;padding:2px 4px}
+
+/* ---------- the reel ---------- */
+ /* The frame used to run from 3.86:1 on a desktop down to 1.00:1 on a phone,
+    which is too wide a range for one photograph to survive. Tying it to an aspect
+    ratio with limits narrows that to roughly 3.4:1 down to 1.6:1 — still a crop,
+    but a photograph composed for it works everywhere. */
+.reel{position:relative;aspect-ratio:21/9;min-height:300px;max-height:560px;
+  overflow:hidden;background:#1B2043}
+@media(max-width:700px){ .reel{aspect-ratio:5/3;min-height:280px} }
+.reel .f{position:absolute;inset:0;background-size:cover;background-position:center;
+  opacity:0;transition:opacity 1.4s ease}
+.reel .f.on{opacity:1}
+.reel .veil{position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(15,18,40,.42),rgba(15,18,40,.14) 45%,rgba(15,18,40,.6))}
+.reel .cap{position:absolute;left:0;right:0;bottom:0;padding:34px 26px;text-align:center;color:#fff}
+.reel .cap .k{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(230,195,129,.95)}
+.reel .cap h3{font-family:'Cormorant Garamond',serif;font-size:clamp(26px,4vw,40px);
+  font-weight:500;margin:6px 0 0;line-height:1.15}
+.reel .dots{position:absolute;bottom:14px;left:0;right:0;display:flex;gap:6px;justify-content:center}
+.reel .dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.4);cursor:pointer;
+  display:block;transition:.2s}
+.reel .dots i.on{background:var(--gold);width:20px;border-radius:4px}
+@media(prefers-reduced-motion:reduce){ .reel .f{transition:none} }
+</style>
+
+<section class="coast" id="coast">
+  <div class="coast-in">
+    <div class="coast-head">
+      <div class="eyebrow">Right now on the coast</div>
+      <h2>What's it like down here today?</h2>
+      <p>Check the weather, then look at the water yourself.</p>
+    </div>
+    <div class="coast-grid">
+      <div class="wx" id="wx">
+        <div class="place">
+          <b id="wx-place">Gulf Shores, AL</b>
+          <button class="zipbtn" onclick="wxToggleZip()">Somewhere else?</button>
+        </div>
+        <form class="zipform" id="wx-zipform" onsubmit="wxSetZip(event)">
+          <input id="wx-zip" inputmode="numeric" maxlength="5" placeholder="ZIP" aria-label="ZIP code">
+          <button type="submit">Check</button>
+        </form>
+        <div id="wx-body">
+          <div class="now">
+            <div class="temp" id="wx-temp">--&deg;</div>
+            <div class="cond">
+              <div class="d" id="wx-desc">Loading&hellip;</div>
+              <div class="f" id="wx-feels"></div>
+            </div>
+          </div>
+          <div class="strip" id="wx-strip"></div>
+        </div>
+      </div>
+
+      <div class="cams" id="cams"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- weather ----------
+   Open-Meteo: free, no key, no sign-up, and it does not track anyone. The common
+   local ZIPs are built in so the usual case needs no second lookup at all;
+   anything else falls back to a postcode service. */
+const WX_LOCAL = {
+  '36542':['Gulf Shores, AL',30.2460,-87.7008],
+  '36547':['Gulf Shores, AL',30.2460,-87.7008],
+  '36561':['Orange Beach, AL',30.2694,-87.5747],
+  '32507':['Perdido Key, FL',30.3072,-87.4497],
+  '36535':['Foley, AL',30.4066,-87.6836],
+  '36532':['Fairhope, AL',30.5230,-87.9033],
+  '36526':['Daphne, AL',30.6035,-87.9036],
+  '36527':['Spanish Fort, AL',30.6752,-87.9153],
+  '36567':['Robertsdale, AL',30.5535,-87.7114],
+  '36580':['Summerdale, AL',30.4813,-87.6989],
+  '36530':['Elberta, AL',30.4132,-87.5978],
+  '36511':['Bon Secour, AL',30.3021,-87.7297],
+  '36555':['Magnolia Springs, AL',30.4032,-87.7783],
+  '36549':['Lillian, AL',30.4038,-87.4869],
+  '36551':['Loxley, AL',30.6188,-87.7550],
+  '32561':['Gulf Breeze, FL',30.3574,-87.1638],
+  '32566':['Navarre, FL',30.4013,-86.8630],
+  '32502':['Pensacola, FL',30.4213,-87.2169],
+};
+
+const WX_CODES = {
+  0:['Clear','\u2600'], 1:['Mostly clear','\u2600'], 2:['Partly cloudy','\u26C5'], 3:['Overcast','\u2601'],
+  45:['Fog','\u2601'], 48:['Freezing fog','\u2601'],
+  51:['Light drizzle','\u2614'], 53:['Drizzle','\u2614'], 55:['Heavy drizzle','\u2614'],
+  61:['Light rain','\u2614'], 63:['Rain','\u2614'], 65:['Heavy rain','\u2614'],
+  71:['Light snow','\u2744'], 73:['Snow','\u2744'], 75:['Heavy snow','\u2744'],
+  80:['Showers','\u2614'], 81:['Showers','\u2614'], 82:['Heavy showers','\u2614'],
+  95:['Thunderstorms','\u26A1'], 96:['Thunderstorms','\u26A1'], 99:['Thunderstorms','\u26A1'],
+};
+
+function wxToggleZip(){
+  const f = document.getElementById('wx-zipform');
+  f.classList.toggle('on');
+  if(f.classList.contains('on')) document.getElementById('wx-zip').focus();
+}
+
+async function wxSetZip(e){
+  e.preventDefault();
+  const zip = (document.getElementById('wx-zip').value || '').trim();
+  if(!/^\d{5}$/.test(zip)){ wxError("That doesn't look like a ZIP code."); return; }
+
+  if(WX_LOCAL[zip]){
+    const [name, lat, lon] = WX_LOCAL[zip];
+    document.getElementById('wx-zipform').classList.remove('on');
+    return wxLoad(name, lat, lon);
+  }
+  // not one of ours — ask a postcode service
+  try{
+    const r = await fetch('https://api.zippopotam.us/us/' + zip);
+    if(!r.ok) throw new Error('unknown');
+    const d = await r.json();
+    const p = (d.places || [])[0];
+    if(!p) throw new Error('unknown');
+    document.getElementById('wx-zipform').classList.remove('on');
+    wxLoad(`${p['place name']}, ${p['state abbreviation']}`,
+           Number(p.latitude), Number(p.longitude));
+  }catch(err){
+    wxError("Couldn't find that ZIP. Try another?");
+  }
+}
+
+function wxError(msg){
+  const el = document.getElementById('wx-desc');
+  if(el) el.textContent = msg;
+}
+
+async function wxLoad(name, lat, lon){
+  document.getElementById('wx-place').textContent = name;
+  document.getElementById('wx-desc').textContent = 'Checking\u2026';
+  try{
+    const u = 'https://api.open-meteo.com/v1/forecast'
+      + `?latitude=${lat}&longitude=${lon}`
+      + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m'
+      + '&daily=temperature_2m_max,temperature_2m_min'
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1';
+    const r = await fetch(u);
+    if(!r.ok) throw new Error('weather');
+    const d = await r.json();
+    const c = d.current || {};
+    const [desc] = WX_CODES[c.weather_code] || ['\u2014','\u2600'];
+
+    document.getElementById('wx-temp').innerHTML = Math.round(c.temperature_2m) + '&deg;';
+    document.getElementById('wx-desc').textContent = desc;
+    document.getElementById('wx-feels').textContent =
+      'Feels like ' + Math.round(c.apparent_temperature) + '\u00b0';
+
+    const hi = d.daily && d.daily.temperature_2m_max ? Math.round(d.daily.temperature_2m_max[0]) : null;
+    const lo = d.daily && d.daily.temperature_2m_min ? Math.round(d.daily.temperature_2m_min[0]) : null;
+    document.getElementById('wx-strip').innerHTML =
+      (hi !== null ? `<div><span>High</span>${hi}\u00b0</div>` : '')
+      + (lo !== null ? `<div><span>Low</span>${lo}\u00b0</div>` : '')
+      + `<div><span>Wind</span>${Math.round(c.wind_speed_10m)} mph</div>`
+      + `<div><span>Humidity</span>${Math.round(c.relative_humidity_2m)}%</div>`;
+  }catch(err){
+    document.getElementById('wx-desc').textContent = 'Weather is unavailable right now.';
+    document.getElementById('wx-feels').textContent = '';
+    document.getElementById('wx-strip').innerHTML = '';
+  }
+}
+
+/* ---------- beach cams ----------
+   Linked, never embedded. Bama Beach Cams state plainly that their cameras "may
+   not be placed on any other website without the permission" \u2014 and the same is
+   true of most of them. A link costs nothing and asks nobody's forgiveness. */
+const CAMS = [
+  { t:'Gulf Shores', d:'Skyline Webcams \u00b7 live', ic:'\u25C9',
+    u:'https://www.skylinewebcams.com/en/webcam/united-states/alabama/gulf-shores/gulf-shores.html' },
+  { t:'Orange Beach', d:'Skyline Webcams \u00b7 panorama', ic:'\u25C9',
+    u:'https://www.skylinewebcams.com/en/webcam/united-states/alabama/orange-beach/panorama.html' },
+  { t:'Sea-N-Suds, Gulf Shores', d:'Bama Beach Cams \u00b7 you can pan and zoom', ic:'\u25C9',
+    u:'https://bamabeachcams.com/sea-n-suds.aspx' },
+  { t:'Every cam on the Alabama coast', d:'Live Beaches \u00b7 forty-odd cameras', ic:'\u2637',
+    u:'https://www.livebeaches.com/state/alabama/' },
+  { t:'Perdido Key', d:'Add a cam link in Settings', ic:'\u25CB', u:'' },
+];
+
+function renderCams(){
+  const host = document.getElementById('cams');
+  if(!host) return;
+  host.innerHTML = CAMS.map(c => c.u
+    ? `<a class="cam" href="${c.u}" target="_blank" rel="noopener">
+         <span class="ic">${c.ic}</span>
+         <span class="tx"><b>${escapeHtml(c.t)}</b><span>${escapeHtml(c.d)}</span></span>
+         <span class="go">Watch \u2192</span>
+       </a>`
+    : `<div class="cam pending">
+         <span class="ic" style="background:#C9CEDD">${c.ic}</span>
+         <span class="tx"><b>${escapeHtml(c.t)}</b><span>${escapeHtml(c.d)}</span></span>
+       </div>`).join('')
+    + `<div class="note">These open on the camera owners' own sites \u2014 most of them
+        don't allow their feeds to be embedded elsewhere, and we'd rather ask than assume.</div>`;
+}
+
+/* ---------- the reel ----------
+   Broker-managed photographs. Nothing shows until there are pictures to show:
+   an empty carousel is worse than no carousel. */
+let reelAt = 0, reelTimer = null, REEL = [];
+
+async function initReel(){
+  const host = document.getElementById('reel');
+  if(!host) return;
+  try{
+    const saved = await storeGet('settings:beachReel');
+    if(Array.isArray(saved)) REEL = saved.filter(x => x && x.src);
+  }catch(e){}
+  if(!REEL.length){ host.style.display = 'none'; return; }
+
+  host.style.display = '';
+  host.innerHTML = REEL.map((f, i) =>
+      `<div class="f ${i===0?'on':''}" style="background-image:url('${escapeHtml(f.src)}')"></div>`).join('')
+    + '<div class="veil"></div>'
+    + `<div class="cap"><div class="k" id="reel-k"></div><h3 id="reel-t"></h3></div>`
+    + `<div class="dots">${REEL.map((f,i) =>
+        `<i class="${i===0?'on':''}" onclick="reelGo(${i})"></i>`).join('')}</div>`;
+  reelPaint();
+  if(REEL.length > 1) reelTimer = setInterval(() => reelGo(reelAt + 1), 6500);
+}
+
+function reelPaint(){
+  const f = REEL[reelAt] || {};
+  const k = document.getElementById('reel-k');
+  const t = document.getElementById('reel-t');
+  if(k) k.textContent = f.kicker || '';
+  if(t) t.textContent = f.caption || '';
+}
+
+function reelGo(i){
+  if(!REEL.length) return;
+  reelAt = ((i % REEL.length) + REEL.length) % REEL.length;
+  const host = document.getElementById('reel');
+  host.querySelectorAll('.f').forEach((el, n) => el.classList.toggle('on', n === reelAt));
+  host.querySelectorAll('.dots i').forEach((el, n) => el.classList.toggle('on', n === reelAt));
+  reelPaint();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  try{
+    renderCams();
+    wxLoad('Gulf Shores, AL', 30.2460, -87.7008);
+    initReel();
+  }catch(e){ console.error('[coast]', e); }
+});
+</script>
+
+<section class="reel" id="reel" style="display:none"></section>
+
 <section class="sect-v2 dark" id="communities">
   <div class="wrap">
     <div class="sec-head center rv">
@@ -1433,6 +1742,39 @@ Call Jimmy · 251-229-3216
     <div class="no-hits" id="noHits" style="display:none">No community by that name — try another spelling, or call 251-229-3216.</div>
   </div>
 </section>
+
+<div class="lead-band" id="value">
+<div class="lead-band-inner">
+<h2>Not ready to browse alone?</h2>
+<div class="sub">Every request below comes straight to your agent — nothing gets sold to a third party.</div>
+<div class="lead-cards">
+<div class="lead-card">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 L2 9 L12 16 L22 9 Z"/><path d="M6 11 V19 H18 V11"/></svg>
+<h3>Home valuation</h3>
+<p>Find out what your property could sell for in today's market.</p>
+<button onclick="openLeadModal('valuation')">Get my free valuation</button>
+</div>
+<div class="lead-card">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12 C3 12 7 4 12 4 C17 4 21 12 21 12 C21 12 17 20 12 20 C7 20 3 12 3 12 Z"/><circle cx="12" cy="12" r="3"/></svg>
+<h3>New listing alerts</h3>
+<p>Be first to know when a home matching your search hits BCMLS.</p>
+<button onclick="openLeadModal('alerts')">Set up alerts</button>
+</div>
+<div class="lead-card">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+<h3>Talk to an agent</h3>
+<p>Buying, selling, or just curious about the coast — ask anything.</p>
+<button onclick="openLeadModal('contact')">Start a conversation</button>
+</div>
+<div class="lead-card">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21c-4-4-8-7.5-8-12a8 8 0 0 1 16 0c0 4.5-4 8-8 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
+<h3>Tell us what you want</h3>
+<p>Describe your dream home and we'll notify you the moment it's available.</p>
+<button onclick="openLeadModal('wishlist')">Share my wishlist</button>
+</div>
+</div>
+</div>
+</div>
 
 <section class="sect-v2 wrap" id="market">
   <div class="sec-head center rv">
@@ -1704,341 +2046,7 @@ Call Jimmy · 251-229-3216
   </div>
 </section>
 
-<style>
-/* ---------- on the coast right now ----------
-   Weather and cams together, because someone deciding whether to drive down
-   wants both. The reel sits under them as the emotional half. */
-.coast{background:linear-gradient(#F7FAFC,#EFF4F9);padding:64px 0 58px}
-.coast-in{max-width:1180px;margin:0 auto;padding:0 26px}
-.coast-head{text-align:center;margin-bottom:30px}
-.coast-head .eyebrow{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
-  color:#1E9AA8}
-.coast-head h2{font-family:'Cormorant Garamond',serif;font-size:40px;font-weight:500;
-  color:#1B2043;margin:7px 0 6px;line-height:1.12}
-.coast-head p{font-size:15px;color:#5A6288;margin:0}
 
-.coast-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:20px;
-  align-items:stretch}
-@media(max-width:880px){ .coast-grid{grid-template-columns:1fr} }
-
-.wx{background:linear-gradient(145deg,#1B2043,#25306B 55%,#1E5F7A);color:#fff;border-radius:16px;
-  padding:24px 26px;position:relative;overflow:hidden;min-height:236px}
-.wx::after{content:'';position:absolute;right:-40px;top:-40px;width:190px;height:190px;
-  border-radius:50%;background:radial-gradient(circle,rgba(230,195,129,.22),transparent 68%)}
-.wx .place{display:flex;align-items:center;gap:9px;flex-wrap:wrap;position:relative}
-.wx .place b{font-size:15px;letter-spacing:.02em}
-.wx .zipbtn{background:rgba(255,255,255,.14);border:none;color:rgba(255,255,255,.9);
-  border-radius:20px;padding:4px 11px;font:inherit;font-size:11.5px;cursor:pointer}
-.wx .zipbtn:hover{background:rgba(255,255,255,.24)}
-.wx .zipform{display:none;gap:7px;margin-top:11px;position:relative}
-.wx .zipform.on{display:flex}
-.wx .zipform input{width:110px;padding:8px 11px;border-radius:8px;border:none;font:inherit;
-  font-size:14px;font-variant-numeric:tabular-nums}
-.wx .zipform button{background:var(--gold);border:none;border-radius:8px;padding:8px 14px;
-  font:inherit;font-size:13.5px;font-weight:700;color:#1B2043;cursor:pointer}
-.wx .now{display:flex;align-items:flex-start;gap:18px;margin-top:16px;position:relative}
-.wx .temp{font-family:'Cormorant Garamond',serif;font-size:72px;line-height:.9;
-  font-variant-numeric:tabular-nums}
-.wx .cond{padding-top:8px}
-.wx .cond .d{font-size:16px}
-.wx .cond .f{font-size:13px;color:rgba(255,255,255,.7);margin-top:3px}
-.wx .strip{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;padding-top:15px;
-  border-top:1px solid rgba(255,255,255,.16);position:relative}
-.wx .strip div{font-size:13px;color:rgba(255,255,255,.78)}
-.wx .strip span{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
-  color:rgba(255,255,255,.45);margin-bottom:2px}
-.wx .err{font-size:13.5px;color:rgba(255,255,255,.75);margin-top:14px;line-height:1.5}
-
-.cams{display:grid;gap:11px;align-content:start}
-.cam{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid rgba(27,32,67,.1);
-  border-radius:13px;padding:14px 16px;text-decoration:none;transition:.16s}
-.cam:hover{border-color:#1E9AA8;transform:translateY(-1px);box-shadow:0 5px 18px rgba(27,32,67,.09)}
-.cam .ic{width:40px;height:40px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;
-  justify-content:center;background:linear-gradient(140deg,#1E9AA8,#2E3CB0);color:#fff;font-size:17px}
-.cam .tx{flex:1;min-width:0}
-.cam .tx b{display:block;font-size:15px;color:#1B2043}
-.cam .tx span{font-size:12.5px;color:#5A6288}
-.cam .go{font-size:12px;color:#1E9AA8;font-weight:600;white-space:nowrap}
-.cam.pending{opacity:.6;cursor:default}
-.cams .note{font-size:12px;color:#5A6288;line-height:1.5;padding:2px 4px}
-
-/* ---------- the reel ---------- */
-.reel{position:relative;height:clamp(320px,46vh,520px);overflow:hidden;background:#1B2043}
-.reel .f{position:absolute;inset:0;background-size:cover;background-position:center;
-  opacity:0;transition:opacity 1.4s ease}
-.reel .f.on{opacity:1}
-.reel .veil{position:absolute;inset:0;
-  background:linear-gradient(180deg,rgba(15,18,40,.42),rgba(15,18,40,.14) 45%,rgba(15,18,40,.6))}
-.reel .cap{position:absolute;left:0;right:0;bottom:0;padding:34px 26px;text-align:center;color:#fff}
-.reel .cap .k{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
-  color:rgba(230,195,129,.95)}
-.reel .cap h3{font-family:'Cormorant Garamond',serif;font-size:clamp(26px,4vw,40px);
-  font-weight:500;margin:6px 0 0;line-height:1.15}
-.reel .dots{position:absolute;bottom:14px;left:0;right:0;display:flex;gap:6px;justify-content:center}
-.reel .dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.4);cursor:pointer;
-  display:block;transition:.2s}
-.reel .dots i.on{background:var(--gold);width:20px;border-radius:4px}
-@media(prefers-reduced-motion:reduce){ .reel .f{transition:none} }
-</style>
-
-<section class="coast" id="coast">
-  <div class="coast-in">
-    <div class="coast-head">
-      <div class="eyebrow">Right now on the coast</div>
-      <h2>What's it like down here today?</h2>
-      <p>Check the weather, then look at the water yourself.</p>
-    </div>
-    <div class="coast-grid">
-      <div class="wx" id="wx">
-        <div class="place">
-          <b id="wx-place">Gulf Shores, AL</b>
-          <button class="zipbtn" onclick="wxToggleZip()">Somewhere else?</button>
-        </div>
-        <form class="zipform" id="wx-zipform" onsubmit="wxSetZip(event)">
-          <input id="wx-zip" inputmode="numeric" maxlength="5" placeholder="ZIP" aria-label="ZIP code">
-          <button type="submit">Check</button>
-        </form>
-        <div id="wx-body">
-          <div class="now">
-            <div class="temp" id="wx-temp">--&deg;</div>
-            <div class="cond">
-              <div class="d" id="wx-desc">Loading&hellip;</div>
-              <div class="f" id="wx-feels"></div>
-            </div>
-          </div>
-          <div class="strip" id="wx-strip"></div>
-        </div>
-      </div>
-
-      <div class="cams" id="cams"></div>
-    </div>
-  </div>
-</section>
-
-<script>
-/* ---------- weather ----------
-   Open-Meteo: free, no key, no sign-up, and it does not track anyone. The common
-   local ZIPs are built in so the usual case needs no second lookup at all;
-   anything else falls back to a postcode service. */
-const WX_LOCAL = {
-  '36542':['Gulf Shores, AL',30.2460,-87.7008],
-  '36547':['Gulf Shores, AL',30.2460,-87.7008],
-  '36561':['Orange Beach, AL',30.2694,-87.5747],
-  '32507':['Perdido Key, FL',30.3072,-87.4497],
-  '36535':['Foley, AL',30.4066,-87.6836],
-  '36532':['Fairhope, AL',30.5230,-87.9033],
-  '36526':['Daphne, AL',30.6035,-87.9036],
-  '36527':['Spanish Fort, AL',30.6752,-87.9153],
-  '36567':['Robertsdale, AL',30.5535,-87.7114],
-  '36580':['Summerdale, AL',30.4813,-87.6989],
-  '36530':['Elberta, AL',30.4132,-87.5978],
-  '36511':['Bon Secour, AL',30.3021,-87.7297],
-  '36555':['Magnolia Springs, AL',30.4032,-87.7783],
-  '36549':['Lillian, AL',30.4038,-87.4869],
-  '36551':['Loxley, AL',30.6188,-87.7550],
-  '32561':['Gulf Breeze, FL',30.3574,-87.1638],
-  '32566':['Navarre, FL',30.4013,-86.8630],
-  '32502':['Pensacola, FL',30.4213,-87.2169],
-};
-
-const WX_CODES = {
-  0:['Clear','\u2600'], 1:['Mostly clear','\u2600'], 2:['Partly cloudy','\u26C5'], 3:['Overcast','\u2601'],
-  45:['Fog','\u2601'], 48:['Freezing fog','\u2601'],
-  51:['Light drizzle','\u2614'], 53:['Drizzle','\u2614'], 55:['Heavy drizzle','\u2614'],
-  61:['Light rain','\u2614'], 63:['Rain','\u2614'], 65:['Heavy rain','\u2614'],
-  71:['Light snow','\u2744'], 73:['Snow','\u2744'], 75:['Heavy snow','\u2744'],
-  80:['Showers','\u2614'], 81:['Showers','\u2614'], 82:['Heavy showers','\u2614'],
-  95:['Thunderstorms','\u26A1'], 96:['Thunderstorms','\u26A1'], 99:['Thunderstorms','\u26A1'],
-};
-
-function wxToggleZip(){
-  const f = document.getElementById('wx-zipform');
-  f.classList.toggle('on');
-  if(f.classList.contains('on')) document.getElementById('wx-zip').focus();
-}
-
-async function wxSetZip(e){
-  e.preventDefault();
-  const zip = (document.getElementById('wx-zip').value || '').trim();
-  if(!/^\d{5}$/.test(zip)){ wxError("That doesn't look like a ZIP code."); return; }
-
-  if(WX_LOCAL[zip]){
-    const [name, lat, lon] = WX_LOCAL[zip];
-    document.getElementById('wx-zipform').classList.remove('on');
-    return wxLoad(name, lat, lon);
-  }
-  // not one of ours — ask a postcode service
-  try{
-    const r = await fetch('https://api.zippopotam.us/us/' + zip);
-    if(!r.ok) throw new Error('unknown');
-    const d = await r.json();
-    const p = (d.places || [])[0];
-    if(!p) throw new Error('unknown');
-    document.getElementById('wx-zipform').classList.remove('on');
-    wxLoad(`${p['place name']}, ${p['state abbreviation']}`,
-           Number(p.latitude), Number(p.longitude));
-  }catch(err){
-    wxError("Couldn't find that ZIP. Try another?");
-  }
-}
-
-function wxError(msg){
-  const el = document.getElementById('wx-desc');
-  if(el) el.textContent = msg;
-}
-
-async function wxLoad(name, lat, lon){
-  document.getElementById('wx-place').textContent = name;
-  document.getElementById('wx-desc').textContent = 'Checking\u2026';
-  try{
-    const u = 'https://api.open-meteo.com/v1/forecast'
-      + `?latitude=${lat}&longitude=${lon}`
-      + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m'
-      + '&daily=temperature_2m_max,temperature_2m_min'
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1';
-    const r = await fetch(u);
-    if(!r.ok) throw new Error('weather');
-    const d = await r.json();
-    const c = d.current || {};
-    const [desc] = WX_CODES[c.weather_code] || ['\u2014','\u2600'];
-
-    document.getElementById('wx-temp').innerHTML = Math.round(c.temperature_2m) + '&deg;';
-    document.getElementById('wx-desc').textContent = desc;
-    document.getElementById('wx-feels').textContent =
-      'Feels like ' + Math.round(c.apparent_temperature) + '\u00b0';
-
-    const hi = d.daily && d.daily.temperature_2m_max ? Math.round(d.daily.temperature_2m_max[0]) : null;
-    const lo = d.daily && d.daily.temperature_2m_min ? Math.round(d.daily.temperature_2m_min[0]) : null;
-    document.getElementById('wx-strip').innerHTML =
-      (hi !== null ? `<div><span>High</span>${hi}\u00b0</div>` : '')
-      + (lo !== null ? `<div><span>Low</span>${lo}\u00b0</div>` : '')
-      + `<div><span>Wind</span>${Math.round(c.wind_speed_10m)} mph</div>`
-      + `<div><span>Humidity</span>${Math.round(c.relative_humidity_2m)}%</div>`;
-  }catch(err){
-    document.getElementById('wx-desc').textContent = 'Weather is unavailable right now.';
-    document.getElementById('wx-feels').textContent = '';
-    document.getElementById('wx-strip').innerHTML = '';
-  }
-}
-
-/* ---------- beach cams ----------
-   Linked, never embedded. Bama Beach Cams state plainly that their cameras "may
-   not be placed on any other website without the permission" \u2014 and the same is
-   true of most of them. A link costs nothing and asks nobody's forgiveness. */
-const CAMS = [
-  { t:'Gulf Shores', d:'Skyline Webcams \u00b7 live', ic:'\u25C9',
-    u:'https://www.skylinewebcams.com/en/webcam/united-states/alabama/gulf-shores/gulf-shores.html' },
-  { t:'Orange Beach', d:'Skyline Webcams \u00b7 panorama', ic:'\u25C9',
-    u:'https://www.skylinewebcams.com/en/webcam/united-states/alabama/orange-beach/panorama.html' },
-  { t:'Sea-N-Suds, Gulf Shores', d:'Bama Beach Cams \u00b7 you can pan and zoom', ic:'\u25C9',
-    u:'https://bamabeachcams.com/sea-n-suds.aspx' },
-  { t:'Every cam on the Alabama coast', d:'Live Beaches \u00b7 forty-odd cameras', ic:'\u2637',
-    u:'https://www.livebeaches.com/state/alabama/' },
-  { t:'Perdido Key', d:'Add a cam link in Settings', ic:'\u25CB', u:'' },
-];
-
-function renderCams(){
-  const host = document.getElementById('cams');
-  if(!host) return;
-  host.innerHTML = CAMS.map(c => c.u
-    ? `<a class="cam" href="${c.u}" target="_blank" rel="noopener">
-         <span class="ic">${c.ic}</span>
-         <span class="tx"><b>${escapeHtml(c.t)}</b><span>${escapeHtml(c.d)}</span></span>
-         <span class="go">Watch \u2192</span>
-       </a>`
-    : `<div class="cam pending">
-         <span class="ic" style="background:#C9CEDD">${c.ic}</span>
-         <span class="tx"><b>${escapeHtml(c.t)}</b><span>${escapeHtml(c.d)}</span></span>
-       </div>`).join('')
-    + `<div class="note">These open on the camera owners' own sites \u2014 most of them
-        don't allow their feeds to be embedded elsewhere, and we'd rather ask than assume.</div>`;
-}
-
-/* ---------- the reel ----------
-   Broker-managed photographs. Nothing shows until there are pictures to show:
-   an empty carousel is worse than no carousel. */
-let reelAt = 0, reelTimer = null, REEL = [];
-
-async function initReel(){
-  const host = document.getElementById('reel');
-  if(!host) return;
-  try{
-    const saved = await storeGet('settings:beachReel');
-    if(Array.isArray(saved)) REEL = saved.filter(x => x && x.src);
-  }catch(e){}
-  if(!REEL.length){ host.style.display = 'none'; return; }
-
-  host.style.display = '';
-  host.innerHTML = REEL.map((f, i) =>
-      `<div class="f ${i===0?'on':''}" style="background-image:url('${escapeHtml(f.src)}')"></div>`).join('')
-    + '<div class="veil"></div>'
-    + `<div class="cap"><div class="k" id="reel-k"></div><h3 id="reel-t"></h3></div>`
-    + `<div class="dots">${REEL.map((f,i) =>
-        `<i class="${i===0?'on':''}" onclick="reelGo(${i})"></i>`).join('')}</div>`;
-  reelPaint();
-  if(REEL.length > 1) reelTimer = setInterval(() => reelGo(reelAt + 1), 6500);
-}
-
-function reelPaint(){
-  const f = REEL[reelAt] || {};
-  const k = document.getElementById('reel-k');
-  const t = document.getElementById('reel-t');
-  if(k) k.textContent = f.kicker || '';
-  if(t) t.textContent = f.caption || '';
-}
-
-function reelGo(i){
-  if(!REEL.length) return;
-  reelAt = ((i % REEL.length) + REEL.length) % REEL.length;
-  const host = document.getElementById('reel');
-  host.querySelectorAll('.f').forEach((el, n) => el.classList.toggle('on', n === reelAt));
-  host.querySelectorAll('.dots i').forEach((el, n) => el.classList.toggle('on', n === reelAt));
-  reelPaint();
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  try{
-    renderCams();
-    wxLoad('Gulf Shores, AL', 30.2460, -87.7008);
-    initReel();
-  }catch(e){ console.error('[coast]', e); }
-});
-</script>
-
-<section class="reel" id="reel" style="display:none"></section>
-
-<div class="lead-band" id="value">
-<div class="lead-band-inner">
-<h2>Not ready to browse alone?</h2>
-<div class="sub">Every request below comes straight to your agent — nothing gets sold to a third party.</div>
-<div class="lead-cards">
-<div class="lead-card">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 L2 9 L12 16 L22 9 Z"/><path d="M6 11 V19 H18 V11"/></svg>
-<h3>Home valuation</h3>
-<p>Find out what your property could sell for in today's market.</p>
-<button onclick="openLeadModal('valuation')">Get my free valuation</button>
-</div>
-<div class="lead-card">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12 C3 12 7 4 12 4 C17 4 21 12 21 12 C21 12 17 20 12 20 C7 20 3 12 3 12 Z"/><circle cx="12" cy="12" r="3"/></svg>
-<h3>New listing alerts</h3>
-<p>Be first to know when a home matching your search hits BCMLS.</p>
-<button onclick="openLeadModal('alerts')">Set up alerts</button>
-</div>
-<div class="lead-card">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-<h3>Talk to an agent</h3>
-<p>Buying, selling, or just curious about the coast — ask anything.</p>
-<button onclick="openLeadModal('contact')">Start a conversation</button>
-</div>
-<div class="lead-card">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21c-4-4-8-7.5-8-12a8 8 0 0 1 16 0c0 4.5-4 8-8 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
-<h3>Tell us what you want</h3>
-<p>Describe your dream home and we'll notify you the moment it's available.</p>
-<button onclick="openLeadModal('wishlist')">Share my wishlist</button>
-</div>
-</div>
-</div>
-</div>
 
 <div class="testimonials-section" id="testimonials-section">
 <div class="section-head">
@@ -2347,6 +2355,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
       Use your own photographs or ones you have the rights to. The hero image on this
       site is credited to Zayde Albiyati at Salt Air Media &mdash; if you use more of
       that work, credit it the same way.</p>
+    <div id="br-meter" style="margin:10px 0 2px"></div>
     <div class="br-shots" id="br-shots"></div>
     <input type="file" id="br-file" accept="image/*" style="display:none" onchange="reelPick(this)">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -3500,7 +3509,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v170';
+window.BUILD = 'index-v172';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -11758,6 +11767,21 @@ async function loadReelSetup(){
 function renderReelSetup(){
   const host = document.getElementById('br-shots');
   if(!host) return;
+  // how full it is, so nobody discovers the ceiling by hitting it
+  const used = reelDraft.reduce((a, f) => a + (f.src ? f.src.length : 0), 0);
+  const pct = Math.min(100, Math.round(used / (5 * 1024 * 1024) * 100));
+  const meter = document.getElementById('br-meter');
+  if(meter){
+    meter.innerHTML = reelDraft.length
+      ? `<div style="font-size:12px;color:var(--driftwood)">
+           ${reelDraft.length} photo${reelDraft.length===1?'':'s'} \u00b7 using ${pct}% of the room
+           ${pct > 82 ? '<strong style="color:#B4232A"> \u2014 nearly full</strong>' : ''}</div>
+         <div style="height:5px;border-radius:3px;background:rgba(27,32,67,.12);margin-top:5px">
+           <div style="height:100%;width:${pct}%;border-radius:3px;
+             background:${pct>82?'#B4232A':'linear-gradient(90deg,#2E3CB0,#1E9AA8)'}"></div></div>`
+      : '';
+  }
+
   host.innerHTML = reelDraft.length
     ? reelDraft.map((f, i) => `
         <div class="br-shot" style="background-image:url('${escapeHtml(f.src)}')">
@@ -11778,7 +11802,11 @@ function reelPick(input){
   reader.onload = e => {
     const img = new Image();
     img.onload = () => {
-      const W = 1600;
+      /* 1800px covers a desktop frame at retina width. The size cap matters more
+         than it looks: the whole reel lives in one stored value with a 5MB ceiling,
+         so a generous per-photo cap quietly limits you to five pictures. At this
+         cap a dozen fit, and a background photograph does not need more. */
+      const W = 1800;
       const scale = Math.min(1, W / img.width);
       const cv = document.createElement('canvas');
       cv.width = Math.round(img.width * scale);
@@ -11786,10 +11814,16 @@ function reelPick(input){
       const x = cv.getContext('2d');
       x.imageSmoothingQuality = 'high';
       x.drawImage(img, 0, 0, cv.width, cv.height);
-      let q = 0.82, data = cv.toDataURL('image/jpeg', q);
-      while(data.length > 900000 && q > 0.4){ q -= 0.08; data = cv.toDataURL('image/jpeg', q); }
+      let q = 0.80, data = cv.toDataURL('image/jpeg', q);
+      while(data.length > 420000 && q > 0.38){ q -= 0.06; data = cv.toDataURL('image/jpeg', q); }
       const k = (document.getElementById('br-kicker') || {}).value || '';
       const c = (document.getElementById('br-caption') || {}).value || '';
+      const used = reelDraft.reduce((a, f) => a + (f.src ? f.src.length : 0), 0);
+      if(used + data.length > 5 * 1024 * 1024){
+        showToast('That would overflow the reel \u2014 remove one first.');
+        input.value = '';
+        return;
+      }
       reelDraft.push({ src:data, kicker:k.trim(), caption:c.trim() });
       const ke = document.getElementById('br-kicker'); if(ke) ke.value = '';
       const ce = document.getElementById('br-caption'); if(ce) ce.value = '';
