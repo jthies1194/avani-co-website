@@ -175,6 +175,8 @@ function keyAllowedForAgent(key, sess, write) {
   if (k.startsWith('agentHR:')) return false;
   // trackers go through their own routes; the token index must never be listable
   if (k.startsWith('trackerTok:')) return false;
+  if (k.startsWith('ohTok:')) return false;
+  if (k.startsWith('openHouse:')) return k.startsWith('openHouse:' + sess.agentId + ':');
   if (k.startsWith('tracker:')) return k.startsWith('tracker:' + sess.agentId + ':');
   // Anything not named above was previously readable by any signed-in agent —
   // including settings:leadArchive, the entire archived lead history. Shared
@@ -280,7 +282,7 @@ app.get('/api/kv', async (req, res) => {
     // broker-account protection below.
     if (prefix.startsWith('session:') || prefix.startsWith('clientSession:')
         || prefix.startsWith('clientReset:') || prefix.startsWith('agentHR:')
-        || prefix.startsWith('trackerTok:')) {
+        || prefix.startsWith('trackerTok:') || prefix.startsWith('ohTok:')) {
       console.warn(`[security] ${sess.agentId} (${sess.role}) blocked from listing session tokens`);
       return res.status(403).json({ error: 'Not permitted.' });
     }
@@ -1474,6 +1476,207 @@ app.get('/api/track/:token', async (req, res) => {
   res.json({ ok: true, tracker: trackerPublic(t) });
 });
 
+/* ---------- open house sign-in ----------
+   A QR on a sign or an iPad. The visitor signs in on their own phone, which is
+   faster than a clipboard, legible, and means they have already given you a
+   working email rather than one you have to decipher.
+
+   The token is the only secret, so it is long and the public routes return only
+   what a visitor needs to see. Sign-ins become leads through the normal path. */
+const OH_FEEDBACK = [
+  { k:'impression', q:'First impression?',
+    a:['Loved it','Liked it','It was fine','Not for me'] },
+  { k:'price', q:'How did the price feel?',
+    a:['About right','A bit high','Too high','Good value'] },
+  { k:'stage', q:'Where are you in your search?',
+    a:['Just looking','Looking seriously','Ready to make an offer','Need to sell first'] },
+  { k:'agent', q:'Are you working with an agent?',
+    a:['No, not yet','Yes, I have one'] },
+];
+
+app.post('/api/openhouse', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const clean = v => String(v == null ? '' : v).slice(0, 200).trim();
+  const id = 'oh_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  const token = crypto.randomBytes(16).toString('hex');
+  const rec = {
+    id, token,
+    agentId: sess.agentId, agentName: sess.name || '', agentEmail: sess.email || '',
+    address: clean(b.address), listingKey: clean(b.listingKey),
+    price: clean(b.price), when: clean(b.when),
+    visitors: [], feedbackSent: false,
+    createdAt: new Date().toISOString(),
+  };
+  await setSetting('openHouse:' + sess.agentId + ':' + id, rec);
+  await setSetting('ohTok:' + token, { key: 'openHouse:' + sess.agentId + ':' + id });
+  console.log(`[openhouse] ${sess.name} opened ${rec.address || 'a house'}`);
+  res.json({ ok: true, openHouse: rec });
+});
+
+app.get('/api/openhouse/mine', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const out = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value')
+      .ilike('key', 'openHouse:' + sess.agentId + ':%');
+    (data || []).forEach(r => { if (r.value) out.push(r.value); });
+  } catch (e) { console.error('[openhouse] list failed:', e.message); }
+  out.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  res.json({ ok: true, openHouses: out });
+});
+
+app.delete('/api/openhouse/:id', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'openHouse:' + sess.agentId + ':' + String(req.params.id || '');
+  const rec = await getSetting(key);
+  if (rec && rec.token) {
+    try { await supabase.from(KV_TABLE).delete().eq('key', 'ohTok:' + rec.token); } catch (e) {}
+  }
+  try { await supabase.from(KV_TABLE).delete().eq('key', key); } catch (e) {}
+  res.json({ ok: true });
+});
+
+/* What the visitor's phone loads. No session. */
+app.get('/api/oh/:token', async (req, res) => {
+  const token = String(req.params.token || '').replace(/[^a-f0-9]/gi, '');
+  if (token.length < 20) return res.status(404).json({ error: 'Not found.' });
+  const ptr = await getSetting('ohTok:' + token);
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const rec = await getSetting(ptr.key);
+  if (!rec) return res.status(404).json({ error: 'Not found.' });
+  res.json({ ok: true, openHouse: {
+    address: rec.address || '', price: rec.price || '', when: rec.when || '',
+    agentName: rec.agentName || '', brokerage: BROKERAGE_NAME,
+  }});
+});
+
+app.post('/api/oh/:token/signin', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const token = String(req.params.token || '').replace(/[^a-f0-9]/gi, '');
+  const ptr = await getSetting('ohTok:' + token);
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const rec = await getSetting(ptr.key);
+  if (!rec) return res.status(404).json({ error: 'Not found.' });
+
+  const b = req.body || {};
+  const clean = (v, n) => String(v == null ? '' : v).slice(0, n || 120).trim();
+  const name = clean(b.name, 80);
+  const email = clean(b.email, 120);
+  if (!name) return res.status(400).json({ error: 'A name, at least.' });
+
+  const visitor = {
+    id: 'v_' + Date.now().toString(36) + '_' + crypto.randomBytes(2).toString('hex'),
+    name, email, phone: clean(b.phone, 40),
+    hasAgent: !!b.hasAgent,
+    at: new Date().toISOString(),
+    feedback: null,
+  };
+  rec.visitors = Array.isArray(rec.visitors) ? rec.visitors : [];
+  rec.visitors.push(visitor);
+  await setSetting(ptr.key, rec);
+
+  /* Anyone already working with an agent is recorded but not turned into a lead \u2014
+     chasing another agent's client is how you end up in front of the association. */
+  if (!visitor.hasAgent && email) {
+    const lead = {
+      id: 'lead_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      name, email, phone: visitor.phone,
+      message: 'Signed in at the open house' + (rec.address ? ' at ' + rec.address : '') + '.',
+      source: 'open-house',
+      mlsKey: rec.listingKey || '', listingLabel: rec.address || '',
+      stage: 'New', notes: '',
+      assignedAgentId: rec.agentId,
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await setSetting('lead:' + lead.id, lead);
+      console.log(`[openhouse] ${name} signed in \u2014 lead created for ${rec.agentName}`);
+    } catch (e) { console.error('[openhouse] lead failed:', e.message); }
+  }
+  res.json({ ok: true, visitorId: visitor.id });
+});
+
+/* The follow-up: four tick-box questions, which is why people answer them. */
+app.post('/api/openhouse/:id/feedback', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'openHouse:' + sess.agentId + ':' + String(req.params.id || '');
+  const rec = await getSetting(key);
+  if (!rec) return res.status(404).json({ error: 'Not found.' });
+  if (!mailer) return res.status(503).json({ error: 'Email is not set up.' });
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  let sent = 0;
+  for (const v of (rec.visitors || [])) {
+    if (!v.email || v.feedback) continue;
+    const link = `${origin}/?ohf=${rec.token}.${v.id}`;
+    try {
+      await mailer.sendMail({
+        to: v.email,
+        subject: `Thanks for coming by${rec.address ? ' \u2014 ' + rec.address : ''}`,
+        text: `Hi ${String(v.name).split(' ')[0]},\n\n`
+            + `Thanks for stopping by${rec.address ? ' ' + rec.address : ''} today.\n\n`
+            + `Four quick questions, all tick-boxes \u2014 it takes about ten seconds and it `
+            + `genuinely helps:\n${link}\n\n`
+            + `And if you'd like to see it again, or see something else, just reply.\n\n`
+            + `${rec.agentName}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`,
+      });
+      sent++;
+    } catch (e) { console.error('[openhouse] feedback email failed:', e.message); }
+  }
+  rec.feedbackSent = true;
+  await setSetting(key, rec);
+  console.log(`[openhouse] ${sess.name} asked ${sent} visitor(s) for feedback`);
+  res.json({ ok: true, sent });
+});
+
+app.get('/api/ohf/:pair', async (req, res) => {
+  const [token, vid] = String(req.params.pair || '').split('.');
+  const t = String(token || '').replace(/[^a-f0-9]/gi, '');
+  if (t.length < 20) return res.status(404).json({ error: 'Not found.' });
+  const ptr = await getSetting('ohTok:' + t);
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const rec = await getSetting(ptr.key);
+  const v = (rec && rec.visitors || []).find(x => x.id === vid);
+  if (!rec || !v) return res.status(404).json({ error: 'Not found.' });
+  res.json({ ok: true,
+    address: rec.address || '', agentName: rec.agentName || '',
+    brokerage: BROKERAGE_NAME, firstName: String(v.name || '').split(' ')[0],
+    already: !!v.feedback, questions: OH_FEEDBACK });
+});
+
+app.post('/api/ohf/:pair', async (req, res) => {
+  const [token, vid] = String(req.params.pair || '').split('.');
+  const t = String(token || '').replace(/[^a-f0-9]/gi, '');
+  const ptr = await getSetting('ohTok:' + t);
+  if (!ptr || !ptr.key) return res.status(404).json({ error: 'Not found.' });
+  const rec = await getSetting(ptr.key);
+  const v = (rec && rec.visitors || []).find(x => x.id === vid);
+  if (!rec || !v) return res.status(404).json({ error: 'Not found.' });
+
+  const answers = {};
+  OH_FEEDBACK.forEach(q => {
+    const a = String((req.body || {})[q.k] || '').slice(0, 60);
+    if (q.a.includes(a)) answers[q.k] = a;
+  });
+  answers.note = String((req.body || {}).note || '').slice(0, 600);
+  v.feedback = Object.assign({ at: new Date().toISOString() }, answers);
+  await setSetting(ptr.key, rec);
+
+  if (mailer && rec.agentEmail) {
+    const lines = OH_FEEDBACK.filter(q => answers[q.k])
+      .map(q => `  ${q.q}  ${answers[q.k]}`).join('\n');
+    mailer.sendMail({
+      to: rec.agentEmail,
+      subject: `Feedback from ${v.name}${rec.address ? ' \u2014 ' + rec.address : ''}`,
+      text: `${v.name} answered your open house questions.\n\n${lines}`
+          + (answers.note ? `\n\n  "${answers.note}"` : '')
+          + `\n\n${BROKERAGE_NAME}`,
+    }).catch(e => console.error('[openhouse] notify failed:', e.message));
+  }
+  res.json({ ok: true });
+});
+
 /* ---------- public review submission ----------
    A visitor has no session, and public writes are limited to lead: keys — so the
    review form was posting straight into a 401 and the visitor was thanked for a
@@ -2476,7 +2679,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v75',
+    serverVersion: 'v76',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
