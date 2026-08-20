@@ -1048,6 +1048,77 @@ app.get('/api/tax/my-1099', async (req, res) => {
   });
 });
 
+/* ---------- public review submission ----------
+   A visitor has no session, and public writes are limited to lead: keys — so the
+   review form was posting straight into a 401 and the visitor was thanked for a
+   review nobody ever received. Rather than opening up public writes to a settings
+   key, reviews come through here: validated, forced to pending, and the broker is
+   told about it. */
+app.post('/api/review', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const b = req.body || {};
+  const author = String(b.author || '').trim().slice(0, 80);
+  const text   = String(b.text || '').trim().slice(0, 2000);
+  const rating = Math.max(1, Math.min(5, parseInt(b.rating, 10) || 5));
+  const agentId = String(b.agentId || '').trim().slice(0, 60);
+
+  if (!author || !text) return res.status(400).json({ error: 'A name and a few words, please.' });
+  if (text.length < 4) return res.status(400).json({ error: 'Tell us a little more.' });
+
+  const review = {
+    id: 'rv_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    author, text, rating, agentId,
+    status: 'pending',                       // never public until the broker clears it
+    submittedAt: new Date().toISOString(),
+  };
+
+  try {
+    const list = (await getSetting('settings:testimonials')) || [];
+    const arr = Array.isArray(list) ? list : [];
+    // light flood guard: same name and text within the hour is a double submit
+    const hourAgo = Date.now() - 3600000;
+    const dupe = arr.some(r => r.author === author && r.text === text &&
+                          new Date(r.submittedAt || 0).getTime() > hourAgo);
+    if (dupe) return res.json({ ok: true, duplicate: true });
+
+    arr.push(review);
+    await setSetting('settings:testimonials', arr);
+    console.log(`[review] ${author} left a ${rating}-star review${agentId ? ' for ' + agentId : ''}`);
+  } catch (e) {
+    console.error('[review] save failed:', e.message);
+    return res.status(500).json({ error: 'Could not save that just now.' });
+  }
+
+  // tell the broker, and the agent it was about
+  if (mailer) {
+    const stars = '\u2605'.repeat(rating) + '\u2606'.repeat(5 - rating);
+    const to = [];
+    try {
+      const notify = await resolveNotifyAddress();
+      if (notify) to.push(notify);
+      if (agentId) {
+        const { data: ag } = await supabase.from('agents')
+          .select('email,active').eq('id', agentId).maybeSingle();
+        if (ag && ag.email && ag.active !== false && !to.includes(ag.email)) to.push(ag.email);
+      }
+    } catch (e) {}
+    for (const addr of to) {
+      mailer.sendMail({
+        to: addr,
+        subject: `New review from ${author} — ${rating} star${rating === 1 ? '' : 's'}`,
+        text: `${author} left a review on bamacoast.com.\n\n${stars}\n\n"${text}"\n\n`
+            + `It is waiting for approval and is not showing publicly yet.\n`
+            + `Approve or decline it under Reviews in the CRM.\n\n${BROKERAGE_NAME}`,
+      }).then(() => console.log(`[review] notified ${addr}`))
+        .catch(e => console.error('[review] notify failed:', e.message));
+    }
+  } else {
+    console.warn('[review] SKIPPED notification — mailer not configured.');
+  }
+
+  res.json({ ok: true });
+});
+
 /* ---------- client password reset ----------
    Agents have reset_token / reset_expires columns; the clients table does not,
    and adding columns by hand in Supabase is a step that is easy to get wrong.
@@ -1979,7 +2050,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v66',
+    serverVersion: 'v67',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
