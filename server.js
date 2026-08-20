@@ -1011,6 +1011,39 @@ app.post('/api/tax/1099-data', async (req, res) => {
   });
 });
 
+/* An agent's own 1099 details, for their own recipient copy. Deliberately does
+   NOT decrypt the taxpayer ID — they already know their own number, their
+   accountant will have it, and sending it back to a browser adds risk for no
+   gain. Last four is enough to confirm the right record. */
+app.get('/api/tax/my-1099', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const hr = (await getSetting('agentHR:' + sess.agentId)) || {};
+  res.json({
+    ok: true,
+    recipient: {
+      legalName: hr.legalName || sess.name || '',
+      entityName: hr.entityName || '',
+      address1: hr.address1 || '', address2: hr.address2 || '',
+      city: hr.city || '', state: hr.state || '', zip: hr.zip || '',
+      tinLast4: hr.tinLast4 || '',
+      tinType: hr.tinType || '',
+      w9OnFile: !!hr.w9OnFile,
+      missing: [
+        hr.legalName ? null : 'legal name',
+        hr.address1 ? null : 'address',
+        hr.tinLast4 ? null : 'taxpayer ID',
+        hr.w9OnFile ? null : 'W-9',
+      ].filter(Boolean),
+    },
+    payer: {
+      name: BROKERAGE_LEGAL_ENTITY,
+      tradeName: BROKERAGE_NAME,
+      phone: BROKERAGE_PHONE,
+      ein: process.env.BROKERAGE_EIN || '',
+    },
+  });
+});
+
 /* ---------- client password reset ----------
    Agents have reset_token / reset_expires columns; the clients table does not,
    and adding columns by hand in Supabase is a step that is easy to get wrong.
@@ -1942,7 +1975,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v61',
+    serverVersion: 'v62',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -2115,16 +2148,35 @@ app.post('/api/marketing/email', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!mailer) return res.status(503).json({ error: 'Email is not configured.' });
 
-  const { to, subject, message, filename, dataBase64, mimeType } = req.body || {};
+  const b = req.body || {};
+  const { to, subject, message } = b;
   const recipients = String(to || '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
   if (!recipients.length) return res.status(400).json({ error: 'Who should it go to?' });
   if (recipients.length > 10) return res.status(400).json({ error: 'Ten recipients at most.' });
-  if (!dataBase64) return res.status(400).json({ error: 'Nothing attached.' });
 
-  const bytes = Math.ceil(String(dataBase64).length * 3 / 4);
-  if (bytes > 10 * 1024 * 1024) return res.status(413).json({ error: 'That file is too large to email.' });
+  /* Accepts either a single attachment or a list. Sending four documents used to
+     mean four separate emails, which is a nuisance for whoever receives them. */
+  const list = Array.isArray(b.attachments) && b.attachments.length
+    ? b.attachments
+    : (b.dataBase64 ? [{ filename: b.filename, dataBase64: b.dataBase64, mimeType: b.mimeType }] : []);
+  if (!list.length) return res.status(400).json({ error: 'Nothing attached.' });
+  if (list.length > 12) return res.status(400).json({ error: 'Twelve attachments at most.' });
 
-  const safeName = String(filename || 'flyer.pdf').replace(/[^A-Za-z0-9._-]/g, '');
+  let total = 0;
+  const attachments = [];
+  for (const a of list) {
+    if (!a || !a.dataBase64) continue;
+    total += Math.ceil(String(a.dataBase64).length * 3 / 4);
+    attachments.push({
+      filename: String(a.filename || 'document').replace(/[^A-Za-z0-9._-]/g, '') || 'document',
+      content: String(a.dataBase64),
+      content_type: a.mimeType || 'application/pdf',
+    });
+  }
+  if (!attachments.length) return res.status(400).json({ error: 'Nothing attached.' });
+  if (total > 18 * 1024 * 1024) {
+    return res.status(413).json({ error: 'Those files are too large to email together.' });
+  }
   try {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -2133,10 +2185,10 @@ app.post('/api/marketing/email', async (req, res) => {
         from: RESEND_FROM,
         to: recipients,
         reply_to: sess.email || undefined,
-        subject: String(subject || '').slice(0, 200) || 'A flyer from ' + BROKERAGE_NAME,
+        subject: String(subject || '').slice(0, 200) || 'Documents from ' + BROKERAGE_NAME,
         text: (String(message || '').slice(0, 4000) || 'Attached.') +
               `\n\n\u2014 ${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\nbamacoast.com`,
-        attachments: [{ filename: safeName, content: String(dataBase64), content_type: mimeType || 'application/pdf' }],
+        attachments,
       }),
     });
     if (!r.ok) {
@@ -2144,8 +2196,8 @@ app.post('/api/marketing/email', async (req, res) => {
       console.error('[marketing email] Resend error:', r.status, t.slice(0, 200));
       return res.status(502).json({ error: 'The mail service refused it.' });
     }
-    console.log(`[marketing] ${sess.name} emailed ${safeName} to ${recipients.length} recipient(s)`);
-    res.json({ ok: true, sent: recipients.length });
+    console.log(`[marketing] ${sess.name} emailed ${attachments.length} file(s) to ${recipients.length} recipient(s)`);
+    res.json({ ok: true, sent: recipients.length, files: attachments.length });
   } catch (e) {
     console.error('[marketing email] failed:', e.message);
     res.status(500).json({ error: e.message });
