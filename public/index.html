@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v165">
+<meta name="build" content="index-v166">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3162,7 +3162,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v165';
+window.BUILD = 'index-v166';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -13078,13 +13078,18 @@ body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
 <button class="modal-close" onclick="tkCloseNew()">&times;</button>
 <h3>Start a tracker</h3>
 <div class="sub">Your client sees a live timeline. You tap a step when it happens.</div>
-<div class="field"><label>Are they buying or selling?</label>
-  <select id="tk-side"><option value="buy">Buying</option><option value="sell">Selling</option></select></div>
+<div class="field"><label>Which side?</label>
+  <select id="tk-side">
+    <option value="buy">They're buying</option>
+    <option value="sell">They're selling</option>
+    <option value="both">We have both sides</option>
+  </select></div>
 <div class="field"><label>Property</label><input id="tk-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
 <div class="field"><label>Client name</label><input id="tk-client" placeholder="Dawn Whitfield"></div>
 <div class="field"><label>Client email</label><input id="tk-email" type="email" placeholder="dawn@example.com">
   <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px">
-    They get an email each time you mark a step. Leave blank and they won't.</div></div>
+    Marking steps never emails on its own \u2014 you press send when you're ready, and
+    everything since the last message goes in one.</div></div>
 <div class="field"><label>Expected closing <span style="font-weight:400;text-transform:none;opacity:.75">— shown as an estimate</span></label>
   <input id="tk-close" type="date"></div>
 <button class="submit-btn" onclick="tkCreate()">Start it</button>
@@ -13122,7 +13127,141 @@ body.crm-dark #tc-pop{background:#232941;color:#EEF0F8}
    Notes are shown to the client unless explicitly marked private — the checkbox
    says so plainly, because "seller being difficult" appearing on someone's phone
    is the obvious way this goes wrong. */
-let tkList = [], tkCur = null, tkCurStep = null;
+let tkList = [], tkCur = null, tkCurStep = null, tkExtras = [], tkEditing = null;
+
+/* Steps live on the tracker itself so they can be edited per deal. Anything made
+   before that falls back to the template. */
+function tkStepsOf(t){
+  if(Array.isArray(t.steps) && t.steps.length) return t.steps;
+  const defs = TK_STEPS[t.side] || TK_STEPS.buy;
+  return defs.map(([k,label,blurb]) => {
+    const m = (t.milestones||{})[k] || {};
+    return { k, label, blurb, done:!!m.done, date:m.date||'', note:m.note||'',
+             private:!!m.private, at:m.at||'' };
+  });
+}
+
+/* Everything marked since the last message goes in one email. Marking three
+   things used to fire three emails back to back, which is how a client learns to
+   ignore you. */
+async function tkNotify(id){
+  const t = tkList.find(x => x.id === id);
+  if(!t) return;
+  const count = (t.pending||[]).length;
+  if(!count) return;
+  showToast('Sending\u2026');
+  try{
+    const r = await fetch('/api/tracker/' + encodeURIComponent(id) + '/notify', { method:'POST' });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error || "Couldn't send that."); return; }
+    showToast(count === 1 ? 'Sent.' : 'Sent \u2014 ' + count + ' updates in one email.');
+    renderTrackerSection();
+  }catch(e){ showToast("Couldn't send that."); }
+}
+
+/* ---------- editing the steps ---------- */
+async function tkEditSteps(id){
+  const t = tkList.find(x => x.id === id);
+  if(!t) return;
+  tkEditing = { id, steps: tkStepsOf(t).map(x => Object.assign({}, x)) };
+  if(!tkExtras.length){
+    try{
+      const r = await fetch('/api/tracker/extras');
+      if(r.ok) tkExtras = (await r.json()).extras || [];
+    }catch(e){}
+  }
+  document.getElementById('tk-edit').classList.add('active');
+  tkRenderEdit();
+}
+function tkCloseEdit(){
+  document.getElementById('tk-edit').classList.remove('active');
+  tkEditing = null;
+}
+
+function tkRenderEdit(){
+  if(!tkEditing) return;
+  const host = document.getElementById('tk-edit-list');
+  host.innerHTML = tkEditing.steps.map((st, i) => `
+    <div class="tke-row">
+      <div class="tke-mv">
+        <button onclick="tkMoveStep(${i},-1)" ${i===0?'disabled':''}>\u2191</button>
+        <button onclick="tkMoveStep(${i},1)" ${i===tkEditing.steps.length-1?'disabled':''}>\u2193</button>
+      </div>
+      <div style="flex:1;min-width:0">
+        <input value="${escapeHtml(st.label)}" oninput="tkEditLabel(${i}, this.value)"
+          placeholder="What is this step?">
+        <input class="sub" value="${escapeHtml(st.blurb||'')}" oninput="tkEditBlurb(${i}, this.value)"
+          placeholder="What your client reads underneath (optional)">
+      </div>
+      <button class="tke-x" onclick="tkRemoveStep(${i})">\u2715</button>
+    </div>`).join('');
+
+  const have = {};
+  tkEditing.steps.forEach(st => { have[st.k] = true; });
+  const left = tkExtras.filter(e => !have[e.k]);
+  document.getElementById('tk-edit-extras').innerHTML = left.length
+    ? left.map(e => `<button class="tke-add" onclick="tkAddExtra('${e.k}')">+ ${escapeHtml(e.label)}</button>`).join('')
+    : '<span style="font-size:12.5px;color:var(--driftwood)">All of those are on there already.</span>';
+}
+
+function tkEditLabel(i, v){ if(tkEditing) tkEditing.steps[i].label = v; }
+function tkEditBlurb(i, v){ if(tkEditing) tkEditing.steps[i].blurb = v; }
+
+function tkMoveStep(i, d){
+  const j = i + d;
+  if(!tkEditing || j < 0 || j >= tkEditing.steps.length) return;
+  const a = tkEditing.steps;
+  const t = a[i]; a[i] = a[j]; a[j] = t;
+  tkRenderEdit();
+}
+
+function tkRemoveStep(i){
+  if(!tkEditing) return;
+  const st = tkEditing.steps[i];
+  if(st.done && !confirm('That one is already marked done. Remove it anyway? Your client will see it disappear.')) return;
+  tkEditing.steps.splice(i, 1);
+  tkRenderEdit();
+}
+
+function tkAddExtra(k){
+  const e = tkExtras.find(x => x.k === k);
+  if(!e || !tkEditing) return;
+  tkEditing.steps.push({ k:e.k, label:e.label, blurb:e.blurb, done:false, custom:true });
+  tkRenderEdit();
+  const host = document.getElementById('tk-edit-list');
+  if(host) host.scrollTop = host.scrollHeight;
+}
+
+function tkAddBlank(){
+  if(!tkEditing) return;
+  tkEditing.steps.push({ k:'s_' + Math.random().toString(36).slice(2,8),
+    label:'', blurb:'', done:false, custom:true });
+  tkRenderEdit();
+  const host = document.getElementById('tk-edit-list');
+  if(host){
+    host.scrollTop = host.scrollHeight;
+    const ins = host.querySelectorAll('input');
+    if(ins.length >= 2) ins[ins.length - 2].focus();
+  }
+}
+
+async function tkSaveSteps(){
+  if(!tkEditing) return;
+  const steps = tkEditing.steps.filter(st => String(st.label||'').trim());
+  if(!steps.length){ showToast('Leave at least one step.'); return; }
+  try{
+    const r = await fetch('/api/tracker/' + encodeURIComponent(tkEditing.id) + '/steps', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ steps }),
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error || "Couldn't save that."); return; }
+    tkCloseEdit();
+    showToast('Steps updated.');
+    renderTrackerSection();
+  }catch(e){ showToast("Couldn't save that."); }
+}
+
 
 const TK_STEPS = {
   buy: [
@@ -13139,6 +13278,21 @@ const TK_STEPS = {
     ['cleartoclose','Clear to close','Everything is signed off.'],
     ['walkthrough','Final walkthrough','One last look before it is yours.'],
     ['keys','Keys','It is yours.'],
+  ],
+  both: [
+    ['accepted','Under contract','Both sides have signed.'],
+    ['earnest','Earnest money in escrow','The deposit is held.'],
+    ['inspection','Inspection scheduled','An inspector is booked.'],
+    ['inspected','Inspection complete','The report is in.'],
+    ['repairs','Repairs agreed','Both sides have settled what gets fixed.'],
+    ['contingency','Inspection period passed','That window has closed.'],
+    ['appraisal','Appraisal ordered','The lender is checking the value.'],
+    ['appraised','Appraisal received','The value came back.'],
+    ['loan','Financing approved','The lender has signed off.'],
+    ['title','Title work submitted','Ownership records are being checked.'],
+    ['cleartoclose','Clear to close','Everything is signed off.'],
+    ['closing','Closing scheduled','A date and time are set.'],
+    ['closed','Closed','Done.'],
   ],
   sell: [
     ['listed','Listed','Your home is on the market.'],
@@ -13185,11 +13339,13 @@ async function renderTrackerSection(){
 }
 
 function tkCardHtml(t){
-  const steps = TK_STEPS[t.side] || TK_STEPS.buy;
-  const done = steps.filter(s => ((t.milestones||{})[s[0]]||{}).done).length;
-  const pct = Math.round(done / steps.length * 100);
-  const nextStep = steps.find(s => !((t.milestones||{})[s[0]]||{}).done);
+  const steps = tkStepsOf(t);
+  const done = steps.filter(s => s.done).length;
+  const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
+  const nextStep = steps.find(s => !s.done);
+  const pending = (t.pending || []).length;
   const link = location.origin + '/?track=' + t.token;
+  const sideLabel = t.side === 'sell' ? 'Selling' : t.side === 'both' ? 'Both sides' : 'Buying';
 
   return `<div class="tk-card">
     <div class="tk-top">
@@ -13197,25 +13353,37 @@ function tkCardHtml(t){
         <b>${escapeHtml(t.clientName || 'Client')}</b>
         <span>${escapeHtml(t.address || 'No address given')}</span>
       </div>
-      <span class="tk-side ${t.side}">${t.side === 'sell' ? 'Selling' : 'Buying'}</span>
+      <span class="tk-side ${t.side}">${sideLabel}</span>
     </div>
     <div class="tk-bar"><i style="width:${pct}%"></i></div>
     <div class="tk-pct">
       <span>${done} of ${steps.length} done</span>
-      <span>${nextStep ? 'Next: ' + escapeHtml(nextStep[1]) : 'All the way through'}</span>
+      <span>${nextStep ? 'Next: ' + escapeHtml(nextStep.label) : 'All the way through'}</span>
     </div>
+
+    ${pending ? `<div class="tk-pending">
+      <span><b>${pending}</b> ${pending === 1 ? 'update' : 'updates'} not sent yet</span>
+      ${t.clientEmail
+        ? `<button onclick="tkNotify('${t.id}')">Send ${pending === 1 ? 'it' : 'them'} now</button>`
+        : `<span style="font-size:12px;opacity:.75">No email on file for them</span>`}
+    </div>` : ''}
+
     <div class="tk-steps">
-      ${steps.map(([k,label]) => {
-        const m = (t.milestones||{})[k] || {};
-        return `<button class="tk-step ${m.done?'done':''}" onclick="tkOpenStep('${t.id}','${k}')">
-          <span class="tick">${m.done?'\\u2713':''}</span>
-          <span class="lb">${escapeHtml(label)}</span>
-          <span class="dt">${m.date ? escapeHtml(fmtDate(m.date)) : ''}</span>
+      ${steps.map(st => {
+        const q = (t.pending||[]).includes(st.k);
+        return `<button class="tk-step ${st.done?'done':''} ${q?'queued':''}"
+          onclick="tkOpenStep('${t.id}','${st.k}')">
+          <span class="tick">${st.done?'\u2713':''}</span>
+          <span class="lb">${escapeHtml(st.label)}</span>
+          ${q ? '<span class="qd">unsent</span>' : ''}
+          <span class="dt">${st.date ? escapeHtml(fmtDate(st.date)) : ''}</span>
         </button>
-        ${m.note ? `<div class="tk-note">${m.private?'<span class="priv">Private \\u00b7 </span>':''}${escapeHtml(m.note)}</div>` : ''}`;
+        ${st.note ? `<div class="tk-note">${st.private?'<span class="priv">Private \u00b7 </span>':''}${escapeHtml(st.note)}</div>` : ''}`;
       }).join('')}
     </div>
+
     <div class="tk-acts">
+      <button class="btn-sm" onclick="tkEditSteps('${t.id}')">Edit steps</button>
       <button class="btn-sm" onclick="tkCopyLink('${escapeHtml(link)}')">Copy their link</button>
       ${t.clientEmail ? `<button class="btn-sm" onclick="tkSendLink('${t.id}')">Email them the link</button>` : ''}
       <button class="btn-sm" onclick="tkDelete('${t.id}')">Remove</button>
@@ -13250,14 +13418,15 @@ async function tkCreate(){
 function tkOpenStep(trackerId, stepKey){
   const t = tkList.find(x => x.id === trackerId);
   if(!t) return;
-  const steps = TK_STEPS[t.side] || TK_STEPS.buy;
-  const def = steps.find(s => s[0] === stepKey);
+  const steps = tkStepsOf(t);
+  const def = steps.find(s => s.k === stepKey);
   if(!def) return;
   tkCur = t; tkCurStep = stepKey;
-  const m = (t.milestones||{})[stepKey] || {};
+  const m = def;
 
-  document.getElementById('tk-step-title').textContent = def[1];
-  document.getElementById('tk-step-blurb').textContent = 'Your client will read: \u201c' + def[2] + '\u201d';
+  document.getElementById('tk-step-title').textContent = def.label;
+  document.getElementById('tk-step-blurb').textContent = def.blurb
+    ? 'Your client will read: \u201c' + def.blurb + '\u201d' : '';
   document.getElementById('tk-step-date').value = m.date || new Date().toISOString().slice(0,10);
   document.getElementById('tk-step-note').value = m.note || '';
   document.getElementById('tk-step-private').checked = !!m.private;
@@ -13286,7 +13455,9 @@ async function tkPutStep(done){
     if(!r.ok){ showToast(d.error || "Couldn't save that."); return; }
     tkCloseStep();
     showToast(done
-      ? (d.emailed ? 'Done \\u2014 and your client has been told.' : 'Done.')
+      ? (d.pending > 1
+          ? `Marked \\u2014 ${d.pending} updates waiting to send.`
+          : 'Marked. Send it when you are ready.')
       : 'Taken back off.');
     renderTrackerSection();
   }catch(e){ showToast("Couldn't save that."); }
@@ -13506,6 +13677,53 @@ function fmtLongDate(v){
 
 document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenTracker(); }catch(e){} });
 </script>
+
+<style>
+.tk-pending{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;
+  background:linear-gradient(100deg,#FBF6EA,#FDF9F0);border:1px solid rgba(230,195,129,.55);
+  border-radius:10px;padding:10px 13px;font-size:13.5px;color:#6B4A12}
+.tk-pending b{font-size:15px}
+.tk-pending button{margin-left:auto;background:#2E3CB0;color:#fff;border:none;border-radius:8px;
+  padding:8px 15px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tk-pending button:hover{background:#232C8E}
+.tk-step.queued{border-color:rgba(230,195,129,.75);background:#FDFAF2}
+.tk-step .qd{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:#9A6B14;background:#F6E7C6;border-radius:20px;padding:2px 7px;white-space:nowrap}
+
+.tke-row{display:flex;gap:9px;align-items:flex-start;padding:9px 0;
+  border-bottom:1px solid var(--line)}
+.tke-mv{display:flex;flex-direction:column;gap:2px;flex:0 0 auto}
+.tke-mv button{border:1px solid var(--line);background:#fff;border-radius:5px;width:26px;height:20px;
+  cursor:pointer;font-size:10px;line-height:1;padding:0;color:#1B2043}
+.tke-mv button:disabled{opacity:.25;cursor:default}
+.tke-row input{width:100%;padding:7px 9px;border:1px solid rgba(27,32,67,.2);border-radius:7px;
+  font:inherit;font-size:13.5px}
+.tke-row input.sub{margin-top:4px;font-size:12px;color:var(--driftwood)}
+.tke-x{border:none;background:none;color:#C0483C;font-size:15px;cursor:pointer;padding:4px 2px;
+  flex:0 0 auto}
+.tke-add{border:1px dashed rgba(27,32,67,.3);background:#fff;border-radius:20px;padding:6px 12px;
+  font:inherit;font-size:12.5px;cursor:pointer;color:#1B2043;margin:0 5px 5px 0}
+.tke-add:hover{border-color:#2E3CB0;color:#2E3CB0}
+</style>
+
+<div class="modal-overlay" id="tk-edit">
+<div class="modal" style="max-width:560px">
+<button class="modal-close" onclick="tkCloseEdit()">&times;</button>
+<h3>Edit the steps</h3>
+<div class="sub">Rename anything, move it, drop it, or add what this deal actually needs.
+  Steps already marked keep their dates and notes.</div>
+<div id="tk-edit-list" style="max-height:44vh;overflow:auto;margin:10px 0"></div>
+<div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--driftwood);margin:14px 0 7px">Common additions</div>
+<div id="tk-edit-extras"></div>
+<button class="btn-sm" style="margin-top:10px" onclick="tkAddBlank()">+ Something else</button>
+<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+  <button class="btn-sm" onclick="tkCloseEdit()">Cancel</button>
+  <button class="btn-sm" style="background:var(--marsh);color:var(--sand-light);
+    border-color:var(--marsh)" onclick="tkSaveSteps()">Save steps</button>
+</div>
+</div>
+</div>
 
 </body>
 </html>
