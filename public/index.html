@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v118">
+<meta name="build" content="index-v122">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -409,10 +409,37 @@ header.stuck nav .tel{color:var(--gold)}
 .utility a.u-agent:hover{color:var(--gold)}
 @media(max-width:820px){
   .utility a.u-agent{margin-left:10px;padding-left:10px;font-size:11.5px}
-  .utility a.u-agent span{display:none}
+  /* The label stays. This rule used to hide a span that did not exist, so it
+     had no effect; once the label was wrapped properly it started hiding
+     "Agent Login" behind a bare padlock on every phone. Agents look for the
+     words, so they stay — there is room for them. */
 }
 header{top:52px}
 header.stuck{top:52px}
+/* Narrow phones: four items in one no-wrap row pushed Client Login off the
+   right edge. Measured at 360px — dropping Contact Us alone frees enough for
+   both remaining labels to stay readable (338px needed, 360 available).
+
+   If it ever gets tighter, cut in this order: Contact Us, then the phone
+   number down to its icon (tapping it still dials), and only then the labels.
+   "Agent Login" and "Client Login" are the two things people go looking for,
+   and an unlabelled icon is not discoverable. */
+@media(max-width:620px){
+  .utility{padding:0 12px;gap:8px;min-width:0}
+  .utility .u-tel{font-size:14px;flex:0 0 auto}
+  .utility a.u-agent{margin-left:6px;padding-left:8px;font-size:11.5px;flex:0 0 auto}
+  .utility .u-actions{margin-left:auto;flex:0 1 auto;min-width:0}
+  .utility .u-actions a.pill:not(.solid){display:none}   /* Contact Us */
+  .utility .u-actions a.pill.solid{padding:7px 12px;font-size:11px;max-width:46vw;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media(max-width:380px){
+  /* only here does the phone number give up its digits — the labels stay */
+  .utility .u-tel{font-size:0;gap:0}
+  .utility .u-tel svg{width:19px;height:19px}
+  .utility .u-actions a.pill.solid{padding:6px 10px;font-size:10.5px;letter-spacing:.04em}
+}
+
 @media(max-width:1050px){
   .utility{padding:0 18px;gap:10px;height:52px}
   .utility .u-tel{font-size:16px}
@@ -631,10 +658,25 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .crm-sec .setup-panel{border:none;background:transparent;box-shadow:none;margin:0}
 .crm-sec .setup-head{display:none}
 .crm-sec .setup-body{display:block!important;max-height:none!important;overflow:visible!important;padding:0!important}
+/* The nav used to be a horizontal scroller on anything under 820px, which hid
+   more than half the tabs off the right edge — on a phone you could not tell
+   they existed. It is a grid now, so every tab is visible at once in rows of
+   four (three on a narrow phone). Whatever gets added later still fits: the
+   grid grows downward instead of running off the side. */
 @media(max-width:820px){
-  .crm-nav{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
-  .crm-nav::-webkit-scrollbar{display:none}
-  .crm-nav button{padding:12px 14px;font-size:13.5px}
+  .crm-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+    overflow:visible;border-bottom:none;margin-bottom:18px}
+  .crm-nav button{padding:10px 6px;font-size:12px;line-height:1.25;text-align:center;
+    border:1px solid var(--line);border-radius:9px;background:var(--paper);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;min-height:52px;white-space:normal;word-break:break-word}
+  .crm-nav button.on{background:var(--marsh);color:var(--paper);border-color:var(--marsh)}
+  .crm-nav button.on span{opacity:1}
+  .crm-nav button .pill{position:static;margin-top:1px}
+}
+@media(max-width:480px){
+  .crm-nav{grid-template-columns:repeat(3,1fr);gap:5px}
+  .crm-nav button{font-size:11.5px;padding:9px 4px;min-height:50px}
 }
 
 #celebrations{display:none;background:var(--sand);border:1px solid var(--line);
@@ -1069,7 +1111,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     251-229-3216
   </a>
   <a href="#" class="u-agent" onclick="switchView('crm');return false;" title="Agent &amp; broker sign-in">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>Agent Login</a>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><span>Agent Login</span></a>
   <div class="u-actions">
     <a href="#contact" class="pill">Contact Us</a>
     <a href="#" id="client-login-link" class="pill solid" onclick="openClientAuthOrAccount();return false;">Client Login</a>
@@ -2286,7 +2328,16 @@ else localStorage.removeItem('clientId');
 function updateClientLoginLabel(){
 if(window.refreshClientBar) window.refreshClientBar();
 const link = document.getElementById('client-login-link');
-if(link) link.textContent = currentClient ? `My Account (${currentClient.name.split(' ')[0]})` : 'Client Login';
+if(link){
+  // "My Account (Christopher)" is far longer than "Client Login" and was the
+  // worst case for the narrow top bar, so the name is dropped on small screens.
+  if(!currentClient) link.textContent = 'Client Login';
+  else {
+    const first = String(currentClient.name || '').trim().split(/\s+/)[0] || '';
+    const narrow = window.matchMedia && window.matchMedia('(max-width:620px)').matches;
+    link.textContent = (narrow || first.length > 10) ? 'My Account' : `My Account (${first})`;
+  }
+}
 const banner = document.getElementById('welcome-banner');
 if(banner){
 banner.classList.toggle('show', !!currentClient);
@@ -2633,7 +2684,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v118';
+window.BUILD = 'index-v122';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7024,7 +7075,10 @@ function removeMyPhoto(){
   background:#fff;flex:0 0 auto;flex-wrap:nowrap;overflow-x:auto}
 .mk-bar h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:500;
   color:#1B2043;white-space:nowrap}
-.mk-bar .btn{white-space:nowrap;padding:7px 13px;font-size:13px;letter-spacing:.02em;flex:0 0 auto}
+/* A global .btn{width:100%} rule was making every toolbar button fill the
+   screen and stack, which pushed the preview far below the fold. */
+.mk-bar .btn{white-space:nowrap;padding:7px 13px;font-size:13px;letter-spacing:.02em;
+  flex:0 0 auto;width:auto;min-width:0}
 @media(max-width:700px){ .mk-bar h3{display:none} }
 .mk-shots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .mk-shot{position:relative;aspect-ratio:4/3;border-radius:5px;overflow:hidden;cursor:pointer;
@@ -7034,6 +7088,14 @@ function removeMyPhoto(){
 .mk-shot .n{position:absolute;top:2px;left:2px;background:#2E3CB0;color:#fff;font-size:10px;
   font-weight:700;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;
   justify-content:center}
+.mk-shot .mine{position:absolute;bottom:2px;left:2px;background:rgba(27,32,67,.72);color:#fff;
+  font-size:9px;font-weight:700;width:14px;height:14px;border-radius:3px;display:flex;
+  align-items:center;justify-content:center}
+.mk-shot .x{position:absolute;top:2px;right:2px;background:rgba(27,32,67,.66);color:#fff;
+  font-size:9px;width:14px;height:14px;border-radius:50%;display:none;align-items:center;
+  justify-content:center;cursor:pointer}
+.mk-shot:hover .x{display:flex}
+.mk-shot .x:hover{background:#B4232A}
 .mk-sheet{position:fixed;inset:0;z-index:9200;background:rgba(15,18,40,.5);display:flex;
   align-items:center;justify-content:center;padding:20px}
 .mk-sheet .box{background:#fff;border-radius:14px;max-width:430px;width:100%;padding:20px;
@@ -7072,9 +7134,29 @@ function removeMyPhoto(){
 .mk-proj .mt{font-size:11.5px;color:rgba(27,32,67,.5)}
 .mk-proj button{border:none;background:none;cursor:pointer;font-size:15px;opacity:.5;padding:2px 4px}
 .mk-proj button:hover{opacity:1}
+/* On a phone the preview used to sit underneath the whole form, so you could
+   not see what you were making until you scrolled past every field — or hit
+   Done. The preview now sits directly under the toolbar at a fixed height and
+   stays put; the controls scroll beneath it. Edit a field, watch it change. */
 @media(max-width:860px){
-  .mk-body{flex-direction:column}
-  .mk-side{width:auto;flex:0 0 auto;border-right:none;border-bottom:1px solid rgba(27,32,67,.12);max-height:46vh}
+  .mk-body{flex-direction:column;min-height:0}
+  .mk-stage{order:-1;flex:0 0 auto;height:34vh;min-height:190px;padding:10px;
+    border-bottom:1px solid rgba(27,32,67,.12);gap:6px;justify-content:center}
+  .mk-stage .mk-canvas-wrap{max-height:100%;display:flex}
+  .mk-stage .mk-canvas-wrap canvas{max-height:calc(34vh - 46px);width:auto;max-width:100%;
+    object-fit:contain}
+  .mk-stage .mk-cap{font-size:10.5px;line-height:1.3}
+  .mk-stage .mk-cap:last-child{display:none}      /* the long scan-URL line */
+  .mk-side{width:auto;flex:1 1 auto;border-right:none;max-height:none;overflow:auto;
+    padding:14px}
+  .mk-bar{padding:8px 10px;gap:6px}
+  .mk-bar .btn{padding:6px 10px;font-size:11.5px}
+  .mk-tpl{grid-template-columns:1fr 1fr;gap:6px}
+  .mk-tpl button{padding:8px 7px;font-size:11.5px}
+}
+@media(max-width:520px){
+  .mk-stage{height:30vh;min-height:170px}
+  .mk-stage .mk-canvas-wrap canvas{max-height:calc(30vh - 40px)}
 }
 </style>
 
@@ -7210,8 +7292,13 @@ async function mkPickListing(key){
   // so they come back through our own origin instead.
   const photos = (typeof extractPhotos === 'function') ? extractPhotos(l) : [];
   const prox = u => '/api/listing-photo?u=' + encodeURIComponent(u);
-  f.gallery = photos.slice(0, 24).map(prox);          // everything the feed gave us
-  f.chosen  = f.gallery.slice(0, 4);                  // what the flyer uses
+  // Keep anything the agent uploaded — switching listings should not silently
+  // discard their own photos. MLS shots from the previous listing do go.
+  const mine = (f.gallery || []).filter(u => String(u).startsWith('data:'));
+  const fresh = photos.slice(0, 24).map(prox);
+  f.gallery = fresh.concat(mine);
+  const max = AvaniTemplates.TEMPLATES[mkState.tpl].multi || 1;
+  f.chosen  = fresh.slice(0, max);
   f.photo   = f.chosen[0] || '';
   window.__mkPhotoImg = null; window.__mkPhotoSrc = null;
   mkLoadPhotos(() => { mkSide(); mkRender(); });
@@ -7222,35 +7309,83 @@ async function mkPickListing(key){
    wants more pixels than a web headshot, so this caps higher — but still bounded,
    because these ride along in the saved project. */
 function mkPhotoPick(input){
-  const file = input.files && input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      const targetW = 900, targetH = 1200;          // 3:4, enough for 300dpi at card size
-      const scale = Math.max(targetW / img.width, targetH / img.height);
-      const w = img.width * scale, h = img.height * scale;
-      const cv = document.createElement('canvas');
-      cv.width = targetW; cv.height = targetH;
-      const cx = cv.getContext('2d');
-      cx.imageSmoothingQuality = 'high';
-      cx.drawImage(img, (targetW - w) / 2, (targetH - h) / 2, w, h);
-      let q = 0.85, data = cv.toDataURL('image/jpeg', q);
-      while(data.length > 900000 && q > 0.4){ q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
-      mkState.fields.photo = data;
-      mkLoadPhoto(() => { mkSide(); mkRender(); });
+  const files = Array.from(input.files || []);
+  if(!files.length) return;
+  const f = mkState.fields;
+  if(!Array.isArray(f.gallery)) f.gallery = [];
+  if(!Array.isArray(f.chosen))  f.chosen  = [];
+
+  showToast(files.length === 1 ? 'Adding photo\u2026' : `Adding ${files.length} photos\u2026`);
+
+  Promise.all(files.map(mkResizeUpload)).then(datas => {
+    const good = datas.filter(Boolean);
+    good.forEach(d => { if(!f.gallery.includes(d)) f.gallery.push(d); });
+
+    // fill any remaining slots on the current template with the new shots
+    const max = AvaniTemplates.TEMPLATES[mkState.tpl].multi || 1;
+    good.forEach(d => {
+      if(f.chosen.includes(d)) return;
+      if(f.chosen.length < max) f.chosen.push(d);
+    });
+    if(!f.chosen.length && good.length) f.chosen = [good[0]];
+    f.photo = f.chosen[0] || '';
+
+    input.value = '';                       // so the same file can be picked again
+    mkLoadPhotos(() => { mkSide(); mkRender(); });
+    if(good.length < files.length)
+      showToast(`${files.length - good.length} of those couldn't be read.`);
+  });
+}
+
+/* Uploads are stored inside the saved project, so they are bounded harder than
+   a one-off would be: long edge 1800px, and the quality steps down until the
+   encoded string is under ~600KB. Four uploads then land around 2.4MB, still
+   inside the save guard, without squeezing a portrait phone photo down to a
+   quality level where print artefacts show. */
+function mkResizeUpload(file){
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const LONG = 1800;
+        const scale = Math.min(1, LONG / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const cx = cv.getContext('2d');
+        cx.imageSmoothingQuality = 'high';
+        cx.drawImage(img, 0, 0, w, h);
+        let q = 0.86, data = cv.toDataURL('image/jpeg', q);
+        while(data.length > 600000 && q > 0.42){ q -= 0.07; data = cv.toDataURL('image/jpeg', q); }
+        resolve(data);
+      };
+      img.onerror = () => resolve(null);
+      img.src = e.target.result;
     };
-    img.onerror = () => showToast("Couldn't read that image.");
-    img.src = e.target.result;
-  };
-  reader.onerror = () => showToast("Couldn't read that file.");
-  reader.readAsDataURL(file);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+/* Remove a shot from the pool. MLS photos come back when the listing is
+   re-picked; an upload is gone for good, so that one asks first. */
+function mkDropShot(gi){
+  const f = mkState.fields;
+  const url = (f.gallery || [])[gi];
+  if(!url) return;
+  const isUpload = String(url || '').startsWith('data:');
+  if(isUpload && !confirm('Remove this uploaded photo? You would need to upload it again.')) return;
+  f.gallery = (f.gallery || []).filter(u => u !== url);
+  f.chosen  = (f.chosen  || []).filter(u => u !== url);
+  f.photo   = f.chosen[0] || '';
+  mkLoadPhotos(() => { mkSide(); mkRender(); });
 }
 
 function mkClearPhoto(){
-  mkState.fields.photo = '';
-  window.__mkPhotoImg = null;
+  const f = mkState.fields;
+  f.chosen = []; f.photo = '';
+  window.__mkPhotoImg = null; window.__mkPhotoImgs = [];
   mkSide(); mkRender();
 }
 
@@ -7284,8 +7419,12 @@ function mkLoadPhotos(done){
 function mkLoadPhoto(done){ mkLoadPhotos(done); }
 
 /* Thumbnails so the agent picks which shots go on the flyer. */
-function mkToggleShot(url){
+/* Takes an index into the gallery, not the URL: an uploaded photo is a data URI
+   thousands of characters long and cannot be quoted into an inline handler. */
+function mkToggleShot(gi){
   const f = mkState.fields;
+  const url = (f.gallery || [])[gi];
+  if(!url) return;
   if(!Array.isArray(f.chosen)) f.chosen = [];
   const max = AvaniTemplates.TEMPLATES[mkState.tpl].multi || 1;
   const i = f.chosen.indexOf(url);
@@ -7329,8 +7468,15 @@ function mkRender(){
   stage.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'mk-canvas-wrap';
-  // display width capped so a 24in rider doesn't blow out the stage
-  cv.style.width = Math.min(dims.W, 820) + 'px';
+  // A hard inline width would beat the mobile rules, so on a narrow screen the
+  // page is fitted to the available height instead and the CSS takes over.
+  const narrow = window.matchMedia && window.matchMedia('(max-width:860px)').matches;
+  if(narrow){
+    cv.style.width = 'auto';
+    cv.style.maxWidth = '100%';
+  } else {
+    cv.style.width = Math.min(dims.W, 820) + 'px';
+  }
   wrap.appendChild(cv);
   stage.appendChild(wrap);
 
@@ -7400,32 +7546,32 @@ function mkSide(){
     <div class="mk-field"><label>Description</label>
       <textarea id="f_remarks" rows="5">${escapeHtml(f.remarks||'')}</textarea></div>` : ''}
 
-    ${T.photo && Array.isArray(f.gallery) && f.gallery.length ? `
+    ${T.photo ? `
     <div class="mk-field">
-      <label>MLS photos \u2014 pick up to ${T.multi || 1}</label>
-      <div class="mk-shots">
-        ${f.gallery.map(u => {
+      <label>Photos${(T.multi||1) > 1 ? ` \u2014 pick up to ${T.multi}` : ''}</label>
+      ${(f.gallery||[]).length ? `<div class="mk-shots">
+        ${f.gallery.map((u,gi) => {
           const idx = (f.chosen||[]).indexOf(u);
-          return `<div class="mk-shot ${idx>=0?'on':''}" onclick="mkToggleShot('${u.replace(/'/g,"\\'")}')">
-            <img src="${escapeHtml(u)}" loading="lazy" alt="">
+          const mine = String(u).startsWith('data:');
+          return `<div class="mk-shot ${idx>=0?'on':''}" onclick="mkToggleShot(${gi})" title="${mine?'Your upload':'From the MLS'}">
+            <img src="${u}" loading="lazy" alt="">
             ${idx>=0?`<span class="n">${idx+1}</span>`:''}
+            ${mine?`<span class="mine">\u2191</span>`:''}
+            <span class="x" onclick="event.stopPropagation();mkDropShot(${gi})" title="Remove">\u2715</span>
           </div>`;
         }).join('')}
       </div>
-      <div style="font-size:11.5px;color:rgba(27,32,67,.55)">
-        Numbers show the order they appear. Click to add or remove.</div>
-    </div>` : ''}
+      <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-bottom:7px">
+        Numbers show the order on the flyer. \u2191 marks your own uploads.
+      </div>` : `<div style="font-size:12.5px;color:rgba(27,32,67,.6);margin-bottom:7px">
+        Pick a listing above for its MLS photos, or add your own below.</div>`}
 
-    ${T.photo ? `
-    <div class="mk-field"><label>${(Array.isArray(f.gallery)&&f.gallery.length)?'Or upload your own':'Photo'}</label>
-      ${f.photo ? `<div style="display:flex;gap:9px;align-items:center;margin-bottom:6px">
-          <img src="${escapeHtml(f.photo)}" style="width:74px;height:50px;object-fit:cover;border-radius:5px">
-          <button class="btn ghost" style="padding:5px 11px;font-size:12.5px" onclick="mkClearPhoto()">Remove</button>
-        </div>` : `<div style="font-size:12.5px;color:rgba(27,32,67,.6);margin-bottom:6px">
-          No photo \u2014 a placeholder shows instead.</div>`}
-      <input type="file" accept="image/*" onchange="mkPhotoPick(this)" style="font-size:12.5px">
+      <input type="file" accept="image/*" multiple onchange="mkPhotoPick(this)" style="font-size:12.5px">
       <div style="font-size:11.5px;color:rgba(27,32,67,.55);margin-top:4px">
-        Or pick a listing above to use its MLS photo.</div>
+        You can select several at once, and mix them with MLS photos.
+        ${(f.chosen||[]).length ? `<a href="#" onclick="mkClearPhoto();return false;"
+          style="color:#2E3CB0">Clear selection</a>` : ''}
+      </div>
     </div>` : ''}
 
     <div class="mk-field"><label>Scan line</label>
@@ -7505,6 +7651,15 @@ window.addEventListener('popstate', () => {
   if(el && el.classList.contains('on')) mkClose({ fromPop:true });
 });
 
+/* Rotating a phone changes which sizing branch applies, so re-fit the preview. */
+let __mkResizeT = null;
+window.addEventListener('resize', () => {
+  const el = document.getElementById('mkStudio');
+  if(!el || !el.classList.contains('on')) return;
+  clearTimeout(__mkResizeT);
+  __mkResizeT = setTimeout(() => mkRender(), 180);
+});
+
 /* ---------- projects ---------- */
 function mkProjectKey(agentId, id){ return 'marketing:' + agentId + ':' + id; }
 
@@ -7517,13 +7672,22 @@ async function mkSaveProject(){
     const el = document.getElementById('mkName'); if(el) el.value = nm;
   }
   const id = mkState.projectId || ('mk_' + Date.now());
-  // the recipe, not the artwork — see the note at the top of this module
+  // Mostly the recipe rather than the artwork — but an uploaded photo has no
+  // other home, so it rides along as a data URI. That is the one thing here
+  // with real weight, so the size is checked before it goes anywhere.
   const rec = {
     id, name: mkState.name.trim(), tpl: mkState.tpl,
     fields: mkState.fields,
     agentId: currentAgent.id, agentName: currentAgent.name,
     updatedAt: new Date().toISOString(),
   };
+  const approxMb = JSON.stringify(rec).length / 1048576;
+  if(approxMb > 4.5){
+    alert('This project is about ' + approxMb.toFixed(1) + 'MB, which is too large to save.\n\n'
+        + 'Uploaded photos are what take the room. Remove one or two, or use MLS photos '
+        + 'where you can \u2014 those are linked rather than stored.');
+    return;
+  }
   try{
     const ok = await storeSet(mkProjectKey(currentAgent.id, id), rec);
     if(!ok) throw new Error('the server refused the save');
