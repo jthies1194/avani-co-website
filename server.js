@@ -1975,7 +1975,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v62',
+    serverVersion: 'v64',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -2150,6 +2150,10 @@ app.post('/api/marketing/email', async (req, res) => {
 
   const b = req.body || {};
   const { to, subject, message } = b;
+  /* Gmail previews an .html attachment as raw source, so a report sent that way
+     arrives looking like code. Sending the same markup as the email body means
+     it renders on arrival; the attachment stays for filing. */
+  const htmlBody = typeof b.html === 'string' ? b.html.slice(0, 900000) : '';
   const recipients = String(to || '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
   if (!recipients.length) return res.status(400).json({ error: 'Who should it go to?' });
   if (recipients.length > 10) return res.status(400).json({ error: 'Ten recipients at most.' });
@@ -2188,6 +2192,7 @@ app.post('/api/marketing/email', async (req, res) => {
         subject: String(subject || '').slice(0, 200) || 'Documents from ' + BROKERAGE_NAME,
         text: (String(message || '').slice(0, 4000) || 'Attached.') +
               `\n\n\u2014 ${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\nbamacoast.com`,
+        ...(htmlBody ? { html: htmlBody } : {}),
         attachments,
       }),
     });
@@ -2323,8 +2328,28 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
     });
   }
 
+  /* The finished photo is flattened, so keeping it alone means any change starts
+     from scratch. photoSource holds the untouched upload (bounded) and photoEdit
+     the crop, filter and text settings, so the editor can reopen exactly where it
+     was left. */
+  const cleanSource = v => {
+    const t = String(v || '');
+    if (t.length > 700000) return existing.photoSource || '';
+    if (t && !/^data:image\/(jpeg|png|webp);base64,/.test(t)) return '';
+    return t;
+  };
+  let photoEdit = existing.photoEdit || null;
+  if (b.photoEdit && typeof b.photoEdit === 'object') {
+    const j = JSON.stringify(b.photoEdit);
+    photoEdit = j.length < 20000 ? b.photoEdit : null;
+  } else if (b.photoEdit === null) {
+    photoEdit = null;
+  }
+
   const profile = {
     title: clean(b.title), bio: clean(b.bio), photo: cleanPhoto(b.photo),
+    photoSource: ('photoSource' in b) ? cleanSource(b.photoSource) : (existing.photoSource || ''),
+    photoEdit,
     publicPhone: clean(b.publicPhone), publicEmail: clean(b.publicEmail),
     licensedStates: licensed,
     licenseNumbers: isStaff(sess) ? (b.licenseNumbers || existing.licenseNumbers || {})
