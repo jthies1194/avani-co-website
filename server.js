@@ -196,6 +196,11 @@ function keyAllowedForAgent(key, sess, write) {
   // an agent's own diary. The office calendar is a settings key the broker writes
   // and everyone reads.
   if (k.startsWith('calendar:')) return k === 'calendar:' + sess.agentId;
+  /* An agent's own record of their deals. Deliberately nothing to do with
+     settings:closedDeals, which is the broker's ledger — keeping them apart means
+     an agent can keep whatever notes they like without any risk of moving a
+     number the brokerage counts. */
+  if (k.startsWith('agentDeals:')) return k === 'agentDeals:' + sess.agentId;
   // Marketing projects are per agent: marketing:<agentId>:<projectId>.
   // Staff bypass this function entirely, which is how the broker sees all of them.
   if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
@@ -2398,7 +2403,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v71',
+    serverVersion: 'v72',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
