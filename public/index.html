@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v185">
+<meta name="build" content="index-v186">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3622,7 +3622,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v185';
+window.BUILD = 'index-v186';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6930,7 +6930,11 @@ function showCrmSection(id){
     }
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
     if(id === 'sec-tracker' && typeof renderTrackerSection === 'function') renderTrackerSection();
-    if(id === 'sec-pipeline' && typeof renderPipelineSection === 'function') renderPipelineSection();
+    if(id === 'sec-pipeline' && typeof renderPipelineSection === 'function'){
+      renderPipelineSection().then(() => {
+        if(typeof renderSellerReports === 'function') renderSellerReports();
+      });
+    }
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
       renderResourcesSection().then(() => {
@@ -15110,6 +15114,16 @@ async function renderPipelineSection(){
       </div>
       <button class="btn-sm primary" onclick="plOpen()">+ Add a deal</button>
     </div></div>
+
+    <div class="card" style="margin-top:14px"><div style="padding:18px">
+      <h3 style="margin:0 0 3px;font-family:'Cormorant Garamond',serif;font-size:22px;
+        font-weight:500;color:color-mix(in srgb, var(--sec,#2E3CB0) 62%, #14183A)">
+        Seller reports</h3>
+      <p style="margin:0 0 13px;font-size:13.5px;color:var(--driftwood);max-width:620px;
+        line-height:1.55">Who came through, what they said, and what happens next — the page
+        you send instead of the call you have to make.</p>
+      <div id="sr-body">Loading&hellip;</div>
+    </div></div>
     <div id="pl-list" style="margin-top:14px">
       ${shown.length ? shown.map(plDealHtml).join('') : `
         <div class="card"><div style="padding:18px" class="pl-empty">
@@ -17047,6 +17061,192 @@ function renderTraining(){
 }
 
 function trShow(k){ trTab = k; renderTraining(); }
+</script>
+
+<style>
+.sr-pick{border:1px solid var(--line);border-radius:11px;padding:14px 16px;margin-bottom:10px;
+  background:var(--paper);cursor:pointer;transition:.14s}
+.sr-pick:hover{border-color:var(--sec,#2E3CB0)}
+.sr-pick .hd{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.sr-pick .hd b{font-size:15.5px}
+.sr-pick .hd span{font-size:12.5px;color:var(--driftwood)}
+.sr-pick .st{margin-left:auto;font-size:12.5px;color:var(--driftwood);
+  font-variant-numeric:tabular-nums}
+.sr-pick .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+</style>
+
+<script>
+/* ---------- seller report ----------
+   A seller who hears nothing assumes the worst, exactly as a buyer does. This is
+   the page you send instead of the call you have to make.
+
+   Everything in it is already recorded elsewhere \u2014 open house sign-ins, feedback
+   answers, the deal's own dates. Nothing new is stored, so the report cannot
+   disagree with the thing it describes. */
+function srListings(){
+  const out = [];
+  // listings the agent is working, from their own pipeline
+  (typeof plDeals !== 'undefined' ? plDeals : []).forEach(d => {
+    if(!['sell','both'].includes(d.side)) return;
+    if(['cancelled'].includes(d.stage)) return;
+    out.push({ id:d.id, address:d.address || 'A listing', client:d.client || '',
+      stage:d.stage, deal:d });
+  });
+  return out;
+}
+
+function srOpenHousesFor(address){
+  const a = String(address || '').toLowerCase().trim();
+  return (ohList || []).filter(o =>
+    a && String(o.address || '').toLowerCase().trim() === a);
+}
+
+async function renderSellerReports(){
+  const host = document.getElementById('sr-body');
+  if(!host) return;
+  // both sources have to be loaded before anything can be counted
+  try{
+    if(typeof loadPipeline === 'function') await loadPipeline();
+    if(typeof renderOpenHouses === 'function' && !ohList.length){
+      const r = await fetch('/api/openhouse/mine');
+      if(r.ok) ohList = (await r.json()).openHouses || [];
+    }
+  }catch(e){}
+
+  const listings = srListings();
+  host.innerHTML = listings.length ? listings.map(l => {
+    const ohs = srOpenHousesFor(l.address);
+    const visitors = ohs.reduce((a,o) => a + ((o.visitors||[]).length), 0);
+    const answered = ohs.reduce((a,o) => a + ((o.visitors||[]).filter(v => v.feedback).length), 0);
+    return `<div class="sr-pick">
+      <div class="hd">
+        <b>${escapeHtml(l.address)}</b>
+        <span>${escapeHtml(l.client)}</span>
+        <span class="st">${ohs.length} open house${ohs.length===1?'':'s'} \u00b7
+          ${visitors} through the door \u00b7 ${answered} answered</span>
+      </div>
+      <div class="acts">
+        <button class="btn-sm" onclick="srBuild('${l.id}')">Build the report</button>
+        ${l.deal.clientEmail
+          ? `<button class="btn-sm" onclick="srEmail('${l.id}')">Email it to them</button>` : ''}
+      </div>
+    </div>`;
+  }).join('')
+  : `<div style="font-size:13.5px;color:var(--driftwood);line-height:1.6">
+       No listings on your pipeline yet. Add one under <strong>My deals</strong> with
+       "I have the seller" and it will show up here.</div>`;
+}
+
+/* Turns the numbers into something a seller can read without you explaining it. */
+function srReportHtml(l){
+  const ohs = srOpenHousesFor(l.address);
+  const visitors = [];
+  ohs.forEach(o => (o.visitors||[]).forEach(v => visitors.push(Object.assign({ when:o.when }, v))));
+  const answered = visitors.filter(v => v.feedback);
+  const d = l.deal;
+
+  // what people actually said, counted
+  const tally = key => {
+    const c = {};
+    answered.forEach(v => { const a = v.feedback[key]; if(a) c[a] = (c[a]||0) + 1; });
+    return Object.entries(c).sort((a,b) => b[1]-a[1]);
+  };
+  const bar = rows => rows.length ? `<table><tbody>${rows.map(([label,n]) => `
+      <tr><td style="width:58%">${escapeHtml(label)}</td>
+      <td class="num">${n}</td>
+      <td style="width:34%"><span style="display:inline-block;height:9px;border-radius:5px;
+        background:#2E3CB0;width:${Math.round(n / answered.length * 100)}%"></span></td></tr>`).join('')}</tbody></table>`
+    : '<p style="font-size:12.5px;color:#5A6288">Nobody has answered yet.</p>';
+
+  const notes = answered.map(v => v.feedback.note).filter(Boolean);
+  const withAgent = visitors.filter(v => v.hasAgent).length;
+
+  const dates = Object.entries(d.dates || {}).filter(([,v]) => v);
+  const DL = { earnest:'Earnest money', inspection:'Inspection period ends',
+               financing:'Financing deadline', closing:'Closing' };
+
+  return `
+    <h1>Where things stand</h1>
+    <div class="sub">${escapeHtml(l.address)}${l.client ? ' \u00b7 ' + escapeHtml(l.client) : ''}
+      \u00b7 ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+
+    <h2>Activity</h2>
+    <table><tbody>
+      <tr><td>Open houses held</td><td class="num">${ohs.length}</td></tr>
+      <tr><td>People through the door</td><td class="num">${visitors.length}</td></tr>
+      <tr><td>Already working with an agent</td><td class="num">${withAgent}</td></tr>
+      <tr><td>Left us feedback</td><td class="num">${answered.length}</td></tr>
+    </tbody></table>
+
+    ${answered.length ? `
+      <h2>What they said about the house</h2>
+      ${bar(tally('impression'))}
+      <h2>What they said about the price</h2>
+      ${bar(tally('price'))}
+      <p style="font-size:12.5px;color:#5A6288">
+        Worth reading together rather than separately: people who liked the house but flinched at
+        the price are telling you something different from people who did not warm to it at all.</p>
+      <h2>Where those visitors are in their search</h2>
+      ${bar(tally('stage'))}
+    ` : `<h2>Feedback</h2>
+      <p>No feedback yet. It is requested after each open house and comes back over the
+      following days.</p>`}
+
+    ${notes.length ? `<h2>In their own words</h2>
+      ${notes.map(t => `<p style="border-left:3px solid #E6C381;padding-left:11px;margin:8px 0">
+        \u201c${escapeHtml(t)}\u201d</p>`).join('')}` : ''}
+
+    ${dates.length ? `<h2>Dates in the diary</h2>
+      <table><tbody>${dates.map(([k,v]) =>
+        `<tr><td>${escapeHtml(DL[k] || k)}</td><td class="num">${escapeHtml(fmtDate(v))}</td></tr>`).join('')}
+      </tbody></table>
+      <p style="font-size:12.5px;color:#5A6288">Dates can move. We will tell you if they do.</p>` : ''}
+
+    <h2>What happens next</h2>
+    <p>${d.stage === 'pending'
+      ? 'We are under contract and working through the dates above. The next thing you will hear from me is when one of them is met.'
+      : ohs.length
+        ? 'We keep the house in front of people and keep asking what they thought. Every answer above shapes what we do next.'
+        : 'The next step is getting people through the door. I will let you know as soon as something is booked.'}</p>
+
+    <p style="margin-top:22px;font-size:13px;color:#5A6288">
+      Any questions at all, ring me \u2014 ${escapeHtml(currentAgent.name)},
+      ${escapeHtml(AvaniTemplates.BROKERAGE_NAME)}, 251-229-3216.</p>`;
+}
+
+function srBuild(id){
+  const l = srListings().find(x => x.id === id);
+  if(!l) return;
+  printReport('Seller report \u2014 ' + (l.address || ''), srReportHtml(l));
+}
+
+async function srEmail(id){
+  const l = srListings().find(x => x.id === id);
+  if(!l) return;
+  const to = (l.deal.clientEmail || '').trim();
+  if(!to){ showToast('No email on file for them.'); return; }
+  showToast('Sending\u2026');
+  const inner = srReportHtml(l);
+  try{
+    const r = await fetch('/api/marketing/email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to,
+        subject: 'Where things stand \u2014 ' + (l.address || 'your listing'),
+        message: `Hi ${String(l.client || 'there').split(' ')[0]},\n\n`
+          + `A quick picture of where your listing stands \u2014 who has been through, what they `
+          + `said, and what happens next. It is below.\n\n`
+          + `Any questions, just ring.\n\n${currentAgent.name}\n${AvaniTemplates.BROKERAGE_NAME}`,
+        html: typeof inlineForEmail === 'function'
+          ? `<div style="font-family:Georgia,serif;color:#171F63;line-height:1.6;max-width:700px">
+               ${inlineForEmail(inner)}</div>`
+          : inner,
+      }),
+    });
+    const j = await r.json().catch(()=>({}));
+    showToast(r.ok ? 'Sent to ' + to : (j.error || "Couldn't send that."));
+  }catch(e){ showToast("Couldn't send that."); }
+}
 </script>
 
 </body>
