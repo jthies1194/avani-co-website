@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v122">
+<meta name="build" content="index-v123">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1885,6 +1885,34 @@ Call Jimmy · 251-229-3216
 <div class="field"><label>Email</label><input type="email" required id="li-email" name="email" autocomplete="email"></div>
 <div class="field"><label>Password</label><input type="password" required id="li-password" name="password" autocomplete="current-password"></div>
 <button class="submit-btn" type="submit">Log in</button>
+<div style="text-align:center;margin-top:11px">
+  <a href="#" onclick="showClientForgot();return false;"
+     style="font-size:13px;color:var(--marsh,#2E3CB0)">Forgot your password?</a>
+</div>
+</form>
+
+<!-- request a reset link -->
+<form id="forgot-form" class="auth-form" onsubmit="submitClientForgot(event)">
+<div class="field"><label>Email</label>
+  <input type="email" required id="fg-email" name="email" autocomplete="email" placeholder="you@email.com"></div>
+<div style="font-size:12.5px;color:var(--driftwood);line-height:1.5;margin:-2px 0 10px">
+  We'll send a link that lets you set a new password. It works for one hour.</div>
+<button class="submit-btn" type="submit">Send the link</button>
+<div style="text-align:center;margin-top:11px">
+  <a href="#" onclick="switchAuthTab('login');return false;"
+     style="font-size:13px;color:var(--marsh,#2E3CB0)">Back to log in</a>
+</div>
+</form>
+
+<!-- set a new password, reached from the emailed link -->
+<form id="creset-form" class="auth-form" onsubmit="submitClientReset(event)">
+<div class="field"><label>New password</label>
+  <input type="password" required minlength="6" id="cr-password" name="new-password"
+    autocomplete="new-password" placeholder="At least 6 characters"></div>
+<div class="field"><label>Type it again</label>
+  <input type="password" required minlength="6" id="cr-password2" name="new-password"
+    autocomplete="new-password"></div>
+<button class="submit-btn" type="submit">Save and sign in</button>
 </form>
 <div class="view-limit-note">No spam — just lets you save favorites and pick up where you left off.</div>
 </div>
@@ -2345,15 +2373,111 @@ if(currentClient) document.getElementById('welcome-name').textContent = `Welcome
 }
 }
 function openClientAuthOrAccount(){
+  // reset the modal to a sensible state — otherwise reopening it after a
+  // forgot-password attempt shows that form again with no tabs
+  if(!window.__clientResetToken){
+    try{ switchAuthTab(currentClient ? 'login' : 'signup'); }catch(e){}
+  }
 if(currentClient) openMyAccount();
 else { switchAuthTab('signup'); document.getElementById('account-gate-overlay').classList.add('active'); }
 }
 function closeAccountGate(){ document.getElementById('account-gate-overlay').classList.remove('active'); }
+/* Four states now, not two: sign up, log in, ask for a reset link, set a new
+   password. The tab strip only makes sense for the first two, so it hides for
+   the other two rather than showing a tab that matches nothing. */
 function switchAuthTab(tab){
-document.getElementById('auth-tab-signup').classList.toggle('active', tab==='signup');
-document.getElementById('auth-tab-login').classList.toggle('active', tab==='login');
-document.getElementById('signup-form').classList.toggle('active', tab==='signup');
-document.getElementById('login-form').classList.toggle('active', tab==='login');
+  const forms = { signup:'signup-form', login:'login-form',
+                  forgot:'forgot-form', creset:'creset-form' };
+  Object.entries(forms).forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if(el) el.classList.toggle('active', k === tab);
+  });
+  const tabs = document.querySelector('#account-gate-overlay .auth-tabs');
+  if(tabs) tabs.style.display = (tab === 'signup' || tab === 'login') ? '' : 'none';
+  const st = document.getElementById('auth-tab-signup');
+  const lt = document.getElementById('auth-tab-login');
+  if(st) st.classList.toggle('active', tab === 'signup');
+  if(lt) lt.classList.toggle('active', tab === 'login');
+
+  const h = document.querySelector('#account-gate-overlay h3');
+  const sub = document.getElementById('account-gate-sub');
+  if(tab === 'forgot'){
+    if(h) h.textContent = 'Reset your password';
+    if(sub) sub.textContent = "Tell us the email on your account and we'll send you a link.";
+  } else if(tab === 'creset'){
+    if(h) h.textContent = 'Choose a new password';
+    if(sub) sub.textContent = 'Almost done — pick something only you know.';
+  } else {
+    if(h) h.textContent = 'Your free account';
+    if(sub) sub.textContent = 'Create a free account to save favorites, save searches, and keep browsing.';
+  }
+}
+
+function showClientForgot(){
+  const li = document.getElementById('li-email');
+  const fg = document.getElementById('fg-email');
+  if(li && fg && li.value.trim()) fg.value = li.value.trim();   // carry it over
+  switchAuthTab('forgot');
+  if(fg) setTimeout(() => fg.focus(), 60);
+}
+
+async function submitClientForgot(e){
+  e.preventDefault();
+  const btn = e.target.querySelector('.submit-btn');
+  const email = (document.getElementById('fg-email') || {}).value || '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending\u2026'; }
+  try{
+    const res = await fetch('/api/client/forgot-password', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    // The reply is the same whether or not the account exists, so nobody can
+    // use this to find out who has an account here.
+    showToast(data.message || 'If that email has an account, a reset link is on its way.');
+    switchAuthTab('login');
+  }catch(err){
+    showToast("Couldn't send that just now — please try again.");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = 'Send the link'; }
+  }
+}
+
+async function submitClientReset(e){
+  e.preventDefault();
+  const p1 = (document.getElementById('cr-password') || {}).value || '';
+  const p2 = (document.getElementById('cr-password2') || {}).value || '';
+  if(p1 !== p2){ showToast("Those two passwords don't match."); return; }
+  const btn = e.target.querySelector('.submit-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+  try{
+    const res = await fetch('/api/client/reset-password', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: window.__clientResetToken || '', password: p1 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok){
+      showToast(data.error || "That didn't work.");
+      if(btn){ btn.disabled = false; btn.textContent = 'Save and sign in'; }
+      return;
+    }
+    if(data.client){
+      currentClient = data.client;
+      localStorage.setItem('clientId', currentClient.id);
+      window.setClientToken(data.token || '');
+      updateClientLoginLabel();
+    }
+    window.__clientResetToken = '';
+    closeAccountGate();
+    showToast('Password changed \u2014 you\u2019re signed in.');
+  }catch(err){
+    showToast("Couldn't save that just now.");
+    if(btn){ btn.disabled = false; btn.textContent = 'Save and sign in'; }
+  }finally{
+    // never leave a typed password sitting in the form
+    const a = document.getElementById('cr-password'), b = document.getElementById('cr-password2');
+    if(a) a.value = ''; if(b) b.value = '';
+  }
 }
 async function submitClientSignup(e){
 e.preventDefault();
@@ -2684,7 +2808,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v122';
+window.BUILD = 'index-v123';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -3446,6 +3570,25 @@ document.getElementById('leave-review-overlay').classList.add('active');
 }
 }
 function closeLeaveReview(){ document.getElementById('leave-review-overlay').classList.remove('active'); }
+
+/* Someone arriving from the emailed reset link. Uses ?creset= rather than the
+   agents' ?reset= so the two flows can never be confused for one another. */
+function maybeOpenClientResetFromURL(){
+  const t = new URLSearchParams(location.search).get('creset');
+  if(!t) return;
+  window.__clientResetToken = t;
+  // strip the token out of the address bar so it isn't shared or bookmarked
+  try{
+    const u = new URL(location.href);
+    u.searchParams.delete('creset');
+    history.replaceState({}, '', u.pathname + (u.search || '') + u.hash);
+  }catch(e){}
+  const overlay = document.getElementById('account-gate-overlay');
+  if(overlay) overlay.classList.add('active');
+  switchAuthTab('creset');
+  const f = document.getElementById('cr-password');
+  if(f) setTimeout(() => f.focus(), 120);
+}
 async function submitLeaveReview(e){
 e.preventDefault();
 const author = document.getElementById('rv-name').value.trim();
@@ -4655,6 +4798,7 @@ let clientFilter = 'all';
 /* This block loads after the client-account code, so a restored session would
    otherwise call refreshClientBar() before it exists. Re-run it once on load. */
 document.addEventListener('DOMContentLoaded', () => {
+  try{ maybeOpenClientResetFromURL(); }catch(e){}
   try{ refreshClientBar(); }catch(e){}
   // /#crm or /#commissions opens the CRM directly
   if(typeof resolveAgentFromQuery === 'function') resolveAgentFromQuery().then(()=>{ try{ showReferralBar(); }catch(e){} });
