@@ -148,7 +148,8 @@ function publicWriteAllowed(key) {
   return String(key || '').startsWith('lead:');
 }
 const PUBLIC_READ_KEYS = ['settings:viewLimit', 'settings:testimonials', 'settings:reviewLink',
-                          'settings:exitIntent'];   // wording for the leaving-the-site prompt
+                          'settings:exitIntent',    // wording for the leaving-the-site prompt
+                          'settings:beachReel'];    // homepage photographs
 function publicReadAllowed(key) {
   return PUBLIC_READ_KEYS.includes(String(key || ''));
 }
@@ -183,6 +184,7 @@ function keyAllowedForAgent(key, sess, write) {
     'settings:agentPlans', 'settings:agentPlanHistory', 'settings:closedDeals',
     'settings:expenses', 'settings:dealSubmissions', 'settings:officeCalendar',
     'settings:resourceLinks', 'settings:marketingPolicy', 'settings:exitIntent',
+    'settings:beachReel',
   ]);
   if (k.startsWith('settings:')) return AGENT_READABLE.has(k) && !write;
   if (k.startsWith('lead:')) return true;                 // ownership checked separately
@@ -2396,7 +2398,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v70',
+    serverVersion: 'v71',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
