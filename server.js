@@ -188,6 +188,9 @@ function keyAllowedForAgent(key, sess, write) {
   // personal CRM preferences — tab order and the like. Own record only: without
   // this the catch-all below would let any agent read or overwrite anyone else's.
   if (k.startsWith('crmPrefs:')) return k === 'crmPrefs:' + sess.agentId;
+  // an agent's own diary. The office calendar is a settings key the broker writes
+  // and everyone reads.
+  if (k.startsWith('calendar:')) return k === 'calendar:' + sess.agentId;
   // Marketing projects are per agent: marketing:<agentId>:<projectId>.
   // Staff bypass this function entirely, which is how the broker sees all of them.
   if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
@@ -1976,7 +1979,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v65',
+    serverVersion: 'v66',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
