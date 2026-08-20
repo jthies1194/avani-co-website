@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v151">
+<meta name="build" content="index-v152">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1019,7 +1019,11 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   text-align:center;transition:.3s;display:block}
 .dir-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(23,31,99,.12);
   border-color:var(--gold)}
-.dir-photo img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:3px}
+/* Photos are shot and stored 3:4. Forcing them square cropped from the middle,
+   which takes the top off people's heads. Keep the shape they were made in, and
+   bias the crop upward so a face survives if it ever is squeezed. */
+.dir-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;object-position:50% 22%;
+  border-radius:3px}
 .dir-name{font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--blue);margin-top:16px}
 .dir-title{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-deep);margin-top:5px}
 .dir-contact{font-size:15px;color:var(--grey);margin-top:9px}
@@ -1207,6 +1211,46 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 
   </nav>
 </header>
+<style>
+/* A slim strip rather than a band. It sits under the header where a glance costs
+   nothing, instead of a tall block buried above the footer that nobody scrolled to. */
+.wc-strip{background:linear-gradient(100deg,#1B2043,#25306B 55%,#1E5F7A);color:#fff;
+  border-bottom:1px solid rgba(230,195,129,.28)}
+.wc-in{max-width:1180px;margin:0 auto;padding:8px 22px;display:flex;align-items:center;gap:16px}
+.wc-here{display:flex;align-items:baseline;gap:9px;flex:0 0 auto}
+.wc-here .lbl{font-size:9.5px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;
+  color:rgba(230,195,129,.9);white-space:nowrap}
+.wc-here .big{font-family:'Cormorant Garamond',serif;font-size:23px;line-height:1;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.wc-sep{width:1px;height:22px;background:rgba(255,255,255,.18);flex:0 0 auto}
+.wc-row{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;flex:1;
+  -webkit-overflow-scrolling:touch}
+.wc-row::-webkit-scrollbar{display:none}
+.wc-c{flex:0 0 auto;text-align:center;line-height:1.2}
+.wc-c .city{font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:rgba(255,255,255,.55);white-space:nowrap}
+.wc-c .t{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:rgba(255,255,255,.9)}
+.wc-c.day .t{color:#F0D9A6}
+.wc-c .d{display:none}
+@media(max-width:760px){
+  .wc-in{padding:7px 14px;gap:11px}
+  .wc-here .lbl{display:none}
+  .wc-here .big{font-size:19px}
+  .wc-row{gap:11px}
+}
+</style>
+
+<section class="wc-strip" id="worldclocks">
+  <div class="wc-in">
+    <div class="wc-here">
+      <span class="lbl">On the Gulf</span>
+      <span class="big" id="wc-local">--:--</span>
+    </div>
+    <span class="wc-sep"></span>
+    <div class="wc-row" id="wc-row"></div>
+  </div>
+</section>
 
 <!-- ============ PUBLIC SITE ============ -->
 <div id="view-site" class="view active">
@@ -1668,54 +1712,7 @@ Call Jimmy · 251-229-3216
 <div class="testimonials-grid" id="testimonials-grid"></div>
 </div>
 
-<style>
-.wc-band{background:linear-gradient(135deg,#1B2043 0%,#25306B 45%,#1E5F7A 100%);
-  color:#fff;padding:34px 0 30px;position:relative;overflow:hidden}
-.wc-band::after{content:'';position:absolute;inset:0;
-  background:radial-gradient(circle at 78% 18%, rgba(230,195,129,.16), transparent 55%);
-  pointer-events:none}
-.wc-inner{max-width:1180px;margin:0 auto;padding:0 26px;position:relative}
-.wc-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;
-  flex-wrap:wrap;margin-bottom:20px}
-.wc-here .lbl{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
-  color:rgba(230,195,129,.9)}
-.wc-here .big{font-family:'Cormorant Garamond',serif;font-size:52px;line-height:1;
-  font-weight:400;font-variant-numeric:tabular-nums;margin-top:5px}
-.wc-here .sm{font-size:13.5px;color:rgba(255,255,255,.72);margin-top:4px}
-.wc-note{font-size:12.5px;color:rgba(255,255,255,.6);max-width:280px;line-height:1.55;text-align:right}
-.wc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px}
-.wc-c{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
-  border-radius:11px;padding:11px 10px;text-align:center;backdrop-filter:blur(2px);
-  transition:background .2s}
-.wc-c:hover{background:rgba(255,255,255,.12)}
-.wc-c .city{font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-  color:rgba(255,255,255,.62);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wc-c .t{font-size:20px;font-variant-numeric:tabular-nums;margin-top:4px;letter-spacing:.01em}
-.wc-c .d{font-size:10.5px;color:rgba(255,255,255,.48);margin-top:2px}
-.wc-c.night .t{color:#BFC8E8}
-.wc-c.day .t{color:#F4DFAF}
-@media(max-width:640px){
-  .wc-band{padding:26px 0 24px}
-  .wc-here .big{font-size:40px}
-  .wc-note{display:none}
-  .wc-row{grid-template-columns:repeat(3,1fr)}
-}
-</style>
 
-<section class="wc-band" id="worldclocks">
-  <div class="wc-inner">
-    <div class="wc-top">
-      <div class="wc-here">
-        <div class="lbl">Right now on the Gulf</div>
-        <div class="big" id="wc-local">--:--</div>
-        <div class="sm" id="wc-localdate"></div>
-      </div>
-      <div class="wc-note">Buyers find us from all over. If you're reading this
-        somewhere else, here's what the clock says at home.</div>
-    </div>
-    <div class="wc-row" id="wc-row"></div>
-  </div>
-</section>
 
 <script>
 /* ---------- world clocks ----------
@@ -1760,11 +1757,7 @@ function wcDayLabel(tz){
 
 function wcTick(){
   const local = document.getElementById('wc-local');
-  const ld = document.getElementById('wc-localdate');
   if(local) local.textContent = wcTime('America/Chicago');
-  if(ld) ld.textContent = new Intl.DateTimeFormat('en-US', {
-    timeZone:'America/Chicago', weekday:'long', month:'long', day:'numeric'
-  }).format(new Date()) + ' \u00b7 Central';
 
   const row = document.getElementById('wc-row');
   if(!row) return;
@@ -1861,6 +1854,29 @@ function wcTick(){
 <div id="agent-switcher"></div>
 </div>
 <button class="btn-sm" onclick="logoutAgent()">Log out</button>
+</div>
+
+<style>
+#arr-banner{display:none;align-items:center;gap:12px;flex-wrap:wrap;
+  background:linear-gradient(120deg,#6B4FBF,#2E3CB0);color:#fff;
+  border-radius:12px;padding:11px 15px;margin:0 0 12px;
+  box-shadow:0 4px 16px rgba(107,79,191,.28)}
+#arr-banner.on{display:flex}
+#arr-banner .t{font-weight:700;font-size:14px}
+#arr-banner .d{font-size:12.5px;color:rgba(255,255,255,.84);line-height:1.45}
+#arr-banner .sp{flex:1}
+#arr-banner button{background:#fff;color:#2E3CB0;border:none;border-radius:8px;
+  padding:8px 16px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+#arr-banner button:hover{background:#F1F2FC}
+</style>
+<div id="arr-banner">
+  <div>
+    <div class="t">Arranging your tabs</div>
+    <div class="d">Drag a tile to move it &middot; tap one to change its color &middot;
+      normal tapping comes back when you're done</div>
+  </div>
+  <span class="sp"></span>
+  <button onclick="exitArrangeMode()">Done arranging</button>
 </div>
 <nav class="crm-nav" id="crm-nav"></nav>
 <div id="crm-version" style="font-size:11.5px;letter-spacing:.03em;padding:8px 4px 0;
@@ -3057,7 +3073,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v151';
+window.BUILD = 'index-v152';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5985,26 +6001,36 @@ function allowedSections(){
    Order is stored as a list of section ids. Anything not in the list (a tab added
    in a later version) falls to the end rather than disappearing. */
 let crmTabOrder = null;
-let arrangeMode = false;
+let arrangeMode = false;   // never persisted — a reload should always land in normal mode
 let crmSeenArrange = false;   // stop nudging once they've found it
 
 /* ---------- arrange mode ----------
    Reordering used to mean opening a dialog and clicking arrows, which is a lot of
    steps to move one tile. Now the tiles themselves become draggable in place. */
+/* Arrange mode swaps what tapping a tile does, so it has to be unmistakable that
+   you're in it. Without a banner people tapped Agents, got a colour picker, and
+   reasonably concluded the thing was broken. */
 function enterArrangeMode(){
   if(previewing()) return;
   arrangeMode = true;
   crmSeenArrange = true;
   try{ localStorage.setItem('crmSeenArrange','1'); }catch(e){}
   renderCrmNav();
-  showToast('Drag your tabs where you want them. Tap one to change its color.');
+  document.addEventListener('keydown', arrangeEsc);
+}
+
+function arrangeEsc(e){
+  if(e.key === 'Escape' && arrangeMode){ e.preventDefault(); exitArrangeMode(); }
 }
 
 async function exitArrangeMode(){
   arrangeMode = false;
+  document.removeEventListener('keydown', arrangeEsc);
+  const pop = document.getElementById('tc-pop');
+  if(pop) pop.classList.remove('on');
   const ok = await saveTabOrder();
   renderCrmNav();
-  if(ok) showToast('Saved \u2014 that\u2019s yours now.');
+  if(ok) showToast('Saved \u2014 back to normal.');
 }
 
 /* ---------- make it yours ----------
@@ -6167,6 +6193,8 @@ function renderCrmNav(){
   const allowed = allowedSections().map(sc => sc.id);
   if(!allowed.includes(crmSection)) crmSection = 'sec-today';
   nav.classList.toggle('arranging', !!arrangeMode);
+  const banner = document.getElementById('arr-banner');
+  if(banner) banner.classList.toggle('on', !!arrangeMode);
   nav.innerHTML = visibleOrderedSections()
     .map((sc, idx) => {
       const n = sc.badge ? sc.badge() : 0;
@@ -6197,6 +6225,8 @@ function renderCrmNav(){
 }
 
 function showCrmSection(id){
+  // opening a section means they are done arranging, whatever they pressed
+  if(arrangeMode && typeof exitArrangeMode === 'function') exitArrangeMode();
   const allowed = allowedSections().map(sc => sc.id);
   if(!allowed.includes(id)) id = 'sec-today';
   crmSection = id;
