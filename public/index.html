@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v152">
+<meta name="build" content="index-v153">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1211,9 +1211,32 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 
   </nav>
 </header>
+
+
+<!-- ============ PUBLIC SITE ============ -->
+<div id="view-site" class="view active">
+
+<section class="hero-v2">
+  <div class="hero-media"></div>
+  <div class="hero-veil"></div>
+  <div class="hero-inner">
+    <div class="hero-copy rv in">
+      <div class="eyebrow">Coastal Alabama &amp; Northwest Florida</div>
+      <h1>Find <em class="yours">your</em> place<br>on the <span class="accent">Gulf</span>.</h1>
+      <p>Search every active listing from Gulf Shores to Perdido Key &mdash;
+         with a brokerage small enough to answer the phone.</p>
+      <a href="#listings" class="btn btn-light" id="hero-cta">Search homes</a>
+    </div>
+  </div>
+  <div class="photo-credit"><div><span>Zayde Albiyati</span><span class="b">Salt Air Media</span></div></div>
+  <div class="scroll-cue">Scroll</div>
+</section>
 <style>
-/* A slim strip rather than a band. It sits under the header where a glance costs
-   nothing, instead of a tall block buried above the footer that nobody scrolled to. */
+/* A slim strip, directly beneath the hero — the first thing you meet on scrolling.
+
+   It was placed after </header> at first and vanished: the header is
+   position:fixed, so it is out of the page flow and anything "after" it lands
+   underneath the hero instead. */
 .wc-strip{background:linear-gradient(100deg,#1B2043,#25306B 55%,#1E5F7A);color:#fff;
   border-bottom:1px solid rgba(230,195,129,.28)}
 .wc-in{max-width:1180px;margin:0 auto;padding:8px 22px;display:flex;align-items:center;gap:16px}
@@ -1250,25 +1273,6 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <span class="wc-sep"></span>
     <div class="wc-row" id="wc-row"></div>
   </div>
-</section>
-
-<!-- ============ PUBLIC SITE ============ -->
-<div id="view-site" class="view active">
-
-<section class="hero-v2">
-  <div class="hero-media"></div>
-  <div class="hero-veil"></div>
-  <div class="hero-inner">
-    <div class="hero-copy rv in">
-      <div class="eyebrow">Coastal Alabama &amp; Northwest Florida</div>
-      <h1>Find <em class="yours">your</em> place<br>on the <span class="accent">Gulf</span>.</h1>
-      <p>Search every active listing from Gulf Shores to Perdido Key &mdash;
-         with a brokerage small enough to answer the phone.</p>
-      <a href="#listings" class="btn btn-light" id="hero-cta">Search homes</a>
-    </div>
-  </div>
-  <div class="photo-credit"><div><span>Zayde Albiyati</span><span class="b">Salt Air Media</span></div></div>
-  <div class="scroll-cue">Scroll</div>
 </section>
 
 <div class="search" role="search">
@@ -3073,7 +3077,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v152';
+window.BUILD = 'index-v153';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
