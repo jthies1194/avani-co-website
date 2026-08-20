@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v183">
+<meta name="build" content="index-v184">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3622,7 +3622,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v183';
+window.BUILD = 'index-v184';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -16102,10 +16102,16 @@ function ohFeedbackLine(f){
   return escapeHtml(bits.join(' \u00b7 ')) + (f.note ? ' \u2014 \u201c' + escapeHtml(f.note) + '\u201d' : '');
 }
 
+/* AvaniQR.draw takes a context and coordinates, not a canvas — calling it with a
+   canvas drew nothing at all, which is why the sign printed blank. */
 function ohDrawQr(oh){
   const cv = document.getElementById('ohqr-' + oh.id);
   if(!cv || typeof AvaniQR === 'undefined') return;
-  try{ AvaniQR.draw(cv, location.origin + '/?oh=' + oh.token, 132); }catch(e){}
+  try{
+    const x = cv.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+    AvaniQR.draw(x, location.origin + '/?oh=' + oh.token, 0, 0, cv.width);
+  }catch(e){ console.error('[openhouse] qr failed', e); }
 }
 
 async function ohCreate(){
@@ -16160,7 +16166,11 @@ function ohPrintSign(id){
   if(!oh) return;
   const cv = document.createElement('canvas');
   cv.width = cv.height = 620;
-  try{ AvaniQR.draw(cv, location.origin + '/?oh=' + oh.token, 620); }catch(e){}
+  try{
+    const x = cv.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, 620, 620);
+    AvaniQR.draw(x, location.origin + '/?oh=' + oh.token, 0, 0, 620);
+  }catch(e){ console.error('[openhouse] sign qr failed', e); }
   printReport('Open house sign', `
     <div style="text-align:center;padding:30px 0">
       <div style="font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#5A6288">
@@ -16335,8 +16345,8 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenOhSignIn(); 
 <h3>Set up an open house</h3>
 <div class="sub">You'll get a QR code to print. Visitors sign in on their own phone.</div>
 <div class="field"><label>Which house</label><input id="oh-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
-<div class="field"><label>When</label><input id="oh-when" placeholder="Saturday, 1\u20133pm"></div>
-<div class="field"><label>Price <span style="font-weight:400;text-transform:none">\u2014 optional</span></label>
+<div class="field"><label>When</label><input id="oh-when" placeholder="Saturday, 1–3pm"></div>
+<div class="field"><label>Price <span style="font-weight:400;text-transform:none">— optional</span></label>
   <input id="oh-price" placeholder="$425,000"></div>
 <input type="hidden" id="oh-key">
 <button class="submit-btn" onclick="ohCreate()">Create it</button>
@@ -16646,6 +16656,22 @@ function mkoRender(){
   const cap = mkoCeiling();
   const els = mkoList();
 
+  /* Sliders as well as dragging. The drag handles sit over a preview that is
+     scaled down to a few hundred pixels, so nudging something precisely with a
+     finger is hopeless — and if the handle is even slightly out of register it
+     feels broken. Sliders always land where they say. */
+  const place = (i, el) => `
+    <div class="mko-two" style="margin-top:7px">
+      <div><label>Across — ${Math.round(el.x*100)}%</label>
+        <input type="range" min="0" max="94" value="${Math.round(el.x*100)}"
+          onclick="event.stopPropagation()"
+          oninput="mkoSet(${i},'x',Number(this.value)/100)"></div>
+      <div><label>Down — ${Math.round(el.y*100)}%</label>
+        <input type="range" min="0" max="${Math.round(mkoFloor()*100)}" value="${Math.round(el.y*100)}"
+          onclick="event.stopPropagation()"
+          oninput="mkoSet(${i},'y',Number(this.value)/100)"></div>
+    </div>`;
+
   host.innerHTML = els.length ? els.map((el, i) => el.type === 'text' ? `
     <div class="mko-el ${mkoSel===i?'on':''}" onclick="mkoSel=${i};mkoRender()">
       <div class="hd"><b>Your text</b><span class="sp"></span>
@@ -16659,10 +16685,11 @@ function mkoRender(){
           <select onclick="event.stopPropagation()" onchange="mkoSet(${i},'font',this.value)">
             ${MKO_FONTS.map(([v,l]) => `<option value="${v}" ${el.font===v?'selected':''}>${l}</option>`).join('')}
           </select></div>
-        <div><label>Size \u2014 ${Math.round(el.size)}</label>
+        <div><label>Size — ${Math.round(el.size)}</label>
           <input type="range" min="10" max="${Math.round(cap)}" value="${Math.round(el.size)}"
             onclick="event.stopPropagation()" oninput="mkoSet(${i},'size',this.value)"></div>
       </div>
+      ${place(i, el)}
       <div class="mko-sw">${MKO_COLOURS.map(c =>
         `<i class="${el.colour===c?'on':''}" style="background:${c}"
           onclick="event.stopPropagation();mkoSet(${i},'colour','${c}')"></i>`).join('')}</div>
@@ -16672,12 +16699,14 @@ function mkoRender(){
         ${el.kind === 'photo' ? `<button onclick="event.stopPropagation();mkoSet(${i},'round',${!el.round})">${el.round?'Round':'Square'}</button>` : ''}
         <button onclick="event.stopPropagation();mkoDrop(${i})">Remove</button></div>
       <div class="mko-two">
-        <div><label>Size</label>
-          <input type="range" min="8" max="55" value="${Math.round(el.w*100)}"
+        <div><label>Size — ${Math.round(el.w*100)}%</label>
+          <input type="range" min="6" max="60" value="${Math.round(el.w*100)}"
             onclick="event.stopPropagation()"
             oninput="mkoSet(${i},'w',Number(this.value)/100)"></div>
-        <div style="font-size:11.5px;color:var(--driftwood)">Drag it on the preview</div>
+        <div style="font-size:11.5px;color:var(--driftwood);padding-bottom:4px">
+          Drag it on the preview, or use the sliders</div>
       </div>
+      ${place(i, el)}
     </div>`).join('')
   : '<div style="font-size:13px;color:var(--driftwood)">Nothing added yet.</div>';
 
@@ -16699,6 +16728,9 @@ function mkoHandles(){
   const shown = stage.querySelector('canvas, img');
   if(!shown) return;
   const box = shown.getBoundingClientRect();
+  const wrap = stage.getBoundingClientRect();
+  // the preview is centred inside the stage, so handles must be offset by that gap
+  const offX = box.left - wrap.left, offY = box.top - wrap.top;
   const sw = box.width / cv.width, sh = box.height / cv.height;
 
   mkoList().forEach((el, i) => {
@@ -16706,8 +16738,8 @@ function mkoHandles(){
     d.className = 'mko-hit' + (mkoSel === i ? ' sel' : '');
     const w = el.type === 'image' ? el.w * cv.width : Math.max(120, el.size * 8);
     const h = el.type === 'image' ? el.w * cv.width : el.size * 1.4;
-    d.style.left = (el.x * cv.width * sw) + 'px';
-    d.style.top  = (el.y * cv.height * sh) + 'px';
+    d.style.left = (offX + el.x * cv.width * sw) + 'px';
+    d.style.top  = (offY + el.y * cv.height * sh) + 'px';
     d.style.width = (w * sw) + 'px';
     d.style.height = (h * sh) + 'px';
     d.onpointerdown = e => {
@@ -16722,7 +16754,7 @@ function mkoHandles(){
       el2.x = Math.max(0, Math.min(0.94, mkoDrag.ox + (e.clientX - mkoDrag.sx) / mkoDrag.sw));
       el2.y = Math.max(0, Math.min(mkoFloor(), mkoDrag.oy + (e.clientY - mkoDrag.sy) / mkoDrag.sh));
       mkRender();
-      mkoHandles();
+      mkoRender();          // keep the sliders in step with the drag
     };
     d.onpointerup = () => { mkoDrag = null; };
     stage.appendChild(d);
