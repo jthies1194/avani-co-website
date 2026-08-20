@@ -173,7 +173,7 @@ function keyAllowedForAgent(key, sess, write) {
     'settings:viewLimit', 'settings:testimonials', 'settings:reviewLink',
     'settings:agentPlans', 'settings:agentPlanHistory', 'settings:closedDeals',
     'settings:expenses', 'settings:dealSubmissions', 'settings:officeCalendar',
-    'settings:resourceLinks',
+    'settings:resourceLinks', 'settings:marketingPolicy',
   ]);
   if (k.startsWith('settings:')) return AGENT_READABLE.has(k) && !write;
   if (k.startsWith('lead:')) return true;                 // ownership checked separately
@@ -674,6 +674,46 @@ app.get('/api/listings', async (req, res) => {
     res.json({ value: ordered, count: ordered.length, totalAvailable, beach, baldwin, cached: false });
   } catch (e) {
     console.error('[listings] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ---------- MLS photo proxy ----------
+   Flyers are drawn on a canvas and then exported. A listing photo loaded straight
+   from the MLS CDN is cross-origin, which taints the canvas and makes toDataURL
+   throw — so the image has to come back through our own origin.
+
+   Restricted to the hosts the feed actually uses. An open proxy here would let
+   anyone use this server to fetch arbitrary URLs, so unknown hosts are refused
+   and logged rather than allowed through. */
+const PHOTO_HOSTS = [
+  'sparkplatform.com', 'bridgedataoutput.com', 'amazonaws.com',
+  'cloudfront.net', 'mlsgrid.com', 'akamaized.net',
+];
+
+app.get('/api/listing-photo', async (req, res) => {
+  const raw = String(req.query.u || '');
+  let url;
+  try { url = new URL(raw); } catch (e) { return res.status(400).json({ error: 'Bad URL.' }); }
+  if (url.protocol !== 'https:') return res.status(400).json({ error: 'https only.' });
+  const host = url.hostname.toLowerCase();
+  const ok = PHOTO_HOSTS.some(h => host === h || host.endsWith('.' + h));
+  if (!ok) {
+    console.warn(`[photo proxy] refused host ${host} — add it to PHOTO_HOSTS if the feed uses it`);
+    return res.status(403).json({ error: 'That image host is not allowed.' });
+  }
+  try {
+    const r = await fetch(url.toString());
+    if (!r.ok) return res.status(502).json({ error: `Upstream ${r.status}` });
+    const type = r.headers.get('content-type') || '';
+    if (!type.startsWith('image/')) return res.status(415).json({ error: 'Not an image.' });
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.set('Content-Type', type);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.send(buf);
+  } catch (e) {
+    console.error('[photo proxy] failed:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1639,7 +1679,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v53',
+    serverVersion: 'v55',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
