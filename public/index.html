@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v208">
+<meta name="build" content="index-v209">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2344,117 +2344,93 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <div id="profile-gate-overlay"><div class="box"><div id="profile-gate-body"></div></div></div>
 <div id="crm-main" class="crm-wrap" style="display:none;">
 <style>
-/* ================= CRM SHELL — navy rail, gold accent, Fraunces =================
-   Deliberately a restyle, not a rewrite. renderCrmNav() still emits exactly the
-   same buttons with the same --tab colors, badges, arrange mode and preview
-   button; this turns that horizontal tile grid into a vertical rail. Keeping the
-   logic untouched is what preserves drag-to-arrange, per-agent themes and the
-   section color variable --sec that the panels underneath read.
-   Palette is lifted off the public homepage header, not invented. */
+/* ================= CRM SHELL — tabs on top, navy and gold =================
+   The vertical rail was wrong for this CRM: fifteen ungrouped tabs in a column
+   ran off the screen and scrolled out of reach. Tabs live across the top now and
+   stay put while the content moves. renderCrmNav() is still untouched — same
+   buttons, same --tab colors, badges, arrange mode — this only lays them out. */
 :root{
   --rl:#0E1433; --rl2:#161D45;
   --gd:#C89B4E; --gd-lt:#E8D2A0; --gd-pale:#F6EEDC;
-  --pp:#FBFAF7;                 /* warm ivory — the cold near-white read as cheap */
+  --pp:#FBFAF7;
   --mut:#7A8199; --hair:rgba(20,26,60,.10); --hair2:rgba(20,26,60,.06);
 }
-#crm-main.crm-wrap{max-width:none;padding:0;display:grid;
-  grid-template-columns:236px minmax(0,1fr);min-height:100vh;background:var(--pp)}
+#crm-main.crm-wrap{max-width:none;padding:0;display:block;background:var(--pp)}
 
-/* ---- rail ---- */
-#crm-rail{background:linear-gradient(178deg,var(--rl2),var(--rl) 55%);
-  position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
-  overscroll-behavior:contain;padding-bottom:20px;scrollbar-width:thin;
-  scrollbar-color:rgba(200,155,78,.5) transparent}
-#crm-rail::-webkit-scrollbar{width:7px}
-#crm-rail::-webkit-scrollbar-thumb{background:rgba(200,155,78,.45);border-radius:4px}
-#crm-rail::-webkit-scrollbar-track{background:transparent}
-#crm-rail:after{content:'';position:absolute;top:0;right:0;bottom:0;width:1px;
-  background:linear-gradient(180deg,rgba(200,155,78,.55),rgba(200,155,78,.08))}
-#crm-rail .mk{padding:18px 20px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
-#crm-rail .mk .n{font-family:'Fraunces',Georgia,serif;font-size:20px;color:#fff;
+/* ---- the bar ---- */
+#crm-rail{background:linear-gradient(120deg,var(--rl2),var(--rl) 70%);
+  position:sticky;top:0;z-index:55;padding:10px 22px 0;
+  border-bottom:1px solid rgba(200,155,78,.45);
+  display:flex;flex-wrap:wrap;align-items:center;gap:0 16px}
+#crm-rail .mk{padding:0;border:none;flex:0 0 auto;margin-right:6px}
+#crm-rail .mk .n{font-family:'Fraunces',Georgia,serif;font-size:17px;color:#fff;
   letter-spacing:-.02em;line-height:1.1;font-weight:400}
-#crm-rail .mk .s{font-size:9.5px;letter-spacing:.19em;text-transform:uppercase;
-  color:var(--gd);margin-top:6px;font-weight:600}
-#crm-rail .me{padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.08);
-  display:flex;align-items:center;gap:11px}
-#crm-rail .me .av{width:34px;height:34px;border-radius:50%;background:var(--gd);
-  color:var(--rl);display:grid;place-items:center;font-weight:700;font-size:13px;flex:0 0 auto}
-#crm-rail .me .t{font-size:13px;font-weight:600;color:#fff;line-height:1.25;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#crm-rail .me .r{font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+#crm-rail .mk .s{font-size:8px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--gd);margin-top:3px;font-weight:600}
+#crm-rail .me{padding:0;border:none;display:flex;align-items:center;gap:9px;flex:0 0 auto}
+#crm-rail .me .av{width:29px;height:29px;border-radius:50%;background:var(--gd);
+  color:var(--rl);display:grid;place-items:center;font-weight:700;font-size:11.5px;flex:0 0 auto}
+#crm-rail .me .t{font-size:12.5px;font-weight:600;color:#fff;line-height:1.2;white-space:nowrap}
+#crm-rail .me .r{font-size:9px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--gd-lt);opacity:.85}
-#crm-rail .out{margin:14px 20px 0;width:calc(100% - 40px);border:1px solid rgba(255,255,255,.16);
-  background:transparent;color:rgba(231,233,242,.8);border-radius:3px;padding:8px;
-  font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+#crm-rail #agent-switcher{flex:0 0 auto}
+#crm-rail .out{margin:0 0 0 auto;width:auto;border:1px solid rgba(255,255,255,.22);
+  background:transparent;color:rgba(231,233,242,.85);border-radius:3px;padding:6px 13px;
+  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;flex:0 0 auto}
 #crm-rail .out:hover{border-color:var(--gd);color:#fff}
 
-/* ---- the nav itself: same buttons, new shape ---- */
-#crm-main .crm-nav{display:block;border-bottom:none;margin:12px 0 0;padding:0 12px;gap:0}
-#crm-main .crm-nav button{display:flex;align-items:center;gap:11px;width:100%;
-  text-align:left;padding:7px 10px;margin:0 0 1px;border:none;border-radius:6px;
-  background:transparent;color:rgba(231,233,242,.74);font-size:13.5px;font-weight:500;
-  letter-spacing:0;text-transform:none;position:relative;transform:none;box-shadow:none;
-  transition:.14s}
-#crm-main .crm-nav button:hover{background:rgba(255,255,255,.055);color:#fff;transform:none}
-#crm-main .crm-nav button.on{background:rgba(200,155,78,.13);color:#fff}
-#crm-main .crm-nav button.on:before{content:'';position:absolute;left:-12px;top:7px;bottom:7px;
-  width:2.5px;background:var(--gd);border-radius:0 2px 2px 0}
-#crm-main .crm-nav button .ti{width:22px;height:22px;flex:0 0 auto;background:transparent;
+/* ---- tabs, on their own line, always reachable ---- */
+#crm-main .crm-nav{display:flex;flex-wrap:wrap;gap:2px;width:100%;order:9;
+  border-bottom:none;margin:9px 0 0;padding:0}
+#crm-main .crm-nav button{display:inline-flex;align-items:center;gap:7px;width:auto;
+  padding:8px 13px;margin:0;border:none;border-radius:5px 5px 0 0;background:transparent;
+  color:rgba(231,233,242,.72);font-size:12.5px;font-weight:500;letter-spacing:0;
+  text-transform:none;position:relative;transform:none;box-shadow:none;transition:.14s}
+#crm-main .crm-nav button:hover{background:rgba(255,255,255,.07);color:#fff;transform:none}
+#crm-main .crm-nav button.on{background:var(--pp);color:var(--rl)}
+#crm-main .crm-nav button.on:before{content:'';position:absolute;left:0;right:0;top:0;
+  height:2.5px;background:var(--gd);border-radius:2px 2px 0 0}
+#crm-main .crm-nav button .ti{width:16px;height:16px;flex:0 0 auto;background:transparent;
   color:var(--tab,#C89B4E);display:inline-flex;align-items:center;justify-content:center;
   border-radius:0}
-#crm-main .crm-nav button .ti svg{width:16px;height:16px;stroke-width:1.7}
-#crm-main .crm-nav button.on .ti{background:transparent;color:var(--gd)}
-#crm-main .crm-nav button .tl{font-size:13px;font-weight:500;line-height:1.25;flex:1;
-  letter-spacing:0}
-#crm-main .crm-nav button .pill{position:static;margin-left:auto;background:var(--gd);
-  color:var(--rl);border-radius:20px;padding:0 7px;line-height:17px;min-width:19px;
-  text-align:center;font-size:11px;font-weight:700;box-shadow:none}
-#crm-main .crm-nav button.on .pill{background:var(--gd);color:var(--rl)}
-#crm-main .crm-nav .crm-arrange{margin-top:10px;border-top:1px solid rgba(255,255,255,.08);
-  padding-top:13px;border-radius:0}
-#crm-main .crm-nav .tile-arr{display:flex;align-items:center;gap:11px;width:100%;
-  padding:9px 10px;margin:0 0 2px;border-radius:7px;background:rgba(255,255,255,.06);
-  color:#fff;cursor:grab}
-#crm-main .crm-nav .tile-arr .grip{opacity:.5;width:14px;flex:0 0 auto}
+#crm-main .crm-nav button .ti svg{width:14px;height:14px;stroke-width:1.8}
+#crm-main .crm-nav button.on .ti{color:var(--gd)}
+#crm-main .crm-nav button .tl{font-size:12.5px;font-weight:500;line-height:1.2;
+  letter-spacing:0;white-space:nowrap}
+#crm-main .crm-nav button .pill{position:static;margin-left:2px;background:var(--gd);
+  color:var(--rl);border-radius:20px;padding:0 6px;line-height:16px;min-width:17px;
+  text-align:center;font-size:10.5px;font-weight:700;box-shadow:none}
+#crm-main .crm-nav .crm-arrange,#crm-main .crm-nav .tile-arr{display:inline-flex;
+  align-items:center;gap:7px;width:auto;padding:8px 13px;margin:0;border-radius:5px 5px 0 0;
+  background:rgba(255,255,255,.08);color:#fff;cursor:grab;border:none}
 
-/* ---- top bar ---- */
-#crm-body{min-width:0;display:flex;flex-direction:column}
-#crm-top{background:#fff;border-bottom:1px solid var(--hair);padding:0 30px;
-  min-height:50px;display:flex;align-items:center;gap:16px;position:relative;z-index:1}
-#crm-top:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
-  background:linear-gradient(90deg,var(--gd),rgba(200,155,78,0) 62%)}
-#crm-top .sp{flex:1}
-#crm-inner{padding:28px 30px 70px;max-width:1280px;width:100%}
+/* stamp + suggest sit in the bar, so they never scroll away */
+#crm-main .idea-row{order:10;width:100%;display:flex;align-items:center;gap:12px;
+  padding:0 0 8px;margin:0;background:transparent}
+#crm-main #crm-version{font-size:10.5px;letter-spacing:.05em;
+  color:rgba(231,233,242,.45)!important;font-variant-numeric:tabular-nums}
+#crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:5px 12px;font-size:11.5px;
+  font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
+  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
+  color:rgba(231,233,242,.9);white-space:nowrap}
+#crm-main .idea-btn:hover{background:var(--gd);border-color:var(--gd);color:#241A08;
+  transform:none;box-shadow:none}
+#crm-main .idea-btn svg{width:12px;height:12px}
 
-/* ---- typography: the interior finally matches the wordmark ---- */
+#crm-top{display:none}
+#crm-body{min-width:0;background:var(--pp)}
+#crm-inner{padding:26px 24px 70px;max-width:1280px;width:100%;margin:0 auto}
+
 #crm-main h1,#crm-main h2,#crm-main h3{font-family:'Fraunces',Georgia,serif;font-weight:400;
   letter-spacing:-.015em}
 #crm-main .sx-h{font-size:21px}
-#crm-main .stat-box .n,#crm-main .mx .n{font-family:'Fraunces',Georgia,serif;font-weight:300}
 #crm-main .card,#crm-main .setup-panel,#crm-main .panel{border-radius:4px}
 
-/* the ideas button belongs in the top bar now, not on a stamp row */
-#crm-main .idea-row{padding:0;margin:0;gap:14px;width:100%}
-#crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:6px 12px;font-size:12px;
-  font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
-  background:#fff;border:1px solid var(--hair);color:var(--mut);white-space:nowrap}
-#crm-main .idea-btn:hover{background:var(--gd-pale);border-color:var(--gd);color:#5C4718;
-  transform:none;box-shadow:none}
-#crm-main .idea-btn svg{width:13px;height:13px}
-#crm-main #crm-version{font-size:11px;letter-spacing:.05em;color:var(--mut)!important}
-
-@media(max-width:900px){
-  #crm-main.crm-wrap{grid-template-columns:1fr}
-  #crm-rail{display:flex;flex-wrap:wrap;padding-bottom:8px}
-  #crm-rail:after{display:none}
-  #crm-rail .mk,#crm-rail .me{border-bottom:none;flex:1 1 auto}
-  #crm-rail .out{width:auto;margin:0 20px}
-  #crm-main .crm-nav{display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 10px;margin-top:6px}
-  #crm-main .crm-nav button{width:auto;flex:0 0 auto;padding:8px 12px}
-  #crm-main .crm-nav button .tl{flex:0 0 auto}
-  #crm-main .crm-nav button.on:before{display:none}
-  #crm-top{padding:0 16px;height:auto;min-height:56px;flex-wrap:wrap;gap:10px}
-  #crm-inner{padding:18px 16px 60px}
+@media(max-width:700px){
+  #crm-rail{padding:9px 14px 0;gap:0 10px}
+  #crm-rail .mk{display:none}
+  #crm-main .crm-nav button{padding:7px 10px;font-size:12px}
+  #crm-inner{padding:18px 14px 60px}
 }
 </style>
 
@@ -2473,11 +2449,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   <div id="agent-switcher"></div>
   <button class="out" onclick="logoutAgent()">Log out</button>
   <nav class="crm-nav" id="crm-nav"></nav>
-</aside>
-
-<div id="crm-body">
-<div id="crm-top">
-  <div class="idea-row">
+<div class="idea-row">
     <div id="crm-version" style="font-variant-numeric:tabular-nums" title="Deployed versions"></div>
     <button class="idea-btn" id="idea-btn" onclick="ideaOpen()"
       title="Tell the broker what would work better">
@@ -2487,6 +2459,11 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
       Suggest an improvement
     </button>
   </div>
+</aside>
+
+<div id="crm-body">
+<div id="crm-top">
+  
 </div>
 <div id="crm-inner">
 <div id="impersonation-banner" style="display:none; background:var(--marsh); color:var(--sand-light); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:13px; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -3874,7 +3851,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v208';
+window.BUILD = 'index-v209';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
