@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v197">
+<meta name="build" content="index-v198">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2408,6 +2408,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   </div>
   <div class="setup-body" id="pb-body" style="display:none">Loading&hellip;</div>
 </div>
+<div class="wn-active" id="wn-active" style="display:none"></div>
 <div class="stats-row" id="stats-row"></div>
 
 <div class="crm-toolbar">
@@ -3652,7 +3653,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v197';
+window.BUILD = 'index-v198';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4163,7 +4164,38 @@ window.__leadCount = leads.filter(l => l.stage === 'New').length;
 DASH_LEADS = leads;
 if(crmSection === 'sec-today' && typeof renderDashboard === 'function') renderDashboard();
 if(typeof renderCrmNav === 'function') renderCrmNav();
-const shown = currentFilterStage==='all' ? leads : leads.filter(l=>l.stage===currentFilterStage);
+let shown = currentFilterStage==='all' ? leads : leads.filter(l=>l.stage===currentFilterStage);
+
+/* Arriving from a counter on Today: show exactly those people, and say so. */
+if(window.__wnFilter){
+  const day = 86400000, now = Date.now();
+  const age = l => Math.floor((now - new Date(l.createdAt).getTime()) / day);
+  const running = l => {
+    const feed = (typeof ssList !== 'undefined' ? ssList : [])
+      .some(x => (x.email||'').toLowerCase() === (l.email||'').toLowerCase() && l.email && x.pace !== 'paused');
+    return feed || (l.drip && l.drip.campaignId && !l.drip.stopped);
+  };
+  const F = {
+    hot:      l => (l.score||0) >= 60,
+    new:      l => (l.stage||'New') === 'New',
+    stale:    l => (l.stage||'New') === 'New' && age(l) >= 2,
+    nofollow: l => !running(l) && !l.unsubscribed,
+    replied:  l => !!l.humanTakeover,
+  };
+  const LABEL = { hot:'Hot right now', new:'Never contacted', stale:'Waiting 2+ days',
+                  nofollow:'Nobody following up', replied:'In conversation' };
+  if(F[window.__wnFilter]) shown = leads.filter(F[window.__wnFilter]);
+  const bar = document.getElementById('wn-active');
+  if(bar){
+    bar.style.display = '';
+    bar.innerHTML = `Showing <b>${escapeHtml(LABEL[window.__wnFilter]||'')}</b>
+      \u2014 ${shown.length} of ${leads.length}
+      <button onclick="window.__wnFilter=null;loadLeads()">Show everyone</button>`;
+  }
+} else {
+  const bar = document.getElementById('wn-active');
+  if(bar) bar.style.display = 'none';
+}
 const tbody = document.getElementById('lead-tbody');
 document.getElementById('empty-state').style.display = shown.length===0 ? 'block':'none';
 tbody.innerHTML = shown.map(l=>{
@@ -7030,6 +7062,7 @@ function showCrmSection(id){
           if(typeof loadPipeline === 'function') await loadPipeline();
           if(typeof bfLoad === 'function') await bfLoad();
           if(typeof renderBriefing === 'function') renderBriefing();
+          if(typeof renderWhatNeeds === 'function') renderWhatNeeds();
         }catch(e){ console.error('[briefing]', e); }
       })();
     }
@@ -7437,6 +7470,7 @@ async function renderDashboard(){
 
   el.innerHTML = `
     <div id="ce-nudge-slot"></div>
+    <div id="wn-slot"></div>
     <div id="bf-slot"></div>
     <div class="dash-hero">
       <div>
@@ -17745,45 +17779,136 @@ async function ssDelete(id){
 }
 
 /* Show the agent what the lead would receive, before anything is sent. */
-async function ssPreview(){
-  const g = id => (document.getElementById(id)||{}).value.trim();
-  const box = document.getElementById('ss-preview');
-  box.innerHTML = 'Checking the feed\u2026';
+const SS_EXTRAS = [
+  ['pool','Pool','bool'], ['waterfront','Waterfront','bool'],
+  ['garage','Garage spaces','min'], ['stories','Stories','min'],
+  ['acres','Acres','min'], ['sqft','Sq ft','min'],
+  ['yearBuilt','Built after','min'], ['noHoa','No HOA','bool'],
+  ['maxHoa','HOA under','max'],
+];
+let ssTowns = [], ssFields = null;
+
+function ssRenderTowns(){
+  const host = document.getElementById('ss-towns');
+  if(!host) return;
+  const input = document.getElementById('ss-town-in');
+  host.querySelectorAll('.ss-town').forEach(n => n.remove());
+  ssTowns.forEach((t,i) => {
+    const el = document.createElement('span');
+    el.className = 'ss-town';
+    el.innerHTML = escapeHtml(t) + ' <button onclick="ssDropTown(' + i + ')">\u2715</button>';
+    host.insertBefore(el, input);
+  });
+}
+function ssAddTown(){
+  const el = document.getElementById('ss-town-in');
+  const v = (el.value || '').trim().replace(/,$/, '');
+  if(v && !ssTowns.includes(v)) ssTowns.push(v);
+  el.value = '';
+  ssRenderTowns();
+}
+function ssDropTown(i){ ssTowns.splice(i,1); ssRenderTowns(); }
+
+/* Ask the feed which of these it actually fills in. Offering a filter on a field
+   the MLS leaves blank produces an alert that never fires. */
+async function ssLoadFields(){
+  if(ssFields) return ssFields;
   try{
-    const r = await fetch('/api/search/preview', {
+    const r = await fetch('/api/search/fields');
+    if(r.ok) ssFields = (await r.json()).fields || {};
+  }catch(e){ ssFields = {}; }
+  return ssFields || {};
+}
+
+async function ssRenderExtras(){
+  const host = document.getElementById('ss-extras');
+  if(!host) return;
+  const f = await ssLoadFields();
+  let unusable = 0;
+  host.innerHTML = SS_EXTRAS.map(([k,label,kind]) => {
+    const info = f[k];
+    const ok = !info || info.usable !== false;
+    if(!ok) unusable++;
+    return `<label class="ss-x ${ok?'':'off'}" ${ok?'':'title="The MLS feed rarely fills this in"'}>
+      ${kind === 'bool'
+        ? `<input type="checkbox" id="ss-x-${k}" ${ok?'':'disabled'}> ${escapeHtml(label)}`
+        : `${escapeHtml(label)} <input type="number" min="0" id="ss-x-${k}" ${ok?'':'disabled'}>`}
+      ${ok ? '' : '<span class="miss">no data</span>'}
+    </label>`;
+  }).join('');
+  const note = document.getElementById('ss-fieldnote');
+  if(note) note.textContent = unusable
+    ? `${unusable} of these are grayed out because the MLS feed rarely fills them in \u2014 an alert on those would never fire.`
+    : '';
+}
+
+function ssCriteria(){
+  const g = id => (document.getElementById(id)||{}).value.trim();
+  const c = { name:g('ss-name'), email:g('ss-email'), pace:g('ss-pace'),
+    cities: ssTowns.slice(), type:g('ss-type'),
+    minPrice:g('ss-min'), maxPrice:g('ss-max'), beds:g('ss-beds') };
+  SS_EXTRAS.forEach(([k,,kind]) => {
+    const el = document.getElementById('ss-x-' + k);
+    if(!el || el.disabled) return;
+    if(kind === 'bool'){ if(el.checked) c[k] = true; }
+    else if(el.value) c[k] = Number(el.value);
+  });
+  return c;
+}
+
+/* Shows the email itself, not a list of addresses. */
+async function ssPreviewEmail(){
+  const box = document.getElementById('ss-preview');
+  box.innerHTML = '<div style="font-size:13px;color:var(--driftwood);padding:10px 0">Building it\u2026</div>';
+  try{
+    const r = await fetch('/api/search/preview-email', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ city:g('ss-city'), type:g('ss-type'),
-        minPrice:g('ss-min'), maxPrice:g('ss-max'), beds:g('ss-beds'),
-        waterfront: document.getElementById('ss-water').checked }),
+      body: JSON.stringify(ssCriteria()),
     });
     const d = await r.json();
-    if(!r.ok){ box.innerHTML = escapeHtml(d.error || 'Could not check that.'); return; }
-    box.innerHTML = d.count
-      ? `<b>${d.count}</b> matched in the last 30 days \u2014 roughly what they would have had.
-         ${d.sample.map(x => `<div class="item">$${Number(x.price).toLocaleString()} \u00b7
-           ${escapeHtml(x.address || 'address on request')}${x.city ? ', ' + escapeHtml(x.city) : ''}</div>`).join('')}`
-      : `<b>Nothing matched in the last 30 days.</b> Either the criteria are tight, or the feed
-         does not cover that area yet \u2014 worth widening before you set it running.`;
-  }catch(e){ box.innerHTML = 'Could not check that.'; }
+    if(!r.ok){ box.innerHTML = `<div style="font-size:13px;color:#B4232A;padding:8px 0">${escapeHtml(d.error||'Could not build that.')}</div>`; return; }
+    if(!d.count){
+      box.innerHTML = `<div class="ss-mail"><div class="body">
+        <b>Nothing matched in the last 30 days.</b><br>
+        Either the criteria are tight, or the feed does not cover that area yet.
+        Worth widening before you set it running.</div></div>`;
+      return;
+    }
+    box.innerHTML = `
+      <div class="ss-mail">
+        <div class="bar">This is exactly what they receive
+          <button onclick="document.getElementById('ss-preview').innerHTML=''">Close preview</button></div>
+        <div class="bar"><b>Subject:</b> ${escapeHtml(d.subject)}</div>
+        <div class="body">
+          <p>${escapeHtml(d.greeting)}</p>
+          <p>${escapeHtml(d.intro)}</p>
+          ${d.items.map(x => `<div class="li"><b>${escapeHtml(x.price)}</b>
+            <span>${escapeHtml(x.address)}${x.city?', '+escapeHtml(x.city):''}</span>
+            ${x.beds||x.baths ? `<span>${x.beds?x.beds+' bed':''}${x.beds&&x.baths?', ':''}${x.baths?x.baths+' bath':''}</span>` : ''}
+          </div>`).join('')}
+          <p style="margin-top:14px">${escapeHtml(d.signoff)}</p>
+          <p style="white-space:pre-line;color:#5A6288;font-size:12.5px">${escapeHtml(d.from)}</p>
+        </div>
+        <div class="fine">${escapeHtml(d.disclaimer)}<br><br>${escapeHtml(d.footer)}</div>
+      </div>
+      <div style="font-size:12.5px;color:var(--driftwood);margin-top:7px">
+        ${d.count} matched in the last 30 days \u2014 roughly what they would have had.</div>`;
+  }catch(e){ box.innerHTML = '<div style="font-size:13px;color:#B4232A">Could not build that.</div>'; }
 }
 
 async function ssCreate(){
-  const g = id => (document.getElementById(id)||{}).value.trim();
-  if(!g('ss-email')){ showToast('Their email, at least.'); return; }
+  const c = ssCriteria();
+  if(!c.email){ showToast('Their email, at least.'); return; }
   try{
     const r = await fetch('/api/search', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        name:g('ss-name'), email:g('ss-email'), pace:g('ss-pace'),
-        city:g('ss-city'), type:g('ss-type'),
-        minPrice:g('ss-min'), maxPrice:g('ss-max'), beds:g('ss-beds'),
-        waterfront: document.getElementById('ss-water').checked,
-      }),
+      body: JSON.stringify(c),
     });
     if(!r.ok){ showToast("Couldn't set that up."); return; }
-    ['ss-name','ss-email','ss-city','ss-min','ss-max','ss-beds'].forEach(i => {
+    ['ss-name','ss-email','ss-min','ss-max','ss-beds'].forEach(i => {
       const e = document.getElementById(i); if(e) e.value = '';
     });
+    ssTowns = []; ssRenderTowns();
     document.getElementById('ss-preview').innerHTML = '';
     document.getElementById('ss-new').classList.remove('active');
     showToast('Running. They will hear the moment something matches.');
@@ -17860,38 +17985,46 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenFeedPrefs();
 </script>
 
 <div class="modal-overlay" id="ss-new">
-<div class="modal" style="max-width:480px">
+<div class="modal" style="max-width:560px">
 <button class="modal-close" onclick="document.getElementById('ss-new').classList.remove('active')">&times;</button>
 <h3>New listings, sent automatically</h3>
-<div class="sub">Set what they are after. They control how often from every email.</div>
+<div class="sub">Set what they're after once. They control how often from every email.</div>
 
 <div class="ss-form">
   <div class="field"><label>Their name</label><input id="ss-name" placeholder="Dawn Whitfield"></div>
   <div class="field"><label>Their email</label><input id="ss-email" placeholder="dawn@example.com"></div>
-  <div class="field full"><label>Where</label>
-    <input id="ss-city" placeholder="Gulf Shores" list="city-options"></div>
+</div>
+
+<div class="field"><label>Where &mdash; add as many as you like</label>
+  <div class="ss-towns" id="ss-towns" onclick="document.getElementById('ss-town-in').focus()">
+    <input id="ss-town-in" list="city-options" placeholder="Type a town and press enter"
+      onkeydown="if(event.key==='Enter'||event.key===','){event.preventDefault();ssAddTown();}"
+      onchange="ssAddTown()">
+  </div></div>
+
+<div class="ss-form">
   <div class="field"><label>Least</label><input id="ss-min" inputmode="numeric" placeholder="300000"></div>
   <div class="field"><label>Most</label><input id="ss-max" inputmode="numeric" placeholder="650000"></div>
   <div class="field"><label>Beds, minimum</label><input id="ss-beds" inputmode="numeric" placeholder="2"></div>
   <div class="field"><label>Kind</label>
-    <select id="ss-type">
-      <option value="">Anything</option>
-      <option>Residential</option><option>Land</option><option>Commercial</option>
-    </select></div>
-  <div class="field full" style="display:flex;align-items:center;gap:8px">
-    <input type="checkbox" id="ss-water" style="width:auto">
-    <label for="ss-water" style="margin:0">Waterfront only</label></div>
-  <div class="field full"><label>How often, to start</label>
-    <select id="ss-pace">
-      <option value="instant">As it happens</option>
-      <option value="daily" selected>Daily digest</option>
-      <option value="weekly">Weekly</option>
-    </select></div>
+    <select id="ss-type"><option value="">Anything</option>
+      <option>Residential</option><option>Land</option><option>Commercial</option></select></div>
 </div>
 
-<button class="btn-sm" onclick="ssPreview()" style="margin-top:4px">
-  Show me what they would have had</button>
-<div class="ss-prev" id="ss-preview"></div>
+<div class="field-label" style="margin-top:2px">What else matters to them</div>
+<div class="ss-extras" id="ss-extras"></div>
+<div id="ss-fieldnote" style="font-size:11.5px;color:var(--driftwood);margin-top:7px;line-height:1.5"></div>
+
+<div class="field" style="margin-top:12px"><label>How often, to start</label>
+  <select id="ss-pace">
+    <option value="instant">As it happens</option>
+    <option value="daily" selected>Daily digest</option>
+    <option value="weekly">Weekly</option>
+  </select></div>
+
+<button class="btn-sm" onclick="ssPreviewEmail()" style="margin-top:2px">
+  Preview the actual email</button>
+<div id="ss-preview"></div>
 
 <button class="submit-btn" style="margin-top:14px" onclick="ssCreate()">Start it</button>
 </div>
@@ -17979,20 +18112,35 @@ function lcRunning(l){
   if(l.unsubscribed) bits.push(`<span class="no">Unsubscribed — do not email</span>`);
 
   if(!bits.length){
-    bits.push(`<span class="none">Nothing running —
-      <a href="#" onclick="lcStartFeed('${l.id}');return false;">set up alerts</a></span>`);
+    bits.push(`<button class="lc-setup" onclick="event.stopPropagation();lcStartFeed('${l.id}')">
+      <span class="i">✈</span>
+      <span class="t"><b>Set up listing alerts</b>
+        <small>New matches land in their inbox automatically</small></span>
+      <span class="go">→</span></button>`);
   }
   return bits.join('');
 }
 
 /* Opens the alert form with their details already in it. */
+/* Opens the form with their details already in, and their town if we know it —
+   all still editable. */
 function lcStartFeed(id){
   const l = (typeof leads !== 'undefined' ? leads : []).find(x => x.id === id);
   document.getElementById('ss-new').classList.add('active');
+  ssTowns = [];
   if(l){
     const set = (el,v) => { const e = document.getElementById(el); if(e) e.value = v || ''; };
     set('ss-name', l.name); set('ss-email', l.email);
+    // the town they enquired about, if the message mentions one
+    // the datalist the search box uses — 73 towns, already in the page
+    const dl = document.getElementById('city-options');
+    const towns = dl ? Array.from(dl.options).map(o => o.value) : [];
+    const hay = ((l.message||'') + ' ' + (l.listingLabel||'')).toLowerCase();
+    towns.forEach(t => { if(hay.includes(String(t).toLowerCase()) && !ssTowns.includes(t)) ssTowns.push(t); });
   }
+  ssRenderTowns();
+  ssRenderExtras();
+  const box = document.getElementById('ss-preview'); if(box) box.innerHTML = '';
 }
 
 function lsBadge(lead){
@@ -18039,6 +18187,15 @@ async function lsLog(leadId, event){
 /* ---------- playbooks ---------- */
 let pbList = [], pbDefaults = true;
 
+const PB_ART = {
+  pb_prop:   { icon:'\u2302', tint:'#2E3CB0', blurb:'They asked about one specific place. Find out whether it is that one, or a type.' },
+  pb_buyer:  { icon:'\u25CE', tint:'#1E9AA8', blurb:'A form, no property named. Work out where and roughly what before sending anything.' },
+  pb_seller: { icon:'\u25B2', tint:'#2E8C5A', blurb:'They want a number. Get the two facts a computer cannot know first.' },
+  pb_oh:     { icon:'\u2691', tint:'#C9971F', blurb:'They walked through a house. Ask while it is still fresh.' },
+  pb_quiet:  { icon:'\u25CB', tint:'#8C93AD', blurb:'Registered and vanished. Four light touches, then leave them be.' },
+  pb_back:   { icon:'\u21BB', tint:'#D2604A', blurb:'Gone for months, suddenly back. Worth a call the same week.' },
+};
+
 async function renderPlaybooks(){
   const host = document.getElementById('pb-body');
   if(!host) return;
@@ -18051,32 +18208,62 @@ async function renderPlaybooks(){
 
   const CH = { sms:'Text', email:'Email', task:'You' };
   host.innerHTML = `
-    <p style="margin:0 0 12px;font-size:13.5px;color:var(--driftwood);max-width:640px;line-height:1.55">
-      A different opening for each situation. Somebody who asked about one property should not
-      get the same first line as somebody who filled in a form and left.
-      ${pbDefaults ? '<br><strong>These are the starting versions</strong> \u2014 edit any of them and they become yours.' : ''}</p>
+    <div class="pb-hero">
+      <div class="pb-hero-t">
+        <div class="k">Openers</div>
+        <h3>A different first line for every situation</h3>
+        <p>Someone who asked about one property should not get the same message as
+          someone who filled in a form and left. Pick one, or edit any of them.</p>
+      </div>
+      <div class="pb-hero-n"><b>${pbList.length}</b><span>ready to use</span></div>
+    </div>
 
-    ${pbList.map(p => `
-      <div class="pb-card">
-        <div class="h"><b>${escapeHtml(p.name)}</b>
-          <span class="src">${escapeHtml((p.match||{}).source || 'manual')}</span>
-          <span class="n">${(p.steps||[]).length} steps over
-            ${Math.max(...(p.steps||[{d:0}]).map(s => s.d))} days</span></div>
-        ${(p.steps||[]).map(s => `
-          <div class="pb-step">
-            <span class="d">${s.d === 0 ? 'Same day' : 'Day ' + s.d}</span>
-            <span class="c c-${s.ch}"><i>${CH[s.ch] || s.ch}</i></span>
-            <span class="t">${escapeHtml((s.t || '').slice(0,130))}${(s.t||'').length>130?'\u2026':''}</span>
-          </div>`).join('')}
+    <div class="pb-grid">
+      ${pbList.map(p => {
+        const art = PB_ART[p.id] || { icon:'\u25A0', tint:'#2E3CB0', blurb:'' };
+        const days = Math.max(...(p.steps||[{d:0}]).map(s => s.d));
+        const emails = (p.steps||[]).filter(s => s.ch === 'email').length;
+        const texts  = (p.steps||[]).filter(s => s.ch === 'sms').length;
+        const tasks  = (p.steps||[]).filter(s => s.ch === 'task').length;
+        return `<div class="pb-card2" style="--tint:${art.tint}">
+          <div class="ic">${art.icon}</div>
+          <b>${escapeHtml(p.name)}</b>
+          <p>${escapeHtml(art.blurb)}</p>
+          <div class="mix">
+            ${emails ? `<span>${emails} email${emails===1?'':'s'}</span>` : ''}
+            ${texts ? `<span>${texts} text${texts===1?'':'s'}</span>` : ''}
+            ${tasks ? `<span>${tasks} for you</span>` : ''}
+          </div>
+          <div class="foot"><span>${(p.steps||[]).length} steps over ${days} days</span>
+            <button onclick="pbOpen('${p.id}')">See it</button></div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div id="pb-detail"></div>
+    ${pbDefaults ? `<div style="font-size:12.5px;color:var(--driftwood);margin-top:14px">
+      These are the starting versions. Edit any of them and they become yours.</div>` : ''}`;
+}
+
+/* The steps themselves, once someone wants to look. */
+function pbOpen(id){
+  const p = pbList.find(x => x.id === id);
+  if(!p) return;
+  const CH = { sms:'Text', email:'Email', task:'You' };
+  const art = PB_ART[p.id] || { tint:'#2E3CB0' };
+  const host = document.getElementById('pb-detail');
+  host.innerHTML = `<div class="pb-open" style="--tint:${art.tint}">
+    <div class="h"><b>${escapeHtml(p.name)}</b>
+      <button onclick="document.getElementById('pb-detail').innerHTML=''">Close</button></div>
+    ${(p.steps||[]).map(s => `
+      <div class="pb-step">
+        <span class="d">${s.d === 0 ? 'Same day' : 'Day ' + s.d}</span>
+        <span class="c c-${s.ch}"><i>${CH[s.ch] || s.ch}</i></span>
+        <span class="t">${escapeHtml(s.t || '')}</span>
       </div>`).join('')}
-
-    <div style="font-size:12.5px;color:var(--driftwood);line-height:1.6;margin-top:12px;
-      padding-top:12px;border-top:1px solid var(--line)">
-      <strong>Texting is not part of this.</strong> Text steps show up as a reminder for you
-      to send one yourself from your own phone. If you want real automated texting, that is a
-      service you can add on your own account &mdash; and it carries rules about consent and
-      quiet hours that are worth reading before you do.
-    </div>`;
+    <div class="n">Text steps are a reminder for you to send from your own phone.</div>
+  </div>`;
+  host.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 </script>
 
@@ -18191,6 +18378,183 @@ body.crm-dark .lead-card{background:#1D2234}
 .lc-running .none a{color:#2E3CB0;font-weight:600}
 body.crm-dark .lc-running .on{background:#1B3327;color:#8FD9AF}
 body.crm-dark .lc-running .off{background:#262C42;color:#98A0BE}
+</style>
+
+<style>
+/* The old "set up alerts" was a small gray link nobody pressed. Property alerts
+   are the biggest driver of return traffic, so this is a real invitation. */
+.lc-setup{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  border:1.5px solid rgba(46,60,176,.3);border-radius:11px;padding:11px 14px;margin-top:8px;
+  background:linear-gradient(120deg,#F2F4FD,#FAFBFF);cursor:pointer;font:inherit;
+  transition:.15s}
+.lc-setup:hover{border-color:#2E3CB0;box-shadow:0 3px 12px rgba(46,60,176,.16);
+  transform:translateY(-1px)}
+.lc-setup .i{font-size:17px;color:#2E3CB0;flex:0 0 auto}
+.lc-setup .t{flex:1;min-width:0}
+.lc-setup .t b{display:block;font-size:13.5px;color:#2E3CB0}
+.lc-setup .t small{display:block;font-size:11.5px;color:var(--driftwood);margin-top:1px}
+.lc-setup .go{color:#2E3CB0;font-size:15px;flex:0 0 auto}
+body.crm-dark .lc-setup{background:#232A44;border-color:#4A57B8}
+
+/* multi-town picker */
+.ss-towns{display:flex;flex-wrap:wrap;gap:5px;padding:8px;border:1px solid rgba(27,32,67,.2);
+  border-radius:9px;background:var(--paper);min-height:44px;align-items:center}
+.ss-town{display:inline-flex;align-items:center;gap:6px;background:#2E3CB0;color:#fff;
+  border-radius:20px;padding:4px 10px;font-size:12.5px}
+.ss-town button{background:none;border:none;color:rgba(255,255,255,.75);cursor:pointer;
+  font-size:13px;padding:0;line-height:1}
+.ss-towns input{flex:1;min-width:110px;border:none;outline:none;font:inherit;font-size:13.5px;
+  background:none;color:inherit}
+
+/* extra filters */
+.ss-extras{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;
+  margin-top:4px}
+.ss-x{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;
+  padding:8px 10px;font-size:13px;background:var(--paper)}
+.ss-x.off{opacity:.42}
+.ss-x input[type=checkbox]{width:auto;margin:0}
+.ss-x input[type=number]{width:62px;padding:4px 6px;border:1px solid rgba(27,32,67,.2);
+  border-radius:6px;font:inherit;font-size:12.5px;margin-left:auto}
+.ss-x .miss{font-size:10px;color:#B4232A;margin-left:auto}
+
+/* the email preview */
+.ss-mail{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:12px;
+  background:#fff}
+.ss-mail .bar{background:#F4F5FA;padding:9px 13px;font-size:12px;color:var(--driftwood);
+  border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ss-mail .bar b{color:#1B2043}
+.ss-mail .bar button{margin-left:auto;border:1px solid var(--line);background:#fff;
+  border-radius:7px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+.ss-mail .body{padding:16px 18px;font-family:Georgia,serif;font-size:13.5px;line-height:1.65;
+  color:#1B2043}
+.ss-mail .li{padding:9px 0;border-bottom:1px solid #EEF0F6}
+.ss-mail .li b{font-size:14.5px}
+.ss-mail .li span{display:block;font-size:12.5px;color:#5A6288}
+.ss-mail .fine{font-size:11.5px;color:#8A90A8;line-height:1.55;padding:11px 18px;
+  background:#FBFBFD;border-top:1px solid var(--line);font-family:Jost,sans-serif}
+</style>
+
+<style>
+.pb-hero{display:flex;gap:18px;align-items:center;flex-wrap:wrap;
+  background:linear-gradient(125deg,#1B2043,#2E3CB0 60%,#1E5F7A);color:#fff;
+  border-radius:15px;padding:20px 24px;margin-bottom:16px}
+.pb-hero-t{flex:1;min-width:220px}
+.pb-hero .k{font-size:10.5px;font-weight:700;letter-spacing:.19em;text-transform:uppercase;
+  color:rgba(230,195,129,.95)}
+.pb-hero h3{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;
+  margin:5px 0 5px;color:#fff;line-height:1.15}
+.pb-hero p{margin:0;font-size:13.5px;color:rgba(255,255,255,.85);line-height:1.55;max-width:520px}
+.pb-hero-n{text-align:center;flex:0 0 auto}
+.pb-hero-n b{display:block;font-family:'Cormorant Garamond',serif;font-size:42px;line-height:1}
+.pb-hero-n span{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:rgba(255,255,255,.65)}
+
+.pb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:12px}
+.pb-card2{border:1px solid var(--line);border-left:3px solid var(--tint);border-radius:13px;
+  padding:16px 17px;background:var(--paper);display:flex;flex-direction:column;transition:.15s}
+.pb-card2:hover{box-shadow:0 5px 18px rgba(27,32,67,.1);transform:translateY(-2px)}
+.pb-card2 .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;
+  justify-content:center;font-size:18px;color:#fff;background:var(--tint);margin-bottom:11px}
+.pb-card2 b{font-size:15px;line-height:1.25}
+.pb-card2 p{font-size:12.5px;color:var(--driftwood);line-height:1.55;margin:6px 0 10px;flex:1}
+.pb-card2 .mix{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:11px}
+.pb-card2 .mix span{font-size:10.5px;font-weight:600;background:#EEF0F6;color:var(--driftwood);
+  border-radius:20px;padding:2px 8px}
+.pb-card2 .foot{display:flex;align-items:center;gap:9px;padding-top:10px;
+  border-top:1px solid var(--line);font-size:11.5px;color:var(--driftwood)}
+.pb-card2 .foot button{margin-left:auto;border:1px solid var(--tint);background:none;
+  color:var(--tint);border-radius:7px;padding:5px 13px;font:inherit;font-size:12px;
+  font-weight:600;cursor:pointer}
+.pb-card2 .foot button:hover{background:var(--tint);color:#fff}
+
+.pb-open{border:1px solid var(--line);border-top:3px solid var(--tint);border-radius:13px;
+  padding:16px 18px;margin-top:14px;background:var(--paper)}
+.pb-open .h{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.pb-open .h b{font-size:16px}
+.pb-open .h button{margin-left:auto;border:1px solid var(--line);background:none;
+  border-radius:7px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;color:var(--ink)}
+.pb-open .n{font-size:12px;color:var(--driftwood);margin-top:11px;padding-top:10px;
+  border-top:1px solid var(--line)}
+body.crm-dark .pb-card2{background:#1D2234}
+body.crm-dark .pb-card2 .mix span{background:#2A3149;color:#98A0BE}
+</style>
+
+<style>
+/* Counters that are lists, not statistics. Each one filters the leads when
+   pressed — a number you cannot act on is decoration. */
+.wn{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px;
+  margin-bottom:16px}
+.wn-c{border:1px solid var(--line);border-radius:13px;padding:14px 16px;background:var(--paper);
+  cursor:pointer;text-align:left;font:inherit;transition:.15s;position:relative;overflow:hidden}
+.wn-c:hover{transform:translateY(-2px);box-shadow:0 5px 18px rgba(27,32,67,.11);
+  border-color:var(--tone)}
+.wn-c::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone)}
+.wn-c .n{font-family:'Cormorant Garamond',serif;font-size:34px;line-height:1;color:var(--tone)}
+.wn-c .l{font-size:12px;font-weight:600;color:#1B2043;margin-top:3px;line-height:1.3}
+.wn-c .s{font-size:11px;color:var(--driftwood);margin-top:2px;line-height:1.35}
+.wn-c.zero{opacity:.55}
+.wn-c.zero .n{color:var(--driftwood)}
+body.crm-dark .wn-c{background:#1D2234}
+body.crm-dark .wn-c .l{color:#EEF0F8}
+</style>
+<script>
+/* ---------- what needs attention ----------
+   Five counters across the top of Today. Every one is a filter, not a figure:
+   pressing it takes you to exactly those people. "Nobody following up" is the
+   one worth watching — leads with nothing running are how a brokerage quietly
+   loses money. */
+function wnCounts(){
+  const L = (typeof leads !== 'undefined' ? leads : [])
+    .filter(l => isAdminOrOwner() || l.assignedAgentId === currentAgent.id);
+  const day = 86400000, now = Date.now();
+  const age = l => Math.floor((now - new Date(l.createdAt).getTime()) / day);
+  const running = l => {
+    const feed = (typeof ssList !== 'undefined' ? ssList : [])
+      .some(x => (x.email||'').toLowerCase() === (l.email||'').toLowerCase() && l.email && x.pace !== 'paused');
+    const drip = l.drip && l.drip.campaignId && !l.drip.stopped;
+    return feed || drip;
+  };
+  return [
+    { k:'hot',      n: L.filter(l => (l.score||0) >= 60).length,
+      label:'Hot right now', sub:'Score 60 or better', tone:'#B4232A' },
+    { k:'new',      n: L.filter(l => (l.stage||'New') === 'New').length,
+      label:'Never contacted', sub:'Still sitting at New', tone:'#D2604A' },
+    { k:'stale',    n: L.filter(l => (l.stage||'New') === 'New' && age(l) >= 2).length,
+      label:'Waiting 2+ days', sub:'New and untouched', tone:'#C9971F' },
+    { k:'nofollow', n: L.filter(l => !running(l) && !l.unsubscribed).length,
+      label:'Nobody following up', sub:'No alerts, no sequence', tone:'#2E3CB0' },
+    { k:'replied',  n: L.filter(l => l.humanTakeover).length,
+      label:'In conversation', sub:'You have taken these over', tone:'#2E8C5A' },
+  ];
+}
+
+function renderWhatNeeds(){
+  const host = document.getElementById('wn-slot');
+  if(!host || !currentAgent) return;
+  host.innerHTML = `<div class="wn">${wnCounts().map(c => `
+    <button class="wn-c ${c.n?'':'zero'}" style="--tone:${c.tone}" onclick="wnGo('${c.k}')">
+      <div class="n">${c.n}</div>
+      <div class="l">${escapeHtml(c.label)}</div>
+      <div class="s">${escapeHtml(c.sub)}</div>
+    </button>`).join('')}</div>`;
+}
+
+/* Pressing one takes you to those people, filtered. */
+function wnGo(k){
+  window.__wnFilter = k;
+  showCrmSection('sec-leads');
+  setTimeout(() => { if(typeof loadLeads === 'function') loadLeads(); }, 60);
+}
+</script>
+
+<style>
+.wn-active{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:linear-gradient(100deg,#F2F4FD,#FAFBFF);border:1px solid rgba(46,60,176,.3);
+  border-radius:11px;padding:11px 15px;margin-bottom:12px;font-size:13.5px;color:#1B2043}
+.wn-active button{margin-left:auto;border:1px solid rgba(46,60,176,.4);background:#fff;
+  color:#2E3CB0;border-radius:8px;padding:6px 13px;font:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer}
+body.crm-dark .wn-active{background:#232A44;border-color:#4A57B8;color:#EEF0F8}
 </style>
 
 </body>
