@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v203">
+<meta name="build" content="index-v204">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2343,86 +2343,168 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 <div id="profile-gate-overlay"><div class="box"><div id="profile-gate-body"></div></div></div>
 <div id="crm-main" class="crm-wrap" style="display:none;">
+<style>
+/* ================= CRM SHELL — navy rail, gold accent, Fraunces =================
+   Deliberately a restyle, not a rewrite. renderCrmNav() still emits exactly the
+   same buttons with the same --tab colors, badges, arrange mode and preview
+   button; this turns that horizontal tile grid into a vertical rail. Keeping the
+   logic untouched is what preserves drag-to-arrange, per-agent themes and the
+   section color variable --sec that the panels underneath read.
+   Palette is lifted off the public homepage header, not invented. */
+:root{
+  --rl:#0E1433; --rl2:#161D45;
+  --gd:#C89B4E; --gd-lt:#E8D2A0; --gd-pale:#F6EEDC;
+  --pp:#FBFAF7;                 /* warm ivory — the cold near-white read as cheap */
+  --mut:#7A8199; --hair:rgba(20,26,60,.10); --hair2:rgba(20,26,60,.06);
+}
+#crm-main.crm-wrap{max-width:none;padding:0;display:grid;
+  grid-template-columns:236px minmax(0,1fr);min-height:100vh;background:var(--pp)}
+
+/* ---- rail ---- */
+#crm-rail{background:linear-gradient(178deg,var(--rl2),var(--rl) 55%);
+  position:relative;padding-bottom:26px}
+#crm-rail:after{content:'';position:absolute;top:0;right:0;bottom:0;width:1px;
+  background:linear-gradient(180deg,rgba(200,155,78,.55),rgba(200,155,78,.08))}
+#crm-rail .mk{padding:22px 22px 18px;border-bottom:1px solid rgba(255,255,255,.08)}
+#crm-rail .mk .n{font-family:'Fraunces',Georgia,serif;font-size:20px;color:#fff;
+  letter-spacing:-.02em;line-height:1.1;font-weight:400}
+#crm-rail .mk .s{font-size:9.5px;letter-spacing:.19em;text-transform:uppercase;
+  color:var(--gd);margin-top:6px;font-weight:600}
+#crm-rail .me{padding:15px 20px;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;gap:11px}
+#crm-rail .me .av{width:34px;height:34px;border-radius:50%;background:var(--gd);
+  color:var(--rl);display:grid;place-items:center;font-weight:700;font-size:13px;flex:0 0 auto}
+#crm-rail .me .t{font-size:13px;font-weight:600;color:#fff;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#crm-rail .me .r{font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--gd-lt);opacity:.85}
+#crm-rail .out{margin:14px 20px 0;width:calc(100% - 40px);border:1px solid rgba(255,255,255,.16);
+  background:transparent;color:rgba(231,233,242,.8);border-radius:3px;padding:8px;
+  font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+#crm-rail .out:hover{border-color:var(--gd);color:#fff}
+
+/* ---- the nav itself: same buttons, new shape ---- */
+#crm-main .crm-nav{display:block;border-bottom:none;margin:12px 0 0;padding:0 12px;gap:0}
+#crm-main .crm-nav button{display:flex;align-items:center;gap:11px;width:100%;
+  text-align:left;padding:9px 10px;margin:0 0 2px;border:none;border-radius:7px;
+  background:transparent;color:rgba(231,233,242,.74);font-size:13.5px;font-weight:500;
+  letter-spacing:0;text-transform:none;position:relative;transform:none;box-shadow:none;
+  transition:.14s}
+#crm-main .crm-nav button:hover{background:rgba(255,255,255,.055);color:#fff;transform:none}
+#crm-main .crm-nav button.on{background:rgba(200,155,78,.13);color:#fff}
+#crm-main .crm-nav button.on:before{content:'';position:absolute;left:-12px;top:7px;bottom:7px;
+  width:2.5px;background:var(--gd);border-radius:0 2px 2px 0}
+#crm-main .crm-nav button .ti{width:22px;height:22px;flex:0 0 auto;background:transparent;
+  color:var(--tab,#C89B4E);display:inline-flex;align-items:center;justify-content:center;
+  border-radius:0}
+#crm-main .crm-nav button .ti svg{width:16px;height:16px;stroke-width:1.7}
+#crm-main .crm-nav button.on .ti{background:transparent;color:var(--gd)}
+#crm-main .crm-nav button .tl{font-size:13.5px;font-weight:500;line-height:1.3;flex:1;
+  letter-spacing:0}
+#crm-main .crm-nav button .pill{position:static;margin-left:auto;background:var(--gd);
+  color:var(--rl);border-radius:20px;padding:0 7px;line-height:17px;min-width:19px;
+  text-align:center;font-size:11px;font-weight:700;box-shadow:none}
+#crm-main .crm-nav button.on .pill{background:var(--gd);color:var(--rl)}
+#crm-main .crm-nav .crm-arrange{margin-top:10px;border-top:1px solid rgba(255,255,255,.08);
+  padding-top:13px;border-radius:0}
+#crm-main .crm-nav .tile-arr{display:flex;align-items:center;gap:11px;width:100%;
+  padding:9px 10px;margin:0 0 2px;border-radius:7px;background:rgba(255,255,255,.06);
+  color:#fff;cursor:grab}
+#crm-main .crm-nav .tile-arr .grip{opacity:.5;width:14px;flex:0 0 auto}
+
+/* ---- top bar ---- */
+#crm-body{min-width:0;display:flex;flex-direction:column}
+#crm-top{background:#fff;border-bottom:1px solid var(--hair);padding:0 30px;height:60px;
+  display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:30}
+#crm-top:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,var(--gd),rgba(200,155,78,0) 62%)}
+#crm-top .sp{flex:1}
+#crm-inner{padding:28px 30px 70px;max-width:1280px;width:100%}
+
+/* ---- typography: the interior finally matches the wordmark ---- */
+#crm-main h1,#crm-main h2,#crm-main h3{font-family:'Fraunces',Georgia,serif;font-weight:400;
+  letter-spacing:-.015em}
+#crm-main .sx-h{font-size:21px}
+#crm-main .stat-box .n,#crm-main .mx .n{font-family:'Fraunces',Georgia,serif;font-weight:300}
+#crm-main .card,#crm-main .setup-panel,#crm-main .panel{border-radius:4px}
+
+/* the ideas button belongs in the top bar now, not on a stamp row */
+#crm-main .idea-row{padding:0;margin:0;gap:14px;width:100%}
+#crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:8px 15px;font-size:12px;
+  font-weight:700;letter-spacing:.05em;text-transform:uppercase;box-shadow:none}
+#crm-main #crm-version{font-size:11px;letter-spacing:.05em;color:var(--mut)!important}
+
+@media(max-width:900px){
+  #crm-main.crm-wrap{grid-template-columns:1fr}
+  #crm-rail{display:flex;flex-wrap:wrap;padding-bottom:8px}
+  #crm-rail:after{display:none}
+  #crm-rail .mk,#crm-rail .me{border-bottom:none;flex:1 1 auto}
+  #crm-rail .out{width:auto;margin:0 20px}
+  #crm-main .crm-nav{display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 10px;margin-top:6px}
+  #crm-main .crm-nav button{width:auto;flex:0 0 auto;padding:8px 12px}
+  #crm-main .crm-nav button .tl{flex:0 0 auto}
+  #crm-main .crm-nav button.on:before{display:none}
+  #crm-top{padding:0 16px;height:auto;min-height:56px;flex-wrap:wrap;gap:10px}
+  #crm-inner{padding:18px 16px 60px}
+}
+</style>
+
+<aside id="crm-rail">
+  <div class="mk">
+    <div class="n">Avani &amp; Co.</div>
+    <div class="s">Real Estate &middot; Southern Sands</div>
+  </div>
+  <div class="me">
+    <div class="av" id="crm-rail-av">&nbsp;</div>
+    <div style="min-width:0">
+      <div class="t" id="crm-rail-name">&nbsp;</div>
+      <div class="r" id="crm-rail-role">&nbsp;</div>
+    </div>
+  </div>
+  <div id="agent-switcher"></div>
+  <button class="out" onclick="logoutAgent()">Log out</button>
+  <nav class="crm-nav" id="crm-nav"></nav>
+</aside>
+
+<div id="crm-body">
+<div id="crm-top">
+  <div class="idea-row">
+    <div id="crm-version" style="font-variant-numeric:tabular-nums" title="Deployed versions"></div>
+    <button class="idea-btn" id="idea-btn" onclick="ideaOpen()"
+      title="Tell the broker what would work better">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+      </svg>
+      Suggest an improvement
+    </button>
+  </div>
+</div>
+<div id="crm-inner">
 <div id="impersonation-banner" style="display:none; background:var(--marsh); color:var(--sand-light); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:13px; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
 <span id="impersonation-text"></span>
 <button class="btn-sm" style="background:var(--sand-light); color:var(--marsh); border:none; font-weight:700;" onclick="returnToBrokerView()">Back to my broker view</button>
 </div>
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-<div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-<div id="crm-signed-in-as" style="font-size:12.5px; color:var(--driftwood);"></div>
-<div id="agent-switcher"></div>
-</div>
-<button class="btn-sm" onclick="logoutAgent()">Log out</button>
-</div>
-
+<div id="crm-signed-in-as" style="display:none"></div>
 <style>
 #arr-banner{display:none;align-items:center;gap:12px;flex-wrap:wrap;
-  background:linear-gradient(120deg,#6B4FBF,#2E3CB0);color:#fff;
-  border-radius:12px;padding:11px 15px;margin:0 0 12px;
-  box-shadow:0 4px 16px rgba(107,79,191,.28)}
+  background:linear-gradient(120deg,#161D45,#0E1433);color:#fff;
+  border:1px solid rgba(200,155,78,.4);border-radius:4px;padding:11px 15px;margin:0 0 16px}
 #arr-banner.on{display:flex}
 #arr-banner .t{font-weight:700;font-size:14px}
-#arr-banner .d{font-size:12.5px;color:rgba(255,255,255,.84);line-height:1.45}
+#arr-banner .d{font-size:12.5px;color:rgba(255,255,255,.8);line-height:1.45}
 #arr-banner .sp{flex:1}
-#arr-banner button{background:#fff;color:#2E3CB0;border:none;border-radius:8px;
-  padding:8px 16px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap}
-#arr-banner button:hover{background:#F1F2FC}
+#arr-banner button{background:var(--gd);color:#241A08;border:none;border-radius:3px;
+  padding:8px 16px;font:inherit;font-size:12px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;cursor:pointer;white-space:nowrap}
 </style>
 <div id="arr-banner">
   <div>
     <div class="t">Arranging your tabs</div>
-    <div class="d">Drag a tile to move it &middot; tap one to change its color &middot;
+    <div class="d">Drag one to move it &middot; tap one to change its color &middot;
       normal tapping comes back when you're done</div>
   </div>
   <span class="sp"></span>
   <button onclick="exitArrangeMode()">Done arranging</button>
-</div>
-<nav class="crm-nav" id="crm-nav"></nav>
-<style>
-/* The ideas button rides the version-stamp row: it is the one strip that sits
-   under every tab, so the button is reachable from wherever the thought occurs.
-   Scoped names (idea-*) so nothing later in the sheet can quietly win. */
-.idea-row{display:flex;align-items:center;gap:12px;padding:10px 4px 0;flex-wrap:wrap}
-.idea-row #crm-version{padding:0}
-/* Gold, the way CLIENT LOGIN is gold on the public site — this is the one
-   control on the strip that asks for something, so it is allowed to look like
-   a button. Ink on gold measures 8.8:1, and 5.9:1 on the darker hover. White
-   on this gold would have been 1.7:1, which is the trap the palette notes
-   already warn about — check the number, do not eyeball it. */
-.idea-btn{margin-left:auto;border:1px solid var(--gold-deep);background:var(--gold);
-  color:var(--ink);border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:700;
-  letter-spacing:.01em;display:inline-flex;align-items:center;gap:8px;
-  box-shadow:0 2px 8px rgba(200,155,78,.28);transition:.15s}
-.idea-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9}
-.idea-btn:hover{background:var(--gold-deep);box-shadow:0 4px 12px rgba(200,155,78,.4);
-  transform:translateY(-1px)}
-.idea-btn:focus-visible{outline:2px solid var(--marsh);outline-offset:3px}
-@media(prefers-reduced-motion:reduce){ .idea-btn{transition:none} .idea-btn:hover{transform:none} }
-.idea-mine{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
-.idea-mine .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--driftwood);margin-bottom:8px}
-.idea-mine .one{font-size:12.5px;color:var(--ink);line-height:1.5;padding:7px 0;
-  border-bottom:1px solid var(--line)}
-.idea-mine .one:last-child{border-bottom:none}
-.idea-mine .when{font-size:11px;color:var(--driftwood)}
-.idea-item{padding:12px 0;border-bottom:1px solid var(--line)}
-.idea-item:last-child{border-bottom:none}
-.idea-item.unread{border-left:3px solid var(--coral);padding-left:11px}
-.idea-item .who{font-size:12px;color:var(--driftwood);margin-bottom:3px}
-.idea-item .txt{font-size:13.5px;line-height:1.55;white-space:pre-wrap}
-.idea-item .acts{margin-top:7px;display:flex;gap:7px;flex-wrap:wrap}
-@media(max-width:520px){ .idea-btn{margin-left:0} }
-</style>
-<div class="idea-row">
-  <div id="crm-version" style="font-size:11.5px;letter-spacing:.03em;
-    color:rgba(27,32,67,.5);font-variant-numeric:tabular-nums" title="Deployed versions"></div>
-  <button class="idea-btn" id="idea-btn" onclick="ideaOpen()"
-    title="Tell the broker what would work better">
-    <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
-    </svg>
-    Suggest an improvement
-  </button>
 </div>
 <div id="celebrations"></div>
 
@@ -2680,6 +2762,8 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 <div style="text-align:center; padding:32px 0 0;">
 <button onclick="switchView('site')" style="background:none; border:none; color:var(--driftwood); font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:600; text-decoration:underline; text-underline-offset:3px; padding:0;">← Back to Website</button>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -3720,7 +3804,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v203';
+window.BUILD = 'index-v204';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4002,6 +4086,17 @@ if(typeof applyCrmBackground === 'function') applyCrmBackground();
 document.getElementById('crm-signed-in-as').textContent = brokerIdentity
 ? `Previewing as ${currentAgent.name} (${currentAgent.role})`
 : `Signed in as ${currentAgent.name} (${currentAgent.role})`;
+/* Same facts, now in the rail. Kept reading from currentAgent so preview mode
+   still shows whoever is being previewed, exactly as the old line did. */
+try{
+  const nm = currentAgent.name || '';
+  const initials = nm.trim().split(/\s+/).slice(0,2).map(w => w[0] || '').join('').toUpperCase();
+  const el = id => document.getElementById(id);
+  if(el('crm-rail-name')) el('crm-rail-name').textContent = nm;
+  if(el('crm-rail-av'))   el('crm-rail-av').textContent = initials || '\u00b7';
+  if(el('crm-rail-role')) el('crm-rail-role').textContent =
+    brokerIdentity ? 'Previewing \u00b7 ' + (currentAgent.role || '') : (currentAgent.role || '');
+}catch(e){}
 renderImpersonationBanner();
 if(typeof renderCrmNav === 'function'){ renderCrmNav(); showCrmSection(crmSection); }
 if(typeof renderAgentSwitcher === 'function') renderAgentSwitcher();
