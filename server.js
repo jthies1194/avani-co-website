@@ -2262,6 +2262,101 @@ app.post('/api/review', async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- ideas from the people using this every day ----------
+   One button in the CRM, straight to the broker. Deliberately its own route
+   rather than a kv key an agent may write: settings:ideas is not in
+   AGENT_READABLE, so agents cannot read each other's notes or edit the list —
+   they can only add through here and read their own back through /api/ideas.
+   The same reasoning as the public review form, one step further in. */
+const IDEAS_KEY = 'settings:ideas';
+const IDEAS_MAX = 500;          // oldest fall off; the list cannot grow without bound
+const IDEA_MAX_CHARS = 2000;
+
+app.post('/api/idea', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Sign in to send an idea.' });
+
+  const b = req.body || {};
+  const text = String(b.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'Write something first.' });
+  if (text.length > IDEA_MAX_CHARS) {
+    return res.status(400).json({ error: `Keep it under ${IDEA_MAX_CHARS} characters.` });
+  }
+  const area = String(b.area || '').trim().slice(0, 60);
+
+  // Who sent it, resolved server-side. An agent cannot put someone else's name on it.
+  let who = sess.agentId;
+  try {
+    const { data } = await supabase.from('agents').select('name').eq('id', sess.agentId).maybeSingle();
+    if (data && data.name) who = data.name;
+  } catch (e) { /* fall back to the id — never block the save on a lookup */ }
+
+  const idea = {
+    id: 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    agentId: sess.agentId,
+    agentName: who,
+    area,
+    text,
+    at: new Date().toISOString(),
+    read: false,
+    archived: false,
+  };
+
+  /* Save first, notify second. The review form taught us this the hard way:
+     thanking someone for something that was never stored is worse than an
+     error message. If the email fails the idea is still safely on the list. */
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('value').eq('key', IDEAS_KEY).maybeSingle();
+    const list = Array.isArray(data && data.value) ? data.value : [];
+    list.unshift(idea);
+    const trimmed = list.slice(0, IDEAS_MAX);
+    const { error } = await supabase.from(KV_TABLE)
+      .upsert({ key: IDEAS_KEY, value: trimmed }, { onConflict: 'key' });
+    if (error) throw new Error(error.message);
+    console.log(`[idea] saved from ${who}${area ? ' about ' + area : ''}`);
+  } catch (e) {
+    console.error('[idea] save failed:', e.message);
+    return res.status(500).json({ error: 'Could not save that. Please try again.' });
+  }
+
+  if (mailer) {
+    const addr = await resolveNotifyAddress();
+    if (addr) {
+      mailer.sendMail({
+        to: addr,
+        subject: `Idea from ${who}${area ? ' — ' + area : ''}`,
+        text: `${who} sent this from the CRM${area ? `, about ${area}` : ''}:\n\n${text}\n\n`
+            + `It is on the list under Settings \u2192 Ideas from your agents.\n${BROKERAGE_NAME}`,
+      }).then(() => console.log(`[idea] notified ${addr}`))
+        .catch(e => console.error('[idea] notify failed:', e.message));
+    } else {
+      console.error('[idea] no destination address — set NOTIFY_EMAIL or make sure a broker exists.');
+    }
+  } else {
+    console.warn('[idea] SKIPPED notification — mailer not configured.');
+  }
+
+  res.json({ ok: true, idea });
+});
+
+/* Staff see every idea. An agent sees only their own, so the button feels like
+   it goes somewhere rather than into a void — without turning the list into a
+   place where agents read each other's complaints. */
+app.get('/api/ideas', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await getSession(req);
+  if (!sess) return res.status(401).json({ error: 'Sign in to see these.' });
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('value').eq('key', IDEAS_KEY).maybeSingle();
+    const list = Array.isArray(data && data.value) ? data.value : [];
+    res.json({ ideas: isStaff(sess) ? list : list.filter(i => i && i.agentId === sess.agentId) });
+  } catch (e) {
+    console.error('[GET /api/ideas] failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* ---------- client password reset ----------
    Agents have reset_token / reset_expires columns; the clients table does not,
    and adding columns by hand in Supabase is a step that is easy to get wrong.
@@ -3272,7 +3367,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v82',
+    serverVersion: 'v83',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
