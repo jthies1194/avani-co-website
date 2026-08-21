@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v207">
+<meta name="build" content="index-v208">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2362,15 +2362,20 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 /* ---- rail ---- */
 #crm-rail{background:linear-gradient(178deg,var(--rl2),var(--rl) 55%);
-  position:relative;padding-bottom:26px}
+  position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  overscroll-behavior:contain;padding-bottom:20px;scrollbar-width:thin;
+  scrollbar-color:rgba(200,155,78,.5) transparent}
+#crm-rail::-webkit-scrollbar{width:7px}
+#crm-rail::-webkit-scrollbar-thumb{background:rgba(200,155,78,.45);border-radius:4px}
+#crm-rail::-webkit-scrollbar-track{background:transparent}
 #crm-rail:after{content:'';position:absolute;top:0;right:0;bottom:0;width:1px;
   background:linear-gradient(180deg,rgba(200,155,78,.55),rgba(200,155,78,.08))}
-#crm-rail .mk{padding:22px 22px 18px;border-bottom:1px solid rgba(255,255,255,.08)}
+#crm-rail .mk{padding:18px 20px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
 #crm-rail .mk .n{font-family:'Fraunces',Georgia,serif;font-size:20px;color:#fff;
   letter-spacing:-.02em;line-height:1.1;font-weight:400}
 #crm-rail .mk .s{font-size:9.5px;letter-spacing:.19em;text-transform:uppercase;
   color:var(--gd);margin-top:6px;font-weight:600}
-#crm-rail .me{padding:15px 20px;border-bottom:1px solid rgba(255,255,255,.08);
+#crm-rail .me{padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.08);
   display:flex;align-items:center;gap:11px}
 #crm-rail .me .av{width:34px;height:34px;border-radius:50%;background:var(--gd);
   color:var(--rl);display:grid;place-items:center;font-weight:700;font-size:13px;flex:0 0 auto}
@@ -2386,7 +2391,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 /* ---- the nav itself: same buttons, new shape ---- */
 #crm-main .crm-nav{display:block;border-bottom:none;margin:12px 0 0;padding:0 12px;gap:0}
 #crm-main .crm-nav button{display:flex;align-items:center;gap:11px;width:100%;
-  text-align:left;padding:9px 10px;margin:0 0 2px;border:none;border-radius:7px;
+  text-align:left;padding:7px 10px;margin:0 0 1px;border:none;border-radius:6px;
   background:transparent;color:rgba(231,233,242,.74);font-size:13.5px;font-weight:500;
   letter-spacing:0;text-transform:none;position:relative;transform:none;box-shadow:none;
   transition:.14s}
@@ -2399,7 +2404,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   border-radius:0}
 #crm-main .crm-nav button .ti svg{width:16px;height:16px;stroke-width:1.7}
 #crm-main .crm-nav button.on .ti{background:transparent;color:var(--gd)}
-#crm-main .crm-nav button .tl{font-size:13.5px;font-weight:500;line-height:1.3;flex:1;
+#crm-main .crm-nav button .tl{font-size:13px;font-weight:500;line-height:1.25;flex:1;
   letter-spacing:0}
 #crm-main .crm-nav button .pill{position:static;margin-left:auto;background:var(--gd);
   color:var(--rl);border-radius:20px;padding:0 7px;line-height:17px;min-width:19px;
@@ -2414,8 +2419,8 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 /* ---- top bar ---- */
 #crm-body{min-width:0;display:flex;flex-direction:column}
-#crm-top{background:#fff;border-bottom:1px solid var(--hair);padding:0 30px;height:60px;
-  display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:30}
+#crm-top{background:#fff;border-bottom:1px solid var(--hair);padding:0 30px;
+  min-height:50px;display:flex;align-items:center;gap:16px;position:relative;z-index:1}
 #crm-top:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
   background:linear-gradient(90deg,var(--gd),rgba(200,155,78,0) 62%)}
 #crm-top .sp{flex:1}
@@ -2430,8 +2435,12 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 /* the ideas button belongs in the top bar now, not on a stamp row */
 #crm-main .idea-row{padding:0;margin:0;gap:14px;width:100%}
-#crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:8px 15px;font-size:12px;
-  font-weight:700;letter-spacing:.05em;text-transform:uppercase;box-shadow:none}
+#crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:6px 12px;font-size:12px;
+  font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
+  background:#fff;border:1px solid var(--hair);color:var(--mut);white-space:nowrap}
+#crm-main .idea-btn:hover{background:var(--gd-pale);border-color:var(--gd);color:#5C4718;
+  transform:none;box-shadow:none}
+#crm-main .idea-btn svg{width:13px;height:13px}
 #crm-main #crm-version{font-size:11px;letter-spacing:.05em;color:var(--mut)!important}
 
 @media(max-width:900px){
@@ -3865,7 +3874,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v207';
+window.BUILD = 'index-v208';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7049,9 +7058,15 @@ function applyCrmBackground(){
   const css = crmCustomBg() || (BACKGROUNDS[crmTheme.bg] || BACKGROUNDS.paper).css;
   if(el) el.style.background = 'transparent';
   if(open){
-    document.body.style.background = css;
-    document.body.style.backgroundAttachment = 'fixed';
-    document.documentElement.style.background = css;
+    /* The theme paints the workspace, not the whole page. Before the rail existed
+       it went on <body>, which now sits behind the navy rail and washed the whole
+       shell — a pink theme made the rail unreadable and there was no setting that
+       fixed it. Painting #crm-body keeps "Make it yours" working exactly as before
+       while leaving the rail and the page around it alone. */
+    const body = document.getElementById('crm-body');
+    if(body){ body.style.background = css; body.style.backgroundAttachment = 'fixed'; }
+    document.body.style.background = '#FBFAF7';
+    document.documentElement.style.background = '#FBFAF7';
     document.body.classList.toggle('crm-dark', crmIsDark());
   } else {
     clearCrmBackground();
@@ -7059,6 +7074,8 @@ function applyCrmBackground(){
 }
 
 function clearCrmBackground(){
+  const body = document.getElementById('crm-body');
+  if(body){ body.style.background = ''; body.style.backgroundAttachment = ''; }
   document.body.style.background = '';
   document.body.style.backgroundAttachment = '';
   document.documentElement.style.background = '';
