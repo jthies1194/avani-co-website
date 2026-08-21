@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v206">
+<meta name="build" content="index-v207">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2948,6 +2948,67 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 </div>
 </div>
 
+<style>
+/* ---------- CRM components: forms, panels, modals ----------
+   Enumerated by id on purpose. #modal-overlay, #detail-modal-overlay and
+   #account-gate-overlay are the consumer-facing ones — the lead capture form,
+   the listing detail and the client gate — and they are deliberately NOT in
+   this list. Nothing a buyer sees changes here. */
+#crm-main .field label{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:var(--mut);margin-bottom:6px}
+#crm-main .field input,#crm-main .field textarea,#crm-main .field select,
+#crm-main input[type=text],#crm-main input[type=email],#crm-main input[type=number],
+#crm-main input[type=date],#crm-main input[type=tel],#crm-main select,#crm-main textarea{
+  border:1px solid var(--hair);border-radius:3px;background:#fff;color:var(--rl);
+  font-size:13.5px;padding:10px 12px}
+#crm-main input:focus,#crm-main select:focus,#crm-main textarea:focus{
+  outline:none;border-color:var(--gd);box-shadow:0 0 0 3px rgba(200,155,78,.16)}
+#crm-main .field-label{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:var(--mut)}
+#crm-main .submit-btn{background:var(--gd);color:#241A08;border-radius:3px;
+  font-weight:700;letter-spacing:.06em}
+#crm-main .submit-btn:hover{background:#B98B3E}
+#crm-main .card{border:1px solid var(--hair);border-radius:4px;box-shadow:none}
+#crm-main .card:hover{transform:none;box-shadow:0 2px 14px rgba(20,26,60,.06)}
+#crm-main .setup-panel{border-radius:4px}
+
+/* CRM modals only — see the note above */
+#agent-modal-overlay .modal,#activity-modal-overlay .modal,#draft-modal-overlay .modal,
+#idea-modal .modal,#hr-overlay .modal,#my-account-overlay .modal,#leave-review-overlay .modal,
+#arrange-overlay .modal,#cal-add .modal,#dc-modal .modal,#oh-new .modal,#pl-edit .modal,
+#pt-modal .modal,#ss-new .modal,#st-sheet .modal,#tk-edit .modal,#tk-new .modal,
+#tk-step-modal .modal{
+  border-radius:4px;border-top:3px solid var(--gd);padding:28px 30px;
+  box-shadow:0 24px 60px rgba(14,20,51,.28)}
+#agent-modal-overlay .modal h3,#activity-modal-overlay .modal h3,#draft-modal-overlay .modal h3,
+#idea-modal .modal h3,#hr-overlay .modal h3,#my-account-overlay .modal h3,
+#leave-review-overlay .modal h3,#arrange-overlay .modal h3,#cal-add .modal h3,
+#dc-modal .modal h3,#oh-new .modal h3,#pl-edit .modal h3,#pt-modal .modal h3,
+#ss-new .modal h3,#st-sheet .modal h3,#tk-edit .modal h3,#tk-new .modal h3,
+#tk-step-modal .modal h3{
+  font-family:'Fraunces',Georgia,serif;font-size:25px;font-weight:400;
+  letter-spacing:-.02em;color:var(--rl,#0E1433);margin-bottom:7px}
+#agent-modal-overlay .modal .sub,#activity-modal-overlay .modal .sub,
+#draft-modal-overlay .modal .sub,#idea-modal .modal .sub,#hr-overlay .modal .sub,
+#my-account-overlay .modal .sub,#leave-review-overlay .modal .sub,#cal-add .modal .sub,
+#dc-modal .modal .sub,#oh-new .modal .sub,#pl-edit .modal .sub,#pt-modal .modal .sub,
+#ss-new .modal .sub,#tk-edit .modal .sub,#tk-new .modal .sub{
+  font-size:13px;color:#7A8199;line-height:1.6;margin-bottom:22px}
+#idea-modal .modal .field label,#agent-modal-overlay .modal .field label,
+#cal-add .modal .field label,#oh-new .modal .field label,#ss-new .modal .field label,
+#tk-new .modal .field label,#tk-edit .modal .field label{
+  font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;font-weight:700;
+  color:#7A8199;margin-bottom:6px}
+#idea-modal .modal input,#idea-modal .modal select,#idea-modal .modal textarea{
+  border:1px solid rgba(20,26,60,.10);border-radius:3px;background:#fff;padding:10px 12px}
+#idea-modal .modal input:focus,#idea-modal .modal select:focus,
+#idea-modal .modal textarea:focus{outline:none;border-color:#C89B4E;
+  box-shadow:0 0 0 3px rgba(200,155,78,.16)}
+#idea-modal .modal .submit-btn{background:#C89B4E;color:#241A08;border-radius:3px;
+  font-weight:700;letter-spacing:.06em}
+#idea-modal .modal .submit-btn:hover{background:#B98B3E}
+</style>
+
 <div class="modal-overlay" id="idea-modal">
 <div class="modal">
 <button class="modal-close" onclick="ideaClose()" aria-label="Close">&times;</button>
@@ -3804,7 +3865,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v206';
+window.BUILD = 'index-v207';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
