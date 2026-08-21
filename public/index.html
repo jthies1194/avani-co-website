@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v201">
+<meta name="build" content="index-v203">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2477,27 +2477,28 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 </div>
 
 <div class="crm-sec" id="sec-setup">
+<style>
+/* ⚠ `.crm-sec .setup-head{display:none}` and `.setup-body{display:block!important}`
+   mean the accordion pattern does not exist inside a CRM section — panels are
+   always open and their heads are hidden. Copying the collapsible markup from
+   elsewhere produces a headerless "Loading…" and no way to reach the content.
+   Titles go in the panel, not in a head. */
+.crm-sec .setup-panel + .setup-panel{margin-top:32px}
+.sx-h{font-size:20px;margin:0 0 5px}
+.sx-sub{font-size:13px;color:var(--driftwood);margin:0 0 14px;max-width:620px;line-height:1.55}
+</style>
 <div class="setup-panel">
-  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
-    b.style.display = b.style.display==='none' ? '' : 'none';
-    if(b.style.display !== 'none' && typeof renderIdeas === 'function') renderIdeas();">
-    <h3>&#128161; Suggestions from your agents</h3><span>&#9662;</span>
-  </div>
-  <div class="setup-body" id="idea-body" style="display:none">Loading&hellip;</div>
+  <h3 class="sx-h">Suggestions from your agents</h3>
+  <p class="sx-sub">Anything sent with the <strong>Suggest an improvement</strong> button
+    lands here, and emails you at the same time.</p>
+  <div class="setup-body" id="idea-body">Loading&hellip;</div>
 </div>
 <div class="setup-panel">
-  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
-    b.style.display = b.style.display==='none' ? '' : 'none';
-    if(b.style.display !== 'none' && typeof renderNotify === 'function') renderNotify();">
-    <h3>&#128276; What reaches you</h3><span>&#9662;</span>
-  </div>
-  <div class="setup-body" id="nt-body" style="display:none">Loading&hellip;</div>
+  <h3 class="sx-h">What reaches you</h3>
+  <div class="setup-body" id="nt-body">Loading&hellip;</div>
 </div>
 <div class="setup-panel">
-  <div class="setup-head" onclick="this.parentNode.querySelector('.setup-body').style.display =
-    this.parentNode.querySelector('.setup-body').style.display==='none'?'':'none'">
-    <h3>&#9993; When someone is about to leave</h3><span>&#9662;</span>
-  </div>
+  <h3 class="sx-h">When someone is about to leave</h3>
   <div class="setup-body" id="ei-setup-body">
     <p>A quiet prompt as a visitor heads for the door, asking where to send new
       listings. It shows once, never to anyone who already has an account or has
@@ -2531,10 +2532,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   color:#fff;font-size:10.5px;padding:4px 6px;line-height:1.3}
 </style>
 <div class="setup-panel">
-  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
-    b.style.display = b.style.display==='none' ? '' : 'none'">
-    <h3>&#9788; Beach reel on the homepage</h3><span>&#9662;</span>
-  </div>
+  <h3 class="sx-h">Beach reel on the homepage</h3>
   <div class="setup-body" id="reel-setup-body">
     <p>Photographs that fade one into the next near the bottom of the homepage.
       Nothing shows until you add some &mdash; an empty carousel looks broken.</p>
@@ -2557,11 +2555,8 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   </div>
 </div>
 <div class="setup-panel" id="setup-panel">
-<div class="setup-head" onclick="toggleSetup()">
-<h3>⚙ Data connection &amp; lead notification setup</h3>
-<span id="setup-caret">▾</span>
-</div>
-<div class="setup-body" id="setup-body">
+<h3 class="sx-h">Data connection &amp; lead notification setup</h3>
+  <div class="setup-body" id="setup-body">
 <h4>1. Connect your real MLS feed</h4>
 <p>Contact Baldwin REALTORS® (BCMLS) and/or Gulf Coast Mobile Assn MLS and request RESO Web API (or IDX) credentials for your account. Once issued, replace the <code>fetchListings()</code> function in this file's code with a fetch call to your MLS's RESO endpoint — the listing card fields (price, beds, baths, sqft, city, status, MLS#) are already named to match standard RESO fields, so it's mostly a data-mapping job, not a redesign.</p>
 <p>If you'd rather not edit code yourself, this is a well-defined task to hand to a developer or to Claude Code — the mock data structure at the top of the file (<code>MOCK_LISTINGS</code>) shows exactly what shape real data should arrive in.</p>
@@ -3725,7 +3720,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v201';
+window.BUILD = 'index-v203';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7098,7 +7093,13 @@ function showCrmSection(id){
     if(id === 'sec-expenses')    loadExpenses();
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
-      if(typeof loadReelSetup === 'function') loadReelSetup(); }
+      if(typeof loadReelSetup === 'function') loadReelSetup();
+      /* ⚠ renderNotify was only ever called from a `.setup-head` click handler,
+         and that element is display:none inside a CRM section — so the eight
+         notification switches showed "Loading…" and nothing else, forever.
+         Panels here are always open, so they must be rendered on section open. */
+      if(typeof renderNotify === 'function') renderNotify();
+      if(typeof renderIdeas === 'function') renderIdeas(); }
     if(id === 'sec-reviews'){
       // everyone sees their own; the approval queue is the broker's
       const mine = document.getElementById('my-reviews-card');
@@ -10251,9 +10252,6 @@ async function renderIdeas(){
   window.__unreadIdeas = unread.length;
 
   host.innerHTML = `
-    <p>Anything an agent sends with the <strong>Suggest an improvement</strong> button under the
-      tabs lands here, and emails you at the same time. Archiving keeps the record
-      without keeping the clutter.</p>
     ${live.length ? live.map(i => `
       <div class="idea-item ${i.read ? '' : 'unread'}">
         <div class="who">${escapeHtml(i.agentName || 'An agent')}${
