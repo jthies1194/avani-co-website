@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v198">
+<meta name="build" content="index-v199">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2378,8 +2378,43 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   <button onclick="exitArrangeMode()">Done arranging</button>
 </div>
 <nav class="crm-nav" id="crm-nav"></nav>
-<div id="crm-version" style="font-size:11.5px;letter-spacing:.03em;padding:8px 4px 0;
-  color:rgba(27,32,67,.5);font-variant-numeric:tabular-nums" title="Deployed versions"></div>
+<style>
+/* The ideas button rides the version-stamp row: it is the one strip that sits
+   under every tab, so the button is reachable from wherever the thought occurs.
+   Scoped names (idea-*) so nothing later in the sheet can quietly win. */
+.idea-row{display:flex;align-items:center;gap:12px;padding:8px 4px 0;flex-wrap:wrap}
+.idea-row #crm-version{padding:0}
+.idea-btn{margin-left:auto;border:1px solid var(--line);background:var(--white);
+  color:var(--driftwood);border-radius:999px;padding:5px 13px;font-size:12px;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;transition:.15s}
+.idea-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7}
+.idea-btn:hover{color:var(--marsh);border-color:var(--marsh)}
+.idea-btn:focus-visible{outline:2px solid var(--marsh);outline-offset:2px}
+.idea-mine{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.idea-mine .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--driftwood);margin-bottom:8px}
+.idea-mine .one{font-size:12.5px;color:var(--ink);line-height:1.5;padding:7px 0;
+  border-bottom:1px solid var(--line)}
+.idea-mine .one:last-child{border-bottom:none}
+.idea-mine .when{font-size:11px;color:var(--driftwood)}
+.idea-item{padding:12px 0;border-bottom:1px solid var(--line)}
+.idea-item:last-child{border-bottom:none}
+.idea-item.unread{border-left:3px solid var(--coral);padding-left:11px}
+.idea-item .who{font-size:12px;color:var(--driftwood);margin-bottom:3px}
+.idea-item .txt{font-size:13.5px;line-height:1.55;white-space:pre-wrap}
+.idea-item .acts{margin-top:7px;display:flex;gap:7px;flex-wrap:wrap}
+@media(max-width:520px){ .idea-btn{margin-left:0} }
+</style>
+<div class="idea-row">
+  <div id="crm-version" style="font-size:11.5px;letter-spacing:.03em;
+    color:rgba(27,32,67,.5);font-variant-numeric:tabular-nums" title="Deployed versions"></div>
+  <button class="idea-btn" onclick="ideaOpen()" title="Send the broker an idea">
+    <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+    </svg>
+    Send an idea
+  </button>
+</div>
 <div id="celebrations"></div>
 
 <div id="sec-today" class="crm-sec"></div>
@@ -2433,6 +2468,14 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 </div>
 
 <div class="crm-sec" id="sec-setup">
+<div class="setup-panel">
+  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
+    b.style.display = b.style.display==='none' ? '' : 'none';
+    if(b.style.display !== 'none' && typeof renderIdeas === 'function') renderIdeas();">
+    <h3>&#128161; Ideas from your agents</h3><span>&#9662;</span>
+  </div>
+  <div class="setup-body" id="idea-body" style="display:none">Loading&hellip;</div>
+</div>
 <div class="setup-panel">
   <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
     b.style.display = b.style.display==='none' ? '' : 'none';
@@ -2814,6 +2857,26 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <button class="btn-sm" onclick="copyDraft()" style="flex:1;">Copy</button>
 <a id="draft-mailto" class="btn-sm primary" style="flex:1; text-align:center; text-decoration:none; display:inline-block; padding-top:9px;">Open in Email</a>
 </div>
+</div>
+</div>
+
+<div class="modal-overlay" id="idea-modal">
+<div class="modal">
+<button class="modal-close" onclick="ideaClose()" aria-label="Close">&times;</button>
+<h3>Something could work better</h3>
+<p class="sub">This goes straight to the broker. Nobody else sees it. Rough notes are
+  fine &mdash; you use this every day and see things nobody else does.</p>
+<div class="field">
+  <label for="idea-area">Which part?</label>
+  <select id="idea-area"></select>
+</div>
+<div class="field">
+  <label for="idea-text">What would work better?</label>
+  <textarea id="idea-text" style="min-height:110px"
+    placeholder="It would work better if&hellip;"></textarea>
+</div>
+<button class="submit-btn" id="idea-send" onclick="ideaSend()">Send it</button>
+<div class="idea-mine" id="idea-mine" style="display:none"></div>
 </div>
 </div>
 
@@ -3653,7 +3716,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v198';
+window.BUILD = 'index-v199';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6993,6 +7056,9 @@ function showCrmSection(id){
       loadPendingReviews().then(() => renderCrmNav());
     if(typeof loadPipeline === 'function')
       loadPipeline().then(() => renderCrmNav());
+    if(typeof loadUnreadIdeas === 'function' && isAdminOrOwner())
+      loadUnreadIdeas().then(() => { renderCrmNav();
+        if(typeof renderBriefing === 'function') renderBriefing(); });
   }catch(e){}
 
   if(crmTabOrder === null && typeof loadTabOrder === 'function'){
@@ -10026,6 +10092,182 @@ async function renderVersionStamp(){
   const iv = (window.BUILD || 'index-?').replace('index-','');
   el.textContent = 'index ' + iv + '  \u00b7  server ' + sv;
   el.style.color = (sv === 'unreachable') ? '#B4232A' : 'rgba(27,32,67,.5)';
+}
+
+/* ---------- ideas ----------
+   One button, straight to the broker. The people using this daily see what
+   neither of us does, and the cost of asking them is one button. */
+function ideaWhen(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return '';
+  const mins = Math.round((Date.now() - d) / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return mins + ' min ago';
+  const hrs = Math.round(mins / 60);
+  if(hrs < 24) return hrs + ' hour' + (hrs === 1 ? '' : 's') + ' ago';
+  const days = Math.round(hrs / 24);
+  if(days < 30) return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  return d.toLocaleDateString();
+}
+
+function ideaOpen(){
+  const sel = document.getElementById('idea-area');
+  if(sel){
+    // Default to wherever they are standing — that is the whole point of putting
+    // the button under the tabs rather than on one screen.
+    const here = (typeof crmSection !== 'undefined') ? crmSection : '';
+    const opts = (typeof allowedSections === 'function' ? allowedSections() : [])
+      .map(sc => `<option value="${escapeHtml(sc.label)}" ${sc.id === here ? 'selected' : ''}>${escapeHtml(sc.label)}</option>`)
+      .join('');
+    sel.innerHTML = opts + '<option value="Something else">Something else</option>';
+  }
+  const txt = document.getElementById('idea-text');
+  if(txt) txt.value = '';
+  const modal = document.getElementById('idea-modal');
+  if(modal) modal.classList.add('active');
+  if(txt) setTimeout(() => txt.focus(), 50);
+  ideaLoadMine();
+}
+
+function ideaClose(){
+  const modal = document.getElementById('idea-modal');
+  if(modal) modal.classList.remove('active');
+}
+
+async function ideaSend(){
+  const txt = document.getElementById('idea-text');
+  const sel = document.getElementById('idea-area');
+  const btn = document.getElementById('idea-send');
+  const text = (txt && txt.value || '').trim();
+  if(!text){
+    showToast('Write something first.');
+    if(txt) txt.focus();
+    return;
+  }
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending\u2026'; }
+  try{
+    const res = await fetch('/api/idea', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text, area: (sel && sel.value) || '' }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(j.error || 'Could not send that.');
+    if(txt) txt.value = '';
+    showToast('Sent to the broker. Thank you.');
+    ideaLoadMine();
+  }catch(e){
+    showToast(e.message || 'Could not send that.');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = 'Send it'; }
+  }
+}
+
+/* An agent sees their own notes back, so the button feels like it goes
+   somewhere. They cannot see anyone else's — the server scopes this. */
+async function ideaLoadMine(){
+  const host = document.getElementById('idea-mine');
+  if(!host) return;
+  try{
+    const res = await fetch('/api/ideas');
+    if(!res.ok){ host.style.display = 'none'; return; }
+    const j = await res.json();
+    const mine = (j.ideas || []).filter(i => i && i.agentId === (currentAgent && currentAgent.id));
+    if(!mine.length){ host.style.display = 'none'; return; }
+    host.style.display = '';
+    host.innerHTML = '<div class="lbl">What you\u2019ve sent</div>' +
+      mine.slice(0, 5).map(i => `<div class="one">${escapeHtml(i.text)}
+        <div class="when">${i.area ? escapeHtml(i.area) + ' \u00b7 ' : ''}${ideaWhen(i.at)}</div>
+      </div>`).join('');
+  }catch(e){ host.style.display = 'none'; }
+}
+
+/* Escape and a click on the backdrop both close it, the same as the other
+   sheets here. A modal that can only be dismissed by finding the small x is a
+   modal people learn to avoid opening. */
+document.addEventListener('keydown', function(e){
+  const m = document.getElementById('idea-modal');
+  if(e.key === 'Escape' && m && m.classList.contains('active')){
+    e.preventDefault(); ideaClose();
+  }
+});
+document.addEventListener('click', function(e){
+  if(e.target && e.target.id === 'idea-modal') ideaClose();
+});
+
+/* ---------- the broker's side of it ---------- */
+let ideaAll = [];
+
+/* The badge and the briefing both need the count before Settings is ever
+   opened, so it is fetched once at sign-in. */
+async function loadUnreadIdeas(){
+  try{
+    const res = await fetch('/api/ideas');
+    if(!res.ok){ window.__unreadIdeas = 0; return; }
+    const j = await res.json();
+    window.__unreadIdeas = (j.ideas || []).filter(i => i && !i.read && !i.archived).length;
+  }catch(e){ window.__unreadIdeas = 0; }
+}
+
+async function renderIdeas(){
+  const host = document.getElementById('idea-body');
+  if(!host) return;
+  host.innerHTML = 'Loading\u2026';
+  try{
+    const res = await fetch('/api/ideas');
+    if(!res.ok) throw new Error('Could not load these.');
+    const j = await res.json();
+    ideaAll = j.ideas || [];
+  }catch(e){
+    host.innerHTML = '<p>Could not load these right now.</p>';
+    return;
+  }
+  const live = ideaAll.filter(i => i && !i.archived);
+  const unread = live.filter(i => !i.read);
+  window.__unreadIdeas = unread.length;
+
+  host.innerHTML = `
+    <p>Anything an agent sends with the <strong>Send an idea</strong> button under the
+      tabs lands here, and emails you at the same time. Archiving keeps the record
+      without keeping the clutter.</p>
+    ${live.length ? live.map(i => `
+      <div class="idea-item ${i.read ? '' : 'unread'}">
+        <div class="who">${escapeHtml(i.agentName || 'An agent')}${
+          i.area ? ' \u00b7 ' + escapeHtml(i.area) : ''} \u00b7 ${ideaWhen(i.at)}</div>
+        <div class="txt">${escapeHtml(i.text)}</div>
+        <div class="acts">
+          ${i.read ? '' : `<button class="btn-sm" onclick="ideaMark('${i.id}',true)">Mark read</button>`}
+          <button class="btn-sm" onclick="ideaArchive('${i.id}')">Archive</button>
+        </div>
+      </div>`).join('')
+    : `<div style="padding:18px 0;font-size:13px;color:var(--driftwood)">
+         Nothing yet. The button sits under the tabs on every screen, so it is there
+         the moment somebody thinks of something.</div>`}
+    ${ideaAll.some(i => i && i.archived)
+      ? `<div style="margin-top:14px;font-size:12px;color:var(--driftwood)">
+           ${ideaAll.filter(i => i && i.archived).length} archived.</div>` : ''}`;
+  if(typeof renderBriefing === 'function') renderBriefing();
+}
+
+async function ideaSave(){
+  const ok = await storeSet('settings:ideas', ideaAll);
+  if(!ok) showToast('Could not save that.');
+  return ok;
+}
+
+async function ideaMark(id, read){
+  const it = ideaAll.find(i => i && i.id === id);
+  if(!it) return;
+  it.read = !!read;
+  if(await ideaSave()) renderIdeas();
+}
+
+async function ideaArchive(id){
+  const it = ideaAll.find(i => i && i.id === id);
+  if(!it) return;
+  it.archived = true;
+  it.read = true;
+  if(await ideaSave()) renderIdeas();
 }
 
 async function mkSavePolicy(on){
@@ -15768,6 +16010,10 @@ function taskCounts(){
     if(isAdminOrOwner() && Array.isArray(window.__pendingReviews))
       out['sec-reviews'] = window.__pendingReviews.length;
   }catch(e){}
+  // ideas nobody has read yet
+  try{
+    if(isAdminOrOwner() && window.__unreadIdeas) out['sec-setup'] = window.__unreadIdeas;
+  }catch(e){}
   // timeline updates marked but never sent
   try{
     out['sec-pipeline'] = (typeof plDeals !== 'undefined' ? plDeals : [])
@@ -15968,6 +16214,19 @@ function bfItems(){
           sub: 'Worth a word before they get there',
           go: 'Agents', goTo: 'sec-agents',
         });
+      });
+    }
+  }catch(e){}
+
+  // ideas from the people using this every day — the whole point is that you see them
+  try{
+    if(isAdminOrOwner() && window.__unreadIdeas){
+      out.push({
+        key: 'ideas',
+        urgency: 'ok',
+        title: window.__unreadIdeas + ' idea' + (window.__unreadIdeas===1?'':'s') + ' from your agents',
+        sub: 'They use this daily and see what you cannot',
+        go: 'Settings', goTo: 'sec-setup',
       });
     }
   }catch(e){}
