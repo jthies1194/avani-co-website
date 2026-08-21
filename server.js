@@ -1766,6 +1766,44 @@ app.post('/api/search/preview', async (req, res) => {
     })) });
 });
 
+/* The exact email the lead would receive, so the agent sees it before it sends.
+   A preview that only lists addresses is not a preview of an email. */
+app.post('/api/search/preview-email', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const rows = await searchRun(b, since);
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const name = String(b.name || 'there').trim().split(/\s+/)[0] || 'there';
+  const label = searchLabel(b);
+
+  const items = rows.slice(0, 6).map(r => ({
+    price: r.ListPrice ? '$' + Number(r.ListPrice).toLocaleString() : 'Price on request',
+    address: r.UnparsedAddress || 'Address on request',
+    city: r.City || '',
+    beds: r.BedroomsTotal || null,
+    baths: r.BathroomsTotalInteger || null,
+    link: `${origin}/?listing=${encodeURIComponent(r.ListingKey || '')}`,
+  }));
+
+  res.json({ ok: true, count: rows.length, label,
+    subject: rows.length === 1 ? `One new listing \u2014 ${label}`
+           : `${rows.length} new listings \u2014 ${label}`,
+    greeting: `Hi ${name},`,
+    intro: `New since I last wrote, matching ${label}:`,
+    items,
+    signoff: `Want to see any of them? Just reply.`,
+    from: `${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n${BROKERAGE_ADDRESS}`,
+    footer: 'Too many of these, or not enough? Change how often you hear from us, or stop them altogether.',
+    /* Said plainly, because the criteria are matched against whatever the MLS
+       chose to fill in, and that is not always complete. */
+    disclaimer: 'These come straight from the MLS feed. We match your criteria as closely as '
+      + 'the data allows, but MLS records are entered by many different offices and are not '
+      + 'always complete \u2014 so an occasional listing may not fit, or a good one may be missed. '
+      + 'Always worth asking us.',
+  });
+});
+
 /* The lead's own controls. No login — the token in their email is the key. */
 app.get('/api/feed/:token', async (req, res) => {
   const ptr = await getSetting('ssTok:' + String(req.params.token || '').replace(/[^a-f0-9]/gi, ''));
@@ -3234,7 +3272,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v80',
+    serverVersion: 'v82',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
