@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v199">
+<meta name="build" content="index-v201">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2382,14 +2382,22 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 /* The ideas button rides the version-stamp row: it is the one strip that sits
    under every tab, so the button is reachable from wherever the thought occurs.
    Scoped names (idea-*) so nothing later in the sheet can quietly win. */
-.idea-row{display:flex;align-items:center;gap:12px;padding:8px 4px 0;flex-wrap:wrap}
+.idea-row{display:flex;align-items:center;gap:12px;padding:10px 4px 0;flex-wrap:wrap}
 .idea-row #crm-version{padding:0}
-.idea-btn{margin-left:auto;border:1px solid var(--line);background:var(--white);
-  color:var(--driftwood);border-radius:999px;padding:5px 13px;font-size:12px;font-weight:600;
-  display:inline-flex;align-items:center;gap:6px;transition:.15s}
-.idea-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7}
-.idea-btn:hover{color:var(--marsh);border-color:var(--marsh)}
-.idea-btn:focus-visible{outline:2px solid var(--marsh);outline-offset:2px}
+/* Gold, the way CLIENT LOGIN is gold on the public site — this is the one
+   control on the strip that asks for something, so it is allowed to look like
+   a button. Ink on gold measures 8.8:1, and 5.9:1 on the darker hover. White
+   on this gold would have been 1.7:1, which is the trap the palette notes
+   already warn about — check the number, do not eyeball it. */
+.idea-btn{margin-left:auto;border:1px solid var(--gold-deep);background:var(--gold);
+  color:var(--ink);border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:700;
+  letter-spacing:.01em;display:inline-flex;align-items:center;gap:8px;
+  box-shadow:0 2px 8px rgba(200,155,78,.28);transition:.15s}
+.idea-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9}
+.idea-btn:hover{background:var(--gold-deep);box-shadow:0 4px 12px rgba(200,155,78,.4);
+  transform:translateY(-1px)}
+.idea-btn:focus-visible{outline:2px solid var(--marsh);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){ .idea-btn{transition:none} .idea-btn:hover{transform:none} }
 .idea-mine{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
 .idea-mine .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--driftwood);margin-bottom:8px}
@@ -2408,11 +2416,12 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <div class="idea-row">
   <div id="crm-version" style="font-size:11.5px;letter-spacing:.03em;
     color:rgba(27,32,67,.5);font-variant-numeric:tabular-nums" title="Deployed versions"></div>
-  <button class="idea-btn" onclick="ideaOpen()" title="Send the broker an idea">
+  <button class="idea-btn" id="idea-btn" onclick="ideaOpen()"
+    title="Tell the broker what would work better">
     <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
     </svg>
-    Send an idea
+    Suggest an improvement
   </button>
 </div>
 <div id="celebrations"></div>
@@ -2472,7 +2481,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
     b.style.display = b.style.display==='none' ? '' : 'none';
     if(b.style.display !== 'none' && typeof renderIdeas === 'function') renderIdeas();">
-    <h3>&#128161; Ideas from your agents</h3><span>&#9662;</span>
+    <h3>&#128161; Suggestions from your agents</h3><span>&#9662;</span>
   </div>
   <div class="setup-body" id="idea-body" style="display:none">Loading&hellip;</div>
 </div>
@@ -2863,9 +2872,9 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <div class="modal-overlay" id="idea-modal">
 <div class="modal">
 <button class="modal-close" onclick="ideaClose()" aria-label="Close">&times;</button>
-<h3>Something could work better</h3>
-<p class="sub">This goes straight to the broker. Nobody else sees it. Rough notes are
-  fine &mdash; you use this every day and see things nobody else does.</p>
+<h3>Suggest an improvement</h3>
+<p class="sub">This goes straight to the broker. Nobody else sees it. You use this every
+  day, so you notice things nobody else does &mdash; rough notes are fine.</p>
 <div class="field">
   <label for="idea-area">Which part?</label>
   <select id="idea-area"></select>
@@ -2875,7 +2884,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   <textarea id="idea-text" style="min-height:110px"
     placeholder="It would work better if&hellip;"></textarea>
 </div>
-<button class="submit-btn" id="idea-send" onclick="ideaSend()">Send it</button>
+<button class="submit-btn" id="idea-send" onclick="ideaSend()">Send suggestion</button>
 <div class="idea-mine" id="idea-mine" style="display:none"></div>
 </div>
 </div>
@@ -3716,7 +3725,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v199';
+window.BUILD = 'index-v201';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6992,6 +7001,8 @@ async function saveTabOrder(){
 function renderCrmNav(){
   const nav = document.getElementById('crm-nav');
   if(!nav || !currentAgent) return;
+  // the button sits on the row under this nav and follows the same role rules
+  try{ ideaSyncButton(); }catch(e){}
   const isBroker = isAdminOrOwner();
   // A section the current role can't see must never stay open — otherwise
   // switching to an agent view leaves broker content on screen.
@@ -10096,7 +10107,20 @@ async function renderVersionStamp(){
 
 /* ---------- ideas ----------
    One button, straight to the broker. The people using this daily see what
-   neither of us does, and the cost of asking them is one button. */
+   neither of us does, and the cost of asking them is one button.
+
+   ⚠ Hidden under "View as". The server attributes an idea to whoever is really
+   signed in — it cannot know the browser is previewing somebody — so a broker
+   sending one from a preview would file it under their own name against the
+   agent's screen. Sending on someone else's behalf is not what preview is for.
+   Same trap as the 1099 and the saved layouts; third time it has come up. */
+function ideaSyncButton(){
+  const b = document.getElementById('idea-btn');
+  if(!b) return;
+  const hide = (typeof previewing === 'function') && previewing();
+  b.style.display = hide ? 'none' : '';
+}
+
 function ideaWhen(iso){
   const d = new Date(iso);
   if(isNaN(d)) return '';
@@ -10154,12 +10178,12 @@ async function ideaSend(){
     const j = await res.json().catch(() => ({}));
     if(!res.ok) throw new Error(j.error || 'Could not send that.');
     if(txt) txt.value = '';
-    showToast('Sent to the broker. Thank you.');
+    showToast('Suggestion sent to the broker. Thank you.');
     ideaLoadMine();
   }catch(e){
     showToast(e.message || 'Could not send that.');
   }finally{
-    if(btn){ btn.disabled = false; btn.textContent = 'Send it'; }
+    if(btn){ btn.disabled = false; btn.textContent = 'Send suggestion'; }
   }
 }
 
@@ -10175,7 +10199,7 @@ async function ideaLoadMine(){
     const mine = (j.ideas || []).filter(i => i && i.agentId === (currentAgent && currentAgent.id));
     if(!mine.length){ host.style.display = 'none'; return; }
     host.style.display = '';
-    host.innerHTML = '<div class="lbl">What you\u2019ve sent</div>' +
+    host.innerHTML = '<div class="lbl">What you\u2019ve suggested</div>' +
       mine.slice(0, 5).map(i => `<div class="one">${escapeHtml(i.text)}
         <div class="when">${i.area ? escapeHtml(i.area) + ' \u00b7 ' : ''}${ideaWhen(i.at)}</div>
       </div>`).join('');
@@ -10227,7 +10251,7 @@ async function renderIdeas(){
   window.__unreadIdeas = unread.length;
 
   host.innerHTML = `
-    <p>Anything an agent sends with the <strong>Send an idea</strong> button under the
+    <p>Anything an agent sends with the <strong>Suggest an improvement</strong> button under the
       tabs lands here, and emails you at the same time. Archiving keeps the record
       without keeping the clutter.</p>
     ${live.length ? live.map(i => `
@@ -16224,7 +16248,7 @@ function bfItems(){
       out.push({
         key: 'ideas',
         urgency: 'ok',
-        title: window.__unreadIdeas + ' idea' + (window.__unreadIdeas===1?'':'s') + ' from your agents',
+        title: window.__unreadIdeas + ' suggestion' + (window.__unreadIdeas===1?'':'s') + ' from your agents',
         sub: 'They use this daily and see what you cannot',
         go: 'Settings', goTo: 'sec-setup',
       });
