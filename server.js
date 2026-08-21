@@ -1503,7 +1503,7 @@ const PLAYBOOK_DEFAULTS = [
     { d:6,  ch:'task',  t:'Call them. Six days, no reply \u2014 a call gets through where texts do not.' },
     { d:10, ch:'sms',   t:"Random one: what's the ONE thing a place has to have for you?" },
     { d:18, ch:'email', s:'A few that are not just what came up first', t:"Hi {first},\n\nI've pulled a handful that don't just happen to be top of the search results. Want them?" },
-    { d:30, ch:'sms',   t:"{first}, I don't want to be the agent blowing up your phone. Shall I keep an eye out for you, or leave you be for now?" },
+    { d:30, ch:'sms',   t:"{first}, I don't want to be the agent blowing up your phone. Want me to keep an eye out for you, or should I leave you alone for now?" },
   ]},
   { id:'pb_buyer', name:'New buyer, no property named', match:{ source:'new' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} at {brokerage}. Are you already local, or would this be a move down here?" },
@@ -1511,7 +1511,7 @@ const PLAYBOOK_DEFAULTS = [
     { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nThe stretch from Fort Morgan to Perdido Key is really five or six different markets, and the difference matters more than people expect.\n\nTell me roughly what you're after and I'll tell you which bit fits." },
     { d:8,  ch:'task',  t:'Call them.' },
     { d:15, ch:'sms',   t:"{first} \u2014 this year, or more of a someday thing? Either is fine, it just changes what I send." },
-    { d:30, ch:'sms',   t:"Shall I keep looking for you, or leave you alone for now?" },
+    { d:30, ch:'sms',   t:"Want me to keep looking for you, or should I leave you alone for now?" },
   ]},
   { id:'pb_seller', name:'Asked what their home is worth', match:{ source:'value' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, it's {agent}. Got your request about {address}. Before I send you automated numbers that may or may not be right \u2014 are you actually thinking of selling, or mostly curious what it'd fetch?" },
@@ -1523,10 +1523,10 @@ const PLAYBOOK_DEFAULTS = [
   ]},
   { id:'pb_oh', name:'Signed in at an open house', match:{ source:'open-house' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, {agent} here \u2014 thanks for coming by {address} today. Was it close to what you're after, or not quite?" },
-    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through. Two questions and I'll leave you be:\n\nWas it close? And is there something you've seen elsewhere it should be measured against?" },
+    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through. Two questions and I'll get out of your way:\n\nWas it close? And is there something you've seen elsewhere it should be measured against?" },
     { d:7,  ch:'sms',   t:"{first} \u2014 a couple more have come up in that range. Want me to send them?" },
     { d:14, ch:'task',  t:'Call them.' },
-    { d:30, ch:'sms',   t:"Shall I keep an eye out, or leave you to it?" },
+    { d:30, ch:'sms',   t:"Want me to keep an eye out, or leave you to it?" },
   ]},
   { id:'pb_quiet', name:'Registered, then nothing', match:{ source:'exit-intent' }, steps:[
     { d:0,  ch:'email', s:'Nothing to sign up for', t:"Hi {first},\n\nYou asked to hear about new listings, so that's what I'll send \u2014 nothing else, and you can stop them any time.\n\nOne question so they're useful: buying, selling, or just watching?" },
@@ -1553,7 +1553,7 @@ const SCORE_EVENTS = {
   showing_request:  { pts: 30, why: 'asked to see a property' },
   agent_call_req:   { pts: 30, why: 'asked to speak to someone' },
   seller_definite:  { pts: 25, why: 'has definite plans to sell' },
-  timeline_90:      { pts: 20, why: 'moving inside 90 days' },
+  timeline_90:      { pts: 20, why: 'moving within 90 days' },
   financing:        { pts: 15, why: 'mentioned financing or pre-approval' },
   favorited:        { pts:  8, why: 'saved a property' },
   visits_multi:     { pts:  8, why: 'been back to the site several times' },
@@ -2073,7 +2073,7 @@ app.post('/api/oh/:token/signin', async (req, res) => {
   res.json({ ok: true, visitorId: visitor.id });
 });
 
-/* The follow-up: four tick-box questions, which is why people answer them. */
+/* The follow-up: four checkbox questions, which is why people answer them. */
 app.post('/api/openhouse/:id/feedback', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const key = 'openHouse:' + sess.agentId + ':' + String(req.params.id || '');
@@ -2092,7 +2092,7 @@ app.post('/api/openhouse/:id/feedback', async (req, res) => {
         subject: `Thanks for coming by${rec.address ? ' \u2014 ' + rec.address : ''}`,
         text: `Hi ${String(v.name).split(' ')[0]},\n\n`
             + `Thanks for stopping by${rec.address ? ' ' + rec.address : ''} today.\n\n`
-            + `Four quick questions, all tick-boxes \u2014 it takes about ten seconds and it `
+            + `Four quick questions, all checkboxes \u2014 it takes about ten seconds and it `
             + `genuinely helps:\n${link}\n\n`
             + `And if you'd like to see it again, or see something else, just reply.\n\n`
             + `${rec.agentName}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`,
