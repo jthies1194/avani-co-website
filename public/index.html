@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v204">
+<meta name="build" content="index-v206">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3804,7 +3804,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v204';
+window.BUILD = 'index-v206';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7581,6 +7581,54 @@ function injectSectionHeader(id){
   el.insertBefore(h, el.firstChild);
 }
 </script>
+<style>
+/* ---------- section headers, briefing and celebrations ----------
+   injectSectionHeader() already puts an eyebrow, title and blurb at the top of
+   every tab from SECTION_META, so restyling .sec-header lifts all of them at
+   once rather than tab by tab. Nothing here changes markup or logic. */
+#crm-main .sec-header{margin:0 0 26px;padding:0 0 20px;
+  border-bottom:1px solid var(--hair);position:relative}
+#crm-main .sec-header:after{content:'';position:absolute;left:0;bottom:-1px;
+  width:56px;height:1px;background:var(--gd)}
+#crm-main .sec-header .eyebrow-sm{font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--gd);font-weight:700;margin-bottom:9px}
+#crm-main .sec-header h2{font-family:'Fraunces',Georgia,serif;font-size:33px;font-weight:400;
+  letter-spacing:-.02em;line-height:1.05;color:var(--rl)}
+#crm-main .sec-header p{font-size:13.5px;color:var(--mut);margin-top:9px;max-width:640px;
+  line-height:1.6}
+
+/* the briefing: the first thing anyone sees each morning */
+#crm-main .bf-h h3{font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:400;
+  letter-spacing:-.015em;color:var(--rl)}
+#crm-main .bf-h .c{font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mut);font-weight:600}
+#crm-main .bf-sub{font-size:13px;color:var(--mut)}
+#crm-main .bf-group .lbl{font-size:10px;letter-spacing:.17em;color:var(--mut)}
+#crm-main .bf-group.late .lbl{color:#A8371F}
+#crm-main .bf-group.soon .lbl{color:#8A6A28}
+#crm-main .bf-item{border:1px solid var(--hair);border-radius:3px;background:#fff;
+  padding:12px 14px;transition:.14s}
+#crm-main .bf-item:hover{border-color:rgba(200,155,78,.6);background:var(--gd-pale)}
+#crm-main .bf-item.late{border-left:3px solid #A8371F}
+#crm-main .bf-item.soon{border-left:3px solid var(--gd)}
+#crm-main .bf-item.done{opacity:.45;background:var(--pp)}
+#crm-main .bf-box{border-radius:3px;border:1.5px solid rgba(20,26,60,.25)}
+#crm-main .bf-item.done .bf-box{background:#2E7D5B;border-color:#2E7D5B}
+#crm-main .bf-item .t{font-size:13.5px;font-weight:600}
+#crm-main .bf-item .s{font-size:12px;color:var(--mut)}
+#crm-main .bf-item .go{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  font-weight:700;color:var(--gd)}
+#crm-main .bf-add input{border:1px solid var(--hair);border-radius:3px;background:#fff}
+#crm-main .bf-add input:focus{outline:none;border-color:var(--gd)}
+#crm-main .bf-clear{background:#fff;border:1px solid rgba(46,125,91,.35);border-radius:4px}
+#crm-main .bf-clear .big{font-family:'Fraunces',Georgia,serif;color:#2E7D5B;font-weight:400}
+#crm-main .bf-carry{background:#fff;border:1px solid var(--hair);
+  border-left:3px solid var(--gd);border-radius:0 3px 3px 0}
+
+/* the coming-up band that sits above every tab */
+#crm-main #celebrations > *{border-radius:4px}
+#crm-main #celebrations{margin-bottom:22px}
+</style>
 <script>
 /* ---------- Today: the CRM home ----------
    Opens with what needs doing rather than a table. Agents see their own
@@ -18697,6 +18745,76 @@ async function ntToggle(k){
   try{ await storeSet('notify:' + currentAgent.id, ntPrefs); }catch(e){}
 }
 </script>
+
+<style>
+/* ---------- lead cards, restyled to the rail's language ----------
+   Same markup renderLeads() already emits — score, band, why-line, quick logs,
+   stage, notes. Only the styling changes, so scoring, quick events, assignment
+   and the running badges all keep working. The score becomes a ring because it
+   is the one number an agent reads first, and the why-line gets the gold
+   treatment because it is the sentence that tells them what to say. */
+#crm-main .lead-card{background:#fff;border:1px solid var(--hair);border-radius:4px;
+  padding:18px 20px;margin-bottom:10px;gap:18px;transition:.14s}
+#crm-main .lead-card:hover{border-color:rgba(200,155,78,.55);
+  box-shadow:0 2px 14px rgba(20,26,60,.06)}
+#crm-main .lc-score{width:66px;padding-top:2px}
+#crm-main .lc-score .n{font-family:'Fraunces',Georgia,serif;font-size:27px;font-weight:400;
+  width:58px;height:58px;margin:0 auto;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;background:#fff;border:1px solid rgba(200,155,78,.45);
+  font-variant-numeric:tabular-nums}
+#crm-main .lc-score .b{font-size:8.5px;letter-spacing:.11em;font-weight:700;
+  color:var(--mut);margin-top:7px}
+#crm-main .lc-top b{font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:400;
+  letter-spacing:-.015em}
+#crm-main .lc-src{background:transparent;border:1px solid var(--hair);color:var(--mut);
+  border-radius:2px;padding:3px 8px;font-size:9.5px;letter-spacing:.09em}
+#crm-main .lc-take{background:var(--gd);color:#241A08;border-radius:2px;padding:3px 8px;
+  font-size:9.5px;letter-spacing:.09em}
+#crm-main .lc-when{font-size:11.5px;color:var(--mut);letter-spacing:.03em}
+#crm-main .lc-contact{font-size:12.5px;color:var(--mut);margin-top:4px}
+#crm-main .lc-msg{background:var(--pp);border-left:2px solid var(--hair);padding:9px 13px;
+  border-radius:0 3px 3px 0;font-size:13px;margin-top:9px}
+/* the sentence that matters most on the card */
+#crm-main .lc-why{background:var(--gd-pale);border-left:3px solid var(--gd);
+  padding:10px 14px;border-radius:0 3px 3px 0;margin-top:10px;
+  font-size:13px;line-height:1.55;color:#5C4718}
+#crm-main .lc-quick{margin-top:12px;padding-top:12px;border-top:1px solid var(--hair2)}
+#crm-main .lc-quick button{border:1px solid var(--hair);background:#fff;border-radius:3px;
+  padding:6px 12px;font-size:11.5px;font-weight:600;color:var(--mut)}
+#crm-main .lc-quick button:hover{border-color:var(--rl);color:var(--rl);background:var(--pp)}
+#crm-main .lc-side{width:200px;gap:8px}
+#crm-main .lc-side .stage-select,#crm-main .lc-side .notes-input{border:1px solid var(--hair);
+  border-radius:3px;background:#fff;font-size:12.5px;padding:8px 10px;color:var(--rl)}
+#crm-main .lc-side .stage-select:focus,#crm-main .lc-side .notes-input:focus{
+  outline:none;border-color:var(--gd)}
+#crm-main .lc-agent{font-size:12px;color:var(--mut)}
+#crm-main .lc-acts button{border:1px solid var(--hair);background:#fff;border-radius:3px;
+  font-size:11.5px;font-weight:600;color:var(--mut);padding:7px 4px}
+#crm-main .lc-acts button:hover{background:var(--rl);border-color:var(--rl);color:#fff}
+#crm-main .lc-running span{border-radius:2px;font-size:10.5px;letter-spacing:.05em;
+  font-weight:700;text-transform:uppercase;padding:3px 9px}
+#crm-main .lc-flag{font-size:11.5px;color:var(--mut);margin-top:5px;font-style:italic}
+
+/* stage filter pills and the stat strip, same family */
+#crm-main .stage-filters button{border:1px solid var(--hair);background:#fff;border-radius:3px;
+  color:var(--mut);font-size:11.5px;font-weight:600;letter-spacing:.05em;
+  text-transform:uppercase;padding:8px 14px}
+#crm-main .stage-filters button.active{background:var(--rl);border-color:var(--rl);color:#fff}
+#crm-main .stats-row{background:#fff;border:1px solid var(--hair);border-radius:4px;
+  gap:0;overflow:hidden}
+#crm-main .stat-box{border:none;border-right:1px solid var(--hair2);border-radius:0;
+  padding:18px 20px;background:transparent}
+#crm-main .stat-box:last-child{border-right:none}
+#crm-main .stat-box .n{font-size:31px;font-weight:300;color:var(--rl)}
+#crm-main .stat-box .l{font-family:'Public Sans',sans-serif;font-size:10.5px;
+  letter-spacing:.11em;font-weight:600;color:var(--mut);margin-top:9px}
+#crm-main .btn-sm{border-radius:3px;font-size:11.5px;font-weight:600;letter-spacing:.05em;
+  border-color:var(--hair);color:var(--body);background:#fff}
+#crm-main .btn-sm:hover{border-color:var(--rl);color:var(--rl);opacity:1}
+#crm-main .btn-sm.primary{background:var(--gd);border-color:var(--gd);color:#241A08}
+#crm-main .btn-sm.primary:hover{background:#B98B3E;border-color:#B98B3E;color:#241A08}
+@media(max-width:640px){ #crm-main .lc-side{width:100%} }
+</style>
 
 <style>
 /* ---------- lead cards ----------
