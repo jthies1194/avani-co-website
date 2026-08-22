@@ -4618,6 +4618,93 @@ const ARTICLE_ART = {
 <text y="-47">Perdido Key</text></g></g>
 <text x="20" y="30" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">FORTY MILES, FIVE MARKETS</text></svg>`,
 
+  art_firsttime: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four numbered steps along a path toward a house">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M40 190 C170 190, 170 96, 300 96 C430 96, 430 190, 560 190" stroke="#C89B4E" stroke-width="4" fill="none" stroke-dasharray="10 8"/>
+<g font-family="sans-serif" text-anchor="middle">
+<g transform="translate(40 190)"><circle r="26" fill="#0E1433"/><text y="7" font-size="20" fill="#E8D2A0" font-weight="700">1</text>
+<text y="52" font-size="12.5" font-weight="700" fill="#0E1433">Talk to a lender</text></g>
+<g transform="translate(300 96)"><circle r="26" fill="#0E1433"/><text y="7" font-size="20" fill="#E8D2A0" font-weight="700">2</text>
+<text y="-38" font-size="12.5" font-weight="700" fill="#0E1433">Decide how you</text>
+<text y="-22" font-size="12.5" font-weight="700" fill="#0E1433">will use it</text></g>
+<g transform="translate(430 152)"><circle r="26" fill="#0E1433"/><text y="7" font-size="20" fill="#E8D2A0" font-weight="700">3</text>
+<text y="52" font-size="12.5" font-weight="700" fill="#0E1433">See it in February</text></g>
+<g transform="translate(560 190)"><circle r="26" fill="#C89B4E"/><text y="7" font-size="20" fill="#241A08" font-weight="700">4</text>
+<text y="52" font-size="12.5" font-weight="700" fill="#0E1433">Inspection +</text>
+<text y="68" font-size="12.5" font-weight="700" fill="#0E1433">insurance together</text></g></g>
+<g transform="translate(646 150)">
+<rect x="-26" y="0" width="52" height="40" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<path d="M-34 0 L0 -26 L34 0 Z" fill="#C89B4E" stroke="#0E1433" stroke-width="3" stroke-linejoin="round"/>
+<rect x="-8" y="18" width="16" height="22" fill="#0E1433"/></g>
+<text x="20" y="34" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">THE ORDER MATTERS</text></svg>`,
+
+  art_sellprep: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three things that move the sale price: photography, first-week pricing, and the obvious objection">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<text x="360" y="34" text-anchor="middle" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">THREE THINGS MOVE THE NUMBER</text>
+<g font-family="sans-serif" text-anchor="middle">
+<g transform="translate(140 130)">
+<rect x="-56" y="-40" width="112" height="80" rx="4" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<rect x="-20" y="-52" width="40" height="14" rx="3" fill="#0E1433"/>
+<circle cy="0" r="22" fill="#C89B4E" stroke="#0E1433" stroke-width="3"/><circle cy="0" r="9" fill="#0E1433"/>
+<text y="66" font-size="13" font-weight="700" fill="#0E1433">Photography</text>
+<text y="84" font-size="11.5" fill="#7A8199">More than a kitchen</text></g>
+<g transform="translate(360 130)">
+<path d="M-46 -40 H26 L52 -14 L14 40 H-46 Z" fill="#C89B4E" stroke="#0E1433" stroke-width="3" stroke-linejoin="round"/>
+<circle cx="26" cy="-18" r="6" fill="#0E1433"/>
+<text x="-12" y="8" font-size="19" font-weight="700" fill="#241A08">WK 1</text>
+<text y="66" font-size="13" font-weight="700" fill="#0E1433">The first week</text>
+<text y="84" font-size="11.5" fill="#7A8199">Where the attention is</text></g>
+<g transform="translate(580 130)">
+<path d="M0 -44 L40 -28 V6 C40 30, 20 42, 0 48 C-20 42, -40 30, -40 6 V-28 Z" fill="#fff" stroke="#0E1433" stroke-width="3" stroke-linejoin="round"/>
+<path d="M-16 2 L-4 16 L18 -12" stroke="#2E7D5B" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text y="76" font-size="13" font-weight="700" fill="#0E1433">The obvious objection</text>
+<text y="94" font-size="11.5" fill="#7A8199">Answered before it is asked</text></g></g></svg>`,
+
+  art_eastern: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mobile Bay with Fairhope, Daphne and Spanish Fort marked along the Eastern Shore">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 60 C110 74, 150 130, 168 196 C176 226, 182 244, 190 260 L0 260 Z" fill="#4A7A9B" opacity=".85"/>
+<path d="M0 60 C110 74, 150 130, 168 196 C176 226, 182 244, 190 260" stroke="#C89B4E" stroke-width="4" fill="none"/>
+<g stroke="#fff" stroke-width="2.5" fill="none" opacity=".4" stroke-linecap="round">
+<path d="M40 150 c16 -8 30 8 46 0"/><path d="M60 214 c16 -8 30 8 46 0"/></g>
+<text x="52" y="118" font-family="sans-serif" font-size="12" font-weight="700" fill="#fff" opacity=".9">Mobile Bay</text>
+<g font-family="sans-serif" font-size="12.5" font-weight="700" fill="#0E1433">
+<g transform="translate(214 214)"><circle r="11" fill="#C89B4E" stroke="#0E1433" stroke-width="3"/>
+<rect x="24" y="-14" width="150" height="28" rx="3" fill="#C89B4E" stroke="#0E1433" stroke-width="2.5"/>
+<text x="99" y="5" text-anchor="middle">Fairhope &middot; walkable</text></g>
+<g transform="translate(178 146)"><circle r="10" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<rect x="22" y="-14" width="150" height="28" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text x="97" y="5" text-anchor="middle">Daphne &middot; practical</text></g>
+<g transform="translate(146 82)"><circle r="10" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<rect x="22" y="-14" width="176" height="28" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text x="110" y="5" text-anchor="middle">Spanish Fort &middot; the bridge</text></g></g>
+<g stroke="#0E1433" stroke-width="3" fill="none" stroke-dasharray="8 7" opacity=".55">
+<path d="M120 62 C90 50, 66 46, 40 48"/></g>
+<text x="470" y="40" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">TWENTY MINUTES APART</text>
+<text x="470" y="62" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">GENUINELY DIFFERENT</text></svg>`,
+
+  art_moving: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="July crowded against February quiet, the seasonal split on the coast">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<rect x="0" y="0" width="360" height="260" fill="#C89B4E" opacity=".22"/>
+<path d="M360 0 V260" stroke="#0E1433" stroke-width="2" opacity=".3" stroke-dasharray="8 7"/>
+<text x="180" y="40" text-anchor="middle" font-family="sans-serif" font-size="13" letter-spacing="2.5" font-weight="700" fill="#8A6A28">JULY</text>
+<text x="540" y="40" text-anchor="middle" font-family="sans-serif" font-size="13" letter-spacing="2.5" font-weight="700" fill="#4A7A9B">FEBRUARY</text>
+<path d="M0 206 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g fill="#0E1433">
+<g transform="translate(46 206)"><circle cy="-58" r="11"/><rect x="-11" y="-44" width="22" height="44" rx="4"/></g>
+<g transform="translate(92 206)"><circle cy="-64" r="11"/><rect x="-11" y="-50" width="22" height="50" rx="4"/></g>
+<g transform="translate(138 206)"><circle cy="-56" r="11"/><rect x="-11" y="-42" width="22" height="42" rx="4"/></g>
+<g transform="translate(184 206)"><circle cy="-66" r="11"/><rect x="-11" y="-52" width="22" height="52" rx="4"/></g>
+<g transform="translate(230 206)"><circle cy="-58" r="11"/><rect x="-11" y="-44" width="22" height="44" rx="4"/></g>
+<g transform="translate(276 206)"><circle cy="-62" r="11"/><rect x="-11" y="-48" width="22" height="48" rx="4"/></g>
+<g transform="translate(320 206)"><circle cy="-56" r="11"/><rect x="-11" y="-42" width="22" height="42" rx="4"/></g>
+</g>
+<g transform="translate(540 206)" fill="#0E1433" opacity=".85">
+<circle cy="-62" r="11"/><rect x="-11" y="-48" width="22" height="48" rx="4"/></g>
+<g stroke="#4A7A9B" stroke-width="3" fill="none" opacity=".5" stroke-linecap="round">
+<path d="M420 172 c20 -9 38 9 58 0"/><path d="M600 182 c20 -9 38 9 58 0"/></g>
+<text x="180" y="240" text-anchor="middle" font-family="sans-serif" font-size="12.5" font-weight="700" fill="#0E1433">Drive the route you would really drive</text>
+<text x="540" y="240" text-anchor="middle" font-family="sans-serif" font-size="12.5" font-weight="700" fill="#0E1433">The beach to yourself</text></svg>`,
+
   art_rental: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A large gross arrow entering a house and smaller costs leaving">
 <rect width="720" height="260" fill="#F6EEDC"/>
 <path d="M0 224 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
