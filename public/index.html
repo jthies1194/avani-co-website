@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v234">
+<meta name="build" content="index-v236">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -188,7 +188,7 @@ a{color:inherit;text-decoration:none}
 header{position:fixed;top:0;left:0;right:0;z-index:100;padding:28px 48px;
   display:flex;align-items:center;justify-content:space-between;
   transition:padding .5s,background .5s,box-shadow .5s}
-header.stuck{padding:14px 48px;background:rgba(255,255,255,96.00);backdrop-filter:blur(14px);
+header.stuck{padding:14px 48px;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);
   box-shadow:0 1px 0 var(--line)}
 .mark{display:flex;align-items:center;gap:15px}
 .seal{width:auto;height:72px;transition:height .5s;flex-shrink:0}
@@ -266,7 +266,7 @@ header.stuck nav .tel{color:var(--gold)}
 .hero-v2 p{color:#ffffff;font-size:20px;max-width:48ch;margin:30px auto 42px;
   text-shadow:0 1px 20px rgba(23,31,99,.5)}
 .scroll-cue{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);z-index:6;
-  font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,72.00)}
+  font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.72)}
 .scroll-cue::after{content:'';display:block;width:1px;height:40px;margin:12px auto 0;
   background:linear-gradient(var(--gold-pale),transparent);animation:pulse 2.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.3;height:26px}50%{opacity:1;height:44px}}
@@ -292,7 +292,7 @@ header.stuck nav .tel{color:var(--gold)}
 .more-f .hint{font-size:13px;color:var(--driftwood,#7A8199);margin-left:auto}
 .more-f .hint a{color:var(--gold,#C9971F)}
 @media(max-width:640px){ .more-f{margin:-6px 16px 26px;padding:16px} }
-.search{.search{position:relative;z-index:20;max-width:1140px;margin:-34px auto 0;background:var(--ivory);
+.search{position:relative;z-index:20;max-width:1140px;margin:-34px auto 0;background:var(--ivory);
   box-shadow:0 34px 80px rgba(23,31,99,.14);padding:34px 38px;
   display:flex;gap:26px;flex-wrap:wrap;align-items:flex-end}
 .search .f{flex:1;min-width:150px}
@@ -356,7 +356,7 @@ header.stuck nav .tel{color:var(--gold)}
   background:var(--blue-ink);border:1px solid var(--dot);margin-left:-4px;transition:.5s}
 .band h3{font-size:31px;font-weight:500}
 .band h3 + span{display:block;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;
-  color:rgba(255,255,255,42.00);margin-top:9px}
+  color:rgba(255,255,255,.42);margin-top:9px}
 .towns{display:flex;flex-wrap:wrap;align-items:center}
 .towns a{font-size:17px;color:rgba(255,255,255,.9);transition:color .3s}
 .towns a:hover{color:var(--gold-pale)}
@@ -386,7 +386,7 @@ header.stuck nav .tel{color:var(--gold)}
 .svc h3{font-size:30px;font-weight:500;margin-bottom:12px}
 .svc:hover h3{color:var(--ivory)}
 .svc p{font-size:15.5px;color:var(--gray);margin:0;line-height:1.8;transition:.55s}
-.svc:hover p{color:rgba(255,255,255,68.00)}
+.svc:hover p{color:rgba(255,255,255,.68)}
 
 /* ---------- valuation ---------- */
 .valuation{text-align:center;padding:150px 48px}
@@ -2687,6 +2687,14 @@ body:not(.is-staff) #sec-content .broker-only{display:none}
 .ct-art .pill.on{background:#E7F3EC;color:#1F6B49}
 .ct-art .pill.reg{background:#FDF2F1;color:#8A2C22}
 .ct-art .a{flex-direction:column;gap:5px}
+.sm-box{border-radius:4px;padding:15px 17px;border:1px solid var(--hair,rgba(20,26,60,.1))}
+.sm-box.off{background:#FDF2F1;border-left:3px solid #8A2C22}
+.sm-box.on{background:#E7F3EC;border-left:3px solid #1F6B49}
+.sm-box .s{font-size:11px;letter-spacing:.11em;text-transform:uppercase;font-weight:700;
+  margin-bottom:7px}
+.sm-box.off .s{color:#8A2C22}
+.sm-box.on .s{color:#1F6B49}
+.sm-box p{font-size:13px;line-height:1.6;color:var(--rl,#0E1433);margin:0 0 12px}
 .ct-share{background:#fff;border:1px solid var(--hair,rgba(20,26,60,.1));
   border-left:3px solid var(--gd,#C89B4E);border-radius:4px;padding:14px 16px;margin:0 0 12px}
 .ct-share .h{font-size:13px;color:var(--rl,#0E1433);display:flex;gap:10px;align-items:baseline}
@@ -2771,6 +2779,14 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
   <p class="sx-sub">Yours alone &mdash; nobody else sees or changes these, including
     the broker.</p>
   <div class="setup-body" id="nt-body">Loading&hellip;</div>
+</div>
+<div class="setup-panel broker-only" id="sm-panel">
+  <h3 class="sx-h">Can the world find this site?</h3>
+  <p class="sx-sub">The site is reachable by anyone with the address either way. This
+    decides whether <strong>search engines</strong> are allowed to index it. While it is
+    private, Google is told to stay out, the sitemap is empty, and nothing you publish
+    will ever show up in a search.</p>
+  <div class="setup-body" id="sm-body">Checking&hellip;</div>
 </div>
 <div class="setup-panel broker-only">
   <h3 class="sx-h">Suggestions from your agents</h3>
@@ -4104,7 +4120,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v234';
+window.BUILD = 'index-v236';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7669,6 +7685,7 @@ function showCrmSection(id){
          notification switches showed "Loading…" and nothing else, forever.
          Panels here are always open, so they must be rendered on section open. */
       if(typeof renderNotify === 'function') renderNotify();
+      if(typeof renderSiteMode === 'function') renderSiteMode();
       if(typeof renderIdeas === 'function') renderIdeas(); }
     if(id === 'sec-reviews'){
       // everyone sees their own; the approval queue is the broker's
@@ -19867,6 +19884,48 @@ const NT_OPTS = [
   ['openHouse', 'Someone signs in at an open house', 'As it happens'],
 ];
 let ntPrefs = null;
+
+/* ⚠ This existed as a database value with no button for several versions, so the
+   broker had no way to make the site discoverable and no way to know it was not. */
+async function renderSiteMode(){
+  const host = document.getElementById('sm-body');
+  if(!host) return;
+  let priv = true;
+  try{
+    const r = await fetch('/api/site-mode');
+    const d = await r.json();
+    priv = d.private !== false;
+  }catch(e){ host.innerHTML = '<div class="ct-warn">Could not check.</div>'; return; }
+
+  host.innerHTML = priv
+    ? `<div class="sm-box off">
+         <div class="s">Hidden from search engines</div>
+         <p>Nothing you publish can be found on Google. Articles, agent pages and
+            listings are all invisible to search.</p>
+         <button class="btn-sm primary" onclick="smSet(false)">Let search engines in</button>
+       </div>`
+    : `<div class="sm-box on">
+         <div class="s">Open to search engines</div>
+         <p>Google is allowed to index the site. New pages usually take days to weeks
+            to appear \u2014 submitting the sitemap in Search Console speeds that up.</p>
+         <button class="btn-sm" onclick="smSet(true)">Hide it again</button>
+       </div>`;
+}
+
+async function smSet(makePrivate){
+  if(!makePrivate && !confirm(
+      'Let Google index the site?\n\nEverything you have published becomes findable in ' +
+      'search. Anything still in draft stays hidden.')) return;
+  try{
+    const r = await fetch('/api/site-mode', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ private: makePrivate }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not change it.');
+    showToast(makePrivate ? 'Hidden from search engines.' : 'Search engines can now index the site.');
+    renderSiteMode();
+  }catch(e){ showToast(e.message); }
+}
 
 async function renderNotify(){
   const host = document.getElementById('nt-body');
