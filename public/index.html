@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v221">
+<meta name="build" content="index-v223">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2563,6 +2563,9 @@ body.in-crm .topbar{display:none}
 
 <div class="crm-sec" id="sec-content">
 <style>
+/* Writing, editing, publishing and deleting are the broker's. Agents send what
+   has already been approved. */
+body:not(.is-staff) #sec-content .broker-only{display:none}
 .ct-grid{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
 @media(max-width:1000px){ .ct-grid{grid-template-columns:1fr} }
 .ct-art{border:1px solid var(--hair,rgba(20,26,60,.1));border-radius:4px;background:#fff;
@@ -2593,13 +2596,11 @@ body.in-crm .topbar{display:none}
 <div class="ct-grid">
   <div>
     <div class="setup-panel">
-      <h3 class="sx-h">Articles</h3>
-      <p class="sx-sub">Each one becomes a page at <strong>/insights/</strong> that Google can
-        index, and a block you can drop into a newsletter. Write for someone deciding, not
-        for a search engine.</p>
+      <h3 class="sx-h" id="ct-arts-h">Articles</h3>
+      <p class="sx-sub" id="ct-arts-sub">&nbsp;</p>
       <div class="setup-body" id="ct-articles">Loading&hellip;</div>
-      <button class="btn-sm primary" style="margin-top:12px" onclick="ctNewArticle()">
-        + Write an article</button>
+      <button class="btn-sm primary broker-only" style="margin-top:12px"
+        onclick="ctNewArticle()">+ Write an article</button>
     </div>
   </div>
   <div>
@@ -3951,7 +3952,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v221';
+window.BUILD = 'index-v223';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6985,7 +6986,7 @@ const CRM_SECTIONS = [
   { id:'sec-pipeline',    label:'My deals',    icon:'pipeline', color:'#4A7A9B' },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
-  { id:'sec-content',     label:'Content',     icon:'content',  color:'#C89B4E', brokerOnly:true },
+  { id:'sec-content',     label:'Content',     icon:'content',  color:'#C89B4E' },
   { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', brokerOnly:true },  // sign blue
   { id:'sec-reviews',     label:'Reviews',     icon:'reviews',  color:'#C9971F' },   // agents see their own  // gold
   { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B' },  // slate blue
@@ -7913,8 +7914,14 @@ async function renderDashboard(){
 
   // earnings position
   const year = new Date().getFullYear();
-  let earn = null;
-  try{
+  /* ⚠ This used to be one try with an empty catch. When the calculation failed —
+     usually because cdData had not finished loading on a second render — earn
+     stayed null and `${earn ? ... : ''}` removed the whole income panel with no
+     error and no trace. That is the block that appears once and then vanishes.
+     Now: the failure is logged, the data is reloaded once, and if it still will
+     not compute the panel says so instead of disappearing. */
+  let earn = null, earnFailed = false;
+  const computeEarn = () => {
     if(isBroker){
       const per = (cdData.agents || []).map(a => computeAgentYear(a.id, year));
       earn = {
@@ -7929,7 +7936,20 @@ async function renderDashboard(){
                deals: r.rows.length, volume: r.totals.volume,
                capMet: r.totals.capMet, capRemaining: r.totals.capRemaining, capAmount: r.totals.capAmount };
     }
-  }catch(e){}
+  };
+  try{ computeEarn(); }
+  catch(e){
+    console.warn('[dashboard] income did not compute, reloading:', e && e.message);
+    try{
+      cdData.deals = null; cdData.plans = null; cdData.agents = null;
+      await ensureCommissionData();
+      if(gen !== __dashGen) return;
+      computeEarn();
+    }catch(e2){
+      console.error('[dashboard] income still will not compute:', e2 && e2.message);
+      earnFailed = true;
+    }
+  }
 
   const goal = Number(localStorage.getItem('incomeGoal:' + currentAgent.id)) || 0;
   const pct = goal > 0 && earn ? Math.min(100, Math.round(earn.net / goal * 100)) : 0;
@@ -7953,6 +7973,11 @@ async function renderDashboard(){
             ? `You have <strong>${newLeads.length}</strong> new lead${newLeads.length===1?'':'s'} waiting.`
             : 'Nothing new waiting — good place to be.'}</p>
       </div>
+      ${(!earn && earnFailed) ? `<div class="dash-earn">
+        <div class="de-l">${isBroker ? 'Brokerage income ' + year : 'Your earnings ' + year}</div>
+        <div class="de-s" style="margin-top:6px">Could not work this out just now.
+          <button class="btn-sm" style="margin-top:8px" onclick="renderDashboard()">Try again</button>
+        </div></div>` : ''}
       ${earn ? `<div class="dash-earn">
         <div class="de-l">${isBroker ? 'Brokerage income ' + year : 'Your earnings ' + year}</div>
         <div class="de-n">${fmtMoney(earn.net)}</div>
@@ -10672,6 +10697,16 @@ async function renderContent(){
     ctArts = d.articles || [];
   }catch(e){ host.innerHTML = '<p>Could not load these.</p>'; return; }
 
+  const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
+  const h = document.getElementById('ct-arts-h');
+  const sub = document.getElementById('ct-arts-sub');
+  if(h) h.textContent = staff ? 'Articles' : 'Articles you can send';
+  if(sub) sub.innerHTML = staff
+    ? 'Each one becomes a page at <strong>/insights/</strong> that Google can index, and a '
+      + 'block you can drop into a newsletter. Nothing is public until you press Publish.'
+    : 'Written and approved by the brokerage. Read one before you send it \u2014 it goes out '
+      + 'under your name to your own people.';
+
   host.innerHTML = ctArts.length ? ctArts.map((a,i) => `
     <div class="ct-art ${a.published ? 'live' : ''}">
       <div class="b">
@@ -10688,15 +10723,16 @@ async function renderContent(){
       <div class="a">
         <a class="btn-sm" target="_blank" rel="noopener"
            href="${escapeHtml(a.published ? (a.liveUrl||'') : (a.previewUrl||''))}">Read it</a>
-        <button class="btn-sm ${a.published ? '' : 'primary'}" onclick="ctPublish(${i})">
-          ${a.published ? 'Unpublish' : 'Publish'}</button>
-        <button class="btn-sm" onclick="ctEdit(${i})">Edit</button>
-        <button class="btn-sm" onclick="ctDrop(${i})">Delete</button>
+        <button class="btn-sm broker-only ${a.published ? '' : 'primary'}"
+          onclick="ctPublish(${i})">${a.published ? 'Unpublish' : 'Publish'}</button>
+        <button class="btn-sm broker-only" onclick="ctEdit(${i})">Edit</button>
+        <button class="btn-sm broker-only" onclick="ctDrop(${i})">Delete</button>
       </div>
     </div>`).join('')
-    : `<div style="font-size:13px;color:var(--mut,#7A8199);padding:14px 0">
-         Three starter articles are live on the site already \u2014 insurance costs, condo
-         fees, and where to actually live. Writing your own here replaces them.</div>`;
+    : `<div style="font-size:13px;color:var(--mut,#7A8199);padding:14px 0">${staff
+         ? 'Nothing here yet. Write one, read it, then press Publish.'
+         : 'Nothing to send yet \u2014 the brokerage has not published an article. '
+           + 'They will appear here as soon as it does.'}</div>`;
   ctRenderSend();
 }
 
@@ -10760,6 +10796,15 @@ function ctDrop(i){
 const CT_LANES = [['','Everyone I can reach'],['slow','Long-term nurture'],
   ['steady','Normal follow-up'],['fast','Moving now'],['closing','Ready to buy']];
 
+/* An agent only ever reaches their own leads — enforced on the server, said out
+   loud here so nobody wonders whose list they are about to email. */
+function ctWhoNote(){
+  const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
+  return staff
+    ? 'Everyone in the brokerage you can reach.'
+    : 'Only the leads assigned to you. Nobody else\u2019s.';
+}
+
 function ctRenderSend(){
   const el = document.getElementById('ct-send');
   if(!el) return;
@@ -10772,6 +10817,7 @@ function ctRenderSend(){
       <textarea id="ct-intro" oninput="ctDraft.intro=this.value" style="min-height:64px"
         placeholder="Optional. One or two sentences in your own voice."
         >${escapeHtml(ctDraft.intro)}</textarea></div>
+    <div style="font-size:12px;color:var(--mut,#7A8199);margin:0 0 12px">${ctWhoNote()}</div>
     <div class="field"><label>Who gets it</label>
       <select id="ct-lane" onchange="ctSeg={lane:this.value};ctCounted=false;ctRenderSend()">
         ${CT_LANES.map(([v,l]) =>
