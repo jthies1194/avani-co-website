@@ -2213,7 +2213,9 @@ app.post('/api/broadcast', async (req, res) => {
           subject,
           text: `Hi ${first},\n\n${intro ? intro + '\n\n' : ''}${items}\n\n`
               + `\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
-              + `${BROKERAGE_ADDRESS}\n\nNo longer want these? ${unsub}`,
+              + `${BROKERAGE_ADDRESS}\n\n`
+              + `${arts.some(articleRegulated) ? DISCLAIMER_REGULATED + '\n\n' : ''}`
+              + `${DISCLAIMER_GENERAL}\n\nNo longer want these? ${unsub}`,
         });
         sent++;
         lead.broadcasts = Array.isArray(lead.broadcasts) ? lead.broadcasts : [];
@@ -3766,7 +3768,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v90',
+    serverVersion: 'v91',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4285,6 +4287,39 @@ Sitemap: ${origin}/sitemap.xml
 
    Before this the whole site had two indexable page types: the homepage and
    agent bios. Every article added here is another way to be found. */
+/* ⚠ Disclaimers are applied by the template, never by the author.
+   Talking about insurance premiums, deductibles, loan terms or tax treatment
+   edges toward advice that requires a licence we do not hold. A real estate
+   licence is not an insurance licence, a mortgage licence, or a CPA.
+
+   Articles carry a topic tag. Anything touching insurance, financing or tax gets
+   the stronger wording on top of the general one. If an author forgets the tag,
+   the keyword scan below catches it anyway — the failure mode is an extra
+   disclaimer, not a missing one.
+
+   ⚠ Have your attorney read this wording once. It is written to be sensible, not
+   to be legal advice, and it is the kind of thing worth getting signed off. */
+const DISCLAIMER_GENERAL =
+  'This article is general information about the Alabama Gulf Coast market and is '
+  + 'not advice about any specific property or situation. Market conditions change. '
+  + 'Nothing here creates an agency relationship.';
+
+const DISCLAIMER_REGULATED =
+  'We are licensed real estate agents. We are not insurance agents, mortgage '
+  + 'brokers, lenders, attorneys or tax advisers, and nothing here is insurance, '
+  + 'lending, legal or tax advice. Figures are general estimates that vary by '
+  + 'property, carrier, lender and individual circumstances \u2014 they are not quotes '
+  + 'and should not be relied on. Get quotes and advice from a licensed professional '
+  + 'in the relevant field before making any decision.';
+
+const REGULATED_WORDS = /insur|premium|deductible|mortgage|lender|loan|interest rate|financ|tax|escrow|apprais|flood zone|wind mitigation/i;
+
+function articleRegulated(a) {
+  if (a.topic === 'regulated') return true;
+  if (a.topic === 'general') return false;
+  return REGULATED_WORDS.test(String(a.title || '') + ' ' + String(a.body || ''));
+}
+
 function articleSlug(a) {
   return a.slug || slugify(a.title || '').slice(0, 80);
 }
@@ -4338,6 +4373,74 @@ Inland — Foley, Elberta, Robertsdale — is where the same money buys substant
 
 The right question is not which is best. It is how you will actually use it: every weekend, two weeks a year, or renting it out most of the season.`,
     updatedAt: '2026-08-01T00:00:00.000Z' },
+  { id: 'art_firsttime', slug: 'buying-your-first-place-on-the-gulf-coast', topic: 'general',
+    title: 'Buying your first place on the Gulf Coast: the order to do things in',
+    teaser: 'Most people do these in the wrong order and lose a house because of it.',
+    body: `The order matters more than the speed.
+
+Talk to a lender before you look at anything. Not because you need to borrow immediately, but because knowing your actual number changes which stretch of coast you look at. People who tour first and get approved second almost always fall for something above their range.
+
+Decide how you will use it before you decide where. Every weekend, two weeks a year, or renting it most of the season are three different purchases, and they point at different towns and different buildings.
+
+See the area out of season if you can. February tells you more than July does. A place that feels quiet and lovely in the winter is a very different proposition from one that only works when everything is open.
+
+Get the inspection and the insurance quotes running early, in parallel, not one after the other. On this coast the insurance number can change whether the deal makes sense, and finding that out in the last week is how contracts fall apart.` },
+
+  { id: 'art_sellprep', slug: 'getting-a-gulf-coast-home-ready-to-sell', topic: 'general',
+    title: 'What actually moves the number when you sell here',
+    teaser: 'Three things account for most of the difference, and none of them is a renovation.',
+    body: `Sellers tend to spend money on the wrong things.
+
+Photography first. More people decide whether to visit from the photos than from anything else, and on the coast that means shooting when the light is right and the water shows. A bad photo set costs more than a kitchen.
+
+The first week of pricing is the whole game. A listing priced correctly gets its most attention in the first seven to ten days. Priced high with a plan to reduce later, you spend that attention on nobody, and the reductions afterwards read as a problem rather than a bargain.
+
+Deal with the obvious objection before anyone raises it. If the roof is fifteen years old, get the wind mitigation report and have it ready. If the building has an assessment coming, know the number. Buyers do not walk because of problems, they walk because of surprises.
+
+Everything else is smaller than people think. Paint and decluttering earn their money. Full renovations before a sale rarely return what they cost.` },
+
+  { id: 'art_rental', slug: 'gulf-coast-vacation-rental-numbers', topic: 'regulated',
+    title: 'What a Gulf Coast rental actually brings in',
+    teaser: 'The numbers people quote are gross. The ones that decide it are net.',
+    body: `Rental projections shared between owners are almost always gross revenue, and gross revenue is not the number that matters.
+
+Out of it comes management, usually a meaningful percentage for full service. Cleaning between stays. Condo fees, which on the coast frequently include the wind insurance and sometimes do not. Utilities. Maintenance, which runs higher on a rental than on a home because of the turnover. And the weeks you keep for yourself, which are not income but are the reason many people buy in the first place.
+
+The rules matter as much as the numbers. Some buildings allow nightly rentals, some require a week minimum, some are owner-occupied only. That one rule can change the income by a factor of three, and it is set by the association rather than by you.
+
+Seasonality is sharper here than people expect. Summer carries the year on much of this coast, and a building that performs beautifully in July can sit quiet for months.
+
+If you are weighing a specific building, ask for actual owner statements rather than projections.` },
+
+  { id: 'art_eastern', slug: 'fairhope-daphne-spanish-fort-eastern-shore', topic: 'general',
+    title: 'Fairhope, Daphne or Spanish Fort: choosing on the Eastern Shore',
+    teaser: 'Twenty minutes apart and genuinely different places to live.',
+    body: `The Eastern Shore is a different decision from the beach, and people who start out looking at Gulf Shores often end up here.
+
+Fairhope is the walkable one. A real downtown, independent shops, the pier, and a strong sense of place. It prices accordingly, and the closer to downtown the sharper that gets.
+
+Daphne is larger and more practical. More housing at more price points, easy access to the causeway and Mobile, and less of a tourist rhythm to the year.
+
+Spanish Fort sits closest to the bridge and is the shortest commute into Mobile. Newer construction, more subdivisions, and generally more house for the money than Fairhope.
+
+The common thread is that this is year-round living rather than seasonal. Schools matter more here than rental rules do, and the market moves on a different calendar from the beach.
+
+If you are moving from out of state and are not sure whether you want beach or bay, it is worth spending a day on each before deciding.` },
+
+  { id: 'art_moving', slug: 'moving-to-baldwin-county-what-to-know', topic: 'general',
+    title: 'Moving to Baldwin County: what nobody tells you first',
+    teaser: 'The practical things that shape daily life here, beyond the house itself.',
+    body: `The house is the easy part. These are the things that shape whether you enjoy living here.
+
+Seasonality is real and it is sharp. Traffic on the beach roads between May and August is a different world from November. If you are choosing where to live, drive the route you would actually drive, in July.
+
+Distances are longer than the map suggests. Baldwin County is one of the largest counties east of the Mississippi. Twenty miles can be twenty minutes or fifty depending on the season and the road.
+
+Hurricane season runs June through November and it shapes everything from insurance to when people list their homes. It is not a reason to avoid the coast; it is a reason to understand what you are buying and how it is built.
+
+Bay and beach are different climates in practice. The Eastern Shore is greener, shadier and cooler than the strip. People who assume the whole county feels like Gulf Shores are surprised by Fairhope.
+
+Work out where you will actually spend your time before you choose a town. The people who are happiest here picked the daily life first and the house second.` },
 ];
 
 async function articlesAll() {
@@ -4402,7 +4505,10 @@ p{font-size:16px;margin:0 0 18px}
 .btn{display:inline-block;background:#C89B4E;color:#241A08;text-decoration:none;
   padding:12px 22px;border-radius:3px;font-weight:700;font-size:13px;
   letter-spacing:.05em;text-transform:uppercase;margin-top:6px}
-.ft{margin-top:44px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
+.dis{margin-top:38px;padding:16px 18px;background:#fff;
+  border:1px solid rgba(20,26,60,.12);border-radius:4px;
+  font-size:12.5px;line-height:1.6;color:#5A6178}
+.ft{margin-top:24px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
   font-size:13px;color:#7A8199}
 </style></head><body><div class="w">
 <div class="eb">Alabama Gulf Coast</div>
@@ -4415,6 +4521,7 @@ ${paras}
      we will give you the real numbers for it.</p>
   <a class="btn" href="${origin}/?ask=${encodeURIComponent(a.slug)}${agentSlug ? '&agent=' + encodeURIComponent(agentSlug) : ''}">Ask about a property</a>
 </div>
+<div class="dis">${articleRegulated(a) ? esc(DISCLAIMER_REGULATED) + ' ' : ''}${esc(DISCLAIMER_GENERAL)}</div>
 <div class="ft">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}<br>
 ${esc(BROKERAGE_ADDRESS)}<br>
 <a href="${origin}/">Search every active listing on the Alabama Gulf Coast</a></div>
