@@ -1538,6 +1538,59 @@ const PLAYBOOK_DEFAULTS = [
     { d:0,  ch:'sms',   t:"Hey {first} \u2014 saw you were back on the site. Anything changed on your end, or still having a look?" },
     { d:2,  ch:'task',  t:'Call them. Somebody who comes back after months is worth a call the same week.' },
   ]},
+  /* ---------- past day 30 ----------
+     Everything above stops at day 30, which left the long-term nurture lane with
+     nothing to send but conversation starters on repeat. These are the other job:
+     a reason to be in the inbox when somebody is not transacting yet.
+
+     Syndicated newsletters lose here. Big Macs and bathroom plants could come
+     from any agent in the country. Insurance costs, what a specific building's
+     fees actually cover, and what sold in it last month could only come from
+     someone who works this coast \u2014 which is the whole point. */
+  { id:'pb_nurture', name:'Long-term nurture \u2014 monthly, local', match:{ lane:'slow' }, steps:[
+    { d:30,  ch:'email', s:'What insurance actually costs down here',
+      t:"Hi {first},\n\nThe thing that catches most people out on this coast is not the price of the house, it is the insurance on it. Wind, flood and hail are usually three separate conversations, and the difference between a house a mile inland and one on the beach can be thousands a year.\n\nIf you want, tell me a street or a building and I will tell you roughly what people are paying there now.\n\n{agent}" },
+    { d:60,  ch:'email', s:'What actually sold near you last month',
+      t:"Hi {first},\n\nNot a market report with charts \u2014 just what actually changed hands around {city} recently and what it went for.\n\nAsking prices tell you what sellers hope for. Sold prices tell you what the market agreed to. Want me to send the sold list for a particular street or building?\n\n{agent}" },
+    { d:90,  ch:'email', s:'Condo fees: what you are really buying',
+      t:"Hi {first},\n\nTwo buildings on the same stretch of beach can have fees hundreds apart, and the higher one is sometimes the better deal \u2014 it depends entirely on what the fee covers and what the reserves look like.\n\nI keep notes on the buildings around here: what is included, what has gone up lately, and which ones have assessments coming.\n\nAny building you want the honest version on?\n\n{agent}" },
+    { d:120, ch:'email', s:'Before hurricane season',
+      t:"Hi {first},\n\nA short and genuinely useful one. Whether you own here or are still looking, these are the things worth sorting before the season: check your wind mitigation certificate is current, photograph the property inside and out, and know your deductible \u2014 hurricane deductibles are usually a percentage, not a flat number, and people are surprised by that at the worst moment.\n\nHappy to look yours over.\n\n{agent}" },
+    { d:150, ch:'task', t:'Six months. Call them \u2014 not to sell, just to ask how the search is going.' },
+    { d:180, ch:'email', s:'Fort Morgan, Gulf Shores or Perdido Key?',
+      t:"Hi {first},\n\nPeople treat this as one beach. It is really five or six markets, and the difference matters more than most people expect \u2014 rental rules, traffic in season, how much house you get, how quiet it is in February.\n\nIf you tell me how you would actually use the place, I will tell you which stretch fits and which to skip.\n\n{agent}" },
+    { d:240, ch:'email', s:'What rentals actually bring in',
+      t:"Hi {first},\n\nIf a rental is any part of the plan, the numbers people quote are usually gross and the ones that matter are net \u2014 after management, fees, insurance, and the weeks you want it yourself.\n\nI can put real numbers on a specific building rather than the brochure version. Want me to?\n\n{agent}" },
+    { d:300, ch:'task', t:'Ten months. Worth a call to find out whether anything has changed.' },
+    { d:365, ch:'email', s:'A year on \u2014 still worth keeping an eye out?',
+      t:"Hi {first},\n\nIt has been about a year. I am still happy to keep watching for you, but I would rather ask than keep sending.\n\nStill worth it, or should I leave you be for a while?\n\n{agent}" },
+  ]},
+
+  { id:'pb_seller_slow', name:'Seller who is not ready yet', match:{ type:'seller' }, steps:[
+    { d:30, ch:'email', s:'No rush \u2014 but here is what your street is doing',
+      t:"Hi {first},\n\nNo pitch. You asked what the place was worth, and things have moved since.\n\nHere is what has sold near you and how long each took. If you are still a year out, that is fine \u2014 this is just so the number in your head stays roughly right.\n\n{agent}" },
+    { d:90, ch:'email', s:'The three things that move the number most',
+      t:"Hi {first},\n\nWhen you do sell, most of the difference comes down to three things: how it photographs, what the first week of pricing looks like, and whether the obvious objection is dealt with before anyone raises it.\n\nNone of that costs much if it is done early. Happy to walk through yours whenever.\n\n{agent}" },
+    { d:180, ch:'task', t:'Six months since the valuation. Call and ask how the plan is looking.' },
+    { d:270, ch:'email', s:'Still thinking about it?',
+      t:"Hi {first},\n\nJust checking whether selling is still on the cards. If the timing has moved, tell me roughly when and I will stop guessing.\n\n{agent}" },
+  ]},
+
+  { id:'pb_snowbird', name:'Snowbird \u2014 back in season', match:{ tag:'snowbird' }, steps:[
+    { d:30,  ch:'email', s:'Quiet season is the good season to buy',
+      t:"Hi {first},\n\nCounterintuitive one: the stretch between November and February is usually when the better deals happen here. Less competition, sellers who have sat through a season, and you get to see the place when it is quiet rather than when it is at its best.\n\nWorth a look while you are down?\n\n{agent}" },
+    { d:120, ch:'task', t:'Season is coming. Call before they book the trip, not after.' },
+    { d:150, ch:'email', s:'Want me to line a few up for when you are down?',
+      t:"Hi {first},\n\nIf you are heading down this season, tell me the dates and roughly what you want to see and I will have a handful lined up rather than you spending the first two days working out where to look.\n\n{agent}" },
+  ]},
+
+  { id:'pb_sphere', name:'Past client \u2014 stay in touch', match:{ type:'client' }, steps:[
+    { d:90,  ch:'task', t:'Three months in. Call \u2014 ask about the house, not about referrals.' },
+    { d:180, ch:'email', s:'How is the place treating you?',
+      t:"Hi {first},\n\nNo agenda. Just wondering how the place is treating you and whether anything needs sorting.\n\nIf you ever need a name for anything \u2014 roofer, insurance, someone to look at the deck \u2014 I keep a list of people I would actually use myself.\n\n{agent}" },
+    { d:365, ch:'email', s:'A year in {city}',
+      t:"Hi {first},\n\nA year since you closed. Values around you have moved, so here is where things stand if you are curious \u2014 no pitch attached.\n\n{agent}" },
+  ]},
 ];
 
 /* ---------- lead scoring ----------
@@ -1633,15 +1686,19 @@ app.post('/api/lead/:id/event', async (req, res) => {
   lead.events.push({ k, at: new Date().toISOString(), note: String((req.body||{}).note || '').slice(0,200) });
   lead.lastActivity = new Date().toISOString();
 
-  /* A reply means a person is talking. Automation stops immediately \u2014 nothing is
-     worse than a canned nudge landing while the agent is mid-conversation. */
+  /* A reply means a person is talking. This used to set drip.stopped and end the
+     sequence for good, which quietly dropped leads out of the system — against
+     the rule that nothing ever stops unless an agent or the client says so.
+     It now moves them to the 'conversation' lane: no canned email while the
+     agent is mid-conversation, but listing alerts keep running and the lead is
+     still on a plan the moment the agent hands them back. */
   if (k === 'sms_reply' || k === 'email_reply' || k === 'showing_request' || k === 'agent_call_req') {
-    if (lead.drip) lead.drip.stopped = true;
     lead.humanTakeover = new Date().toISOString();
   }
 
   const { score, band } = leadScore(lead);
   lead.score = score; lead.band = band.key;
+  try { laneApply(lead, Date.now()); } catch (e) { console.error('[lane]', e.message); }
   await setSetting(key, lead);
   res.json({ ok: true, score, band, why: scoreWhy(lead) });
 });
@@ -1655,27 +1712,53 @@ app.post('/api/lead/:id/event', async (req, res) => {
 function searchFilter(c){
   const parts = [ACTIVE_ONLY];
   const esc = v => String(v).replace(/'/g, "''");
-  if (c.city)     parts.push(`contains(City,'${esc(c.city)}')`);
+  // several towns reads as "any of these", not "all of these"
+  if (Array.isArray(c.cities) && c.cities.length) {
+    parts.push('(' + c.cities.map(t => `contains(City,'${esc(t)}')`).join(' or ') + ')');
+  } else if (c.city) {
+    parts.push(`contains(City,'${esc(c.city)}')`);
+  }
   if (c.minPrice) parts.push(`ListPrice ge ${Number(c.minPrice)}`);
   if (c.maxPrice) parts.push(`ListPrice le ${Number(c.maxPrice)}`);
   if (c.beds)     parts.push(`BedroomsTotal ge ${Number(c.beds)}`);
   if (c.baths)    parts.push(`BathroomsTotalInteger ge ${Number(c.baths)}`);
   if (c.type)     parts.push(`PropertyType eq '${esc(c.type)}'`);
   if (c.waterfront) parts.push('WaterfrontYN eq true');
+  /* ⚠ Everything below was collected by the form and then ignored here, so the
+     alert a client received was looser than the one the agent set up. */
+  if (c.pool)     parts.push('PoolPrivateYN eq true');
+  if (c.view)     parts.push('ViewYN eq true');
+  if (c.newConstruction) parts.push('NewConstructionYN eq true');
+  if (c.noHoa)    parts.push('AssociationYN eq false');
+  if (c.garage)   parts.push(`GarageSpaces ge ${Number(c.garage)}`);
+  if (c.stories)  parts.push(`StoriesTotal ge ${Number(c.stories)}`);
+  if (c.acres)    parts.push(`LotSizeAcres ge ${Number(c.acres)}`);
+  if (c.sqft)     parts.push(`LivingArea ge ${Number(c.sqft)}`);
+  if (c.maxSqft)  parts.push(`LivingArea le ${Number(c.maxSqft)}`);
+  if (c.yearBuilt) parts.push(`YearBuilt ge ${Number(c.yearBuilt)}`);
+  if (c.maxHoa)   parts.push(`AssociationFee le ${Number(c.maxHoa)}`);
   if (c.since)    parts.push(`OnMarketDate gt ${c.since}`);
   return parts.join(' and ');
 }
 
 function searchLabel(c){
   const bits = [];
-  if (c.city) bits.push(c.city);
+  if (Array.isArray(c.cities) && c.cities.length) bits.push(c.cities.join(' or '));
+  else if (c.city) bits.push(c.city);
   if (c.beds) bits.push(c.beds + '+ bed');
+  if (c.baths) bits.push(c.baths + '+ bath');
   if (c.minPrice || c.maxPrice) {
     const f = n => '$' + Number(n).toLocaleString();
     bits.push(c.minPrice && c.maxPrice ? f(c.minPrice) + '\u2013' + f(c.maxPrice)
       : c.maxPrice ? 'under ' + f(c.maxPrice) : 'over ' + f(c.minPrice));
   }
   if (c.waterfront) bits.push('waterfront');
+  if (c.pool) bits.push('pool');
+  if (c.view) bits.push('a view');
+  if (c.newConstruction) bits.push('new build');
+  if (c.noHoa) bits.push('no HOA');
+  if (c.sqft) bits.push(c.sqft.toLocaleString() + '+ sq ft');
+  if (c.acres) bits.push(c.acres + '+ acres');
   if (c.type) bits.push(c.type);
   return bits.join(' \u00b7 ') || 'anything new';
 }
@@ -1707,16 +1790,31 @@ app.post('/api/search', async (req, res) => {
   const clean = v => String(v == null ? '' : v).slice(0, 90).trim();
   const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n) : ''; };
   const id = 'ss_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  /* ⚠ This used to keep seven fields and silently drop everything else. The form
+     collects pool, garage, stories, acres, sq ft, year built, HOA and the rest,
+     posts them correctly, and they were thrown away here — so an alert set up for
+     a pool home under $650k sent the client anything under $650k. Every field the
+     form can collect is persisted now, and searchFilter() honors all of them. */
+  const criteria = {
+    city: clean(b.city), type: clean(b.type),
+    minPrice: num(b.minPrice), maxPrice: num(b.maxPrice),
+    beds: num(b.beds), baths: num(b.baths),
+    waterfront: !!b.waterfront, pool: !!b.pool,
+    view: !!b.view, newConstruction: !!b.newConstruction, noHoa: !!b.noHoa,
+    garage: num(b.garage), stories: num(b.stories),
+    acres: num(b.acres), sqft: num(b.sqft), maxSqft: num(b.maxSqft),
+    yearBuilt: num(b.yearBuilt), maxHoa: num(b.maxHoa),
+  };
+  // multi-town: the form lets them add as many as they like
+  if (Array.isArray(b.cities) && b.cities.length) {
+    criteria.cities = b.cities.map(clean).filter(Boolean).slice(0, 12);
+    if (!criteria.city) criteria.city = criteria.cities[0];
+  }
   const rec = {
     id, agentId: sess.agentId, agentName: sess.name || '', agentEmail: sess.email || '',
     leadId: clean(b.leadId), name: clean(b.name), email: clean(b.email),
     pace: ['instant','daily','weekly','paused'].includes(b.pace) ? b.pace : 'daily',
-    criteria: {
-      city: clean(b.city), type: clean(b.type),
-      minPrice: num(b.minPrice), maxPrice: num(b.maxPrice),
-      beds: num(b.beds), baths: num(b.baths),
-      waterfront: !!b.waterfront,
-    },
+    criteria,
     lastSent: new Date().toISOString(),
     sentKeys: [],
     createdAt: new Date().toISOString(),
@@ -1841,10 +1939,114 @@ app.post('/api/feed/:token', async (req, res) => {
    consent — penalties run to $500–$1,500 per message. A "text" step here creates a
    reminder for the agent to send one themselves, which is a different thing in law
    and in tone. */
+/* ---------- lanes: which plan a lead belongs on right now ----------
+   Two rules from the broker, and they drive everything here:
+     1. Nobody ever drops. Silence moves a lead to long-term nurture, it does
+        not end them. Only an agent or an opt-out takes a lead out.
+     2. Automation never stops on its own. Going hot switches the plan, it does
+        not halt it.
+
+   What decides the lane is the RATE of engagement, not the count. Five opens in
+   two days is someone shopping this week; five opens over three months is
+   someone daydreaming. Re-engagement after a gap is the strongest signal in the
+   business — something changed in their life — so it always jumps to the front.
+
+   ⚠ One exception written in deliberately. When a person actually replies, the
+   lead moves to 'conversation': alerts keep running and the agent gets a task,
+   but no automated email goes out while a human is mid-conversation. That still
+   honors "nothing ever stops" — the lead stays on a plan and keeps receiving
+   listings — without the CRM talking over the agent. */
+const LANES = {
+  fast:         { label: 'Moving now',        pace: 1 },
+  steady:       { label: 'Normal follow-up',  pace: 1 },
+  slow:         { label: 'Long-term nurture', pace: 4 },
+  closing:      { label: 'Ready to buy',      pace: 1 },
+  conversation: { label: 'Agent is talking',  pace: 0 },
+};
+const DAY = 86400000;
+
+function laneDecide(lead, now) {
+  const ev = Array.isArray(lead.events) ? lead.events : [];
+  const at = e => new Date(e.at).getTime();
+  const since = ms => ev.filter(e => now - at(e) <= ms);
+  const last = ev.length ? Math.max(...ev.map(at)) : new Date(lead.createdAt || now).getTime();
+  const quietDays = Math.floor((now - last) / DAY);
+
+  // a person is talking — the agent owns it from here
+  if (ev.some(e => ['sms_reply','email_reply','showing_request','agent_call_req'].includes(e.k)
+      && now - at(e) <= 14 * DAY)) {
+    return { lane: 'conversation', why: 'they replied — leaving the talking to you' };
+  }
+
+  // score crossed into hot: switch the plan, do not halt it
+  if ((lead.score || 0) >= 70) {
+    return { lane: 'closing', why: 'score is hot — moved to the closing plan' };
+  }
+
+  /* Back after going quiet. Checked before the compression test because it is
+     worth more: three weeks of nothing then two opens means something changed. */
+  const recent = since(3 * DAY);
+  const older = ev.filter(e => now - at(e) > 21 * DAY);
+  if (recent.length >= 2 && older.length && ev.every(e =>
+        now - at(e) <= 3 * DAY || now - at(e) > 21 * DAY)) {
+    return { lane: 'fast', why: 'went quiet for weeks, then came back — worth a call today' };
+  }
+
+  // compressed activity: shopping right now
+  if (since(3 * DAY).length >= 3) {
+    return { lane: 'fast', why: 'three things in three days — actively looking' };
+  }
+
+  /* Silence at 30 days goes to nurture, never to nothing. On this coast a lead
+     who goes quiet in June and reappears in September is a snowbird, not a dead
+     lead, and the rule above will pick them straight back up. */
+  if (quietDays >= 30) {
+    return { lane: 'slow', why: quietDays + ' days quiet — moved to long-term nurture' };
+  }
+
+  // diffuse interest: engaged, but in no hurry
+  if (since(60 * DAY).length >= 4 && since(14 * DAY).length <= 1) {
+    return { lane: 'slow', why: 'interested but in no hurry — slowed the pace' };
+  }
+
+  return { lane: 'steady', why: '' };
+}
+
+/* Sellers are not slow buyers. A valuation request followed by silence usually
+   means they are interviewing agents, not that they have gone cold, and a
+   buyer-paced cadence at them reads as desperate. */
+function lanePace(lead, lane) {
+  const base = (LANES[lane] || LANES.steady).pace;
+  const isSeller = /seller|valuation|home worth/i.test(
+    String(lead.source || '') + ' ' + String(lead.type || ''));
+  return isSeller && lane !== 'conversation' ? Math.max(base, 2) : base;
+}
+
+/* Every move is written on the lead with its reason, so an agent asking "why is
+   she on a different plan?" gets an answer, and so the rules can be judged on
+   real leads before they run on a hundred of them. */
+function laneApply(lead, now) {
+  const d = laneDecide(lead, now);
+  const cur = lead.lane || 'steady';
+  if (d.lane === cur) return false;
+  if (lead.laneLocked) return false;          // an agent set this by hand
+  lead.lane = d.lane;
+  lead.laneLog = Array.isArray(lead.laneLog) ? lead.laneLog : [];
+  lead.laneLog.unshift({ from: cur, to: d.lane, why: d.why, at: new Date(now).toISOString() });
+  lead.laneLog = lead.laneLog.slice(0, 40);
+  console.log(`[lane] ${lead.name || lead.id}: ${cur} \u2192 ${d.lane} (${d.why})`);
+  return true;
+}
+
 function dripDue(lead, campaign, now){
   if (!lead.drip || lead.drip.stopped || lead.unsubscribed) return [];
+  const lane = lead.lane || 'steady';
+  // the agent is mid-conversation: alerts keep running, canned email does not
+  if (lane === 'conversation') return [];
   const started = new Date(lead.drip.startedAt || lead.createdAt).getTime();
-  const days = Math.floor((now - started) / 86400000);
+  const pace = lanePace(lead, lane) || 1;
+  // a slower lane stretches the same steps out rather than dropping any of them
+  const days = Math.floor((now - started) / (DAY * pace));
   const done = lead.drip.done || [];
   return (campaign.steps || [])
     .filter(st => st.day <= days && !done.includes(st.id));
@@ -1888,10 +2090,13 @@ app.post('/api/drip/tick', async (req, res) => {
     const camp = campaigns.find(c => c.id === lead.drip.campaignId);
     if (!camp || camp.paused) continue;
 
-    const due = dripDue(lead, camp, now);
-    if (!due.length) continue;
-
+    // the sweep is the only thing that runs regularly, so lanes are judged here
     let changed = false;
+    try { if (laneApply(lead, now)) changed = true; } catch (e) {}
+
+    const due = dripDue(lead, camp, now);
+    if (!due.length) { if (changed) await setSetting(key, lead); continue; }
+
     for (const step of due) {
       if (step.type === 'email') {
         if (!lead.email || !mailer) { continue; }
@@ -3367,7 +3572,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v83',
+    serverVersion: 'v86',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
