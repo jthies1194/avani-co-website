@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v231">
+<meta name="build" content="index-v232">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2626,6 +2626,17 @@ body:not(.is-staff) #sec-content .broker-only{display:none}
 .ct-art .pill.on{background:#E7F3EC;color:#1F6B49}
 .ct-art .pill.reg{background:#FDF2F1;color:#8A2C22}
 .ct-art .a{flex-direction:column;gap:5px}
+.ct-share{background:#fff;border:1px solid var(--hair,rgba(20,26,60,.1));
+  border-left:3px solid var(--gd,#C89B4E);border-radius:4px;padding:14px 16px;margin:0 0 12px}
+.ct-share .h{font-size:13px;color:var(--rl,#0E1433);display:flex;gap:10px;align-items:baseline}
+.ct-share .h button{margin-left:auto;border:none;background:none;font-size:18px;
+  color:var(--mut,#7A8199);line-height:1;padding:0}
+.ct-share .l{display:flex;gap:7px;flex-wrap:wrap;margin:11px 0 9px}
+.ct-share .l a{border:1px solid var(--hair,rgba(20,26,60,.1));border-radius:3px;
+  padding:6px 13px;font-size:12.5px;font-weight:600;color:var(--rl,#0E1433);text-decoration:none}
+.ct-share .l a:hover{border-color:var(--gd,#C89B4E);background:var(--gd-pale,#F6EEDC)}
+.ct-share .u{font-size:11px;color:var(--gd,#C89B4E);word-break:break-all}
+.ct-share .n{font-size:11.5px;color:var(--mut,#7A8199);margin-top:6px}
 .ct-art .a .btn-sm{text-align:center;text-decoration:none;white-space:nowrap}
 .ct-art .a{display:flex;gap:6px;flex:0 0 auto}
 .ct-pick{display:flex;align-items:flex-start;gap:9px;padding:9px 0;
@@ -3889,6 +3900,18 @@ assignedAgentId = currentAgent.role === 'broker'
 ? (document.getElementById('lf-agent').value || '')
 : currentAgent.id;
 }
+/* ⚠ The referral was recorded as a NAME and never used to assign, so every lead
+   from an agent's shared link fell through to defaultAssigneeId() — the broker.
+   The bar at the bottom of the screen said "Your inquiries are going to Christina"
+   and then they went to the office. If somebody arrived through an agent's link,
+   that agent gets the lead. Attribution has to decide assignment or it is
+   decoration. */
+if(!assignedAgentId){
+  try{
+    const _ref = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+    if(_ref && _ref.id) assignedAgentId = _ref.id;
+  }catch(e){}
+}
 const lead = {
 id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
 name: document.getElementById('lf-name').value.trim(),
@@ -4001,7 +4024,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v231';
+window.BUILD = 'index-v232';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10969,8 +10992,9 @@ async function renderContent(){
       <div class="a">
         <a class="btn-sm" target="_blank" rel="noopener"
            href="${escapeHtml(a.published ? (a.liveUrl||'') : (a.previewUrl||''))}">Read it</a>
-        ${a.published ? `<button class="btn-sm primary" onclick="ctCopyMine(${i})"
-          title="Anyone who reaches out from this link is yours">Copy my link</button>` : ''}
+        ${a.published ? `<button class="btn-sm primary" onclick="ctShareMine(${i})"
+          title="Anyone who reaches out from this link is yours">Share it</button>
+        <button class="btn-sm" onclick="ctCopyMine(${i})">Copy link</button>` : ''}
         <button class="btn-sm broker-only ${a.published ? '' : 'primary'}"
           onclick="ctPublish(${i})">${a.published ? 'Unpublish' : 'Publish'}</button>
         <button class="btn-sm broker-only" onclick="ctEdit(${i})">Edit</button>
@@ -11005,6 +11029,42 @@ function ctMyLink(a){
     ? publicSlug(currentAgent.name) : '';
   const base = a.liveUrl || (location.origin + '/insights/' + (a.slug || ''));
   return base + (slug ? '?agent=' + encodeURIComponent(slug) : '');
+}
+
+/* One tap to the phone's own share sheet — texts, WhatsApp, Facebook, email,
+   whatever they already use. Falls back to a small menu on desktop, because
+   navigator.share is mobile-only in most browsers. */
+async function ctShareMine(i){
+  const a = ctArts[i]; if(!a) return;
+  const url = ctMyLink(a);
+  const text = a.teaser || a.title;
+  if(navigator.share){
+    try{ await navigator.share({ title: a.title, text, url }); return; }
+    catch(e){ if(e && e.name === 'AbortError') return; }
+  }
+  ctShareMenu(a, url, text);
+}
+
+function ctShareMenu(a, url, text){
+  const enc = encodeURIComponent;
+  const links = [
+    ['Facebook',  `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}`],
+    ['LinkedIn',  `https://www.linkedin.com/sharing/share-offsite/?url=${enc(url)}`],
+    ['X',         `https://twitter.com/intent/tweet?url=${enc(url)}&text=${enc(a.title)}`],
+    ['Email',     `mailto:?subject=${enc(a.title)}&body=${enc(text + '\n\n' + url)}`],
+    ['Text',      `sms:?&body=${enc(text + ' ' + url)}`],
+  ];
+  const box = document.getElementById('ct-result');
+  const host = box || document.getElementById('ct-articles');
+  if(!host) return;
+  host.insertAdjacentHTML('afterbegin', `<div class="ct-share" id="ct-share">
+    <div class="h">Share <strong>${escapeHtml(a.title)}</strong>
+      <button onclick="document.getElementById('ct-share').remove()">&times;</button></div>
+    <div class="l">${links.map(([n,h]) =>
+      `<a href="${escapeHtml(h)}" target="_blank" rel="noopener">${n}</a>`).join('')}</div>
+    <div class="u">${escapeHtml(url)}</div>
+    <div class="n">Leads from this link come to you.</div>
+  </div>`);
 }
 
 async function ctCopyMine(i){
