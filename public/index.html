@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v223">
+<meta name="build" content="index-v226">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2426,6 +2426,23 @@ body.in-crm .topbar{display:none}
   padding:0 0 8px;margin:0;background:transparent}
 #crm-main #crm-version{font-size:10.5px;letter-spacing:.05em;
   color:rgba(233,236,246,.6)!important;font-variant-numeric:tabular-nums}
+#crm-main .find-wrap{position:relative;flex:0 1 210px;min-width:150px}
+#crm-main #find-q{width:100%;border:1px solid rgba(255,255,255,.22);border-radius:3px;
+  background:rgba(255,255,255,.08);color:#fff;font-size:12px;padding:6px 10px}
+#crm-main #find-q::placeholder{color:rgba(233,236,246,.55)}
+#crm-main #find-q:focus{outline:none;border-color:var(--gd);background:rgba(255,255,255,.14)}
+#crm-main #find-res{display:none;position:absolute;top:calc(100% + 5px);left:0;min-width:250px;
+  background:#fff;border:1px solid var(--hair);border-radius:4px;
+  box-shadow:0 14px 34px rgba(14,20,51,.26);z-index:70;overflow:hidden}
+#crm-main .find-hit{display:flex;align-items:baseline;gap:9px;width:100%;text-align:left;
+  border:none;background:#fff;padding:9px 13px;border-bottom:1px solid var(--hair2);
+  font-size:13px;color:var(--rl)}
+#crm-main .find-hit:last-child{border-bottom:none}
+#crm-main .find-hit:hover{background:var(--gd-pale)}
+#crm-main .find-hit .fl{font-weight:600;flex:1}
+#crm-main .find-hit .ft{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mut);white-space:nowrap}
+#crm-main .find-none{padding:11px 13px;font-size:12.5px;color:var(--mut);line-height:1.5}
 #crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:5px 12px;font-size:11.5px;
   font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
   background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
@@ -2467,6 +2484,12 @@ body.in-crm .topbar{display:none}
   <button class="out" onclick="logoutAgent()">Log out</button>
   <nav class="crm-nav" id="crm-nav"></nav>
 <div class="idea-row">
+    <div class="find-wrap">
+      <input id="find-q" type="search" autocomplete="off" placeholder="Find a screen…"
+        oninput="findRun()" onfocus="findRun()"
+        onkeydown="if(event.key==='Escape'){this.value='';findRun();this.blur();}">
+      <div id="find-res"></div>
+    </div>
     <div id="crm-version" style="font-variant-numeric:tabular-nums" title="Deployed versions"></div>
     <button class="idea-btn" id="idea-btn" onclick="ideaOpen()"
       title="Tell the broker what would work better">
@@ -3646,7 +3669,7 @@ createdAt: new Date().toISOString(),
 lead.assignedAgentId = lead.assignedAgentId || await defaultAssigneeId();
 {const _r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
  if(_r && _r.id){ lead.referredBy = _r.name; lead.referredById = _r.id; }}
-storeSet('lead:'+lead.id, lead);
+storeSet('lead:'+lead.id, stampLead(lead));
 sendLeadNotification(lead);
 closeAccountGate();
 showToast(`Welcome, ${name.split(' ')[0]}! Browse and save as many homes as you'd like.`);
@@ -3860,7 +3883,7 @@ createdAt: new Date().toISOString(),
 lead.assignedAgentId = lead.assignedAgentId || await defaultAssigneeId();
 {const _r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
  if(_r && _r.id){ lead.referredBy = _r.name; lead.referredById = _r.id; }}
-const ok = await storeSet('lead:'+lead.id, lead);
+const ok = await storeSet('lead:'+lead.id, stampLead(lead));
 closeLeadModal();
 if(ok){
 showToast("Thanks — your message was sent. We'll be in touch soon.");
@@ -3887,6 +3910,7 @@ async function sendLeadNotification(lead){
         name: lead.name, email: lead.email, phone: lead.phone,
         message: lead.message, source: lead.source, listingLabel: lead.listingLabel,
         assignedAgentId: lead.assignedAgentId || '',
+        campaign: lead.campaign || null,
       }),
     });
     // Silently ignore failures/503 here — the lead is already safely saved either way,
@@ -3952,7 +3976,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v223';
+window.BUILD = 'index-v226';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6069,7 +6093,7 @@ stage: iStage>=0 && row[iStage]?.trim() ? row[iStage].trim() : 'New',
 notes: iNotes>=0 ? (row[iNotes]||'').trim() : '',
 createdAt: new Date().toISOString(),
 };
-const ok = await storeSet('lead:'+lead.id, lead);
+const ok = await storeSet('lead:'+lead.id, stampLead(lead));
 if(ok) count++;
 }
 event.target.value = '';
@@ -6211,7 +6235,7 @@ async function submitContactForm(){
     createdAt: new Date().toISOString(),
   };
   try{
-    await storeSet('lead:'+lead.id, lead);
+    await storeSet('lead:'+lead.id, stampLead(lead));
     sendLeadNotification(lead);
     ['cn','ce','cp','cm'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
     showToast(joining ? "Thanks — we'll be in touch about joining." : "Thanks! We'll get right back to you.");
@@ -7272,6 +7296,72 @@ async function saveTabOrder(){
 
 /* The tab bar wraps to two or three rows depending on width, so anything that
    sticks below it needs the real height rather than a guess. */
+/* ---------- find it ----------
+   Fifteen tabs, and the thing you want is usually a panel inside one of them —
+   award tiers under Agents, notifications under Settings, listing alerts under
+   Leads. Nobody should have to memorise that. */
+const FIND_INDEX = [
+  ['sec-today','Today','dashboard home greeting earnings income tier bronze silver gold platinum progress what needs you briefing overdue'],
+  ['sec-leads','Leads','contacts people prospects buyers sellers pipeline stage score notes assign transfer'],
+  ['sec-leads','Listing alerts','listing alerts saved search new listings matches criteria beds baths pool waterfront'],
+  ['sec-leads','Follow-up sequences','drip campaign sequence follow up automated emails steps days'],
+  ['sec-leads','Openers by situation','playbooks openers scripts what to say first message'],
+  ['sec-commissions','Commissions','commission split cap gci closings earnings paid ledger'],
+  ['sec-expenses','Expenses','expenses costs spending mileage deductions receipts'],
+  ['sec-taxes','Taxes','tax 1099 deductions quarterly estimated irs w9'],
+  ['sec-pipeline','My deals','deals under contract closing dates earnest money inspection contingency seller reports'],
+  ['sec-calendar','Calendar','calendar dates closings birthdays license expiry appointments schedule'],
+  ['sec-marketing','Marketing','flyers social posts photo editor open house sign in qr code templates'],
+  ['sec-reviews','Reviews','reviews testimonials ratings google approve'],
+  ['sec-resources','Resources','forms documents baldwin realtors ce continuing education links training'],
+  ['sec-mypage','My page','public profile bio photo my link agent page website'],
+  ['sec-myprofile','My details','my details license number states address emergency contact'],
+  ['sec-password','My password','password change login security'],
+  ['sec-setup','Settings','settings preferences'],
+  ['sec-setup','What reaches you','notifications alerts emails what reaches me notify turn off nudges'],
+  ['sec-agents','Agents','agents team roster add agent commission plan preview as'],
+  ['sec-agents','Award tiers','awards tiers bronze silver gold platinum volume recognition where the bar sits'],
+  ['sec-content','Content','articles newsletter send broadcast publish insights blog'],
+];
+
+function findGo(id){
+  const box = document.getElementById('find-res');
+  const inp = document.getElementById('find-q');
+  if(box) box.style.display = 'none';
+  if(inp) inp.value = '';
+  showCrmSection(id);
+}
+
+function findRun(){
+  const inp = document.getElementById('find-q');
+  const box = document.getElementById('find-res');
+  if(!inp || !box) return;
+  const q = (inp.value || '').trim().toLowerCase();
+  if(q.length < 2){ box.style.display = 'none'; return; }
+  let allowed = [];
+  try{ allowed = allowedSections().map(sc => sc.id); }catch(e){}
+  const seen = [];
+  const hits = FIND_INDEX.filter(([id,label,keys]) => {
+    if(allowed.length && !allowed.includes(id)) return false;
+    return (label + ' ' + keys).toLowerCase().includes(q);
+  }).filter(([id,label]) => {
+    const k = id + '|' + label;
+    if(seen.includes(k)) return false;
+    seen.push(k); return true;
+  }).slice(0, 7);
+  const tabLabel = id => {
+    const sc = (typeof CRM_SECTIONS !== 'undefined') && CRM_SECTIONS.find(x => x.id === id);
+    return sc ? sc.label : '';
+  };
+  box.innerHTML = hits.length
+    ? hits.map(([id,label]) => `<button class="find-hit" onclick="findGo('${id}')">
+        <span class="fl">${escapeHtml(label)}</span>
+        <span class="ft">${escapeHtml(tabLabel(id))}</span></button>`).join('')
+    : `<div class="find-none">Nothing matches that. Try a word you would say out loud
+        &mdash; "alerts", "tiers", "1099".</div>`;
+  box.style.display = 'block';
+}
+
 function crmMeasureNav(){
   const bar = document.getElementById('crm-rail');
   if(!bar) return;
@@ -7831,6 +7921,15 @@ function injectSectionHeader(id){
    injectSectionHeader() already puts an eyebrow, title and blurb at the top of
    every tab from SECTION_META, so restyling .sec-header lifts all of them at
    once rather than tab by tab. Nothing here changes markup or logic. */
+#crm-main .de-tier{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.18)}
+#crm-main .de-tier .tr-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px}
+#crm-main .de-tier .tr-badge{font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:#14180F;padding:3px 10px;border-radius:2px;white-space:nowrap}
+#crm-main .de-tier .tr-next{font-size:11.5px;color:rgba(255,255,255,.82)}
+#crm-main .de-tier .tr-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.2);
+  overflow:hidden}
+#crm-main .de-tier .tr-bar span{display:block;height:100%;border-radius:3px;transition:width .5s ease}
+@media(prefers-reduced-motion:reduce){ #crm-main .de-tier .tr-bar span{transition:none} }
 #crm-main .sec-header{margin:0 0 26px;padding:0 0 20px;
   border-bottom:1px solid var(--hair);position:relative}
 #crm-main .sec-header:after{content:'';position:absolute;left:0;bottom:-1px;
@@ -7951,6 +8050,18 @@ async function renderDashboard(){
     }
   }
 
+  /* Where they stand against the award tiers. The tiers, thresholds and colors
+     already exist for the broker's awards panel — this puts the same standing in
+     front of the person it is actually about, which is the point of a tier. */
+  let tier = null;
+  if(!isBroker && earn){
+    try{
+      if(typeof awLoad === 'function') await awLoad();
+      if(gen !== __dashGen) return;
+      if(typeof awStanding === 'function') tier = awStanding(earn.volume || 0);
+    }catch(e){ console.warn('[dashboard] tiers unavailable:', e && e.message); }
+  }
+
   const goal = Number(localStorage.getItem('incomeGoal:' + currentAgent.id)) || 0;
   const pct = goal > 0 && earn ? Math.min(100, Math.round(earn.net / goal * 100)) : 0;
 
@@ -7986,6 +8097,16 @@ async function renderDashboard(){
           <div class="de-s">${pct}% of your ${fmtMoney(goal)} goal</div>` : ''}
         ${(!isBroker && earn.capMet) ? `<div class="de-cap">&#127881; Capped &mdash; 100% yours</div>`
           : (!isBroker && earn.capAmount) ? `<div class="de-s">${fmtMoney(earn.capRemaining)} to cap</div>` : ''}
+        ${tier ? `<div class="de-tier">
+          <div class="tr-row">
+            <span class="tr-badge" style="background:${tier.earned ? tier.earned.color : 'rgba(255,255,255,.22)'}">${
+              tier.earned ? escapeHtml(tier.earned.label) : 'No tier yet'}</span>
+            ${tier.next ? `<span class="tr-next">${fmtMoney(tier.gap)} to ${escapeHtml(tier.next.label)}</span>`
+              : `<span class="tr-next">Top tier reached</span>`}
+          </div>
+          <div class="tr-bar"><span style="width:${tier.pct}%;background:${
+            tier.next ? tier.next.color : (tier.earned ? tier.earned.color : '#C89B4E')}"></span></div>
+        </div>` : ''}
       </div>` : ''}
     </div>
 
@@ -8956,7 +9077,7 @@ async function submitAgentLead(){
     createdAt: new Date().toISOString(),
   };
   try {
-    await storeSet('lead:' + lead.id, lead);
+    await storeSet('lead:' + lead.id, stampLead(lead));
     if (typeof sendLeadNotification === 'function') sendLeadNotification(lead);
     ['ap-name','ap-phone','ap-email','ap-msg'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
@@ -9158,6 +9279,81 @@ function fixHeaderForProfile(){
    agent keeps them until the visitor says otherwise or arrives through someone
    else. A timer would quietly hand an agent's contact back to the brokerage,
    which is not a defensible way to treat the people who brought the business. */
+/* ---------- campaign attribution ----------
+   ⚠ Capture-once, never overwrite. The FIRST campaign that brought somebody here
+   is the one that earned the lead — if they later arrive by typing the address,
+   crediting "direct" would quietly erase the ad that actually worked.
+
+   Stored beside the agent referral and stamped onto every lead created from then
+   on. There is no way to reconstruct this after the fact: a visit that arrived
+   untagged is gone. That is why this exists before the reporting that uses it. */
+const UTM_KEYS = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content'];
+
+function captureCampaign(){
+  try{
+    const q = new URLSearchParams(location.search);
+    const hit = {};
+    UTM_KEYS.forEach(k => { const v = q.get(k); if(v) hit[k] = String(v).slice(0, 120); });
+    // the ad-platform click ids, which arrive without utm tags more often than not
+    ['gclid','fbclid','msclkid','ttclid','li_fat_id'].forEach(k => {
+      const v = q.get(k); if(v) hit[k] = String(v).slice(0, 200);
+    });
+
+    if(Object.keys(hit).length){
+      hit.landedOn = (location.pathname + location.search).slice(0, 300);
+      hit.at = new Date().toISOString();
+      hit.referrer = String(document.referrer || '').slice(0, 300);
+      if(!localStorage.getItem('campaignFirst')){
+        localStorage.setItem('campaignFirst', JSON.stringify(hit));
+      }
+      // the most recent one is worth keeping too — the first earns it, the last
+      // is what they were looking at when they finally filled the form in
+      localStorage.setItem('campaignLast', JSON.stringify(hit));
+      return;
+    }
+
+    /* No tags at all. Record where they came from anyway, because "google organic"
+       and "somebody typed the address" are different answers and both matter. */
+    if(!localStorage.getItem('campaignFirst')){
+      const ref = String(document.referrer || '');
+      let source = 'direct';
+      if(ref){
+        try{
+          const h = new URL(ref).hostname.replace(/^www\./,'');
+          if(h && h !== location.hostname.replace(/^www\./,'')) source = h;
+        }catch(e){}
+      }
+      localStorage.setItem('campaignFirst', JSON.stringify({
+        utm_source: source, utm_medium: ref ? 'referral' : 'none',
+        referrer: ref.slice(0, 300), landedOn: location.pathname.slice(0, 300),
+        at: new Date().toISOString(),
+      }));
+    }
+  }catch(e){}
+}
+
+function getCampaign(){
+  const read = k => { try{ return JSON.parse(localStorage.getItem(k) || 'null'); }catch(e){ return null; } };
+  const first = read('campaignFirst'), last = read('campaignLast');
+  if(!first && !last) return null;
+  return { first: first || null, last: (last && JSON.stringify(last) !== JSON.stringify(first)) ? last : null };
+}
+
+/* Every lead created anywhere on the site goes through here, so a new form added
+   later inherits attribution without anyone remembering to wire it. */
+function stampLead(lead){
+  try{
+    const c = getCampaign();
+    if(c) lead.campaign = c;
+    const r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+    if(r && !lead.referredBy) lead.referredBy = r.name || '';
+    lead.landingPage = (location.pathname + location.search).slice(0, 300);
+  }catch(e){}
+  return lead;
+}
+
+captureCampaign();
+
 function setAgentReferral(a){
   try{
     localStorage.setItem('agentReferral', JSON.stringify({
@@ -10670,6 +10866,10 @@ document.addEventListener('keydown', function(e){
 });
 document.addEventListener('click', function(e){
   if(e.target && e.target.id === 'idea-modal') ideaClose();
+  const fb = document.getElementById('find-res');
+  if(fb && fb.style.display === 'block' && e.target && !e.target.closest('.find-wrap')){
+    fb.style.display = 'none';
+  }
 });
 
 
@@ -14359,7 +14559,7 @@ async function eiSubmit(e){
     lead.assignedAgentId = await defaultAssigneeId();
     const r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
     if(r && r.id){ lead.referredBy = r.name; lead.referredById = r.id; lead.assignedAgentId = r.id; }
-    await storeSet('lead:' + lead.id, lead);
+    await storeSet('lead:' + lead.id, stampLead(lead));
     if(typeof sendLeadNotification === 'function') sendLeadNotification(lead);
   }catch(err){ console.error('exit lead failed', err); }
 
