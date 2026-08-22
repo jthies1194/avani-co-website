@@ -2230,12 +2230,25 @@ app.get('/api/articles', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const origin = `${req.protocol}://${req.get('host')}`;
   // the preview link is how a draft gets read before anyone decides to publish it
-  const list = (await articlesAll()).map(a => Object.assign({}, a, {
-    liveUrl: `${origin}/insights/${a.slug}`,
-    previewUrl: `${origin}/insights/${a.slug}?preview=${previewToken(a.slug)}`,
-    regulated: articleRegulated(a),
-  }));
-  res.json({ ok: true, articles: list });
+  const staff = isStaff(sess);
+  /* ⚠ Agents get published articles only. A draft may contain a figure the broker
+     has not checked yet, and the whole point of the approval gate is that nothing
+     unreviewed reaches a client. Drafts and preview links are broker-only. */
+  const source = staff ? await articlesAll() : await articlesPublic();
+  const list = source.map(a => {
+    const base = {
+      id: a.id, title: a.title, teaser: a.teaser, slug: a.slug,
+      published: a.published, topic: a.topic,
+      liveUrl: `${origin}/insights/${a.slug}`,
+      regulated: articleRegulated(a),
+    };
+    if (!staff) return base;
+    return Object.assign(base, {
+      body: a.body,
+      previewUrl: `${origin}/insights/${a.slug}?preview=${previewToken(a.slug)}`,
+    });
+  });
+  res.json({ ok: true, articles: list, canWrite: staff });
 });
 
 app.post('/api/articles', async (req, res) => {
@@ -2306,9 +2319,12 @@ app.post('/api/broadcast', async (req, res) => {
   if (!subject) return res.status(400).json({ error: 'A subject line, at least.' });
   if (!ids.length) return res.status(400).json({ error: 'Pick at least one article.' });
 
-  let arts = await getSetting(ARTICLES_KEY);
-  arts = (Array.isArray(arts) ? arts : []).filter(a => ids.includes(a.id));
-  if (!arts.length) return res.status(400).json({ error: 'Those articles no longer exist.' });
+  /* ⚠ Published only, and enforced here rather than trusted from the client —
+     otherwise a crafted request could mail out a draft. */
+  const arts = (await articlesPublic()).filter(a => ids.includes(a.id));
+  if (!arts.length) {
+    return res.status(400).json({ error: 'Those articles are not published, or no longer exist.' });
+  }
 
   let all = [];
   try {
@@ -2366,7 +2382,8 @@ app.post('/api/broadcast', async (req, res) => {
     const log = await getSetting(BROADCAST_LOG);
     const arr = Array.isArray(log) ? log : [];
     arr.unshift({ id: bid, subject, articleIds: ids, segment: seg,
-      sent, failed, by: sess.name || sess.agentId, at: new Date().toISOString() });
+      sent, failed, by: sess.name || sess.agentId, byId: sess.agentId,
+      at: new Date().toISOString() });
     await setSetting(BROADCAST_LOG, arr.slice(0, 100));
   } catch (e) {}
 
@@ -2376,9 +2393,11 @@ app.post('/api/broadcast', async (req, res) => {
 
 app.get('/api/broadcasts', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
-  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
   const log = await getSetting(BROADCAST_LOG);
-  res.json({ ok: true, broadcasts: Array.isArray(log) ? log : [] });
+  const all = Array.isArray(log) ? log : [];
+  const who = sess.name || sess.agentId;
+  res.json({ ok: true,
+    broadcasts: isStaff(sess) ? all : all.filter(b => b.by === who) });
 });
 
 function unsubToken(leadId){
@@ -2644,6 +2663,77 @@ app.post('/api/oh/:token/signin', async (req, res) => {
       console.log(`[openhouse] ${name} signed in \u2014 lead created for ${rec.agentName}`);
     } catch (e) { console.error('[openhouse] lead failed:', e.message); }
   }
+
+  /* ⚠ This route created the lead and then told nobody. Somebody could scan the
+     code, sign in, and walk out without the agent ever knowing they were there —
+     which is the entire point of putting a QR code on the door.
+     Both sends are fire-and-forget: a mail failure must never make the visitor's
+     sign-in appear to fail, because they are standing in the house waiting. */
+  if (mailer) {
+    // the agent whose open house it is, falling back to the brokerage address
+    let agentTo = '';
+    try {
+      if (rec.agentId && supabase) {
+        const { data } = await supabase.from('agents').select('email')
+          .eq('id', rec.agentId).maybeSingle();
+        if (data && data.email) agentTo = data.email;
+      }
+    } catch (e) {}
+    if (!agentTo) agentTo = await resolveNotifyAddress();
+
+    if (agentTo) {
+      mailer.sendMail({
+        to: agentTo,
+        subject: `Signed in at your open house: ${name}`,
+        text: [
+          `${name} just signed in${rec.address ? ' at ' + rec.address : ''}.`,
+          '',
+          `Email: ${visitor.email || 'not given'}`,
+          `Phone: ${visitor.phone || 'not given'}`,
+          visitor.hasAgent
+            ? 'They said they are already working with an agent, so no lead was created.'
+            : (visitor.email ? 'A lead has been created and assigned to you.'
+                             : 'No email given, so no lead was created.'),
+          '',
+          BROKERAGE_NAME,
+        ].join('\n'),
+      }).then(() => console.log(`[openhouse] notified ${agentTo}`))
+        .catch(e => console.error('[openhouse] agent notify failed:', e.message));
+    } else {
+      console.error('[openhouse] nobody to notify — set NOTIFY_EMAIL or give the agent an email.');
+    }
+
+    /* And the visitor, while the house is still fresh in their mind. Four
+       checkboxes, which is why people actually answer them. */
+    if (visitor.email && !visitor.hasAgent) {
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const first = String(name).trim().split(/\s+/)[0] || 'there';
+      const link = `${origin}/?ohf=${token}.${visitor.id}`;
+      mailer.sendMail({
+        to: visitor.email,
+        subject: `Thanks for coming by${rec.address ? ' \u2014 ' + rec.address : ''}`,
+        text: [
+          `Hi ${first},`,
+          '',
+          `Thanks for stopping by${rec.address ? ' ' + rec.address : ' today'}.`,
+          '',
+          'If you have thirty seconds, four quick questions would help me a lot \u2014 and',
+          'it means I only send you places worth your time:',
+          link,
+          '',
+          'Either way, reply to this and I will answer anything about the house or the area.',
+          '',
+          rec.agentName || '',
+          BROKERAGE_NAME,
+          BROKERAGE_PHONE,
+        ].filter(Boolean).join('\n'),
+      }).then(() => console.log(`[openhouse] follow-up sent to ${visitor.email}`))
+        .catch(e => console.error('[openhouse] visitor follow-up failed:', e.message));
+    }
+  } else {
+    console.warn('[openhouse] SKIPPED both emails \u2014 mailer not configured.');
+  }
+
   res.json({ ok: true, visitorId: visitor.id });
 });
 
@@ -3903,7 +3993,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v95',
+    serverVersion: 'v98',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4452,6 +4542,107 @@ function previewToken(slug) {
     .update('preview:' + slug).digest('hex').slice(0, 16);
 }
 
+/* ---------- article artwork ----------
+   Drawn here rather than photographed: no licence to worry about, it carries the
+   brand, and it is a couple of kilobytes. Keyed by article id so an article
+   without one simply renders without a header image. */
+const ARTICLE_ART = {
+  art_insurance: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A house in high wind with a figure watching">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".55" stroke-linecap="round">
+<path d="M40 58 C130 36, 220 36, 300 54"/><path d="M20 88 C120 62, 240 62, 330 84"/>
+<path d="M56 118 C140 98, 210 100, 268 112"/><path d="M30 158 C110 142, 176 144, 224 152"/></g>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<path d="M628 212 C622 178, 612 150, 578 130" stroke="#0E1433" stroke-width="6" fill="none" stroke-linecap="round"/>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" opacity=".9">
+<path d="M578 130 C548 118, 520 118, 498 128"/><path d="M578 130 C552 132, 528 142, 512 158"/>
+<path d="M578 130 C556 106, 532 96, 508 96"/></g>
+<g transform="rotate(-5 430 172)">
+<rect x="368" y="152" width="126" height="60" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<path d="M356 152 L431 106 L506 152 Z" fill="#C89B4E" stroke="#0E1433" stroke-width="3" stroke-linejoin="round"/>
+<rect x="404" y="176" width="30" height="36" fill="#0E1433"/>
+<rect x="448" y="168" width="26" height="20" fill="#4A7A9B" stroke="#0E1433" stroke-width="2.5"/></g>
+<g fill="#C89B4E" stroke="#0E1433" stroke-width="2">
+<rect x="300" y="100" width="26" height="14" rx="2" transform="rotate(-24 313 107)"/>
+<rect x="252" y="128" width="22" height="12" rx="2" transform="rotate(-38 263 134)"/></g>
+<g transform="translate(150 128)">
+<circle cx="0" cy="0" r="15" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<ellipse cx="0" cy="6" rx="4" ry="5.5" fill="#0E1433"/>
+<circle cx="-5.5" cy="-4" r="1.8" fill="#0E1433"/><circle cx="5.5" cy="-4" r="1.8" fill="#0E1433"/>
+<path d="M-14 84 L-14 28 Q0 18 14 28 L14 84" fill="#0E1433"/>
+<path d="M14 32 C26 24, 22 8, 8 10" stroke="#0E1433" stroke-width="6" fill="none" stroke-linecap="round"/>
+<path d="M-14 32 C-28 40, -30 58, -22 68" stroke="#0E1433" stroke-width="6" fill="none" stroke-linecap="round"/></g></svg>`,
+
+  art_condofees: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two condo towers, one with many included layers and one with few">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 224 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<rect x="150" y="52" width="150" height="172" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<g fill="#C89B4E" opacity=".92"><rect x="150" y="52" width="150" height="24"/>
+<rect x="150" y="88" width="150" height="24"/><rect x="150" y="124" width="150" height="24"/>
+<rect x="150" y="160" width="150" height="24"/><rect x="150" y="196" width="150" height="24"/></g>
+<rect x="150" y="52" width="150" height="172" fill="none" stroke="#0E1433" stroke-width="3"/>
+<rect x="420" y="52" width="150" height="172" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<rect x="420" y="196" width="150" height="24" fill="#C89B4E" opacity=".92"/>
+<g stroke="#0E1433" stroke-width="2" opacity=".2" stroke-dasharray="7 7">
+<path d="M420 76 H570"/><path d="M420 112 H570"/><path d="M420 148 H570"/><path d="M420 184 H570"/></g>
+<rect x="420" y="52" width="150" height="172" fill="none" stroke="#0E1433" stroke-width="3"/>
+<g transform="translate(360 132)"><circle r="30" fill="#0E1433"/>
+<text y="9" text-anchor="middle" font-family="Georgia,serif" font-size="30" fill="#E8D2A0">?</text></g>
+<text x="360" y="32" text-anchor="middle" font-family="sans-serif" font-size="12.5" letter-spacing="2.5" font-weight="700" fill="#C89B4E">WHAT THE FEE COVERS</text>
+<text x="225" y="248" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="#0E1433">$$$ / month</text>
+<text x="495" y="248" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="700" fill="#0E1433">$ / month</text></svg>`,
+
+  art_wherelive: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A stylised coastline with four places marked">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 186 C120 172, 240 204, 360 192 C480 180, 600 204, 720 190 L720 260 L0 260 Z" fill="#4A7A9B" opacity=".85"/>
+<g stroke="#fff" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M60 220 c18 -8 34 8 52 0"/><path d="M250 236 c18 -8 34 8 52 0"/>
+<path d="M470 220 c18 -8 34 8 52 0"/><path d="M620 238 c18 -8 34 8 52 0"/></g>
+<path d="M0 186 C120 172, 240 204, 360 192 C480 180, 600 204, 720 190" stroke="#C89B4E" stroke-width="4" fill="none"/>
+<g font-family="sans-serif" font-size="12" font-weight="700" fill="#0E1433" text-anchor="middle">
+<g transform="translate(105 178)"><circle r="9" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<path d="M0 -9 L0 -46" stroke="#0E1433" stroke-width="2.5"/>
+<rect x="-50" y="-70" width="100" height="24" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text y="-53">Fort Morgan</text></g>
+<g transform="translate(285 196)"><circle r="12" fill="#C89B4E" stroke="#0E1433" stroke-width="3"/>
+<path d="M0 -12 L0 -66" stroke="#0E1433" stroke-width="2.5"/>
+<rect x="-52" y="-90" width="104" height="24" rx="3" fill="#C89B4E" stroke="#0E1433" stroke-width="2.5"/>
+<text y="-73">Gulf Shores</text></g>
+<g transform="translate(455 185)"><circle r="11" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<path d="M0 -11 L0 -46" stroke="#0E1433" stroke-width="2.5"/>
+<rect x="-54" y="-70" width="108" height="24" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text y="-53">Orange Beach</text></g>
+<g transform="translate(632 196)"><circle r="9" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<path d="M0 -9 L0 -40" stroke="#0E1433" stroke-width="2.5"/>
+<rect x="-50" y="-64" width="100" height="24" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text y="-47">Perdido Key</text></g></g>
+<text x="20" y="30" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">FORTY MILES, FIVE MARKETS</text></svg>`,
+
+  art_rental: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A large gross arrow entering a house and smaller costs leaving">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 224 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<rect x="20" y="96" width="170" height="40" fill="#C89B4E"/>
+<path d="M190 80 L234 116 L190 152 Z" fill="#C89B4E"/>
+<text x="105" y="123" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="700" fill="#241A08">GROSS</text>
+<rect x="276" y="112" width="146" height="112" fill="#fff" stroke="#0E1433" stroke-width="3"/>
+<path d="M262 112 L349 56 L436 112 Z" fill="#0E1433"/>
+<rect x="318" y="168" width="34" height="56" fill="#0E1433"/>
+<rect x="292" y="132" width="24" height="22" fill="#4A7A9B" stroke="#0E1433" stroke-width="2.5"/>
+<rect x="382" y="132" width="24" height="22" fill="#4A7A9B" stroke="#0E1433" stroke-width="2.5"/>
+<g font-family="sans-serif" font-size="11" font-weight="700" fill="#0E1433">
+<g transform="translate(440 74)"><rect width="104" height="22" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text x="52" y="15" text-anchor="middle">Management</text><path d="M-16 11 H0" stroke="#0E1433" stroke-width="2.5"/></g>
+<g transform="translate(458 110)"><rect width="86" height="22" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text x="43" y="15" text-anchor="middle">Cleaning</text><path d="M-34 11 H0" stroke="#0E1433" stroke-width="2.5"/></g>
+<g transform="translate(440 146)"><rect width="104" height="22" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text x="52" y="15" text-anchor="middle">Fees + insurance</text><path d="M-16 11 H0" stroke="#0E1433" stroke-width="2.5"/></g>
+<g transform="translate(458 182)"><rect width="86" height="22" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
+<text x="43" y="15" text-anchor="middle">Your weeks</text><path d="M-34 11 H0" stroke="#0E1433" stroke-width="2.5"/></g></g>
+<g transform="translate(600 102)"><rect width="92" height="28" fill="#0E1433"/>
+<path d="M92 7 L110 14 L92 21 Z" fill="#0E1433"/>
+<text x="46" y="20" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#E8D2A0">NET</text></g></svg>`,
+};
+
 function articleSlug(a) {
   return a.slug || slugify(a.title || '').slice(0, 80);
 }
@@ -4646,6 +4837,9 @@ function articleSeoHtml(a, origin, agentSlug, noindex) {
 body{margin:0;background:#FBFAF7;color:#141A3C;
   font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
 .w{max-width:720px;margin:0 auto;padding:38px 22px 70px}
+.art{margin:0 0 26px;border:1px solid rgba(20,26,60,.12);border-radius:5px;overflow:hidden;
+  line-height:0}
+.art svg{display:block;width:100%;height:auto}
 a{color:#C89B4E}
 .eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;font-weight:700}
 h1{font-family:Georgia,serif;font-size:34px;line-height:1.15;font-weight:400;margin:12px 0 10px}
@@ -4664,6 +4858,7 @@ p{font-size:16px;margin:0 0 18px}
 .ft{margin-top:24px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
   font-size:13px;color:#7A8199}
 </style></head><body><div class="w">
+${ARTICLE_ART[a.id] ? `<div class="art">${ARTICLE_ART[a.id]}</div>` : ''}
 <div class="eb">Alabama Gulf Coast</div>
 <h1>${esc(a.title)}</h1>
 <p class="te">${esc(desc)}</p>
