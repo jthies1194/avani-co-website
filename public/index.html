@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v233">
+<meta name="build" content="index-v234">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -272,7 +272,27 @@ header.stuck nav .tel{color:var(--gold)}
 @keyframes pulse{0%,100%{opacity:.3;height:26px}50%{opacity:1;height:44px}}
 
 /* ---------- search ---------- */
-.search{position:relative;z-index:20;max-width:1140px;margin:-34px auto 0;background:var(--ivory);
+.more-t{background:none;border:1px solid var(--line,rgba(20,26,60,.15));border-radius:4px;
+  padding:0 16px;font-size:13px;color:var(--ink,#141A3C);cursor:pointer;white-space:nowrap}
+.more-t[aria-expanded="true"]{border-color:var(--gold,#C9971F);background:rgba(201,151,31,.08)}
+.more-f{max-width:1180px;margin:-14px auto 34px;padding:20px 22px;
+  border:1px solid var(--line,rgba(20,26,60,.15));border-radius:6px;background:var(--white,#fff)}
+.more-f .mf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.more-f .f label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--driftwood,#7A8199);margin-bottom:5px}
+.more-f .f input,.more-f .f select{width:100%;border:1px solid var(--line,rgba(20,26,60,.15));
+  border-radius:4px;padding:9px 10px;font-size:14px;background:var(--sand-light,#FBFAF7)}
+.more-f .mf-checks{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:16px;
+  padding-top:14px;border-top:1px solid var(--line,rgba(20,26,60,.1))}
+.more-f .mf-checks label{display:flex;align-items:center;gap:7px;font-size:14px;cursor:pointer}
+.more-f .mf-checks input{width:auto;margin:0}
+.more-f .mf-foot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
+.more-f .lnk{background:none;border:none;color:var(--driftwood,#7A8199);font-size:13px;
+  text-decoration:underline;cursor:pointer;padding:0}
+.more-f .hint{font-size:13px;color:var(--driftwood,#7A8199);margin-left:auto}
+.more-f .hint a{color:var(--gold,#C9971F)}
+@media(max-width:640px){ .more-f{margin:-6px 16px 26px;padding:16px} }
+.search{.search{position:relative;z-index:20;max-width:1140px;margin:-34px auto 0;background:var(--ivory);
   box-shadow:0 34px 80px rgba(23,31,99,.14);padding:34px 38px;
   display:flex;gap:26px;flex-wrap:wrap;align-items:flex-end}
 .search .f{flex:1;min-width:150px}
@@ -1432,7 +1452,10 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     </datalist>
   </div>
   <div class="f"><label for="f-beds">Beds</label>
-    <select id="f-beds" onchange="runSearch()"><option value="">Any beds</option><option value="1">1+ bed</option><option value="2">2+ beds</option><option value="3">3+ beds</option><option value="4">4+ beds</option></select>
+    <select id="f-beds" onchange="runSearch()"><option value="">Any beds</option><option value="1">1+ bed</option><option value="2">2+ beds</option><option value="3">3+ beds</option><option value="4">4+ beds</option><option value="5">5+ beds</option><option value="6">6+ beds</option></select>
+  </div>
+  <div class="f"><label for="f-baths">Baths</label>
+    <select id="f-baths" onchange="runSearch()"><option value="">Any baths</option><option value="1">1+ bath</option><option value="2">2+ baths</option><option value="3">3+ baths</option><option value="4">4+ baths</option><option value="5">5+ baths</option></select>
   </div>
   <div class="f f-price">
     <label for="pmin">Price range</label>
@@ -1454,6 +1477,44 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <select id="f-status" onchange="runSearch()"><option value="">For sale (active)</option><option value="Active Under Contract">Under contract</option><option value="Pending">Pending</option></select>
   </div>
   <button class="btn" onclick="runSearch()">Search</button>
+  <button class="more-t" type="button" onclick="toggleMoreFilters()" id="mf-btn"
+    aria-expanded="false">More filters</button>
+</div>
+
+<!-- ⚠ These mirror the listing-alert criteria. Someone should be able to search for
+     exactly what we would happily email them; anything less makes the alert sign-up
+     look like a different product. -->
+<div class="more-f" id="more-f" hidden>
+  <div class="mf-grid">
+    <div class="f"><label for="f-sqft">Sq ft, minimum</label>
+      <input id="f-sqft" inputmode="numeric" placeholder="Any" onchange="runSearch()"></div>
+    <div class="f"><label for="f-sqftmax">Sq ft, maximum</label>
+      <input id="f-sqftmax" inputmode="numeric" placeholder="Any" onchange="runSearch()"></div>
+    <div class="f"><label for="f-acres">Acres, minimum</label>
+      <input id="f-acres" inputmode="decimal" placeholder="Any" onchange="runSearch()"></div>
+    <div class="f"><label for="f-year">Built after</label>
+      <input id="f-year" inputmode="numeric" placeholder="Any year" onchange="runSearch()"></div>
+    <div class="f"><label for="f-garage">Garage spaces</label>
+      <select id="f-garage" onchange="runSearch()"><option value="">Any</option>
+        <option value="1">1+</option><option value="2">2+</option><option value="3">3+</option></select></div>
+    <div class="f"><label for="f-stories">Stories</label>
+      <select id="f-stories" onchange="runSearch()"><option value="">Any</option>
+        <option value="1">Single storey</option><option value="2">Two storey</option></select></div>
+    <div class="f"><label for="f-maxhoa">Max HOA / month</label>
+      <input id="f-maxhoa" inputmode="numeric" placeholder="Any" onchange="runSearch()"></div>
+  </div>
+  <div class="mf-checks">
+    <label><input type="checkbox" id="f-waterfront" onchange="runSearch()"> Waterfront</label>
+    <label><input type="checkbox" id="f-view" onchange="runSearch()"> Has a view</label>
+    <label><input type="checkbox" id="f-pool" onchange="runSearch()"> Private pool</label>
+    <label><input type="checkbox" id="f-new" onchange="runSearch()"> New construction</label>
+    <label><input type="checkbox" id="f-nohoa" onchange="runSearch()"> No HOA</label>
+  </div>
+  <div class="mf-foot">
+    <button type="button" class="lnk" onclick="clearMoreFilters()">Clear these</button>
+    <span class="hint">Want these as they hit the market?
+      <a href="#" onclick="openLeadModal('alerts');return false;">Set up alerts</a></span>
+  </div>
 </div>
 
 <div class="section" id="listings">
@@ -4043,7 +4104,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v233';
+window.BUILD = 'index-v234';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6587,21 +6648,63 @@ function currentFilters(){
   const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   return { city: g('f-city'), beds: g('f-beds'), status: g('f-status'), min: g('pmin'), max: g('pmax') };
 }
+/* Everything behind "More filters", read once so the query and the
+   is-anything-set check can never disagree. */
+function extraFilters(){
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const on = id => !!(document.getElementById(id) || {}).checked;
+  return {
+    baths: v('f-baths'), sqft: v('f-sqft').replace(/[^0-9]/g,''),
+    sqftMax: v('f-sqftmax').replace(/[^0-9]/g,''),
+    acres: v('f-acres').replace(/[^0-9.]/g,''),
+    yearBuilt: v('f-year').replace(/[^0-9]/g,''),
+    garage: v('f-garage'), stories: v('f-stories'),
+    maxHoa: v('f-maxhoa').replace(/[^0-9]/g,''),
+    waterfront: on('f-waterfront') ? '1' : '',
+    view: on('f-view') ? '1' : '',
+    pool: on('f-pool') ? '1' : '',
+    newConstruction: on('f-new') ? '1' : '',
+    noHoa: on('f-nohoa') ? '1' : '',
+  };
+}
+
 function anyFilterSet(){
   const f = currentFilters();
+  const x = extraFilters();
   return !!(f.city || f.beds || f.status || f.min || f.max ||
+            Object.values(x).some(Boolean) ||
             (typeof CURRENT_PTYPE !== 'undefined' && CURRENT_PTYPE));
+}
+
+function toggleMoreFilters(){
+  const box = document.getElementById('more-f');
+  const btn = document.getElementById('mf-btn');
+  if(!box || !btn) return;
+  const open = box.hasAttribute('hidden');
+  if(open) box.removeAttribute('hidden'); else box.setAttribute('hidden','');
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  btn.textContent = open ? 'Fewer filters' : 'More filters';
+}
+
+function clearMoreFilters(){
+  ['f-baths','f-sqft','f-sqftmax','f-acres','f-year','f-garage','f-stories','f-maxhoa']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['f-waterfront','f-view','f-pool','f-new','f-nohoa']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.checked = false; });
+  runSearch();
 }
 
 async function runServerSearch(append){
   const f = currentFilters();
   if(!append){ SEARCH_SKIP = 0; SEARCH_RESULTS = []; }
-  const params = new URLSearchParams({
+  const params = new URLSearchParams(Object.assign({
     ptype: (typeof CURRENT_PTYPE !== 'undefined' ? CURRENT_PTYPE : ''),
     city: f.city, beds: f.beds, status: f.status,
     min: f.min.replace(/[^0-9]/g,''), max: f.max.replace(/[^0-9]/g,''),
     top: SEARCH_PAGE, skip: SEARCH_SKIP,
-  });
+  }, extraFilters()));
+  // empties would otherwise travel as "&pool=" and read as set
+  [...params.keys()].forEach(k => { if(!params.get(k)) params.delete(k); });
   const grid = document.getElementById('listing-grid');
   if(grid && !append) grid.innerHTML = '<p style="padding:26px 0;color:var(--gray);font-size:16px;">Searching the MLS…</p>';
   try{
