@@ -504,6 +504,25 @@ app.get('/api/search', async (req, res) => {
   const min  = num(q.min);    if (min)   parts.push(`ListPrice ge ${min}`);
   const max  = num(q.max);    if (max)   parts.push(`ListPrice le ${max}`);
 
+  /* ⚠ The public search used to stop at city / type / beds / price while listing
+     alerts matched on fourteen things. Someone could not search for what we would
+     happily email them, which made the alert sign-up look like a different product.
+     These mirror searchFilter() so the two agree. */
+  const baths = num(q.baths);      if (baths)  parts.push(`BathroomsTotalInteger ge ${baths}`);
+  const sqft  = num(q.sqft);       if (sqft)   parts.push(`LivingArea ge ${sqft}`);
+  const sqftMax = num(q.sqftMax);  if (sqftMax) parts.push(`LivingArea le ${sqftMax}`);
+  const acres = num(q.acres);      if (acres)  parts.push(`LotSizeAcres ge ${acres}`);
+  const year  = num(q.yearBuilt);  if (year)   parts.push(`YearBuilt ge ${year}`);
+  const stories = num(q.stories);  if (stories) parts.push(`StoriesTotal eq ${stories}`);
+  const garage = num(q.garage);    if (garage) parts.push(`GarageSpaces ge ${garage}`);
+  const maxHoa = num(q.maxHoa);    if (maxHoa) parts.push(`AssociationFee le ${maxHoa}`);
+
+  if (q.pool === '1')        parts.push(`PoolPrivateYN eq true`);
+  if (q.waterfront === '1')  parts.push(`WaterfrontYN eq true`);
+  if (q.view === '1')        parts.push(`ViewYN eq true`);
+  if (q.newConstruction === '1') parts.push(`(contains(PropertyCondition,'New') or YearBuilt ge ${new Date().getFullYear() - 1})`);
+  if (q.noHoa === '1')       parts.push(`(AssociationYN eq false or AssociationFee eq 0)`);
+
   const top  = Math.min(num(q.top) || 24, 200);
   const skip = num(q.skip) || 0;
 
@@ -4156,7 +4175,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v105',
+    serverVersion: 'v106',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
