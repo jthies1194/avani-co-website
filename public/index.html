@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v213">
+<meta name="build" content="index-v214">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2549,6 +2549,49 @@ body.in-crm .topbar{display:none}
 </div>
 </div>
 
+<div class="crm-sec" id="sec-content">
+<style>
+.ct-grid{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
+@media(max-width:1000px){ .ct-grid{grid-template-columns:1fr} }
+.ct-art{border:1px solid var(--hair,rgba(20,26,60,.1));border-radius:4px;background:#fff;
+  padding:14px 16px;margin-bottom:10px;display:flex;gap:13px;align-items:flex-start}
+.ct-art .b{flex:1;min-width:0}
+.ct-art .t{font-weight:700;font-size:14px}
+.ct-art .te{font-size:12.5px;color:var(--mut,#7A8199);margin-top:3px;line-height:1.5}
+.ct-art .sl{font-size:11.5px;color:var(--gd,#C89B4E);margin-top:5px;word-break:break-all}
+.ct-art .a{display:flex;gap:6px;flex:0 0 auto}
+.ct-pick{display:flex;align-items:flex-start;gap:9px;padding:9px 0;
+  border-bottom:1px solid rgba(20,26,60,.06);font-size:13px}
+.ct-pick:last-child{border-bottom:none}
+.ct-pick input{margin-top:3px;width:auto;flex:0 0 auto}
+.ct-count{background:#F6EEDC;border:1px solid rgba(200,155,78,.5);border-radius:4px;
+  padding:14px 16px;margin:14px 0;font-size:13.5px;line-height:1.6;color:#5C4718}
+.ct-count b{font-size:22px;font-family:'Fraunces',Georgia,serif;font-weight:400;display:block}
+.ct-warn{background:#FDF2F1;border:1px solid rgba(166,52,42,.35);border-radius:4px;
+  padding:12px 15px;font-size:12.5px;color:#8A2C22;line-height:1.55;margin-top:12px}
+</style>
+<div class="ct-grid">
+  <div>
+    <div class="setup-panel">
+      <h3 class="sx-h">Articles</h3>
+      <p class="sx-sub">Each one becomes a page at <strong>/insights/</strong> that Google can
+        index, and a block you can drop into a newsletter. Write for someone deciding, not
+        for a search engine.</p>
+      <div class="setup-body" id="ct-articles">Loading&hellip;</div>
+      <button class="btn-sm primary" style="margin-top:12px" onclick="ctNewArticle()">
+        + Write an article</button>
+    </div>
+  </div>
+  <div>
+    <div class="setup-panel">
+      <h3 class="sx-h">Send a newsletter</h3>
+      <p class="sx-sub">Nothing sends until you have seen the number it is going to.</p>
+      <div class="setup-body" id="ct-send">Loading&hellip;</div>
+    </div>
+  </div>
+</div>
+</div>
+
 <div class="crm-sec" id="sec-setup">
 <style>
 /* ⚠ `.crm-sec .setup-head{display:none}` and `.setup-body{display:block!important}`
@@ -3859,7 +3902,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v213';
+window.BUILD = 'index-v214';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6836,6 +6879,7 @@ const ICON = {
   expense: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/>',
   taxes:   '<path d="M6 2h9l4 4v16H6z"/><path d="M15 2v5h4"/><path d="M9 12h7M9 16h7M9 8h3"/>',
   market:  '<path d="M12 2.5l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 8.9l6.1-.8z"/>',
+  content: '<path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M15 4v5h5M8 13h8M8 17h5"/>',
   agents:  '<circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M17 5.5a3 3 0 010 5.6M18.5 20c0-2.4-.9-4.3-2.3-5.5"/>',
   reviews: '<path d="M12 3l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.6l1-6L3.3 9.4l6-.9z"/>',
   links:   '<path d="M10 13.5a4.5 4.5 0 006.4 0l2.8-2.8a4.5 4.5 0 00-6.4-6.4L11.5 5.6"/><path d="M14 10.5a4.5 4.5 0 00-6.4 0l-2.8 2.8a4.5 4.5 0 006.4 6.4l1.3-1.3"/>',
@@ -6869,6 +6913,7 @@ const CRM_SECTIONS = [
   { id:'sec-pipeline',    label:'My deals',    icon:'pipeline', color:'#4A7A9B' },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
+  { id:'sec-content',     label:'Content',     icon:'content',  color:'#C89B4E', brokerOnly:true },
   { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', brokerOnly:true },  // sign blue
   { id:'sec-reviews',     label:'Reviews',     icon:'reviews',  color:'#C9971F' },   // agents see their own  // gold
   { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B' },  // slate blue
@@ -7252,6 +7297,7 @@ function showCrmSection(id){
     if(id === 'sec-expenses')    loadExpenses();
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     try{ sxRenderPanels(id); }catch(e){}
+    if(id === 'sec-content' && typeof renderContent === 'function') renderContent();
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
       /* ⚠ renderNotify was only ever called from a `.setup-head` click handler,
@@ -7630,6 +7676,7 @@ const SECTION_META = {
   'sec-agents':     { eyebrow:'Your team',  title:'Agents',           blurb:'Add agents, set their commission plans, keep their details on file, and preview the CRM as they see it.' },
   'sec-reviews':    { eyebrow:'Approvals',  title:'Pending reviews',  blurb:'Deals your agents submitted. Nothing counts toward the official ledger until you approve it.' },
   'sec-setup':      { eyebrow:'Setup',      title:'Data & notifications', blurb:'MLS connection, lead alerts, and the settings that drive the public site.' },
+  'sec-content':    { eyebrow:'Content',    title:'Articles & newsletters', blurb:'Write once. It becomes a page Google can find and an email you can send \u2014 and every click tells you who is paying attention.' },
   'sec-mypage':     { eyebrow:'Your public page', title:'My page', blurb:'This is what a client sees when you share your link. Keep it current \u2014 it is often the first impression.' },
   'sec-myprofile':  { eyebrow:'Your file',  title:'My details',       blurb:'The information the brokerage is required to hold for you. Only the broker can see it.' },
   'sec-password':   { eyebrow:'Security',   title:'My password',      blurb:'Change the password you use to sign in to this CRM.' },
@@ -10466,6 +10513,160 @@ document.addEventListener('keydown', function(e){
 document.addEventListener('click', function(e){
   if(e.target && e.target.id === 'idea-modal') ideaClose();
 });
+
+
+/* ---------- content: articles and newsletters ----------
+   One place for both, because they are the same writing. An article is a page
+   Google can index AND a block in an email; a click on it writes a scoring event
+   that moves the lead between lanes on its own. */
+let ctArts = [], ctPicked = [], ctSeg = { lane: 'slow' };
+
+async function renderContent(){
+  const host = document.getElementById('ct-articles');
+  if(!host) return;
+  try{
+    const r = await fetch('/api/articles');
+    const d = await r.json();
+    ctArts = d.articles || [];
+  }catch(e){ host.innerHTML = '<p>Could not load these.</p>'; return; }
+
+  host.innerHTML = ctArts.length ? ctArts.map((a,i) => `
+    <div class="ct-art">
+      <div class="b">
+        <div class="t">${escapeHtml(a.title)}</div>
+        <div class="te">${escapeHtml(a.teaser || '')}</div>
+        <div class="sl">/insights/${escapeHtml(a.slug || ctSlug(a.title))}</div>
+      </div>
+      <div class="a">
+        <button class="btn-sm" onclick="ctEdit(${i})">Edit</button>
+        <button class="btn-sm" onclick="ctDrop(${i})">Delete</button>
+      </div>
+    </div>`).join('')
+    : `<div style="font-size:13px;color:var(--mut,#7A8199);padding:14px 0">
+         Three starter articles are live on the site already \u2014 insurance costs, condo
+         fees, and where to actually live. Writing your own here replaces them.</div>`;
+  ctRenderSend();
+}
+
+function ctSlug(t){
+  return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80);
+}
+
+async function ctSave(){
+  try{
+    const r = await fetch('/api/articles', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ articles: ctArts }) });
+    if(!r.ok) throw new Error('Save failed');
+    const d = await r.json(); ctArts = d.articles || ctArts;
+    showToast('Saved. The page is live at /insights/ now.');
+    renderContent();
+  }catch(e){ showToast('Could not save that.'); }
+}
+
+function ctNewArticle(){
+  const title = prompt('Headline \u2014 write it the way somebody would ask the question:');
+  if(!title) return;
+  const teaser = prompt('One sentence, the version that appears in the email and in Google:') || '';
+  const body = prompt('The article. Leave a blank line between paragraphs:') || '';
+  ctArts.unshift({ id:'art_'+Date.now().toString(36), title, teaser, body, slug: ctSlug(title) });
+  ctSave();
+}
+
+function ctEdit(i){
+  const a = ctArts[i]; if(!a) return;
+  const title = prompt('Headline:', a.title); if(title === null) return;
+  const teaser = prompt('One sentence:', a.teaser || ''); if(teaser === null) return;
+  const body = prompt('The article:', a.body || ''); if(body === null) return;
+  ctArts[i] = Object.assign({}, a, { title, teaser, body, slug: ctSlug(title) });
+  ctSave();
+}
+
+function ctDrop(i){
+  const a = ctArts[i]; if(!a) return;
+  if(!confirm('Delete "' + a.title + '"? The page at /insights/ goes with it.')) return;
+  ctArts.splice(i,1); ctSave();
+}
+
+/* ---- the send side ---- */
+const CT_LANES = [['','Everyone I can reach'],['slow','Long-term nurture'],
+  ['steady','Normal follow-up'],['fast','Moving now'],['closing','Ready to buy']];
+
+function ctRenderSend(){
+  const el = document.getElementById('ct-send');
+  if(!el) return;
+  el.innerHTML = `
+    <div class="field"><label>Subject line</label>
+      <input id="ct-subj" placeholder="What insurance actually costs down here"></div>
+    <div class="field"><label>A line before the articles</label>
+      <textarea id="ct-intro" style="min-height:64px"
+        placeholder="Optional. One or two sentences in your own voice."></textarea></div>
+    <div class="field"><label>Who gets it</label>
+      <select id="ct-lane" onchange="ctSeg={lane:this.value};ctCounted=false;ctRenderSend()">
+        ${CT_LANES.map(([v,l]) =>
+          `<option value="${v}" ${v===(ctSeg.lane||'')?'selected':''}>${l}</option>`).join('')}
+      </select></div>
+    <div class="field-label" style="margin-top:4px">Articles to include</div>
+    ${ctArts.length ? ctArts.slice(0,12).map((a,i) => `
+      <label class="ct-pick"><input type="checkbox" ${ctPicked.includes(a.id)?'checked':''}
+        onchange="ctTogglePick('${a.id}')"> ${escapeHtml(a.title)}</label>`).join('')
+      : '<div style="font-size:12.5px;color:var(--mut,#7A8199);padding:8px 0">Write one first.</div>'}
+    <div id="ct-result"></div>
+    <button class="btn-sm" style="width:100%;margin-top:12px" onclick="ctDry()">
+      How many people is this?</button>`;
+}
+
+function ctTogglePick(id){
+  const i = ctPicked.indexOf(id);
+  if(i >= 0) ctPicked.splice(i,1); else ctPicked.push(id);
+}
+
+async function ctPost(dryRun){
+  const subject = (document.getElementById('ct-subj')||{}).value || '';
+  const intro = (document.getElementById('ct-intro')||{}).value || '';
+  const r = await fetch('/api/broadcast', { method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ subject, intro, articleIds: ctPicked, segment: ctSeg, dryRun }) });
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(d.error || 'That did not work.');
+  return d;
+}
+
+/* ⚠ The count always comes first. Sending to the wrong list is not undoable, so
+   the send button does not exist until the number has been on screen. */
+async function ctDry(){
+  const box = document.getElementById('ct-result');
+  box.innerHTML = '<div style="font-size:13px;padding:10px 0">Counting\u2026</div>';
+  try{
+    const d = await ctPost(true);
+    box.innerHTML = `<div class="ct-count"><b>${d.wouldSend}</b>
+        ${d.wouldSend === 1 ? 'person would get this' : 'people would get this'}.
+        ${d.sample && d.sample.length
+          ? 'Starting with ' + d.sample.slice(0,3).map(escapeHtml).join(', ') + '.' : ''}
+      </div>
+      ${d.wouldSend > 40 ? `<div class="ct-warn">That is a lot for a new sending domain.
+        Reputation is built slowly \u2014 20 to 30 first, then more in a few days.</div>` : ''}
+      ${d.wouldSend ? `<button class="btn-sm primary" style="width:100%;margin-top:10px"
+        onclick="ctSend(${d.wouldSend})">Send it to ${d.wouldSend}</button>` : ''}`;
+  }catch(e){
+    box.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function ctSend(n){
+  if(!confirm('Send to ' + n + ' ' + (n===1?'person':'people') +
+              '? This cannot be taken back.')) return;
+  const box = document.getElementById('ct-result');
+  box.innerHTML = '<div style="font-size:13px;padding:10px 0">Sending\u2026</div>';
+  try{
+    const d = await ctPost(false);
+    box.innerHTML = `<div class="ct-count"><b>${d.sent}</b> sent.
+      ${d.failed ? d.failed + ' failed \u2014 check the logs.' : 'Clicks will show on each lead.'}</div>`;
+    ctPicked = [];
+    showToast('Sent to ' + d.sent + '.');
+  }catch(e){
+    box.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`;
+  }
+}
 
 /* ---------- the broker's side of it ---------- */
 let ideaAll = [];
