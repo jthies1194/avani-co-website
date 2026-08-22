@@ -3765,10 +3765,10 @@ app.get('/api/mls-test', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v91',
+    serverVersion: 'v92',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -3776,6 +3776,7 @@ app.get('/api/health', (req, res) => {
     mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
     emailConfigured: !!mailer,
     marketingDomainReady: MARKETING_READY,
+    sitePrivate: await siteIsPrivate(),
     aiConfigured: !!ANTHROPIC_API_KEY,
   });
 });
@@ -4266,16 +4267,7 @@ app.get('/:slug', async (req, res, next) => {
   }
 });
 
-app.get('/robots.txt', (req, res) => {
-  const origin = `${req.protocol}://${req.get('host')}`;
-  res.type('text/plain').send(
-`User-agent: *
-Allow: /
-Disallow: /api/
-
-Sitemap: ${origin}/sitemap.xml
-`);
-});
+/* robots.txt moved below — it now depends on whether the site is private. */
 
 /* Agent pages are the ones worth indexing individually — listings come and go
    and belong to the MLS, so they are deliberately left out. */
@@ -4318,6 +4310,11 @@ function articleRegulated(a) {
   if (a.topic === 'regulated') return true;
   if (a.topic === 'general') return false;
   return REGULATED_WORDS.test(String(a.title || '') + ' ' + String(a.body || ''));
+}
+
+function previewToken(slug) {
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('preview:' + slug).digest('hex').slice(0, 16);
 }
 
 function articleSlug(a) {
@@ -4443,10 +4440,31 @@ Bay and beach are different climates in practice. The Eastern Shore is greener, 
 Work out where you will actually spend your time before you choose a town. The people who are happiest here picked the daily life first and the house second.` },
 ];
 
+/* ⚠ Draft by default. Deploying the server used to publish every seeded article
+   the moment it went up, which put pages on the public internet that the broker
+   had never read. Nothing is public now until somebody sets published:true on it
+   deliberately. The seeds ship as drafts to be reviewed, not as live pages. */
 async function articlesAll() {
   const saved = await getSetting(ARTICLES_KEY);
   const list = Array.isArray(saved) && saved.length ? saved : ARTICLE_DEFAULTS;
-  return list.map(a => Object.assign({}, a, { slug: articleSlug(a) }));
+  return list.map(a => Object.assign({}, a, {
+    slug: articleSlug(a),
+    published: a.published === true,
+  }));
+}
+
+async function articlesPublic() {
+  return (await articlesAll()).filter(a => a.published);
+}
+
+/* Is the whole site meant to be discoverable yet? While it is being built the
+   answer is no: search engines are told to stay out and the sitemap goes empty.
+   ⚠ This hides the site from Google. It does NOT make it private — anyone with
+   the URL can still reach it. Real privacy needs a login in front of everything,
+   which would also block the lead capture the site exists for. */
+async function siteIsPrivate() {
+  const m = await getSetting('settings:siteMode');
+  return m !== 'live';          // private until explicitly switched on
 }
 
 /* An article reached through an agent's newsletter belongs to that agent. The
@@ -4454,7 +4472,7 @@ async function articlesAll() {
    created from it lands on them and not on the brokerage. Attribution here is
    the same rule as everywhere else: it does not expire and it is not silently
    handed back. */
-function articleSeoHtml(a, origin, agentSlug) {
+function articleSeoHtml(a, origin, agentSlug, noindex) {
   const url = `${origin}/insights/${a.slug}`;
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -4483,7 +4501,7 @@ function articleSeoHtml(a, origin, agentSlug) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(a.title)} | ${esc(BROKERAGE_NAME)}</title>
 <meta name="description" content="${esc(desc)}">
-<link rel="canonical" href="${url}">
+<link rel="canonical" href="${url}">${noindex ? '\n<meta name="robots" content="noindex,nofollow">' : ''}
 <meta property="og:type" content="article">
 <meta property="og:title" content="${esc(a.title)}">
 <meta property="og:description" content="${esc(desc)}">
@@ -4530,7 +4548,7 @@ ${esc(BROKERAGE_ADDRESS)}<br>
 
 app.get('/insights', async (req, res) => {
   const origin = `${req.protocol}://${req.get('host')}`;
-  const list = await articlesAll();
+  const list = await articlesPublic();
   const esc = t => String(t || '').replace(/</g, '&lt;');
   res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -4551,12 +4569,24 @@ ${list.map(a => `<div class="it"><a href="${origin}/insights/${a.slug}">
 
 app.get('/insights/:slug', async (req, res, next) => {
   try {
-    const list = await articlesAll();
+    // a draft is reachable only with the preview token, never by guessing the url
+    const preview = req.query.preview === previewToken(req.params.slug);
+    const list = preview ? await articlesAll() : await articlesPublic();
     const a = list.find(x => x.slug === req.params.slug);
     if (!a) return next();
     const who = String(req.query.agent || '').slice(0, 60).replace(/[^a-z0-9-]/gi, '');
-    res.type('html').send(articleSeoHtml(a, `${req.protocol}://${req.get('host')}`, who));
+    res.type('html').send(articleSeoHtml(a, `${req.protocol}://${req.get('host')}`, who,
+      (await siteIsPrivate()) || !a.published));
   } catch (e) { next(); }
+});
+
+app.get('/robots.txt', async (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  if (await siteIsPrivate()) {
+    return res.type('text/plain').send('User-agent: *\nDisallow: /\n');
+  }
+  res.type('text/plain').send(
+    `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${origin}/sitemap.xml\n`);
 });
 
 app.get('/sitemap.xml', async (req, res) => {
@@ -4571,9 +4601,14 @@ app.get('/sitemap.xml', async (req, res) => {
     }
   } catch (e) { console.warn('[sitemap] agent list failed:', e.message); }
   // articles: the only pages besides the homepage and agent bios that Google can index
+  if (await siteIsPrivate()) {
+    // nothing to advertise while the site is still being built
+    return res.type('application/xml').send(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n');
+  }
   try {
     urls.push({ loc: origin + '/insights', pri: '0.7' });
-    (await articlesAll()).forEach(a => {
+    (await articlesPublic()).forEach(a => {
       urls.push({ loc: origin + '/insights/' + a.slug, pri: '0.7' });
     });
   } catch (e) { console.warn('[sitemap] articles failed:', e.message); }
