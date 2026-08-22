@@ -2137,7 +2137,9 @@ app.get('/c/:leadId/:artId/:tok', async (req, res) => {
   try {
     const arts = await getSetting(ARTICLES_KEY);
     const art = (Array.isArray(arts) ? arts : []).find(a => a.id === artId);
-    if (art && art.url) dest = art.url;
+    if (art) dest = art.url && /^https?:/.test(art.url)
+      ? art.url
+      : `${req.protocol}://${req.get('host')}/insights/${articleSlug(art)}`;
 
     const key = 'lead:' + leadId;
     const lead = await getSetting(key);
@@ -3759,7 +3761,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v88',
+    serverVersion: 'v89',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4270,6 +4272,175 @@ Sitemap: ${origin}/sitemap.xml
 
 /* Agent pages are the ones worth indexing individually — listings come and go
    and belong to the MLS, so they are deliberately left out. */
+/* ---------- articles: SEO pages the newsletter also uses ----------
+   The same writing does two jobs. A piece written for the monthly nurture email
+   is also an indexable page at /insights/<slug>, so a stranger searching "gulf
+   shores condo fees" lands on it with a lead form attached, and the newsletter
+   sends traffic to your own domain rather than someone else's.
+
+   Before this the whole site had two indexable page types: the homepage and
+   agent bios. Every article added here is another way to be found. */
+function articleSlug(a) {
+  return a.slug || slugify(a.title || '').slice(0, 80);
+}
+
+/* Seeded so there is something to send and something to index the moment this
+   deploys. Written for this coast specifically — the topics a national
+   newsletter cannot cover and a local agent gets asked constantly. */
+const ARTICLE_DEFAULTS = [
+  { id: 'art_insurance', slug: 'gulf-coast-home-insurance-costs',
+    title: 'What home insurance actually costs on the Alabama Gulf Coast',
+    teaser: 'Wind, flood and hail are three separate conversations, and the difference between a mile inland and on the beach can be thousands a year.',
+    body: `Most people budgeting for a home here budget for the house and forget the insurance. On the Alabama Gulf Coast that is the line item that changes the answer.
+
+There are three separate policies to think about, and they are not one product. Standard homeowners covers fire, theft and liability. Wind and hail is frequently carved out into its own policy or its own deductible along the coast. Flood is federal or private, and it is never included in the other two.
+
+The distance from the water matters more than almost anything else. A house a mile inland and a condo on the beach can differ by thousands a year on wind alone. Elevation matters for flood. Roof age and construction matter for wind, and a current wind mitigation certificate can cut the premium meaningfully.
+
+The number that surprises people most is the hurricane deductible, because it is usually a percentage of the insured value rather than a flat figure. On a $500,000 policy a 5% hurricane deductible is $25,000 before anything pays out. That is a very different conversation from a $1,000 deductible, and it is worth having before you are under contract rather than after.
+
+If you are looking at a specific street or building, the honest way to answer this is to get real quotes on that address rather than an average.`,
+    updatedAt: '2026-08-01T00:00:00.000Z' },
+
+  { id: 'art_condofees', slug: 'gulf-shores-condo-fees-explained',
+    title: 'Condo fees on the Gulf Coast: what you are actually buying',
+    teaser: 'Two buildings on the same stretch of beach can be hundreds apart, and the expensive one is sometimes the better deal.',
+    body: `Comparing condo fees by the number alone is the most common mistake buyers make here, and it is usually the wrong way round.
+
+Some buildings bundle wind insurance, water, cable, internet and full exterior maintenance into the fee. Others cover the hallways and not much else, and every owner buys their own wind policy separately. The building with the higher fee can easily be the cheaper one to own once you add back what the lower fee does not include.
+
+Then there are reserves. A building that has been funding its reserves properly for years has a higher monthly fee and no nasty surprises. A building that has kept fees artificially low to look attractive on listings is the one where a special assessment arrives after a storm. Ask for the reserve study and the last two years of minutes before you get attached to a unit.
+
+Rental rules matter as much as money if any part of the plan is renting it out. Some buildings allow nightly rentals, some require a week minimum, some are owner-occupied only. That single rule can change the income by a factor of three.
+
+The short version: ask what the fee covers, what the reserves look like, and what the rental rules are. Those three answers tell you more than the fee itself.`,
+    updatedAt: '2026-08-01T00:00:00.000Z' },
+
+  { id: 'art_wherelive', slug: 'fort-morgan-gulf-shores-orange-beach-perdido-key',
+    title: 'Fort Morgan, Gulf Shores, Orange Beach or Perdido Key?',
+    teaser: 'People treat this as one beach. It is really five or six markets, and the difference matters more than most expect.',
+    body: `From Fort Morgan to Perdido Key is about forty miles of coast, and choosing between them is the decision that most affects whether you enjoy the place.
+
+Fort Morgan is the quiet end. Fewer people, fewer restaurants, a longer drive for groceries, and the beach largely to yourself in February. If quiet is the point, this is the answer. If you want to walk to dinner, it is not.
+
+Gulf Shores is the centre of gravity. The most amenities, the most rental demand, the most traffic in July. Good if you want things open year round and you accept the season.
+
+Orange Beach has the bigger buildings and the marinas. If boating matters, this is usually where the answer lands. It also has some of the strongest rental performance on the coast.
+
+Perdido Key sits across the Florida line, which changes the tax picture and the licensing, and it is quieter than Orange Beach without being as remote as Fort Morgan.
+
+Inland — Foley, Elberta, Robertsdale — is where the same money buys substantially more house and land, at the cost of a fifteen to thirty minute drive to the water. A lot of people who arrive certain they want beachfront end up here once they see the difference in what they get.
+
+The right question is not which is best. It is how you will actually use it: every weekend, two weeks a year, or renting it out most of the season.`,
+    updatedAt: '2026-08-01T00:00:00.000Z' },
+];
+
+async function articlesAll() {
+  const saved = await getSetting(ARTICLES_KEY);
+  const list = Array.isArray(saved) && saved.length ? saved : ARTICLE_DEFAULTS;
+  return list.map(a => Object.assign({}, a, { slug: articleSlug(a) }));
+}
+
+function articleSeoHtml(a, origin) {
+  const url = `${origin}/insights/${a.slug}`;
+  const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const desc = String(a.teaser || '').replace(/\s+/g, ' ').slice(0, 300);
+  const paras = String(a.body || '').split(/\n{2,}/)
+    .map(p => `<p>${esc(p.trim())}</p>`).join('\n');
+
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: a.title,
+    description: desc,
+    url,
+    datePublished: a.updatedAt || new Date().toISOString(),
+    dateModified: a.updatedAt || new Date().toISOString(),
+    author: { '@type': 'Organization', name: BROKERAGE_NAME, url: origin },
+    publisher: {
+      '@type': 'RealEstateAgent', name: BROKERAGE_NAME, url: origin,
+      telephone: BROKERAGE_PHONE, address: BROKERAGE_ADDRESS,
+    },
+    about: ['Gulf Shores', 'Orange Beach', 'Baldwin County', 'Alabama Gulf Coast']
+      .map(x => ({ '@type': 'Place', name: x })),
+  };
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(a.title)} | ${esc(BROKERAGE_NAME)}</title>
+<meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${url}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="${esc(a.title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${url}">
+<script type="application/ld+json">${JSON.stringify(ld)}</script>
+<style>
+body{margin:0;background:#FBFAF7;color:#141A3C;
+  font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
+.w{max-width:720px;margin:0 auto;padding:38px 22px 70px}
+a{color:#C89B4E}
+.eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;font-weight:700}
+h1{font-family:Georgia,serif;font-size:34px;line-height:1.15;font-weight:400;margin:12px 0 10px}
+.te{font-size:17px;color:#3D456B;margin:0 0 26px}
+p{font-size:16px;margin:0 0 18px}
+.cta{margin-top:38px;padding:24px;background:#fff;border:1px solid rgba(20,26,60,.1);
+  border-left:3px solid #C89B4E;border-radius:4px}
+.cta h2{font-family:Georgia,serif;font-size:22px;font-weight:400;margin:0 0 8px}
+.cta p{font-size:15px;color:#3D456B}
+.btn{display:inline-block;background:#C89B4E;color:#241A08;text-decoration:none;
+  padding:12px 22px;border-radius:3px;font-weight:700;font-size:13px;
+  letter-spacing:.05em;text-transform:uppercase;margin-top:6px}
+.ft{margin-top:44px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
+  font-size:13px;color:#7A8199}
+</style></head><body><div class="w">
+<div class="eb">Alabama Gulf Coast</div>
+<h1>${esc(a.title)}</h1>
+<p class="te">${esc(desc)}</p>
+${paras}
+<div class="cta">
+  <h2>Want this answered for a specific address?</h2>
+  <p>Averages are only useful up to a point. Tell us the street or the building and
+     we will give you the real numbers for it.</p>
+  <a class="btn" href="${origin}/?ask=${encodeURIComponent(a.slug)}">Ask about a property</a>
+</div>
+<div class="ft">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}<br>
+${esc(BROKERAGE_ADDRESS)}<br>
+<a href="${origin}/">Search every active listing on the Alabama Gulf Coast</a></div>
+</div></body></html>`;
+}
+
+app.get('/insights', async (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const list = await articlesAll();
+  const esc = t => String(t || '').replace(/</g, '&lt;');
+  res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gulf Coast buying and selling guides | ${esc(BROKERAGE_NAME)}</title>
+<meta name="description" content="Straight answers about buying and selling on the Alabama Gulf Coast — insurance, condo fees, and where to actually live.">
+<link rel="canonical" href="${origin}/insights">
+<style>body{margin:0;background:#FBFAF7;color:#141A3C;font-family:'Public Sans',system-ui,sans-serif;line-height:1.7}
+.w{max-width:720px;margin:0 auto;padding:38px 22px 70px}a{color:#141A3C;text-decoration:none}
+h1{font-family:Georgia,serif;font-size:34px;font-weight:400;margin:0 0 26px}
+.it{padding:20px 0;border-bottom:1px solid rgba(20,26,60,.1)}
+.it h2{font-family:Georgia,serif;font-size:21px;font-weight:400;margin:0 0 6px}
+.it p{margin:0;color:#3D456B;font-size:15px}</style></head><body><div class="w">
+<h1>Guides to buying and selling here</h1>
+${list.map(a => `<div class="it"><a href="${origin}/insights/${a.slug}">
+  <h2>${esc(a.title)}</h2><p>${esc(a.teaser)}</p></a></div>`).join('\n')}
+</div></body></html>`);
+});
+
+app.get('/insights/:slug', async (req, res, next) => {
+  try {
+    const list = await articlesAll();
+    const a = list.find(x => x.slug === req.params.slug);
+    if (!a) return next();
+    res.type('html').send(articleSeoHtml(a, `${req.protocol}://${req.get('host')}`));
+  } catch (e) { next(); }
+});
+
 app.get('/sitemap.xml', async (req, res) => {
   const origin = `${req.protocol}://${req.get('host')}`;
   const urls = [{ loc: origin + '/', pri: '1.0' }];
@@ -4281,6 +4452,13 @@ app.get('/sitemap.xml', async (req, res) => {
       });
     }
   } catch (e) { console.warn('[sitemap] agent list failed:', e.message); }
+  // articles: the only pages besides the homepage and agent bios that Google can index
+  try {
+    urls.push({ loc: origin + '/insights', pri: '0.7' });
+    (await articlesAll()).forEach(a => {
+      urls.push({ loc: origin + '/insights/' + a.slug, pri: '0.7' });
+    });
+  } catch (e) { console.warn('[sitemap] articles failed:', e.message); }
   const today = new Date().toISOString().slice(0, 10);
   res.type('application/xml').send(
 `<?xml version="1.0" encoding="UTF-8"?>
