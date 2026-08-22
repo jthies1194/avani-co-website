@@ -761,17 +761,25 @@ app.get('/api/listing-photo', async (req, res) => {
 // fine here — same as our Supabase and Anthropic API calls.
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = `${BROKERAGE_NAME} <notify@mail.bamacoast.com>`;
+/* Broadcasts go out from a separate subdomain so newsletter volume can never
+   damage the reputation of the mail that HAS to arrive — password resets, review
+   requests, transaction updates. Falls back to the transactional sender until
+   news.bamacoast.com is verified in Resend, so nothing breaks in the meantime. */
+const RESEND_MARKETING_FROM = process.env.RESEND_MARKETING_FROM
+  || `${BROKERAGE_NAME} <news@news.bamacoast.com>`;
+const MARKETING_READY = !!process.env.RESEND_MARKETING_FROM;
 let mailer = null;
 if (RESEND_API_KEY) {
   mailer = {
-    sendMail: async ({ to, subject, text }) => {
+    sendMail: async ({ to, subject, text, marketing }) => {
+      const from = marketing && MARKETING_READY ? RESEND_MARKETING_FROM : RESEND_FROM;
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${RESEND_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ from: RESEND_FROM, to, subject, text }),
+        body: JSON.stringify({ from, to, subject, text }),
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
@@ -2194,6 +2202,7 @@ app.post('/api/broadcast', async (req, res) => {
       try {
         await mailer.sendMail({
           to: lead.email,
+          marketing: true,
           subject,
           text: `Hi ${first},\n\n${intro ? intro + '\n\n' : ''}${items}\n\n`
               + `\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
@@ -3750,13 +3759,14 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v87',
+    serverVersion: 'v88',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
     mlsDataset: process.env.BRIDGE_DATASET || 'gcmls2',
     mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
     emailConfigured: !!mailer,
+    marketingDomainReady: MARKETING_READY,
     aiConfigured: !!ANTHROPIC_API_KEY,
   });
 });
