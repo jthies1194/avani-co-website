@@ -1718,6 +1718,18 @@ app.post('/api/lead/:id/event', async (req, res) => {
    entirely from a link in every message, without anybody's help.
 
    Runs off the same tick as the follow-up sequences — no scheduler on this host. */
+/* ⚠ IDX ATTRIBUTION — MANDATORY, NOT COSMETIC.
+   Any listing shown or sent that is not our own must name the brokerage that
+   listed it. This is a condition of the MLS/IDX licence, and displaying other
+   firms' inventory without it is the kind of thing that costs feed access.
+   Every surface that renders a listing goes through this. */
+function listingCredit(r) {
+  const office = String((r && (r.ListOfficeName || r.listOfficeName)) || '').trim();
+  if (!office) return '';
+  if (office.toLowerCase() === String(BROKERAGE_NAME).toLowerCase()) return '';
+  return 'Listed by ' + office;
+}
+
 function searchFilter(c){
   const parts = [ACTIVE_ONLY];
   const esc = v => String(v).replace(/'/g, "''");
@@ -1891,6 +1903,7 @@ app.post('/api/search/preview-email', async (req, res) => {
     beds: r.BedroomsTotal || null,
     baths: r.BathroomsTotalInteger || null,
     link: `${origin}/?listing=${encodeURIComponent(r.ListingKey || '')}`,
+    credit: listingCredit(r),
   }));
 
   res.json({ ok: true, count: rows.length, label,
@@ -2102,6 +2115,116 @@ function segmentLeads(all, seg, sess) {
     return true;
   });
 }
+
+/* ---------- drafting new articles ----------
+   ⚠ This drafts. It does not publish, and it must not be made to.
+
+   Google's spam policies target scaled content abuse — pages generated at volume
+   primarily to rank. The Master Directive says the same thing in its own words:
+   demonstrate real local expertise rather than looking like generic AI real
+   estate content. A machine posting four Gulf Shores pieces a week walks
+   straight into that, and the penalty lands on the whole domain.
+
+   So: a draft at a time, on a topic the broker picked, published only by a human
+   who has read it. Everything below exists to keep it on that side of the line. */
+
+const TOPIC_BANK = [
+  'What buyers get wrong about flood zones here',
+  'Buying a second home you also want to rent out',
+  'What a home inspection turns up most often on the coast',
+  'Waterfront versus water view, and what the difference costs',
+  'New construction on the Gulf Coast: what to ask the builder',
+  'Why beach listings sit in winter and move in spring',
+  'Buying land in Baldwin County: what to check first',
+  'What retirees ask us most about moving here',
+  'Military relocation to the Gulf Coast',
+  'Downsizing on the Eastern Shore',
+  'What a condo association actually does',
+  'Selling a rental property with bookings on the calendar',
+  'The difference between Baldwin and Mobile County for buyers',
+  'What to look at in a building before you buy in it',
+  'Timing a move around hurricane season',
+];
+
+app.get('/api/article-topics', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const used = (await articlesAll()).map(a => String(a.title || '').toLowerCase());
+  const open = TOPIC_BANK.filter(t =>
+    !used.some(u => u.includes(t.toLowerCase().slice(0, 24))));
+  res.json({ ok: true, topics: open.length ? open : TOPIC_BANK });
+});
+
+app.post('/api/article-draft', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'AI is not configured. Set ANTHROPIC_API_KEY.' });
+  }
+  const topic = String((req.body || {}).topic || '').trim().slice(0, 160);
+  if (!topic) return res.status(400).json({ error: 'Pick a topic.' });
+
+  const existing = (await articlesAll()).map(a => a.title).slice(0, 20);
+
+  /* ⚠ The rules that keep this useful rather than dangerous. The figures rule is
+     the important one: an invented premium or fee is worse than no article. */
+  const system = [
+    'You write short, plain articles for a small real estate brokerage on the',
+    'Alabama Gulf Coast, covering Baldwin County and Mobile County.',
+    '',
+    'Voice: direct, specific, unhurried. Short sentences. No marketing language,',
+    'no "nestled", no "dream home", no exclamation marks, no headings, no lists.',
+    'Write the way a knowledgeable person explains something to a friend.',
+    'American English.',
+    '',
+    'HARD RULES:',
+    '1. Never invent a specific number. No premiums, fees, prices, percentages,',
+    '   interest rates or statistics. Describe how something works and what it',
+    '   depends on. If a figure feels necessary, say what it varies with instead.',
+    '2. Never give insurance, lending, legal or tax advice. Explain the mechanics',
+    '   and say who to ask.',
+    '3. Be specific to this coast — Fort Morgan, Gulf Shores, Orange Beach,',
+    '   Perdido Key, Foley, Fairhope, Daphne, Spanish Fort, Elberta, Baldwin',
+    '   County, Mobile. Anything that would read the same about Florida or Texas',
+    '   is not worth writing.',
+    '4. 350 to 500 words. Paragraphs separated by a blank line.',
+    '5. Do not repeat these existing articles: ' + existing.join('; '),
+    '',
+    'Return ONLY valid JSON, no fences, no preamble:',
+    '{"title":"...","teaser":"one sentence","body":"paragraphs separated by blank lines",',
+    '"topic":"regulated if it touches insurance, lending or tax, otherwise general"}',
+  ].join('\n');
+
+  try {
+    const raw = await callClaude(system, [{ role: 'user', content: 'Write about: ' + topic }], 1800);
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    let d;
+    try { d = JSON.parse(cleaned); }
+    catch (e) { return res.status(502).json({ error: 'The draft came back malformed. Try again.' }); }
+    if (!d || !d.title || !d.body) {
+      return res.status(502).json({ error: 'The draft came back incomplete. Try again.' });
+    }
+
+    /* Belt and braces: if a number slipped through anyway, say so rather than
+       quietly handing the broker something to publish. */
+    const figures = String(d.body).match(/\$[\d,]+|\b\d+(\.\d+)?\s?%/g) || [];
+
+    const draft = {
+      id: 'art_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      title: String(d.title).slice(0, 160),
+      teaser: String(d.teaser || '').slice(0, 500),
+      body: String(d.body).slice(0, 20000),
+      topic: d.topic === 'regulated' ? 'regulated' : 'general',
+      published: false,          // ⚠ never true from here
+      draftedAt: new Date().toISOString(),
+      draftedBy: 'ai',
+    };
+    console.log(`[article-draft] "${draft.title}" for ${sess.name || sess.agentId}`);
+    res.json({ ok: true, article: draft, figuresFound: figures });
+  } catch (e) {
+    console.error('[article-draft]', e.message);
+    res.status(500).json({ error: 'Could not draft that right now.' });
+  }
+});
 
 app.get('/api/articles', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
@@ -2344,8 +2467,10 @@ app.post('/api/drip/tick', async (req, res) => {
           const bb = [r.BedroomsTotal ? r.BedroomsTotal + ' bed' : '',
                       r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' bath' : '']
                       .filter(Boolean).join(', ');
+          const credit = listingCredit(r);
           return `  ${price} \u2014 ${r.UnparsedAddress || 'Address on request'}`
                + (r.City ? `, ${r.City}` : '') + (bb ? `\n    ${bb}` : '')
+               + (credit ? `\n    ${credit}` : '')
                + `\n    ${origin}/?listing=${encodeURIComponent(r.ListingKey)}`;
         }).join('\n\n');
         try {
@@ -3768,7 +3893,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v92',
+    serverVersion: 'v94',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
