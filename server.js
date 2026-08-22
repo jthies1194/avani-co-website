@@ -2137,9 +2137,11 @@ app.get('/c/:leadId/:artId/:tok', async (req, res) => {
   try {
     const arts = await getSetting(ARTICLES_KEY);
     const art = (Array.isArray(arts) ? arts : []).find(a => a.id === artId);
+    const who = String(req.query.a || '').slice(0, 60).replace(/[^a-z0-9-]/gi, '');
     if (art) dest = art.url && /^https?:/.test(art.url)
       ? art.url
-      : `${req.protocol}://${req.get('host')}/insights/${articleSlug(art)}`;
+      : `${req.protocol}://${req.get('host')}/insights/${articleSlug(art)}`
+        + (who ? `?agent=${encodeURIComponent(who)}` : '');
 
     const key = 'lead:' + leadId;
     const lead = await getSetting(key);
@@ -2189,6 +2191,7 @@ app.post('/api/broadcast', async (req, res) => {
   if (!mailer) return res.status(400).json({ error: 'Email is not configured.' });
 
   const origin = `${req.protocol}://${req.get('host')}`;
+  const senderSlug = slugify(sess.name || '');
   const bid = 'bc_' + Date.now().toString(36);
   let sent = 0, failed = 0;
 
@@ -2197,7 +2200,9 @@ app.post('/api/broadcast', async (req, res) => {
     await Promise.all(chunk.map(async ({ key, lead }) => {
       const first = String(lead.name || '').trim().split(/\s+/)[0] || 'there';
       const items = arts.map(a => {
-        const link = `${origin}/c/${lead.id}/${a.id}/${clickToken(lead.id, a.id)}`;
+        // ?a= is the sending agent, so a lead from this email lands on them
+        const link = `${origin}/c/${lead.id}/${a.id}/${clickToken(lead.id, a.id)}`
+          + (senderSlug ? `?a=${encodeURIComponent(senderSlug)}` : '');
         return `${a.title}\n${a.teaser}\n${link}`;
       }).join('\n\n');
       const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
@@ -3761,7 +3766,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v89',
+    serverVersion: 'v90',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4341,7 +4346,12 @@ async function articlesAll() {
   return list.map(a => Object.assign({}, a, { slug: articleSlug(a) }));
 }
 
-function articleSeoHtml(a, origin) {
+/* An article reached through an agent's newsletter belongs to that agent. The
+   page carries ?agent=<slug> straight through to the call-to-action, so a lead
+   created from it lands on them and not on the brokerage. Attribution here is
+   the same rule as everywhere else: it does not expire and it is not silently
+   handed back. */
+function articleSeoHtml(a, origin, agentSlug) {
   const url = `${origin}/insights/${a.slug}`;
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -4403,7 +4413,7 @@ ${paras}
   <h2>Want this answered for a specific address?</h2>
   <p>Averages are only useful up to a point. Tell us the street or the building and
      we will give you the real numbers for it.</p>
-  <a class="btn" href="${origin}/?ask=${encodeURIComponent(a.slug)}">Ask about a property</a>
+  <a class="btn" href="${origin}/?ask=${encodeURIComponent(a.slug)}${agentSlug ? '&agent=' + encodeURIComponent(agentSlug) : ''}">Ask about a property</a>
 </div>
 <div class="ft">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}<br>
 ${esc(BROKERAGE_ADDRESS)}<br>
@@ -4437,7 +4447,8 @@ app.get('/insights/:slug', async (req, res, next) => {
     const list = await articlesAll();
     const a = list.find(x => x.slug === req.params.slug);
     if (!a) return next();
-    res.type('html').send(articleSeoHtml(a, `${req.protocol}://${req.get('host')}`));
+    const who = String(req.query.agent || '').slice(0, 60).replace(/[^a-z0-9-]/gi, '');
+    res.type('html').send(articleSeoHtml(a, `${req.protocol}://${req.get('host')}`, who));
   } catch (e) { next(); }
 });
 
