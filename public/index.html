@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v212">
+<meta name="build" content="index-v213">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3859,7 +3859,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v212';
+window.BUILD = 'index-v213';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -18091,6 +18091,7 @@ function dcCloseEditor(){
 
 function dcRenderEditor(){
   if(!dcEditing) return;
+  try{ dcPlaybookOptions(); }catch(e){}
   document.getElementById('dc-name').value = dcEditing.name || '';
   const sel = document.getElementById('dc-trigger');
   sel.innerHTML = DC_TRIGGERS.map(([v,l]) =>
@@ -18133,6 +18134,50 @@ function dcDropStep(i){
   dcEditing.steps.splice(i,1);
   dcRenderEditor();
 }
+/* ---------- start a sequence from a playbook ----------
+   The playbooks were built with real copy — seven steps, SMS/email/task, day
+   offsets, tokens — and the sequence editor was built separately and starts
+   empty. Two finished features that were never wired together, so every agent
+   was retyping from scratch. This loads a playbook straight into the steps. */
+async function dcPlaybookOptions(){
+  const sel = document.getElementById('dc-from-pb');
+  if(!sel) return;
+  try{
+    if(!Array.isArray(pbList) || !pbList.length){
+      const r = await fetch('/api/playbooks');
+      if(r.ok){ const d = await r.json(); pbList = d.playbooks || []; }
+    }
+  }catch(e){}
+  sel.innerHTML = '<option value="">Start from scratch\u2026</option>' +
+    (pbList || []).map(pb =>
+      `<option value="${escapeHtml(pb.id)}">${escapeHtml(pb.name)} \u00b7 ${
+        (pb.steps||[]).length} steps</option>`).join('');
+}
+
+function dcLoadPlaybook(id){
+  if(!id || !dcEditing) return;
+  const pb = (pbList || []).find(p => p.id === id);
+  if(!pb || !Array.isArray(pb.steps)) return;
+  if(dcEditing.steps.length &&
+     !confirm('Replace the steps below with the "' + pb.name + '" playbook?')) {
+    const sel = document.getElementById('dc-from-pb'); if(sel) sel.value = '';
+    return;
+  }
+  /* Playbook channels are sms/email/task; the sequence editor sends email or
+     sets a reminder. A text step becomes a reminder to send it by hand, because
+     texting without written consent is the one thing we will not automate. */
+  dcEditing.steps = pb.steps.map((st, i) => ({
+    id: 's' + Date.now().toString(36) + i,
+    day: Number(st.d) || 0,
+    type: st.ch === 'email' ? 'email' : 'task',
+    subject: st.s || '',
+    body: st.ch === 'sms' ? 'Text them: ' + (st.t || '') : (st.t || ''),
+  }));
+  if(!dcEditing.name) dcEditing.name = pb.name;
+  dcRenderEditor();
+  showToast('Loaded "' + pb.name + '" \u2014 edit anything before saving.');
+}
+
 function dcAddStep(){
   const last = dcEditing.steps[dcEditing.steps.length-1];
   dcEditing.steps.push({ id:'s'+Date.now().toString(36),
@@ -18197,6 +18242,8 @@ async function dripTick(){
   <div class="field"><label>Call it</label>
     <input id="dc-name" placeholder="New inquiry &mdash; first two weeks"></div>
   <div class="field"><label>Starts when</label><select id="dc-trigger"></select></div>
+  <div class="field" style="grid-column:1/-1"><label>Start from a playbook</label>
+    <select id="dc-from-pb" onchange="dcLoadPlaybook(this.value)"></select></div>
 </div>
 <div id="dc-steps" style="max-height:46vh;overflow:auto"></div>
 <button class="btn-sm" onclick="dcAddStep()" style="margin-top:6px">+ Add a step</button>
@@ -19030,8 +19077,18 @@ body.crm-dark .lc-setup{background:#232A44;border-color:#4A57B8}
 /* extra filters */
 .ss-extras{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;
   margin-top:4px}
+/* ⚠ A single flex row put a two-word label ("Garage spaces") against a fixed
+   62px input and the text ran straight through the box. Column layout at narrow
+   widths, and the number field no longer fights the label for space. */
 .ss-x{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;
-  padding:8px 10px;font-size:13px;background:var(--paper)}
+  padding:8px 10px;font-size:13px;background:var(--paper);min-width:0}
+.ss-x{flex-wrap:wrap}
+.ss-x input[type=number]{flex:0 0 auto}
+@media(max-width:560px){
+  .ss-x{align-items:flex-start;flex-direction:column;gap:5px}
+  .ss-x input[type=number]{margin-left:0;width:100%}
+  .ss-x .miss{margin-left:0}
+}
 .ss-x.off{opacity:.42}
 .ss-x input[type=checkbox]{width:auto;margin:0}
 .ss-x input[type=number]{width:62px;padding:4px 6px;border:1px solid rgba(27,32,67,.2);
