@@ -2120,9 +2120,14 @@ function clickToken(leadId, artId) {
    reach their own people, and "everyone" has to be asked for by name. */
 function segmentLeads(all, seg, sess) {
   const staff = isStaff(sess);
+  /* Hand-picked recipients. Still filtered by the same ownership rule below, so
+     naming somebody else's lead in the list does not reach them. */
+  const picked = Array.isArray(seg.leadIds) && seg.leadIds.length
+    ? seg.leadIds.map(String) : null;
   return all.filter(({ lead }) => {
     if (!lead.email || lead.unsubscribed) return false;
     if (!staff && lead.assignedAgentId !== sess.agentId) return false;
+    if (picked && !picked.includes(String(lead.id))) return false;
     if (seg.agentId && lead.assignedAgentId !== seg.agentId) return false;
     if (seg.lane && (lead.lane || 'steady') !== seg.lane) return false;
     if (seg.stage && lead.stage !== seg.stage) return false;
@@ -2330,6 +2335,7 @@ app.post('/api/broadcast', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const b = req.body || {};
   const seg = b.segment || {};
+  if (Array.isArray(b.leadIds) && b.leadIds.length) seg.leadIds = b.leadIds.slice(0, 200);
   const ids = Array.isArray(b.articleIds) ? b.articleIds.slice(0, 6) : [];
   const subject = String(b.subject || '').trim().slice(0, 160);
   const intro = String(b.intro || '').trim().slice(0, 1200);
@@ -4150,7 +4156,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v104',
+    serverVersion: 'v105',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
