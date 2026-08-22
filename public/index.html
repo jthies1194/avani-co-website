@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v209">
+<meta name="build" content="index-v212">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2358,10 +2358,15 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 #crm-main.crm-wrap{max-width:none;padding:0;display:block;background:var(--pp)}
 
 /* ---- the bar ---- */
-#crm-rail{background:linear-gradient(120deg,var(--rl2),var(--rl) 70%);
-  position:sticky;top:0;z-index:55;padding:10px 22px 0;
-  border-bottom:1px solid rgba(200,155,78,.45);
+/* z-index 60 clears the site header (.topbar is 50) — below that the tabs slid
+   under the banner on every scroll. The marketing header is hidden in the CRM
+   entirely (body.in-crm #hdr), which is what finally gives the tabs the top. */
+#crm-rail{background:var(--rl);position:sticky;top:0;z-index:60;padding:9px 22px 0;
+  border-bottom:1px solid rgba(200,155,78,.55);
+  box-shadow:0 2px 14px rgba(14,20,51,.18);
   display:flex;flex-wrap:wrap;align-items:center;gap:0 16px}
+body.in-crm #hdr{display:none}
+body.in-crm .topbar{display:none}
 #crm-rail .mk{padding:0;border:none;flex:0 0 auto;margin-right:6px}
 #crm-rail .mk .n{font-family:'Fraunces',Georgia,serif;font-size:17px;color:#fff;
   letter-spacing:-.02em;line-height:1.1;font-weight:400}
@@ -2384,7 +2389,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   border-bottom:none;margin:9px 0 0;padding:0}
 #crm-main .crm-nav button{display:inline-flex;align-items:center;gap:7px;width:auto;
   padding:8px 13px;margin:0;border:none;border-radius:5px 5px 0 0;background:transparent;
-  color:rgba(231,233,242,.72);font-size:12.5px;font-weight:500;letter-spacing:0;
+  color:rgba(233,236,246,.88);font-size:12.5px;font-weight:600;letter-spacing:0;
   text-transform:none;position:relative;transform:none;box-shadow:none;transition:.14s}
 #crm-main .crm-nav button:hover{background:rgba(255,255,255,.07);color:#fff;transform:none}
 #crm-main .crm-nav button.on{background:var(--pp);color:var(--rl)}
@@ -2408,7 +2413,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 #crm-main .idea-row{order:10;width:100%;display:flex;align-items:center;gap:12px;
   padding:0 0 8px;margin:0;background:transparent}
 #crm-main #crm-version{font-size:10.5px;letter-spacing:.05em;
-  color:rgba(231,233,242,.45)!important;font-variant-numeric:tabular-nums}
+  color:rgba(233,236,246,.6)!important;font-variant-numeric:tabular-nums}
 #crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:5px 12px;font-size:11.5px;
   font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
   background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
@@ -3166,6 +3171,9 @@ return json.keys || [];
 function switchView(v){
 document.getElementById('view-site').classList.toggle('active', v==='site');
 document.getElementById('view-crm').classList.toggle('active', v==='crm');
+/* The marketing header belongs to the public site. Inside the CRM it only ate
+   the top of the screen and the tabs kept sliding underneath it. */
+document.body.classList.toggle('in-crm', v==='crm');
 document.getElementById('chat-fab').style.display = v==='site' ? 'flex' : 'none';
 if(v==='crm'){ document.getElementById('chat-panel').classList.remove('open'); initCRM(); }
 // the workspace tint belongs to the CRM only \u2014 never leave it on the public site
@@ -3851,7 +3859,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v209';
+window.BUILD = 'index-v212';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4145,6 +4153,7 @@ try{
     brokerIdentity ? 'Previewing \u00b7 ' + (currentAgent.role || '') : (currentAgent.role || '');
 }catch(e){}
 renderImpersonationBanner();
+try{ sxLiftPanels(); }catch(e){}
 if(typeof renderCrmNav === 'function'){ renderCrmNav(); showCrmSection(crmSection); }
 if(typeof renderAgentSwitcher === 'function') renderAgentSwitcher();
 if(typeof loadCelebrations === 'function') loadCelebrations();
@@ -7242,6 +7251,7 @@ function showCrmSection(id){
     if(id === 'sec-commissions') loadClosedDeals();
     if(id === 'sec-expenses')    loadExpenses();
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
+    try{ sxRenderPanels(id); }catch(e){}
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
       /* ⚠ renderNotify was only ever called from a `.setup-head` click handler,
@@ -7624,6 +7634,45 @@ const SECTION_META = {
   'sec-myprofile':  { eyebrow:'Your file',  title:'My details',       blurb:'The information the brokerage is required to hold for you. Only the broker can see it.' },
   'sec-password':   { eyebrow:'Security',   title:'My password',      blurb:'Change the password you use to sign in to this CRM.' },
 };
+
+/* ---------- panels inside a CRM section ----------
+   ⚠ `.crm-sec .setup-head{display:none}` and `.setup-body{display:block!important}`
+   mean the collapsible pattern does not exist inside a section: the title is
+   invisible and the click handler that renders the body can never fire. Panels
+   copied from elsewhere therefore show a headerless "Loading…" forever — it hid
+   the notification switches, and it hid follow-up sequences, listing alerts and
+   openers in the Leads tab. Rather than fix each one, lift every title out of its
+   dead head once and remember the render function so the section can call it. */
+function sxLiftPanels(){
+  document.querySelectorAll('.crm-sec .setup-head').forEach(head => {
+    const panel = head.parentNode;
+    if(!panel) return;
+    const h3 = head.querySelector('h3');
+    const oc = head.getAttribute('onclick') || '';
+    const fns = [];
+    (oc.match(/\b(?:render|load)[A-Za-z0-9_]*\s*\(\)/g) || [])
+      .forEach(m => { const n = m.replace(/\s*\(\)$/,''); if(!fns.includes(n)) fns.push(n); });
+    if(fns.length) panel.dataset.sxRender = fns.join(',');
+    if(h3){
+      const t = document.createElement('h3');
+      t.className = 'sx-h';
+      // strip the decorative glyph the old head carried
+      t.textContent = (h3.textContent || '').replace(/^[^A-Za-z0-9]+/, '').trim();
+      panel.insertBefore(t, head);
+    }
+    head.remove();
+  });
+}
+
+function sxRenderPanels(sectionId){
+  const sec = document.getElementById(sectionId);
+  if(!sec) return;
+  sec.querySelectorAll('.setup-panel[data-sx-render]').forEach(panel => {
+    panel.dataset.sxRender.split(',').forEach(n => {
+      try{ if(typeof window[n] === 'function') window[n](); }catch(e){}
+    });
+  });
+}
 
 function injectSectionHeader(id){
   const el = document.getElementById(id);
@@ -18260,8 +18309,10 @@ async function ssDelete(id){
 /* Show the agent what the lead would receive, before anything is sent. */
 const SS_EXTRAS = [
   ['pool','Pool','bool'], ['waterfront','Waterfront','bool'],
+  ['view','Has a view','bool'], ['newConstruction','New construction','bool'],
   ['garage','Garage spaces','min'], ['stories','Stories','min'],
-  ['acres','Acres','min'], ['sqft','Sq ft','min'],
+  ['acres','Acres','min'], ['sqft','Sq ft, least','min'],
+  ['maxSqft','Sq ft, most','max'],
   ['yearBuilt','Built after','min'], ['noHoa','No HOA','bool'],
   ['maxHoa','HOA under','max'],
 ];
@@ -18325,7 +18376,8 @@ function ssCriteria(){
   const g = id => (document.getElementById(id)||{}).value.trim();
   const c = { name:g('ss-name'), email:g('ss-email'), pace:g('ss-pace'),
     cities: ssTowns.slice(), type:g('ss-type'),
-    minPrice:g('ss-min'), maxPrice:g('ss-max'), beds:g('ss-beds') };
+    minPrice:g('ss-min'), maxPrice:g('ss-max'),
+    beds:g('ss-beds'), baths:g('ss-baths') };
   SS_EXTRAS.forEach(([k,,kind]) => {
     const el = document.getElementById('ss-x-' + k);
     if(!el || el.disabled) return;
@@ -18485,6 +18537,7 @@ document.addEventListener('DOMContentLoaded', () => { try{ maybeOpenFeedPrefs();
   <div class="field"><label>Least</label><input id="ss-min" inputmode="numeric" placeholder="300000"></div>
   <div class="field"><label>Most</label><input id="ss-max" inputmode="numeric" placeholder="650000"></div>
   <div class="field"><label>Beds, minimum</label><input id="ss-beds" inputmode="numeric" placeholder="2"></div>
+  <div class="field"><label>Baths, minimum</label><input id="ss-baths" inputmode="decimal" placeholder="2"></div>
   <div class="field"><label>Kind</label>
     <select id="ss-type"><option value="">Anything</option>
       <option>Residential</option><option>Land</option><option>Commercial</option></select></div>
@@ -18846,8 +18899,27 @@ async function ntToggle(k){
 #crm-main .lc-acts button{border:1px solid var(--hair);background:#fff;border-radius:3px;
   font-size:11.5px;font-weight:600;color:var(--mut);padding:7px 4px}
 #crm-main .lc-acts button:hover{background:var(--rl);border-color:var(--rl);color:#fff}
-#crm-main .lc-running span{border-radius:2px;font-size:10.5px;letter-spacing:.05em;
+/* ⚠ Direct children only. Written as `.lc-running span` this also matched the
+   three nested spans inside the "Set up listing alerts" button and forced them
+   to 10.5px uppercase with padding, pushing the label straight out of its box
+   at narrow widths. Descendant selectors reach further than they look. */
+#crm-main .lc-running > span{border-radius:2px;font-size:10.5px;letter-spacing:.05em;
   font-weight:700;text-transform:uppercase;padding:3px 9px}
+#crm-main .lc-setup{border-radius:4px;background:#fff;border:1px solid rgba(200,155,78,.55);
+  padding:12px 14px;align-items:center;flex-wrap:nowrap}
+#crm-main .lc-setup:hover{border-color:var(--gd);background:var(--gd-pale);
+  box-shadow:none;transform:none}
+#crm-main .lc-setup .i,#crm-main .lc-setup .go{color:var(--gd);font-size:15px;
+  padding:0;letter-spacing:0;text-transform:none;font-weight:400}
+#crm-main .lc-setup .t{flex:1;min-width:0;padding:0;letter-spacing:0;text-transform:none}
+#crm-main .lc-setup .t b{font-size:13px;color:var(--rl);letter-spacing:0;
+  text-transform:none;font-weight:700;display:block}
+#crm-main .lc-setup .t small{font-size:11.5px;color:var(--mut);letter-spacing:0;
+  text-transform:none;font-weight:400;display:block;margin-top:2px}
+@media(max-width:520px){
+  #crm-main .lc-setup .go{display:none}
+  #crm-main .lc-setup .t small{white-space:normal}
+}
 #crm-main .lc-flag{font-size:11.5px;color:var(--mut);margin-top:5px;font-style:italic}
 
 /* stage filter pills and the stat strip, same family */
