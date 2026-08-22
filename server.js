@@ -1608,6 +1608,7 @@ const SCORE_EVENTS = {
   seller_definite:  { pts: 25, why: 'has definite plans to sell' },
   timeline_90:      { pts: 20, why: 'moving within 90 days' },
   financing:        { pts: 15, why: 'mentioned financing or pre-approval' },
+  article_click:    { pts:  6, why: 'read something we sent' },
   favorited:        { pts:  8, why: 'saved a property' },
   visits_multi:     { pts:  8, why: 'been back to the site several times' },
   repeat_view:      { pts:  5, why: 'looked at the same property again' },
@@ -2051,6 +2052,183 @@ function dripDue(lead, campaign, now){
   return (campaign.steps || [])
     .filter(st => st.day <= days && !done.includes(st.id));
 }
+
+/* ================= CONTENT LIBRARY & BROADCAST =================
+   The difference between an agent remembering to nurture forty people and the
+   system doing it for four hundred.
+
+   Three parts, and the third is the one that pays for the other two:
+     1. Articles live in settings:articles. Written once, sent to a segment.
+     2. A broadcast goes to a chosen slice of leads, not to everybody by default.
+     3. Every link is tracked, and a click writes a scoring event on the lead.
+        That is what makes this more than a newsletter: a click feeds the same
+        event log the lanes read, so somebody who reads three pieces in a week
+        moves to the fast lane and surfaces on the agent's list by themselves.
+
+   ⚠ CAN-SPAM applies to every one of these. Physical address, honest subject and
+   a working unsubscribe in each send — all three are built in below, not left to
+   whoever writes the article. */
+
+const ARTICLES_KEY = 'settings:articles';
+const BROADCAST_LOG = 'settings:broadcasts';
+const SEND_CHUNK = 25;              // Resend does not love 400 at once
+const SEND_PAUSE = 1100;            // ms between chunks
+
+function clickToken(leadId, artId) {
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('click:' + leadId + ':' + artId).digest('hex').slice(0, 20);
+}
+
+/* Who a broadcast actually goes to. Deliberately explicit: an agent can only
+   reach their own people, and "everyone" has to be asked for by name. */
+function segmentLeads(all, seg, sess) {
+  const staff = isStaff(sess);
+  return all.filter(({ lead }) => {
+    if (!lead.email || lead.unsubscribed) return false;
+    if (!staff && lead.assignedAgentId !== sess.agentId) return false;
+    if (seg.agentId && lead.assignedAgentId !== seg.agentId) return false;
+    if (seg.lane && (lead.lane || 'steady') !== seg.lane) return false;
+    if (seg.stage && lead.stage !== seg.stage) return false;
+    if (seg.type && String(lead.type || '') !== seg.type) return false;
+    if (seg.minScore && (lead.score || 0) < Number(seg.minScore)) return false;
+    return true;
+  });
+}
+
+app.get('/api/articles', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const saved = await getSetting(ARTICLES_KEY);
+  res.json({ ok: true, articles: Array.isArray(saved) ? saved : [] });
+});
+
+app.post('/api/articles', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  const list = Array.isArray((req.body || {}).articles) ? req.body.articles : null;
+  if (!list) return res.status(400).json({ error: 'Send an articles array.' });
+  const clean = list.slice(0, 200).map(a => ({
+    id: String(a.id || 'art_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    title: String(a.title || '').slice(0, 160),
+    teaser: String(a.teaser || '').slice(0, 500),
+    body: String(a.body || '').slice(0, 20000),
+    url: String(a.url || '').slice(0, 400),
+    image: String(a.image || '').slice(0, 400),
+    updatedAt: new Date().toISOString(),
+  })).filter(a => a.title);
+  await setSetting(ARTICLES_KEY, clean);
+  res.json({ ok: true, articles: clean });
+});
+
+/* A click is the whole point. It redirects, and on the way it writes the event
+   that the score and the lane engine both read. */
+app.get('/c/:leadId/:artId/:tok', async (req, res) => {
+  const { leadId, artId, tok } = req.params;
+  const fallback = '/';
+  if (tok !== clickToken(leadId, artId)) return res.redirect(fallback);
+  let dest = fallback;
+  try {
+    const arts = await getSetting(ARTICLES_KEY);
+    const art = (Array.isArray(arts) ? arts : []).find(a => a.id === artId);
+    if (art && art.url) dest = art.url;
+
+    const key = 'lead:' + leadId;
+    const lead = await getSetting(key);
+    if (lead) {
+      lead.events = Array.isArray(lead.events) ? lead.events : [];
+      lead.events.push({ k: 'article_click', at: new Date().toISOString(),
+        note: (art && art.title || '').slice(0, 120) });
+      lead.lastActivity = new Date().toISOString();
+      const { score, band } = leadScore(lead);
+      lead.score = score; lead.band = band.key;
+      try { laneApply(lead, Date.now()); } catch (e) {}
+      await setSetting(key, lead);
+      console.log(`[click] ${lead.name || leadId} opened "${art && art.title || artId}"`);
+    }
+  } catch (e) { console.error('[click]', e.message); }
+  res.redirect(dest);
+});
+
+app.post('/api/broadcast', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const seg = b.segment || {};
+  const ids = Array.isArray(b.articleIds) ? b.articleIds.slice(0, 6) : [];
+  const subject = String(b.subject || '').trim().slice(0, 160);
+  const intro = String(b.intro || '').trim().slice(0, 1200);
+  const dryRun = b.dryRun !== false;      // ⚠ default is DRY. Sending 400 emails by accident is unrecoverable.
+
+  if (!subject) return res.status(400).json({ error: 'A subject line, at least.' });
+  if (!ids.length) return res.status(400).json({ error: 'Pick at least one article.' });
+
+  let arts = await getSetting(ARTICLES_KEY);
+  arts = (Array.isArray(arts) ? arts : []).filter(a => ids.includes(a.id));
+  if (!arts.length) return res.status(400).json({ error: 'Those articles no longer exist.' });
+
+  let all = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    all = (data || []).map(r => ({ key: r.key, lead: r.value })).filter(x => x.lead);
+  } catch (e) { return res.status(500).json({ error: 'Could not read leads.' }); }
+
+  const recipients = segmentLeads(all, seg, sess);
+  if (dryRun) {
+    return res.json({ ok: true, dryRun: true, wouldSend: recipients.length,
+      sample: recipients.slice(0, 5).map(r => r.lead.email) });
+  }
+  if (!mailer) return res.status(400).json({ error: 'Email is not configured.' });
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const bid = 'bc_' + Date.now().toString(36);
+  let sent = 0, failed = 0;
+
+  for (let i = 0; i < recipients.length; i += SEND_CHUNK) {
+    const chunk = recipients.slice(i, i + SEND_CHUNK);
+    await Promise.all(chunk.map(async ({ key, lead }) => {
+      const first = String(lead.name || '').trim().split(/\s+/)[0] || 'there';
+      const items = arts.map(a => {
+        const link = `${origin}/c/${lead.id}/${a.id}/${clickToken(lead.id, a.id)}`;
+        return `${a.title}\n${a.teaser}\n${link}`;
+      }).join('\n\n');
+      const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+      try {
+        await mailer.sendMail({
+          to: lead.email,
+          subject,
+          text: `Hi ${first},\n\n${intro ? intro + '\n\n' : ''}${items}\n\n`
+              + `\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
+              + `${BROKERAGE_ADDRESS}\n\nNo longer want these? ${unsub}`,
+        });
+        sent++;
+        lead.broadcasts = Array.isArray(lead.broadcasts) ? lead.broadcasts : [];
+        lead.broadcasts.unshift({ id: bid, subject, at: new Date().toISOString() });
+        lead.broadcasts = lead.broadcasts.slice(0, 30);
+        await setSetting(key, lead);
+      } catch (e) { failed++; console.error('[broadcast]', lead.email, e.message); }
+    }));
+    if (i + SEND_CHUNK < recipients.length) {
+      await new Promise(r => setTimeout(r, SEND_PAUSE));
+    }
+  }
+
+  try {
+    const log = await getSetting(BROADCAST_LOG);
+    const arr = Array.isArray(log) ? log : [];
+    arr.unshift({ id: bid, subject, articleIds: ids, segment: seg,
+      sent, failed, by: sess.name || sess.agentId, at: new Date().toISOString() });
+    await setSetting(BROADCAST_LOG, arr.slice(0, 100));
+  } catch (e) {}
+
+  console.log(`[broadcast] "${subject}" \u2014 ${sent} sent, ${failed} failed`);
+  res.json({ ok: true, sent, failed, broadcastId: bid });
+});
+
+app.get('/api/broadcasts', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  const log = await getSetting(BROADCAST_LOG);
+  res.json({ ok: true, broadcasts: Array.isArray(log) ? log : [] });
+});
 
 function unsubToken(leadId){
   return crypto.createHmac('sha256', HR_KEY || 'fallback')
@@ -3572,7 +3750,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v86',
+    serverVersion: 'v87',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
