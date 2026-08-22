@@ -2228,8 +2228,14 @@ app.post('/api/article-draft', async (req, res) => {
 
 app.get('/api/articles', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
-  const saved = await getSetting(ARTICLES_KEY);
-  res.json({ ok: true, articles: Array.isArray(saved) ? saved : [] });
+  const origin = `${req.protocol}://${req.get('host')}`;
+  // the preview link is how a draft gets read before anyone decides to publish it
+  const list = (await articlesAll()).map(a => Object.assign({}, a, {
+    liveUrl: `${origin}/insights/${a.slug}`,
+    previewUrl: `${origin}/insights/${a.slug}?preview=${previewToken(a.slug)}`,
+    regulated: articleRegulated(a),
+  }));
+  res.json({ ok: true, articles: list });
 });
 
 app.post('/api/articles', async (req, res) => {
@@ -2244,6 +2250,10 @@ app.post('/api/articles', async (req, res) => {
     body: String(a.body || '').slice(0, 20000),
     url: String(a.url || '').slice(0, 400),
     image: String(a.image || '').slice(0, 400),
+    /* ⚠ These two were being dropped on every save, which silently unpublished
+       anything the broker had turned on and lost the disclaimer classification. */
+    published: a.published === true,
+    topic: a.topic === 'regulated' ? 'regulated' : (a.topic === 'general' ? 'general' : ''),
     updatedAt: new Date().toISOString(),
   })).filter(a => a.title);
   await setSetting(ARTICLES_KEY, clean);
@@ -3893,7 +3903,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v94',
+    serverVersion: 'v95',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
