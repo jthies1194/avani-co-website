@@ -3003,6 +3003,42 @@ app.post('/api/review', async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- campaign attribution on the server ----------
+   The client stamps leads it creates. This covers the ones that arrive through
+   the API — the public lead form and anything added later — so a campaign can
+   never be lost just because a new form forgot to call stampLead(). */
+function cleanCampaign(c) {
+  if (!c || typeof c !== 'object') return null;
+  const keep = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content',
+                'gclid','fbclid','msclkid','ttclid','li_fat_id',
+                'referrer','landedOn','at'];
+  const one = o => {
+    if (!o || typeof o !== 'object') return null;
+    const out = {};
+    keep.forEach(k => { if (o[k]) out[k] = String(o[k]).slice(0, 300); });
+    return Object.keys(out).length ? out : null;
+  };
+  const first = one(c.first) || one(c);
+  const last = one(c.last);
+  if (!first && !last) return null;
+  return last ? { first, last } : { first };
+}
+
+/* A campaign in words, for the lead card: "Facebook · gulf-shores-condos". */
+function campaignLabel(c) {
+  const f = c && (c.first || c);
+  if (!f) return '';
+  const bits = [];
+  if (f.utm_source) bits.push(f.utm_source);
+  if (f.utm_campaign) bits.push(f.utm_campaign);
+  if (!bits.length && f.gclid) bits.push('Google Ads');
+  if (!bits.length && f.fbclid) bits.push('Facebook');
+  if (!bits.length && f.referrer) {
+    try { bits.push(new URL(f.referrer).hostname.replace(/^www\./, '')); } catch (e) {}
+  }
+  return bits.join(' \u00b7 ');
+}
+
 /* ---------- ideas from the people using this every day ----------
    One button in the CRM, straight to the broker. Deliberately its own route
    rather than a kv key an agent may write: settings:ideas is not in
@@ -3722,7 +3758,9 @@ app.post('/api/notify-lead', async (req, res) => {
     console.error('[lead notification] FAILED — no destination address. Set NOTIFY_EMAIL, or make sure a broker exists in the agents table.');
     return res.status(500).json({ error: 'No notification address configured.' });
   }
-  const { name, email, phone, message, source, listingLabel } = req.body || {};
+  const { name, email, phone, message, source, listingLabel, campaign } = req.body || {};
+  // where they came from belongs in the alert — it is the first thing worth knowing
+  const camp = campaignLabel(cleanCampaign(campaign));
   try {
     await mailer.sendMail({
       to: notifyTo,
@@ -3732,6 +3770,7 @@ app.post('/api/notify-lead', async (req, res) => {
         `Email: ${email || ''}`,
         `Phone: ${phone || ''}`,
         `Source: ${source || ''}`,
+        camp ? `Came from: ${camp}` : null,
         listingLabel ? `Listing: ${listingLabel}` : null,
         `Message: ${message || ''}`,
       ].filter(Boolean).join('\n'),
@@ -4108,7 +4147,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v98',
+    serverVersion: 'v102',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
