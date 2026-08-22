@@ -4175,7 +4175,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v106',
+    serverVersion: 'v108',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5234,6 +5234,23 @@ app.get('/insights/:slug', async (req, res, next) => {
   } catch (e) { next(); }
 });
 
+/* The switch that decides whether the world can find this place. Broker only, and
+   deliberately explicit — the site being reachable and the site being discoverable
+   are different things, and confusing them costs months of search traffic. */
+app.get('/api/site-mode', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.json({ ok: true, private: await siteIsPrivate() });
+});
+
+app.post('/api/site-mode', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  const wantPrivate = (req.body || {}).private !== false;
+  await setSetting('settings:siteMode', wantPrivate ? 'private' : 'live');
+  console.log(`[site] switched to ${wantPrivate ? 'PRIVATE' : 'LIVE'} by ${sess.name || sess.agentId}`);
+  res.json({ ok: true, private: wantPrivate });
+});
+
 app.get('/robots.txt', async (req, res) => {
   const origin = `${req.protocol}://${req.get('host')}`;
   if (await siteIsPrivate()) {
@@ -5276,7 +5293,29 @@ ${urls.map(u => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><priority>
 });
 
 // ---------- static site ----------
-app.use(express.static(path.join(__dirname, 'public')));
+/* ⚠ Served with no cache headers, index.html could sit in an intermediate cache for
+   ten or twenty minutes after a deploy — long enough to look like a fix did not work,
+   and the single biggest time sink in these sessions. A hard reload does not help,
+   because the stale copy is upstream of the browser.
+
+   index.html must be revalidated every time (it is the whole app, and it changes on
+   every deploy). Everything else is fingerprinted or rarely changes, so it can be
+   cached properly. */
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders(res, filePath) {
+    if (/index\.html$/i.test(filePath)) {
+      res.set('Cache-Control', 'no-cache, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    } else if (/\.(jpg|jpeg|png|gif|webp|svg|ico|woff2?|ttf)$/i.test(filePath)) {
+      res.set('Cache-Control', 'public, max-age=604800');   // a week for images and fonts
+    } else {
+      res.set('Cache-Control', 'public, max-age=3600');
+    }
+  },
+}));
 
 // Anything that isn't a file or an API call is treated as an agent slug and
 // handed to the app, which resolves it client-side.
