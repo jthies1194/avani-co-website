@@ -771,7 +771,7 @@ const MARKETING_READY = !!process.env.RESEND_MARKETING_FROM;
 let mailer = null;
 if (RESEND_API_KEY) {
   mailer = {
-    sendMail: async ({ to, subject, text, marketing }) => {
+    sendMail: async ({ to, subject, text, html, marketing }) => {
       const from = marketing && MARKETING_READY ? RESEND_MARKETING_FROM : RESEND_FROM;
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -779,7 +779,9 @@ if (RESEND_API_KEY) {
           'Authorization': `Bearer ${RESEND_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ from, to, subject, text }),
+        // ⚠ html is optional; when present Resend sends multipart and `text` is the
+      //   fallback for clients that will not render it.
+      body: JSON.stringify(html ? { from, to, subject, text, html } : { from, to, subject, text }),
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
@@ -1906,7 +1908,21 @@ app.post('/api/search/preview-email', async (req, res) => {
     credit: listingCredit(r),
   }));
 
-  res.json({ ok: true, count: rows.length, label,
+  /* ⚠ The preview renders the SAME builder the send uses, so what the agent
+     approves is literally the email. A preview that drifts from the send is
+     worse than no preview. */
+  const previewHtml = listingEmailHtml({
+    first: name,
+    intro: `New since I last wrote, matching ${label}.`,
+    rows: rows.slice(0, 6),
+    origin,
+    agentName: sess.name || '',
+    agentSlug: slugify(sess.name || ''),
+    unsub: `${origin}/`,
+    more: rows.length > 6 ? `Plus ${rows.length - 6} more \u2014 reply and I will send them over.` : '',
+  });
+
+  res.json({ ok: true, count: rows.length, label, html: previewHtml,
     subject: rows.length === 1 ? `One new listing \u2014 ${label}`
            : `${rows.length} new listings \u2014 ${label}`,
     greeting: `Hi ${name},`,
@@ -2400,6 +2416,87 @@ app.get('/api/broadcasts', async (req, res) => {
     broadcasts: isStaff(sess) ? all : all.filter(b => b.by === who) });
 });
 
+/* ---------- listing cards for email ----------
+   ⚠ Tables and inline styles only. Email clients do not support flex, grid, or
+   external stylesheets, and Outlook ignores most of what a browser accepts.
+   Photos go through /api/listing-photo so the URL is stable, host-allowlisted
+   and on our own domain — MLS media URLs expire and get blocked. */
+function listingPhotoUrl(r, origin) {
+  const media = Array.isArray(r && r.Media) ? r.Media : [];
+  const first = media
+    .map(m => (typeof m === 'string' ? m : (m && (m.MediaURL || m.MediaUrl))))
+    .find(u => typeof u === 'string' && /^https:/.test(u));
+  return first ? `${origin}/api/listing-photo?u=${encodeURIComponent(first)}` : '';
+}
+
+function listingCardHtml(r, origin, agentSlug) {
+  const esc = t => String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const price = r.ListPrice ? '$' + Number(r.ListPrice).toLocaleString() : 'Price on request';
+  const addr = [r.UnparsedAddress || 'Address on request', r.City].filter(Boolean).join(', ');
+  const facts = [
+    r.BedroomsTotal ? r.BedroomsTotal + ' bd' : '',
+    r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' ba' : '',
+    r.LivingArea ? Number(r.LivingArea).toLocaleString() + ' sqft' : '',
+  ].filter(Boolean).join(' &nbsp;&middot;&nbsp; ');
+  const credit = listingCredit(r);
+  const photo = listingPhotoUrl(r, origin);
+  const url = `${origin}/?listing=${encodeURIComponent(r.ListingKey || '')}`
+    + (agentSlug ? `&agent=${encodeURIComponent(agentSlug)}` : '');
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+    style="max-width:520px;margin:0 0 18px;border:1px solid #dcdce4;border-radius:6px;
+    overflow:hidden;background:#ffffff">
+  ${photo ? `<tr><td style="padding:0">
+    <a href="${url}" style="display:block;text-decoration:none">
+      <img src="${photo}" width="520" alt="${esc(addr)}"
+        style="display:block;width:100%;max-width:520px;height:auto;border:0;outline:none;
+        text-decoration:none;object-fit:cover"></a></td></tr>` : ''}
+  <tr><td style="padding:16px 18px 18px">
+    <div style="font:700 23px/1.15 Georgia,serif;color:#0E1433;margin:0 0 5px">
+      <a href="${url}" style="color:#0E1433;text-decoration:none">${price}</a></div>
+    <div style="font:400 14px/1.45 Arial,Helvetica,sans-serif;color:#3D456B;margin:0 0 8px">
+      ${esc(addr)}</div>
+    ${facts ? `<div style="font:400 13px/1.4 Arial,Helvetica,sans-serif;color:#7A8199;
+      margin:0 0 12px">${facts}</div>` : ''}
+    <a href="${url}" style="display:inline-block;background:#C89B4E;color:#241A08;
+      text-decoration:none;padding:10px 20px;border-radius:3px;
+      font:700 12px/1 Arial,Helvetica,sans-serif;letter-spacing:.06em;
+      text-transform:uppercase">See this one</a>
+    ${credit ? `<div style="font:400 11px/1.4 Arial,Helvetica,sans-serif;color:#9aa0b0;
+      margin:12px 0 0">${esc(credit)}</div>` : ''}
+  </td></tr>
+</table>`;
+}
+
+/* The whole email: greeting, cards, sign-off, address, unsubscribe. */
+function listingEmailHtml({ first, intro, rows, origin, agentName, agentSlug, unsub, more }) {
+  const esc = t => String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FBFAF7">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+  style="background:#FBFAF7"><tr><td align="center" style="padding:26px 14px 40px">
+<table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0"
+  style="max-width:520px;width:100%">
+  <tr><td style="font:400 15px/1.6 Arial,Helvetica,sans-serif;color:#141A3C;padding:0 0 6px">
+    Hi ${esc(first)},</td></tr>
+  ${intro ? `<tr><td style="font:400 15px/1.6 Arial,Helvetica,sans-serif;color:#141A3C;
+    padding:0 0 20px">${esc(intro)}</td></tr>` : '<tr><td style="height:14px"></td></tr>'}
+  <tr><td>${rows.map(r => listingCardHtml(r, origin, agentSlug)).join('')}</td></tr>
+  ${more ? `<tr><td style="font:400 14px/1.6 Arial,Helvetica,sans-serif;color:#3D456B;
+    padding:2px 0 16px">${esc(more)}</td></tr>` : ''}
+  <tr><td style="font:400 14px/1.6 Arial,Helvetica,sans-serif;color:#141A3C;padding:6px 0 0">
+    Want to see any of them? Just reply.</td></tr>
+  <tr><td style="padding:22px 0 0;border-top:1px solid #e4e4ec;margin-top:20px;
+    font:400 13px/1.6 Arial,Helvetica,sans-serif;color:#7A8199">
+    ${esc(agentName || '')}<br>${esc(BROKERAGE_NAME)}<br>${esc(BROKERAGE_PHONE)}<br>
+    ${esc(BROKERAGE_ADDRESS)}</td></tr>
+  <tr><td style="padding:14px 0 0;font:400 11.5px/1.5 Arial,Helvetica,sans-serif;color:#9aa0b0">
+    Listing information is deemed reliable but not guaranteed.
+    <a href="${unsub}" style="color:#9aa0b0">Unsubscribe</a></td></tr>
+</table></td></tr></table></body></html>`;
+}
+
 function unsubToken(leadId){
   return crypto.createHmac('sha256', HR_KEY || 'fallback')
     .update('unsub:' + leadId).digest('hex').slice(0, 24);
@@ -2502,13 +2599,31 @@ app.post('/api/drip/tick', async (req, res) => {
                + (credit ? `\n    ${credit}` : '')
                + `\n    ${origin}/?listing=${encodeURIComponent(r.ListingKey)}`;
         }).join('\n\n');
+        const firstName = String(rec.name || '').split(' ')[0] || 'there';
+        const shown = fresh.slice(0, 8);
+        /* ⚠ The card version is the point of the email — a photo, a price and a
+           button beats a list of addresses every time. `text` stays as the
+           fallback for clients that will not render HTML. */
+        const html = listingEmailHtml({
+          first: firstName,
+          intro: `New since I last wrote, matching ${searchLabel(rec.criteria)}.`,
+          rows: shown,
+          origin,
+          agentName: rec.agentName,
+          agentSlug: slugify(rec.agentName || ''),
+          unsub: link,
+          more: fresh.length > shown.length
+            ? `Plus ${fresh.length - shown.length} more \u2014 reply and I will send them over.`
+            : '',
+        });
         try {
           await mailer.sendMail({
             to: rec.email,
             subject: fresh.length === 1
               ? `One new listing \u2014 ${searchLabel(rec.criteria)}`
               : `${fresh.length} new listings \u2014 ${searchLabel(rec.criteria)}`,
-            text: `Hi ${String(rec.name || '').split(' ')[0] || 'there'},\n\n`
+            html,
+            text: `Hi ${firstName},\n\n`
                 + `New since I last wrote, matching ${searchLabel(rec.criteria)}:\n\n${lines}\n\n`
                 + `Want to see any of them? Just reply.\n\n`
                 + `${rec.agentName}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n${BROKERAGE_ADDRESS}\n\n`
