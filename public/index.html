@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v215">
+<meta name="build" content="index-v216">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3910,7 +3910,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v215';
+window.BUILD = 'index-v216';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4472,7 +4472,7 @@ tbody.innerHTML = shown.map(l=>{
   const B = (typeof LS_BANDS !== 'undefined' && LS_BANDS[l.band||'nurture']) || { label:'New', color:'#8C93AD' };
   const why = (l.whyText || '').trim();
   return `
-<div class="lead-card">
+<div class="lead-card" data-lead="${l.id}">
   <div class="lc-score"><span class="n" style="color:${B.color}">${sc}</span>
     <span class="b">${escapeHtml(B.label)}</span></div>
   <div class="lc-main">
@@ -7937,6 +7937,35 @@ function saveGoal(){
   localStorage.setItem('incomeGoal:' + currentAgent.id, String(Number(v) || 0));
   showToast('Goal saved.');
   renderDashboard();
+}
+
+/* "Call Bella" used to drop you on the full leads list, which is the same as not
+   telling you anything. The briefing item already knows the lead id — this takes
+   you to that card, clears any stage filter that would hide it, scrolls to it and
+   marks it for a moment so the eye lands in the right place. */
+async function bfOpenLead(id){
+  if(!canSeeLeads()) return;
+  showCrmSection('sec-leads');
+  if(typeof currentFilterStage !== 'undefined' && currentFilterStage !== 'all'){
+    currentFilterStage = 'all';
+    document.querySelectorAll('.stage-filters button').forEach(b =>
+      b.classList.toggle('active', (b.textContent || '').trim().toLowerCase() === 'all'));
+  }
+  try{ if(typeof loadLeads === 'function') await loadLeads(); }catch(e){}
+  let tries = 0;
+  const esc = (window.CSS && CSS.escape) ? CSS.escape : (x => String(x).replace(/["\\]/g, '\\$&'));
+  const find = () => {
+    const el = document.querySelector('.lead-card[data-lead="' + esc(id) + '"]');
+    if(el){
+      el.scrollIntoView({ behavior:'smooth', block:'center' });
+      el.classList.add('lc-found');
+      setTimeout(() => el.classList.remove('lc-found'), 2600);
+      return;
+    }
+    if(++tries < 12) setTimeout(find, 120);
+    else showToast('That lead is not in the current list.');
+  };
+  find();
 }
 
 function goToLeads(stage){
@@ -16682,7 +16711,7 @@ function bfItems(){
         urgency: age >= 2 ? 'late' : age >= 1 ? 'soon' : 'ok',
         title: 'Call ' + (l.name || 'a new lead'),
         sub: (l.source || 'inquiry') + ' \u00b7 ' + (age === 0 ? 'today' : age + 'd ago'),
-        go: 'Leads', goTo: 'sec-leads',
+        go: 'Open', goTo: 'sec-leads', goLead: l.id,
       });
     });
   }catch(e){}
@@ -16767,7 +16796,9 @@ function renderBriefing(){
       <span class="bf-box">${bfIsDone(i.key)?'✓':''}</span>
       <span class="tx"><span class="t">${escapeHtml(i.title)}</span>
         ${i.sub ? `<span class="s">${escapeHtml(i.sub)}</span>` : ''}</span>
-      ${i.goTo ? `<span class="go" onclick="event.stopPropagation();showCrmSection('${i.goTo}')">${escapeHtml(i.go)} →</span>` : ''}
+      ${i.goTo ? `<span class="go" onclick="event.stopPropagation();${
+        i.goLead ? `bfOpenLead('${i.goLead}')` : `showCrmSection('${i.goTo}')`
+      }">${escapeHtml(i.go)} →</span>` : ''}
       ${i.own ? `<span class="go" onclick="event.stopPropagation();bfDropOwn('${i.key.slice(4)}')">Remove</span>` : ''}
     </div>`;
 
@@ -19128,6 +19159,8 @@ async function ntToggle(k){
    treatment because it is the sentence that tells them what to say. */
 #crm-main .lead-card{background:#fff;border:1px solid var(--hair);border-radius:4px;
   padding:18px 20px;margin-bottom:10px;gap:18px;transition:.14s}
+#crm-main .lead-card.lc-found{border-color:var(--gd);
+  box-shadow:0 0 0 3px rgba(200,155,78,.28);background:var(--gd-pale)}
 #crm-main .lead-card:hover{border-color:rgba(200,155,78,.55);
   box-shadow:0 2px 14px rgba(20,26,60,.06)}
 #crm-main .lc-score{width:66px;padding-top:2px}
