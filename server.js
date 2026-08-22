@@ -2283,6 +2283,9 @@ app.post('/api/articles', async (req, res) => {
        anything the broker had turned on and lost the disclaimer classification. */
     published: a.published === true,
     topic: a.topic === 'regulated' ? 'regulated' : (a.topic === 'general' ? 'general' : ''),
+    /* ⚠ And this one. Dropping the slug sent the page back to a generated
+       fallback, breaking every link already published or emailed. */
+    slug: articleSlugify(a.slug || a.title || ''),
     updatedAt: new Date().toISOString(),
   })).filter(a => a.title);
   await setSetting(ARTICLES_KEY, clean);
@@ -4147,7 +4150,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v102',
+    serverVersion: 'v104',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4884,8 +4887,20 @@ const ARTICLE_ART = {
 <text x="46" y="20" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#E8D2A0">NET</text></g></svg>`,
 };
 
+/* ⚠ NOT slugify(). That one strips characters and inserts nothing, which is right
+   for agent pages (/jimmythies) and wrong for an article — it produced
+   /insights/buyingyourfirstplaceonthegulfcoasttheordertodothingsin. Hyphens are
+   also what search engines read as word boundaries. */
+function articleSlugify(t) {
+  return String(t || '').toLowerCase()
+    .replace(/['\u2019]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80).replace(/-+$/, '');
+}
+
 function articleSlug(a) {
-  return a.slug || slugify(a.title || '').slice(0, 80);
+  return a.slug || articleSlugify(a.title || '');
 }
 
 /* Seeded so there is something to send and something to index the moment this
@@ -5039,7 +5054,7 @@ async function siteIsPrivate() {
    created from it lands on them and not on the brokerage. Attribution here is
    the same rule as everywhere else: it does not expire and it is not silently
    handed back. */
-function articleSeoHtml(a, origin, agentSlug, noindex) {
+function articleSeoHtml(a, origin, agentSlug, noindex, others) {
   const url = `${origin}/insights/${a.slug}`;
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -5093,12 +5108,24 @@ p{font-size:16px;margin:0 0 18px}
 .btn{display:inline-block;background:#C89B4E;color:#241A08;text-decoration:none;
   padding:12px 22px;border-radius:3px;font-weight:700;font-size:13px;
   letter-spacing:.05em;text-transform:uppercase;margin-top:6px}
+.back{display:inline-block;font-size:12.5px;color:#7A8199;text-decoration:none;
+  margin:0 0 20px;letter-spacing:.03em}
+.back:hover{color:#C89B4E}
+.more{margin-top:40px;padding-top:24px;border-top:1px solid rgba(20,26,60,.12)}
+.more .eb{margin-bottom:12px}
+.nx{display:block;padding:14px 0;border-bottom:1px solid rgba(20,26,60,.08);
+  text-decoration:none}
+.nx:last-child{border-bottom:none}
+.nx .t{display:block;font-family:Georgia,serif;font-size:18px;color:#141A3C;line-height:1.3}
+.nx .s{display:block;font-size:13.5px;color:#7A8199;margin-top:4px;line-height:1.5}
+.nx:hover .t{color:#C89B4E}
 .dis{margin-top:38px;padding:16px 18px;background:#fff;
   border:1px solid rgba(20,26,60,.12);border-radius:4px;
   font-size:12.5px;line-height:1.6;color:#5A6178}
 .ft{margin-top:24px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
   font-size:13px;color:#7A8199}
 </style></head><body><div class="w">
+<a class="back" href="${origin}/insights">&larr; All guides</a>
 ${ARTICLE_ART[a.id] ? `<div class="art">${ARTICLE_ART[a.id]}</div>` : ''}
 <div class="eb">Alabama Gulf Coast</div>
 <h1>${esc(a.title)}</h1>
@@ -5110,10 +5137,18 @@ ${paras}
      we will give you the real numbers for it.</p>
   <a class="btn" href="${origin}/?ask=${encodeURIComponent(a.slug)}${agentSlug ? '&agent=' + encodeURIComponent(agentSlug) : ''}">Ask about a property</a>
 </div>
+${(others && others.length) ? `<div class="more">
+  <div class="eb">Keep reading</div>
+  ${others.slice(0, 3).map(o => `<a class="nx" href="${origin}/insights/${o.slug}${
+    agentSlug ? '?agent=' + encodeURIComponent(agentSlug) : ''}">
+    <span class="t">${esc(o.title)}</span>
+    <span class="s">${esc(o.teaser || '')}</span></a>`).join('')}
+</div>` : ''}
 <div class="dis">${articleRegulated(a) ? esc(DISCLAIMER_REGULATED) + ' ' : ''}${esc(DISCLAIMER_GENERAL)}</div>
 <div class="ft">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}<br>
 ${esc(BROKERAGE_ADDRESS)}<br>
-<a href="${origin}/">Search every active listing on the Alabama Gulf Coast</a></div>
+<a href="${origin}/insights">More guides</a> &nbsp;&middot;&nbsp;
+<a href="${origin}/">Search every active listing</a></div>
 </div></body></html>`;
 }
 
@@ -5132,22 +5167,45 @@ h1{font-family:Georgia,serif;font-size:34px;font-weight:400;margin:0 0 26px}
 .it{padding:20px 0;border-bottom:1px solid rgba(20,26,60,.1)}
 .it h2{font-family:Georgia,serif;font-size:21px;font-weight:400;margin:0 0 6px}
 .it p{margin:0;color:#3D456B;font-size:15px}</style></head><body><div class="w">
+<div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;
+  font-weight:700;margin-bottom:8px">${esc(BROKERAGE_NAME)}</div>
 <h1>Guides to buying and selling here</h1>
-${list.map(a => `<div class="it"><a href="${origin}/insights/${a.slug}">
-  <h2>${esc(a.title)}</h2><p>${esc(a.teaser)}</p></a></div>`).join('\n')}
+<p style="font-size:15px;color:#3D456B;margin:0 0 26px;max-width:620px">Straight answers
+  about the Alabama Gulf Coast \u2014 what insurance really costs, what condo fees cover,
+  and where to actually live. Written by people who work here.</p>
+${list.length ? list.map(a => `<div class="it"><a href="${origin}/insights/${a.slug}">
+  <h2>${esc(a.title)}</h2><p>${esc(a.teaser)}</p></a></div>`).join('\n')
+  : '<p style="color:#7A8199">Nothing published yet.</p>'}
+<div style="margin-top:34px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
+  font-size:13px;color:#7A8199">
+  <a href="${origin}/" style="color:#C89B4E">Search every active listing on the coast</a>
+  &nbsp;&middot;&nbsp; ${esc(BROKERAGE_PHONE)}</div>
 </div></body></html>`);
 });
 
 app.get('/insights/:slug', async (req, res, next) => {
   try {
     // a draft is reachable only with the preview token, never by guessing the url
-    const preview = req.query.preview === previewToken(req.params.slug);
+    const want = String(req.params.slug || '');
+    const preview = req.query.preview === previewToken(want);
     const list = preview ? await articlesAll() : await articlesPublic();
-    const a = list.find(x => x.slug === req.params.slug);
+    let a = list.find(x => x.slug === want);
+    /* An article published before the slug fix has a hyphen-less URL in the wild.
+       Match ignoring hyphens and send a permanent redirect to the real one, so
+       nothing already emailed or indexed dies. */
+    if (!a) {
+      const bare = s => String(s).replace(/-/g, '');
+      a = list.find(x => bare(x.slug) === bare(want));
+      if (a && !preview) {
+        return res.redirect(301, `/insights/${a.slug}`);
+      }
+    }
     if (!a) return next();
     const who = String(req.query.agent || '').slice(0, 60).replace(/[^a-z0-9-]/gi, '');
+    // everything else that is live, so the reader always has somewhere to go next
+    const others = (await articlesPublic()).filter(x => x.id !== a.id);
     res.type('html').send(articleSeoHtml(a, `${req.protocol}://${req.get('host')}`, who,
-      (await siteIsPrivate()) || !a.published));
+      (await siteIsPrivate()) || !a.published, others));
   } catch (e) { next(); }
 });
 
