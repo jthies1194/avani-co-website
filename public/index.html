@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v216">
+<meta name="build" content="index-v217">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3164,6 +3164,18 @@ function normalizeListing(r){
   };
 }
 
+/* ⚠ IDX ATTRIBUTION — MANDATORY.
+   A listing that is not ours must name the brokerage that listed it, everywhere
+   it appears: cards, detail, and the alert emails the server sends. This is a
+   condition of the MLS/IDX licence, not a courtesy. Mirrors listingCredit() on
+   the server so both read identically. */
+function listingCredit(l){
+  const office = String((l && l.ListOfficeName) || '').trim();
+  if(!office) return '';
+  if(office.toLowerCase() === 'avani & co real estate southern sands') return '';
+  return 'Listed by ' + office;
+}
+
 /* Photo URLs live in different places depending on the MLS. Check the usual ones. */
 function extractPhotos(r){
   const out = [];
@@ -3299,7 +3311,7 @@ ${l.photo ? `<img class="card-img" src="${l.photo}" alt="${escapeHtml(l.Unparsed
 <div class="card-stats">
 ${statsFor(l)}
 </div>
-<div class="card-mls">MLS# ${l.ListingId || l.ListingKey}</div>
+<div class="card-mls">MLS# ${l.ListingId || l.ListingKey}${listingCredit(l) ? ' \u00b7 ' + escapeHtml(listingCredit(l)) : ''}</div>
 <button class="card-cta" onclick="openLeadModal('listing','${l.ListingKey}','${l.UnparsedAddress.replace(/'/g,"")}, ${l.City}')">Request info</button>
 </div>
 </div>
@@ -3402,7 +3414,8 @@ document.getElementById('detail-price').textContent = '$' + listing.ListPrice.to
 document.getElementById('detail-address').textContent = listing.UnparsedAddress;
 document.getElementById('detail-loc').textContent = listing.City + ', AL · ' + listing.StandardStatus;
 document.getElementById('detail-stats').innerHTML = statsFor(listing);
-document.getElementById('detail-mls').textContent = 'MLS# ' + (listing.ListingId || listing.ListingKey);
+document.getElementById('detail-mls').textContent = 'MLS# ' + (listing.ListingId || listing.ListingKey)
+  + (listingCredit(listing) ? ' \u00b7 ' + listingCredit(listing) : '');
 (function(){
   const stats = document.getElementById('detail-stats');
   let extra = document.getElementById('detail-extra');
@@ -3910,7 +3923,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v216';
+window.BUILD = 'index-v217';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
