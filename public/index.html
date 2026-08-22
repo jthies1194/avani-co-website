@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v226">
+<meta name="build" content="index-v228">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3836,6 +3836,7 @@ chat:{title:"Continue with a real agent", sub:"Here's a copy of our chat — a r
 listing:{title:"Request info", sub:"", msgLabel:"Message"},
 manual:{title:"Add a lead manually", sub:"Add a lead you picked up by phone, in person, or elsewhere.", msgLabel:"Notes"},
 wishlist:{title:"Tell us what you want", sub:"Describe your dream home — beds, baths, location, must-haves — and we'll let you know the moment something matches.", msgLabel:"Describe what you're looking for"},
+article:{title:"Ask about a property", sub:"Tell us the street or the building and we'll give you the real numbers for it.", msgLabel:"Which property, or which street?"},
 };
 function openLeadModal(source, mlsKey, listingLabel){
 currentLeadContext = {source, mlsKey: mlsKey||"", listingLabel: listingLabel||""};
@@ -3875,6 +3876,8 @@ message: document.getElementById('lf-message').value.trim(),
 source: currentLeadContext.source,
 mlsKey: currentLeadContext.mlsKey || "",
 listingLabel: currentLeadContext.listingLabel || "",
+// which article brought them, so the content that works can be identified
+fromArticle: (currentLeadContext.source === 'article' && window.__askArticle) || '',
 stage: "New",
 notes: "",
 assignedAgentId,
@@ -3976,7 +3979,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v226';
+window.BUILD = 'index-v228';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6258,6 +6261,26 @@ document.addEventListener('DOMContentLoaded', () => {
   if(typeof maybeShowAgentProfile === 'function'){
     maybeShowAgentProfile().then(shown => { if(shown) return; });
   }
+  /* ⚠ Every article's call-to-action links to /?ask=<slug>. Nothing read that
+     parameter, so the button dropped visitors on the homepage and the lead was
+     lost. This is the capture on every article page. */
+  try{
+    const ask = new URLSearchParams(location.search).get('ask');
+    if(ask){
+      const label = String(ask).replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+      setTimeout(() => {
+        try{
+          openLeadModal('article', '', label);
+          const msg = document.getElementById('lf-message');
+          if(msg && !msg.value) msg.value = '';
+          // remember which piece brought them, without leaving it in the address bar
+          window.__askArticle = String(ask).slice(0, 120);
+          history.replaceState({}, '', location.pathname + location.hash);
+        }catch(e){}
+      }, 400);
+    }
+  }catch(e){}
+
   const h = (location.hash || '').replace('#','');
   if(h === 'client-login'){
     setTimeout(() => { try{ openClientAuthOrAccount(); }catch(e){} }, 250);
@@ -10936,8 +10959,14 @@ async function renderContent(){
   ctRenderSend();
 }
 
+/* Must match articleSlugify() on the server exactly. If these two disagree the
+   saved slug and the URL the page is served at drift apart. */
 function ctSlug(t){
-  return String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80);
+  return String(t||'').toLowerCase()
+    .replace(/['\u2019]/g,'')
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'')
+    .slice(0,80).replace(/-+$/,'');
 }
 
 /* ⚠ The only way anything becomes public. Nothing else in the system sets
