@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v214">
+<meta name="build" content="index-v215">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2609,10 +2609,7 @@ body.in-crm .topbar{display:none}
     lands here, and emails you at the same time.</p>
   <div class="setup-body" id="idea-body">Loading&hellip;</div>
 </div>
-<div class="setup-panel">
-  <h3 class="sx-h">What reaches you</h3>
-  <div class="setup-body" id="nt-body">Loading&hellip;</div>
-</div>
+
 <div class="setup-panel">
   <h3 class="sx-h">When someone is about to leave</h3>
   <div class="setup-body" id="ei-setup-body">
@@ -2714,7 +2711,18 @@ body.in-crm .topbar{display:none}
 <div class="crm-sec" id="sec-marketing"></div>
 <div class="crm-sec" id="sec-resources"></div>
 <div class="crm-sec" id="sec-mypage"></div>
-<div class="crm-sec" id="sec-myprofile"></div>
+<div class="crm-sec" id="sec-myprofile">
+<!-- ⚠ These switches save to notify:<agentId> — they are personal, not brokerage
+     settings. They used to live in the broker-only Settings tab, which meant no
+     agent could ever change their own notifications. Anything saved per-agent
+     belongs on a screen agents can actually reach. -->
+<div class="setup-panel" id="nt-panel">
+  <h3 class="sx-h">What reaches you</h3>
+  <p class="sx-sub">Yours alone &mdash; nobody else sees or changes these, including
+    the broker.</p>
+  <div class="setup-body" id="nt-body">Loading&hellip;</div>
+</div>
+</div>
 <div class="crm-sec" id="sec-password"><div class="setup-panel" id="change-password-panel">
 <div class="setup-head" onclick="toggleChangePasswordPanel()">
 <h3>🔑 Change my password</h3>
@@ -3902,7 +3910,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v214';
+window.BUILD = 'index-v215';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7304,7 +7312,6 @@ function showCrmSection(id){
          and that element is display:none inside a CRM section — so the eight
          notification switches showed "Loading…" and nothing else, forever.
          Panels here are always open, so they must be rendered on section open. */
-      if(typeof renderNotify === 'function') renderNotify();
       if(typeof renderIdeas === 'function') renderIdeas(); }
     if(id === 'sec-reviews'){
       // everyone sees their own; the approval queue is the broker's
@@ -7316,7 +7323,8 @@ function showCrmSection(id){
       if(staff){ if(typeof loadPendingReviews === 'function') loadPendingReviews(); }
       else     { if(typeof renderMyReviews === 'function') renderMyReviews(); }
     }
-    if(id === 'sec-myprofile') renderMyProfileSection();
+    if(id === 'sec-myprofile'){ renderMyProfileSection();
+      if(typeof renderNotify === 'function') renderNotify(); }
     if(id === 'sec-mypage') renderMyPageSection().then(()=>{ try{ loadMyAlerts(); }catch(e){} });
     if(id === 'sec-marketing' && typeof renderMarketingSection === 'function'){
       renderMarketingSection().then(() => {
@@ -7326,13 +7334,22 @@ function showCrmSection(id){
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
     if(id === 'sec-tracker' && typeof renderTrackerSection === 'function') renderTrackerSection();
     if(id === 'sec-pipeline' && typeof renderPipelineSection === 'function'){
-      renderPipelineSection().then(() => {
+      /* ⚠ This was renderPipelineSection().then(...). If that promise rejected —
+         or did not return one — the .then never fired and Seller reports sat on
+         "Loading…" forever. A panel must never depend on another panel's promise
+         resolving. Same pattern was on Resources. */
+      const after = () => { try{
         if(typeof renderSellerReports === 'function') renderSellerReports();
-      });
+      }catch(e){ console.error('[sellerReports]', e); } };
+      try{
+        const p = renderPipelineSection();
+        if(p && typeof p.finally === 'function') p.finally(after); else after();
+      }catch(e){ console.error('[pipeline]', e); after(); }
     }
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
-      renderResourcesSection().then(() => {
+      (renderResourcesSection() || Promise.resolve()).catch(e =>
+        console.error('[resources]', e)).then(() => {
         if(typeof renderCePanel === 'function') renderCePanel();
       });
     }
