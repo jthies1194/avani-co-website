@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v219">
+<meta name="build" content="index-v221">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -561,6 +561,12 @@ header.stuck{top:52px}
 #view-site{padding-top:0}
 @media(max-width:820px){#view-crm{padding-top:190px}}
 body.in-crm #view-crm{padding-top:0}
+/* ⚠ Sticks directly beneath the tab bar. Previously it scrolled away with the
+   content, so leaving preview meant scrolling back to the top of the page. The
+   offset is measured from the bar rather than guessed, because the bar wraps to
+   two or three rows depending on width. */
+#impersonation-banner{position:sticky;top:var(--navh,64px);z-index:58;
+  border-radius:0 0 4px 4px;box-shadow:0 6px 18px rgba(14,20,51,.18)}
 @media(max-width:820px){body.in-crm #view-crm{padding-top:0}}
 /* belt and braces: the CRM's own top row can never hide under the header */
 #crm-main > div:first-of-type,#crm-gate{position:relative;z-index:5}
@@ -3945,7 +3951,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v219';
+window.BUILD = 'index-v221';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4556,16 +4562,23 @@ tbody.innerHTML = shown.map(l=>{
   if(window.__focusLead) lcApplyFocus();
 }
 
+/* ⚠ Keeps the target until a deadline rather than clearing on first hit. The
+   leads list repaints more than once after a jump, and clearing immediately meant
+   the highlight vanished with the next repaint — the quarter-second flash. */
 function lcApplyFocus(){
   const id = window.__focusLead;
   if(!id) return;
+  if(window.__focusUntil && Date.now() > window.__focusUntil){
+    window.__focusLead = null; return;
+  }
   const q = String(id).replace(/["\\]/g, '\\$&');
   const el = document.querySelector('.lead-card[data-lead="' + q + '"]');
   if(!el) return;
-  window.__focusLead = null;
-  el.scrollIntoView({ behavior:'smooth', block:'center' });
+  if(!window.__focusScrolled){
+    el.scrollIntoView({ behavior:'smooth', block:'center' });
+    window.__focusScrolled = true;
+  }
   el.classList.add('lc-found');
-  setTimeout(() => el.classList.remove('lc-found'), 2800);
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fmtDate(iso){ const d=new Date(iso); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
@@ -7256,12 +7269,22 @@ async function saveTabOrder(){
   }catch(e){ return false; }
 }
 
+/* The tab bar wraps to two or three rows depending on width, so anything that
+   sticks below it needs the real height rather than a guess. */
+function crmMeasureNav(){
+  const bar = document.getElementById('crm-rail');
+  if(!bar) return;
+  document.documentElement.style.setProperty('--navh', bar.offsetHeight + 'px');
+}
+window.addEventListener('resize', () => { try{ crmMeasureNav(); }catch(e){} });
+
 function renderCrmNav(){
   const nav = document.getElementById('crm-nav');
   if(!nav || !currentAgent) return;
   // the button sits on the row under this nav and follows the same role rules
   try{ ideaSyncButton(); }catch(e){}
   try{ document.body.classList.toggle('is-staff', isAdminOrOwner()); }catch(e){}
+  try{ crmMeasureNav(); }catch(e){}
   const isBroker = isAdminOrOwner();
   // A section the current role can't see must never stay open — otherwise
   // switching to an agent view leaves broker content on screen.
@@ -7866,10 +7889,18 @@ function greeting(){
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
+/* ⚠ Two paths render Today: showCrmSection('sec-today') and loadLeads() when you
+   are already on it. Both are async and both write innerHTML, so whichever
+   finished LAST won — including a stale one that started earlier with emptier
+   data. That is the flash-then-vanish. A generation counter makes the newest
+   call the only one allowed to paint. */
+let __dashGen = 0;
 async function renderDashboard(){
   const el = document.getElementById('sec-today');
   if(!el || !currentAgent) return;
+  const gen = ++__dashGen;
   await ensureCommissionData();
+  if(gen !== __dashGen) return;   // a newer render started while we waited
   const isBroker = isAdminOrOwner();
   const first = (currentAgent.name || '').split(' ')[0] || '';
 
@@ -7999,6 +8030,8 @@ function saveGoal(){
 async function bfOpenLead(id){
   if(!canSeeLeads()) return;
   window.__focusLead = id;
+  window.__focusUntil = Date.now() + 6000;
+  window.__focusScrolled = false;
   showCrmSection('sec-leads');
   // a filter set earlier would hide the very lead we are opening
   if(typeof currentFilterStage !== 'undefined' && currentFilterStage !== 'all'){
@@ -8008,16 +8041,18 @@ async function bfOpenLead(id){
   }
   try{ if(typeof loadLeads === 'function') await loadLeads(); }catch(e){}
   lcApplyFocus();
-  // one late attempt, in case another repaint landed after ours
+  // repaints keep landing for a moment; re-apply until the deadline
+  let n = 0;
+  const again = setInterval(() => {
+    lcApplyFocus();
+    if(++n > 10 || !window.__focusLead) clearInterval(again);
+  }, 260);
   setTimeout(() => {
-    if(window.__focusLead){
-      lcApplyFocus();
-      if(window.__focusLead){
-        window.__focusLead = null;
-        showToast('That lead is not in the current list.');
-      }
-    }
-  }, 900);
+    const el = document.querySelector('.lead-card.lc-found');
+    if(el) el.classList.remove('lc-found');
+    if(window.__focusLead && !el) showToast('That lead is not in the current list.');
+    window.__focusLead = null;
+  }, 6200);
 }
 
 function goToLeads(stage){
@@ -10618,6 +10653,15 @@ document.addEventListener('click', function(e){
    Google can index AND a block in an email; a click on it writes a scoring event
    that moves the lead between lanes on its own. */
 let ctArts = [], ctPicked = [], ctSeg = { lane: 'slow' };
+/* ⚠ ctRenderSend() rebuilds this panel's HTML, which threw away whatever was
+   typed — so a re-render between typing and sending produced an empty subject
+   and the server rejected it. The typed values live here and are put back. */
+let ctDraft = { subject: '', intro: '' };
+function ctCapture(){
+  const g = id => (document.getElementById(id) || {}).value;
+  if(g('ct-subj') !== undefined) ctDraft.subject = g('ct-subj') || '';
+  if(g('ct-intro') !== undefined) ctDraft.intro = g('ct-intro') || '';
+}
 
 async function renderContent(){
   const host = document.getElementById('ct-articles');
@@ -10721,10 +10765,13 @@ function ctRenderSend(){
   if(!el) return;
   el.innerHTML = `
     <div class="field"><label>Subject line</label>
-      <input id="ct-subj" placeholder="What insurance actually costs down here"></div>
+      <input id="ct-subj" oninput="ctDraft.subject=this.value"
+        value="${escapeHtml(ctDraft.subject)}"
+        placeholder="What insurance actually costs down here"></div>
     <div class="field"><label>A line before the articles</label>
-      <textarea id="ct-intro" style="min-height:64px"
-        placeholder="Optional. One or two sentences in your own voice."></textarea></div>
+      <textarea id="ct-intro" oninput="ctDraft.intro=this.value" style="min-height:64px"
+        placeholder="Optional. One or two sentences in your own voice."
+        >${escapeHtml(ctDraft.intro)}</textarea></div>
     <div class="field"><label>Who gets it</label>
       <select id="ct-lane" onchange="ctSeg={lane:this.value};ctCounted=false;ctRenderSend()">
         ${CT_LANES.map(([v,l]) =>
@@ -10734,7 +10781,9 @@ function ctRenderSend(){
     ${ctArts.length ? ctArts.slice(0,12).map((a,i) => `
       <label class="ct-pick"><input type="checkbox" ${ctPicked.includes(a.id)?'checked':''}
         onchange="ctTogglePick('${a.id}')"> ${escapeHtml(a.title)}</label>`).join('')
-      : '<div style="font-size:12.5px;color:var(--mut,#7A8199);padding:8px 0">Write one first.</div>'}
+      : `<div style="font-size:12.5px;color:var(--mut,#7A8199);padding:8px 0">
+           No articles yet. Write one on the left, or check the server is on v95 or
+           later &mdash; earlier versions did not return the seeded ones.</div>`}
     <div id="ct-result"></div>
     <button class="btn-sm" style="width:100%;margin-top:12px" onclick="ctDry()">
       How many people is this?</button>`;
@@ -10746,8 +10795,9 @@ function ctTogglePick(id){
 }
 
 async function ctPost(dryRun){
-  const subject = (document.getElementById('ct-subj')||{}).value || '';
-  const intro = (document.getElementById('ct-intro')||{}).value || '';
+  ctCapture();
+  const subject = ctDraft.subject || '';
+  const intro = ctDraft.intro || '';
   const r = await fetch('/api/broadcast', { method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ subject, intro, articleIds: ctPicked, segment: ctSeg, dryRun }) });
@@ -10760,6 +10810,17 @@ async function ctPost(dryRun){
    the send button does not exist until the number has been on screen. */
 async function ctDry(){
   const box = document.getElementById('ct-result');
+  ctCapture();
+  /* Check here rather than letting the server answer, so the message names the
+     thing that is missing instead of whichever check happened to run first. */
+  const missing = [];
+  if(!ctDraft.subject.trim()) missing.push('a subject line');
+  if(!ctPicked.length) missing.push(ctArts.length
+    ? 'at least one article ticked' : 'an article to send — none exist yet');
+  if(missing.length){
+    box.innerHTML = `<div class="ct-warn">Still needs ${missing.join(' and ')}.</div>`;
+    return;
+  }
   box.innerHTML = '<div style="font-size:13px;padding:10px 0">Counting\u2026</div>';
   try{
     const d = await ctPost(true);
@@ -10787,6 +10848,7 @@ async function ctSend(n){
     box.innerHTML = `<div class="ct-count"><b>${d.sent}</b> sent.
       ${d.failed ? d.failed + ' failed \u2014 check the logs.' : 'Clicks will show on each lead.'}</div>`;
     ctPicked = [];
+    ctDraft = { subject:'', intro:'' };
     showToast('Sent to ' + d.sent + '.');
   }catch(e){
     box.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`;
@@ -16871,8 +16933,9 @@ function renderBriefing(){
 
   const row = i => `
     <div class="bf-item ${bfIsDone(i.key)?'done':''} ${i.urgency}"
-      onclick="bfTick('${i.key}')">
-      <span class="bf-box">${bfIsDone(i.key)?'✓':''}</span>
+      >
+      <span class="bf-box" title="Mark done"
+        onclick="event.stopPropagation();bfTick('${i.key}')">${bfIsDone(i.key)?'✓':''}</span>
       <span class="tx"><span class="t">${escapeHtml(i.title)}</span>
         ${i.sub ? `<span class="s">${escapeHtml(i.sub)}</span>` : ''}</span>
       ${i.goTo ? `<span class="go" onclick="event.stopPropagation();${
