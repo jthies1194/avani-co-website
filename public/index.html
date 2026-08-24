@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v241">
+<meta name="build" content="index-v242">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4255,7 +4255,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v241';
+window.BUILD = 'index-v242';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10267,7 +10267,7 @@ function mkDefaults(){
     scanLine: AvaniTemplates.SCAN_LINES[0],
     campaign: '',
     price: '', address: '', beds: '', baths: '', sqft: '', remarks: '',
-    listingKey: '', photo: '',
+    listingKey: '', listingCredit: '', photo: '',
   };
 }
 
@@ -10332,6 +10332,22 @@ function mkComposeAddress(l){
   return parts.filter(Boolean).join(', ');
 }
 
+/* ⚠ IDX ATTRIBUTION ON PRINT. listingCredit() has been on cards, detail pages and
+   alert emails since v93, and the flyers were noted as "not yet checked". They were
+   not carrying it. The builder pulls from the live feed, so an agent could print a
+   flyer for another brokerage's listing with nothing on it saying whose listing it
+   is — and drawFooter's own comment calls that band "the required identification".
+
+   Mirrors the server rule exactly: no office name, or our own office, means no
+   credit line. Derived from the record and never exposed as an input, for the same
+   reason the brokerage name is not editable. */
+function mkListingCredit(l){
+  const office = String((l && (l.ListOfficeName || l.listOfficeName)) || '').trim();
+  if(!office) return '';
+  if(office.toLowerCase() === String(BROKERAGE_NAME || '').toLowerCase()) return '';
+  return 'Listed by ' + office;
+}
+
 function mkListingLabel(l){
   const addr = l.UnparsedAddress || '';
   const city = l.City ? ', ' + l.City : '';
@@ -10341,9 +10357,11 @@ function mkListingLabel(l){
 
 async function mkPickListing(key){
   const l = mkListings.find(x => String(x.ListingKey) === String(key));
-  if(!l){ mkState.fields.listingKey = ''; return; }
+  if(!l){ mkState.fields.listingKey = ''; mkState.fields.listingCredit = ''; return; }
   const f = mkState.fields;
   f.listingKey = String(l.ListingKey);
+  // travels with the listing, cleared with it
+  f.listingCredit = mkListingCredit(l);
   f.price   = l.ListPrice || '';
   // UnparsedAddress usually already carries city, state and ZIP. Appending them
   // again produced "…Gulf Shores AL 36542, Gulf Shores, AL, 36542".
@@ -10577,9 +10595,8 @@ function mkSide(){
   ).join('');
   const scanOpts = AvaniTemplates.SCAN_LINES.map(l =>
     `<option${f.scanLine===l?' selected':''}>${escapeHtml(l)}</option>`).join('');
-  const listOpts = mkListings.map(l =>
-    `<option value="${escapeHtml(String(l.ListingKey))}"${String(f.listingKey)===String(l.ListingKey)?' selected':''}>${escapeHtml(mkListingLabel(l))}</option>`
-  ).join('');
+  /* was its own map; one builder now, shared with the deal form and the Assistant */
+  const listOpts = lpOptions(f.listingKey, '').replace(/^<option value="">.*?<\/option>/, '');
 
   el.innerHTML = `
     <div class="mk-tpl">${tplBtns}</div>
@@ -12526,10 +12543,17 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
       ctx.font = `${metaPt}px Helvetica, Arial, sans-serif`;
       ctx.fillText(meta, pad, ty);
     }
-    if(spec.licenseLine){
+    /* ⚠ The IDX credit shares the bottom line with the licence line rather than
+       getting its own, so the band does not reflow and every existing template keeps
+       its layout. Combined and fitted as ONE string, so a long office name shrinks
+       the line instead of colliding with the licence text. */
+    const foot = [spec.listingCredit, spec.licenseLine].filter(Boolean).join('   \u00b7   ');
+    if(foot){
       ctx.fillStyle = 'rgba(255,255,255,.6)';
-      ctx.font = `${0.1*dpi}px Helvetica, Arial, sans-serif`;
-      ctx.fillText(spec.licenseLine, pad, y + bandH - 0.24 * dpi);
+      const fpt = fitText(ctx, foot, innerW, 0.1 * dpi,
+                          '%SIZE%px Helvetica, Arial, sans-serif', 0.068 * dpi);
+      ctx.font = `${fpt}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(foot, pad, y + bandH - 0.24 * dpi);
     }
     return bandH;
   }
@@ -12743,7 +12767,11 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
 
     ctx.fillStyle = 'rgba(27,32,67,.55)';
     ctx.font = `${0.1*dpi}px Helvetica, Arial, sans-serif`;
-    ctx.fillText(BROKERAGE_NAME + (spec.licenseLine ? '  \u00b7  ' + spec.licenseLine : ''),
+    /* ⚠ This template draws its own identification line rather than calling
+       drawFooter, so the IDX credit has to be added here too. Three of the five
+       templates share drawFooter; this one and the square social do not. */
+    ctx.fillText([BROKERAGE_NAME, spec.licenseLine, spec.listingCredit]
+                   .filter(Boolean).join('  \u00b7  '),
                  pad, H - pad - 0.14*dpi);
     return { W, H };
   }
@@ -12946,10 +12974,14 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
       ctx.fillText(nm, pad, ty);
       ty += np * 1.35;
     }
-    if(spec.licenseLine){
+    /* ⚠ Also bypasses drawFooter. Fitted rather than fixed at 19px, because a
+       long office name on a square would otherwise run off the edge. */
+    const sfoot = [spec.licenseLine, spec.listingCredit].filter(Boolean).join('  \u00b7  ');
+    if(sfoot){
       ctx.fillStyle = 'rgba(255,255,255,.62)';
-      ctx.font = `19px Helvetica, Arial, sans-serif`;
-      ctx.fillText(spec.licenseLine, pad, ty);
+      const sp2 = fitText(ctx, sfoot, innerW, 19, '%SIZE%px Helvetica, Arial, sans-serif', 12);
+      ctx.font = `${sp2}px Helvetica, Arial, sans-serif`;
+      ctx.fillText(sfoot, pad, ty);
     }
     return { W: S, H: S };
   }
@@ -16836,6 +16868,11 @@ function commToggle(){
       <option value="both">Both sides</option>
     </select></div>
 </div>
+<div class="field"><label>Listing</label>
+  <select id="pl-listing" onchange="plPickListing(this.value)">
+    <option value="">&mdash; choose a listing, or fill in by hand &mdash;</option>
+  </select>
+  <div id="pl-lnote" style="font-size:11.5px;color:var(--driftwood);margin-top:4px"></div></div>
 <div class="field"><label>Property</label>
   <input id="pl-address" placeholder="412 Sandpiper Ln, Gulf Shores"></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
@@ -17006,7 +17043,9 @@ function plOpen(id){
   set('pl-p-agent', d.pAgent); set('pl-p-lender', d.pLender);
   set('pl-p-title', d.pTitle); set('pl-p-inspector', d.pInspector);
   set('pl-notes', d.notes);
+  const _n = document.getElementById('pl-lnote'); if(_n) _n.textContent = '';
   document.getElementById('pl-edit').classList.add('active');
+  plFillListings();
 }
 function plClose(){ document.getElementById('pl-edit').classList.remove('active'); plEditing = null; }
 
@@ -20599,9 +20638,7 @@ async function asPaneListing(p){
   const sel = document.getElementById('as-listing');
   if(!sel) return;                       // they changed mode while it loaded
   sel.innerHTML = rows.length
-    ? `<option value="">\u2014 choose a listing, or type a number below \u2014</option>`
-      + rows.map(l => `<option value="${escapeHtml(String(l.ListingKey))}">${
-          escapeHtml(mkListingLabel(l))}</option>`).join('')
+    ? lpOptions('', '\u2014 choose a listing, or type a number below \u2014')
     : `<option value="">Nothing loaded \u2014 type an MLS number below</option>`;
 }
 
@@ -21111,6 +21148,74 @@ async function qsCheckMls(){
     await new Promise(r => setTimeout(r, 250));
   }
   showToast('Still loading listings \u2014 try that link again in a moment.');
+}
+
+/* ==================== ONE LISTING PICKER (index 242) ====================
+   Three screens now want the same dropdown \u2014 the flyer builder, the Assistant, and
+   the deal form. This is the third, which is the point at which writing it a third
+   time stops being acceptable: three copies of the same option list drift, and then
+   one screen offers a listing another cannot find.
+
+   Everything below reads mkListings, which mkLoadListings() already caches. */
+function lpOptions(selectedKey, placeholder){
+  const rows = (typeof mkListings !== 'undefined' && mkListings) ? mkListings : [];
+  const head = `<option value="">${placeholder || '\u2014 choose a listing \u2014'}</option>`;
+  if(!rows.length) return `<option value="">Nothing loaded yet</option>`;
+  return head + rows.map(l =>
+    `<option value="${escapeHtml(String(l.ListingKey))}"${
+      String(selectedKey||'') === String(l.ListingKey) ? ' selected' : ''
+    }>${escapeHtml(mkListingLabel(l))}</option>`).join('');
+}
+
+function lpFind(key){
+  const rows = (typeof mkListings !== 'undefined' && mkListings) ? mkListings : [];
+  return rows.find(x => String(x.ListingKey) === String(key)) || null;
+}
+
+/* Fill the deal form from the feed. Everything stays editable afterwards \u2014 the feed
+   is a starting point, not the record.
+
+   \u26a0 "Other agent" depends on which side you are on. If you have the BUYER, the
+   other agent is the one on the listing. If you have the SELLER, the listing agent
+   is you, and the other agent is the buyer's \u2014 which is not in an ACTIVE record and
+   will not be, because we do not buy closed data. So it fills for the buy side and
+   says nothing on the sell side rather than filling in your own name. */
+function plPickListing(key){
+  const l = lpFind(key);
+  const note = document.getElementById('pl-lnote');
+  if(!l){ if(note) note.textContent = ''; return; }
+  const set = (id, v) => {
+    const e = document.getElementById(id);
+    if(e && v !== '' && v != null) e.value = v;
+  };
+  set('pl-address', (typeof mkComposeAddress === 'function') ? mkComposeAddress(l)
+                     : (l.UnparsedAddress || ''));
+  set('pl-price', l.ListPrice ? Number(l.ListPrice).toLocaleString('en-US') : '');
+
+  const side = (document.getElementById('pl-side') || {}).value || 'buy';
+  const other = [l.ListAgentFullName || '', l.ListOfficeName || '']
+    .filter(Boolean).join(' \u00b7 ');
+  let msg = 'Filled from the feed. Everything is still editable.';
+  if(side === 'sell'){
+    msg = 'Address and price filled. The other agent is the buyer\u2019s side, which is '
+        + 'not in an active record \u2014 add it by hand.';
+  } else if(other){
+    set('pl-p-agent', other);
+    msg = 'Filled from the feed, including the listing side. Everything is editable.';
+  }
+  if(note) note.textContent = msg;
+}
+
+/* The dropdown is empty until the feed has been fetched once. Fill it when the
+   form opens rather than on section load, so an agent who never adds a deal never
+   pays for the call. */
+async function plFillListings(){
+  const sel = document.getElementById('pl-listing');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Loading listings\u2026</option>';
+  try{ await mkLoadListings(); }catch(e){}
+  const s = document.getElementById('pl-listing');
+  if(s) s.innerHTML = lpOptions('', '\u2014 choose a listing, or fill in by hand \u2014');
 }
 </script>
 
