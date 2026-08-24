@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v252">
+<meta name="build" content="index-v253">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2477,6 +2477,42 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <!-- ============ CRM ============ -->
 <div id="referral-bar" style="display:none;"></div>
 <div id="transfer-overlay"><div class="box"><div id="transfer-body"></div></div></div>
+<div id="cma-overlay"><div class="box"><div id="cma-body"></div></div></div>
+<style>
+#cma-overlay{position:fixed;inset:0;background:rgba(10,14,35,.66);z-index:9200;
+  display:none;align-items:center;justify-content:center;padding:20px}
+#cma-overlay.active{display:flex}
+#cma-overlay .box{background:var(--ivory,#FBFAF6);border-radius:7px;width:100%;
+  max-width:560px;max-height:92vh;overflow:auto;padding:28px 30px}
+@media(max-width:560px){ #cma-overlay .box{padding:22px 20px} }
+#cma-overlay h3{font-family:'Fraunces',Georgia,serif;font-size:23px;margin:0 0 6px;
+  color:var(--ink,#171F63)}
+#cma-overlay .cma-sub{font-size:13.5px;line-height:1.65;color:var(--mut,#7A8199);margin:0 0 20px}
+#cma-overlay .cma-f{margin-bottom:14px}
+#cma-overlay .cma-f label{display:block;font-size:10.5px;letter-spacing:.11em;
+  text-transform:uppercase;font-weight:700;color:var(--mut,#7A8199);margin-bottom:5px}
+#cma-overlay .cma-f input[type=text],#cma-overlay .cma-f input:not([type]),
+#cma-overlay .cma-f textarea{width:100%;font:inherit;font-size:14px;padding:10px 12px;
+  border-radius:4px;border:1px solid rgba(20,26,60,.14);background:#fff}
+#cma-overlay .cma-f textarea{line-height:1.6;resize:vertical}
+#cma-overlay .cma-f input[type=file]{font:inherit;font-size:13px;width:auto}
+#cma-overlay .cma-pick{font-size:12.5px;color:var(--mut,#7A8199);margin-top:6px}
+#cma-overlay .cma-pick .bad{color:#8A2C22}
+#cma-overlay .cma-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+#cma-overlay .cma-done{margin-top:18px;background:#E7F3EC;border-left:3px solid #1F6B49;
+  border-radius:4px;padding:15px 17px}
+#cma-overlay .cma-done .h{font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:#1F6B49;margin-bottom:9px}
+#cma-overlay .cma-link{width:100%;font:inherit;font-size:12.5px;padding:9px 11px;
+  border-radius:4px;border:1px solid rgba(20,26,60,.16);background:#fff;margin-bottom:9px}
+#cma-overlay .cma-fine{font-size:12px;line-height:1.6;color:#3D456B;margin:10px 0 0}
+#cma-overlay .cma-h{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:var(--mut,#7A8199);margin:24px 0 9px}
+#cma-overlay .cma-row{background:#fff;border:1px solid rgba(20,26,60,.1);border-radius:4px;
+  padding:12px 14px;margin-bottom:8px}
+#cma-overlay .cma-row .a{font-size:14px;font-weight:600}
+#cma-overlay .cma-row .m{font-size:12.5px;color:var(--mut,#7A8199);margin:3px 0 8px}
+</style>
 <div id="agent-choice-overlay"><div class="box"><div id="agent-choice-body"></div></div></div>
 <div id="agent-profile-view" style="display:none;"></div>
 <div id="view-crm" class="view">
@@ -4329,7 +4365,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v252';
+window.BUILD = 'index-v253';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4949,6 +4985,7 @@ tbody.innerHTML = shown.map(l=>{
     ${l.message ? `<div class="lc-msg">${escapeHtml(l.message)}</div>` : ''}
     ${why ? `<div class="lc-why">${escapeHtml(why)}</div>` : ''}
     <div class="lc-running">${lcRunning(l)}</div>
+    ${typeof lcValuation === 'function' ? lcValuation(l) : ''}
     ${l.referredBy ? `<div class="lc-flag">via ${escapeHtml(l.referredBy)}</div>` : ''}
     ${l.transferredFrom ? `<div class="lc-flag">passed on by ${escapeHtml(l.transferredFrom)}</div>` : ''}
     <div class="lc-quick">
@@ -20029,6 +20066,21 @@ const LS_QUICK = [
 /* What is actually running for this person. The point is that you should not have
    to click anything to find out — the old version only told you once you pressed
    a button, and then only by saying it had switched something off. */
+/* \u26a0 Shown for sellers, and for anyone we do not know either way \u2014 a buyer lead is
+   often a seller too, and the one thing worse than an extra button is a missing one
+   on the person who was about to list. Hidden once they are Closed. */
+function lcValuation(l){
+  if((l.stage||'New') === 'Closed') return '';
+  if(l.type === 'buyer' && !(l.quiz && l.quiz.path === 'sell')) return '';
+  const addr = (l.quiz && l.quiz.address) || l.listingLabel || '';
+  return `<button class="lc-setup" onclick="event.stopPropagation();cmaOpen('${l.id}',
+    '${String(l.name||'').replace(/'/g,"\\'")}','${String(addr).replace(/'/g,"\\'")}')">
+    <span class="i">\u25EC</span>
+    <span class="t"><b>Send them a valuation</b>
+      <small>Upload the RPR report and see when they open it</small></span>
+    <span class="go">\u2192</span></button>`;
+}
+
 function lcRunning(l){
   const bits = [];
 
@@ -21633,6 +21685,186 @@ function qePreview(){
   QZ_CFG = JSON.parse(JSON.stringify(qeDraft));
   qzCfgTried = true;
   qzOpen(qeTab === 'sell' ? 'sell' : 'buy');
+}
+
+/* ==================== SENDING A VALUATION (index 253) ====================
+   The report comes out of RPR. This does not analyse anything, add a cover page or
+   touch a number \u2014 the RPR PDF already carries the subject photo, both licence
+   numbers, the brokerage details and the "not an appraisal" wording Alabama wants.
+   What it adds is the part RPR cannot: knowing they opened it.
+
+   \u26a0 The lead's own record is where this lives, not a separate tab. A valuation
+   belongs to a seller, and the moment it stops being attached to that person the
+   opens stop being useful. */
+
+let cmaFor = null, cmaFile = null, cmaBusy = false, cmaList = [];
+
+function cmaOpen(leadId, name, addr){
+  cmaFor = { id: leadId, name: name || '', addr: addr || '' };
+  cmaFile = null;
+  document.getElementById('cma-overlay').classList.add('active');
+  cmaRender();
+  cmaLoad();
+}
+function cmaClose(){
+  document.getElementById('cma-overlay').classList.remove('active');
+  cmaFor = null; cmaFile = null;
+}
+
+async function cmaLoad(){
+  try{
+    const r = await fetch('/api/cma?leadId=' + encodeURIComponent(cmaFor.id));
+    const d = await r.json();
+    cmaList = d.cmas || [];
+  }catch(e){ cmaList = []; }
+  cmaRenderSent();
+}
+
+function cmaRender(){
+  const b = document.getElementById('cma-body');
+  if(!b) return;
+  b.innerHTML =
+    `<h3>Send ${escapeHtml(cmaFor.name || 'them')} a valuation</h3>
+     <p class="cma-sub">Run the CMA in RPR, save it as a PDF, and put it here. They get a
+       link rather than an attachment, so you can see when they open it &mdash; and how
+       often.</p>
+     <div class="cma-f">
+       <label>Which property</label>
+       <input id="cma-addr" placeholder="11746 Wentwood Ct, Daphne AL 36526"
+         value="${escapeHtml(cmaFor.addr)}">
+     </div>
+     <div class="cma-f">
+       <label>A line for them (optional)</label>
+       <textarea id="cma-note" rows="3"
+         placeholder="Numbers came in a little above what we discussed \u2014 have a look at the three on Wentwood."></textarea>
+     </div>
+     <div class="cma-f">
+       <label>The PDF from RPR</label>
+       <input type="file" id="cma-pdf" accept="application/pdf,.pdf" onchange="cmaPick(this)">
+       <div id="cma-pick" class="cma-pick"></div>
+     </div>
+     <div class="cma-acts">
+       <button class="btn-sm primary" id="cma-go" onclick="cmaUpload()" disabled>Get the link</button>
+       <button class="btn-sm" onclick="cmaClose()">Close</button>
+     </div>
+     <div id="cma-out"></div>
+     <div id="cma-sent"></div>`;
+}
+
+/* \u26a0 Read in the browser and posted as base64. 9MB is the server ceiling; an RPR
+   report with a full photo page can approach it, so the size is checked HERE too
+   rather than letting somebody wait through a long upload for a 413. */
+function cmaPick(input){
+  const f = input.files && input.files[0];
+  const pick = document.getElementById('cma-pick');
+  const go = document.getElementById('cma-go');
+  cmaFile = null;
+  if(!f){ pick.textContent = ''; go.disabled = true; return; }
+  if(f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)){
+    pick.innerHTML = '<span class="bad">That needs to be a PDF.</span>';
+    go.disabled = true; return;
+  }
+  if(f.size > 9 * 1024 * 1024){
+    pick.innerHTML = `<span class="bad">${(f.size/1048576).toFixed(1)}MB \u2014 too big.
+      9MB is the limit. In RPR, try leaving the photo pages out.</span>`;
+    go.disabled = true; return;
+  }
+  cmaFile = f;
+  pick.textContent = `${f.name} \u00b7 ${(f.size/1048576).toFixed(1)}MB`;
+  go.disabled = false;
+}
+
+async function cmaUpload(){
+  if(cmaBusy || !cmaFile) return;
+  const addr = (document.getElementById('cma-addr')?.value || '').trim();
+  if(!addr){ showToast('Which property is it for?'); return; }
+  cmaBusy = true;
+  const go = document.getElementById('cma-go');
+  if(go){ go.disabled = true; go.textContent = 'Uploading\u2026'; }
+  try{
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] || '');
+      r.onerror = () => rej(new Error('Could not read that file.'));
+      r.readAsDataURL(cmaFile);
+    });
+    const r = await fetch('/api/cma', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        leadId: cmaFor.id, address: addr,
+        note: document.getElementById('cma-note')?.value || '',
+        filename: cmaFile.name, dataBase64: b64 }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not upload that.');
+    cmaShowLink(d.url, addr);
+    cmaLoad();
+  }catch(e){ showToast(e.message); }
+  finally{
+    cmaBusy = false;
+    const g = document.getElementById('cma-go');
+    if(g){ g.disabled = false; g.textContent = 'Get the link'; }
+  }
+}
+
+function cmaShowLink(url, addr){
+  const out = document.getElementById('cma-out');
+  if(!out) return;
+  /* \u26a0 mailto, same reasoning as the Assistant: a valuation is a one-to-one message
+     and should leave from the agent's own mailbox. It threads with the conversation
+     they are already having and does not spend the marketing domain's reputation. */
+  const body = encodeURIComponent(
+    `Hi${cmaFor.name ? ' ' + String(cmaFor.name).split(' ')[0] : ''},\n\n`
+    + `Here is the valuation for ${addr}:\n\n${url}\n\n`
+    + `Happy to talk any of it through whenever suits.\n`);
+  const subj = encodeURIComponent(`Your home's value \u2014 ${addr}`);
+  out.innerHTML =
+    `<div class="cma-done">
+      <div class="h">Ready to send</div>
+      <input class="cma-link" value="${escapeHtml(url)}" readonly onclick="this.select()">
+      <div class="cma-acts">
+        <button class="btn-sm" onclick="cmaCopy('${escapeHtml(url)}')">Copy the link</button>
+        <button class="btn-sm primary" onclick="window.location.href='mailto:?subject=${subj}&body=${body}'">Open in email</button>
+      </div>
+      <p class="cma-fine">Opens are recorded against their lead record and count toward
+        their score. They do not need an account or a password.</p>
+     </div>`;
+}
+
+function cmaCopy(url){
+  navigator.clipboard.writeText(url)
+    .then(() => showToast('Copied.'))
+    .catch(() => showToast('Select the link and copy it.'));
+}
+
+function cmaRenderSent(){
+  const host = document.getElementById('cma-sent');
+  if(!host) return;
+  if(!cmaList.length){ host.innerHTML = ''; return; }
+  host.innerHTML =
+    `<div class="cma-h">Already sent</div>` +
+    cmaList.map(c => {
+      const n = c.openCount || 0;
+      const when = c.lastOpen ? new Date(c.lastOpen).toLocaleString('en-US',
+        { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+      return `<div class="cma-row">
+        <div class="a">${escapeHtml(c.address)}</div>
+        <div class="m">${n ? `<b>Opened ${n} time${n===1?'':'s'}</b> \u00b7 last ${escapeHtml(when)}`
+          : 'Not opened yet'}</div>
+        <div class="cma-acts">
+          <button class="btn-sm" onclick="cmaCopy('${escapeHtml(c.url)}')">Copy link</button>
+          <button class="btn-sm" onclick="cmaDelete('${escapeHtml(c.id)}')">Remove</button>
+        </div></div>`;
+    }).join('');
+}
+
+async function cmaDelete(id){
+  if(!confirm('Remove this valuation? The link stops working straight away.')) return;
+  try{
+    const r = await fetch('/api/cma/' + encodeURIComponent(id), { method:'DELETE' });
+    if(!r.ok) throw new Error('Could not remove it.');
+    cmaLoad();
+    showToast('Removed.');
+  }catch(e){ showToast(e.message); }
 }
 </script>
 
