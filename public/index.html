@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v254">
+<meta name="build" content="index-v256">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2985,6 +2985,11 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-assist">
 <style>
 /* Scoped to #sec-assist. `.lead-card` taught us what unscoped class names do. */
+#arrange-overlay .arr-nm{font:inherit;font-size:14px;font-weight:600;color:inherit;
+  background:transparent;border:0;border-bottom:1px dashed rgba(20,26,60,.28);
+  padding:2px 0 3px;width:100%;max-width:190px;min-width:80px;border-radius:0}
+#arrange-overlay .arr-nm:focus{outline:none;border-bottom-color:var(--tab,#C89B4E);
+  background:rgba(255,255,255,.5)}
 #qe-panel .qe-tabs{display:flex;gap:8px;flex-wrap:wrap}
 #qe-panel .qe-q{border:1px solid var(--hair,rgba(20,26,60,.12));border-radius:5px;
   padding:14px 16px;margin-bottom:11px;background:#fff}
@@ -4365,7 +4370,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v254';
+window.BUILD = 'index-v256';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7748,6 +7753,22 @@ function visibleOrderedSections(){
     (!sc.brokerOnly || isBroker) && (!sc.agentOnly || !isBroker)));
 }
 
+/* ==================== TAB NAMES (index 255) ====================
+   People remember things by different words. "Taxes" is where one person looks for
+   1099s and another looks under "Money" — so let them write whichever they use, or
+   both: "Taxes / Money" works, so does a hyphen.
+
+   ⚠ Per agent, alongside their tab order and colours. Renaming is a label change and
+   nothing else: the section id never moves, so nothing that references a tab by id
+   — links, the search index, notifications — has any idea it happened. */
+let crmTabNames = {};
+
+function secLabel(sc){
+  if(!sc) return '';
+  const custom = crmTabNames && crmTabNames[sc.id];
+  return (typeof custom === 'string' && custom.trim()) ? custom.trim() : sc.label;
+}
+
 function orderedSections(list){
   if(!Array.isArray(crmTabOrder) || !crmTabOrder.length) return list;
   const rank = {};
@@ -7798,6 +7819,7 @@ async function loadTabOrder(){
   try{
     const p = await storeGet('crmPrefs:' + prefsOwnerId());
     if(p && Array.isArray(p.tabOrder)) crmTabOrder = p.tabOrder;
+    if(p && p.tabNames && typeof p.tabNames === 'object') crmTabNames = p.tabNames;
     if(p && p.theme){
       crmTheme = Object.assign({ palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} }, p.theme);
       if(!PALETTES[crmTheme.palette]) crmTheme.palette = 'coastal';
@@ -7818,7 +7840,7 @@ async function saveTabOrder(){
   if(!owner) return false;
   try{
     return await storeSet('crmPrefs:' + owner,
-      { tabOrder: crmTabOrder || [], theme: crmTheme });
+      { tabOrder: crmTabOrder || [], theme: crmTheme, tabNames: crmTabNames || {} });
   }catch(e){ return false; }
 }
 
@@ -7874,7 +7896,11 @@ function findRun(){
   const seen = [];
   const hits = FIND_INDEX.filter(([id,label,keys]) => {
     if(allowed.length && !allowed.includes(id)) return false;
-    return (label + ' ' + keys).toLowerCase().includes(q);
+    /* \u26a0 The agent's own name for the tab is searchable TOO, not INSTEAD. Rename
+       Taxes to Money and both words still find it \u2014 otherwise renaming quietly
+       breaks the one feature built for people who cannot remember where things are. */
+    const mine = (crmTabNames && crmTabNames[id]) || '';
+    return (label + ' ' + keys + ' ' + mine).toLowerCase().includes(q);
   }).filter(([id,label]) => {
     const k = id + '|' + label;
     if(seen.includes(k)) return false;
@@ -7882,7 +7908,7 @@ function findRun(){
   }).slice(0, 7);
   const tabLabel = id => {
     const sc = (typeof CRM_SECTIONS !== 'undefined') && CRM_SECTIONS.find(x => x.id === id);
-    return sc ? sc.label : '';
+    return sc ? secLabel(sc) : '';
   };
   box.innerHTML = hits.length
     ? hits.map(([id,label]) => `<button class="find-hit" onclick="findGo('${id}')">
@@ -7927,11 +7953,11 @@ function renderCrmNav(){
         return `<button class="tile-arr" data-id="${sc.id}" style="--tab:${tabColor(sc, idx)}"
           onclick="openTileColor('${sc.id}')">
           <span class="grip">${icon('grip')}</span>
-          <span class="ti">${icon(sc.icon)}</span><span class="tl">${sc.label}</span></button>`;
+          <span class="ti">${icon(sc.icon)}</span><span class="tl">${escapeHtml(secLabel(sc))}</span></button>`;
       }
       return `<button class="${crmSection===sc.id?'on':''}" onclick="showCrmSection('${sc.id}')"
         style="--tab:${tabColor(sc, idx)}">
-        <span class="ti">${icon(sc.icon)}</span><span class="tl">${sc.label}</span>${n?`<span class="pill${flash?' flash':''}">${n}</span>`:''}</button>`;
+        <span class="ti">${icon(sc.icon)}</span><span class="tl">${escapeHtml(secLabel(sc))}</span>${n?`<span class="pill${flash?' flash':''}">${n}</span>`:''}</button>`;
     }).join('')
     + (previewing()
         ? `<button class="crm-arrange" style="--tab:#8C93AD;opacity:.5;cursor:default"
@@ -14361,12 +14387,13 @@ async function buildTaxDoc(which, year){
 /* Drag works well with a mouse; the arrows are there because dragging on a touch
    screen is fiddly and because some people simply prefer buttons. Both edit the
    same list. */
-let arrDraft = [], arrTheme = null, arrPane = 'order';
+let arrDraft = [], arrTheme = null, arrPane = 'order', arrNames = {};
 
 function openTabArrange(pane){
   // same source of truth as the nav and the section coloring
   arrDraft = visibleOrderedSections().map(sc => sc.id);
   arrTheme = JSON.parse(JSON.stringify(crmTheme));   // edit a copy, so Cancel means cancel
+  arrNames = JSON.parse(JSON.stringify(crmTabNames || {}));   // names too
   document.getElementById('arrange-overlay').classList.add('active');
   // dragging now happens on the tiles themselves, so this opens on colors
   arrTab(pane || 'color');
@@ -14405,7 +14432,11 @@ function renderArrangeList(){
       || (PALETTES[arrTheme.palette] || {}).colors[i] || sc.color;
     return `<div class="arr-item" draggable="true" data-i="${i}" style="--tab:${col}">
       <span class="gr">\u2807</span>
-      <span class="nm"><span class="chip">${icon(sc.icon)}</span>${escapeHtml(sc.label)}</span>
+      <span class="nm"><span class="chip">${icon(sc.icon)}</span>
+        <input class="arr-nm" value="${escapeHtml((arrNames && arrNames[sc.id]) || sc.label)}"
+          placeholder="${escapeHtml(sc.label)}" spellcheck="false"
+          onclick="event.stopPropagation()"
+          oninput="renameTab('${sc.id}', this.value)"></span>
       <button onclick="moveTab(${i},-1)" ${i===0?'disabled':''} title="Up">\u2191</button>
       <button onclick="moveTab(${i},1)" ${i===arrDraft.length-1?'disabled':''} title="Down">\u2193</button>
     </div>`;
@@ -14433,6 +14464,15 @@ function renderArrangeList(){
       renderArrangeList();
     });
   });
+}
+
+/* \u26a0 Writes to the DRAFT, not to crmTabNames, so closing without saving leaves the
+   tabs alone \u2014 same contract as dragging and recolouring. Blank means "back to the
+   built-in name" rather than an empty tab. */
+function renameTab(id, value){
+  const v = String(value == null ? '' : value).slice(0, 22);
+  if(v.trim()) arrNames[id] = v;
+  else delete arrNames[id];
 }
 
 function moveTab(i, dir){
@@ -14584,6 +14624,7 @@ function previewTheme(){
 async function applyTabArrange(){
   crmTabOrder = arrDraft.slice();
   crmTheme = JSON.parse(JSON.stringify(arrTheme));
+  crmTabNames = JSON.parse(JSON.stringify(arrNames || {}));
   const ok = await saveTabOrder();
   applyCrmBackground();
   renderCrmNav();
@@ -14594,8 +14635,10 @@ async function applyTabArrange(){
 async function resetTabArrange(){
   crmTabOrder = null;
   crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
-  arrDraft = []; arrTheme = JSON.parse(JSON.stringify(crmTheme));
-  try{ await storeSet('crmPrefs:' + prefsOwnerId(), { tabOrder: [], theme: crmTheme }); }catch(e){}
+  crmTabNames = {};
+  arrDraft = []; arrTheme = JSON.parse(JSON.stringify(crmTheme)); arrNames = {};
+  try{ await storeSet('crmPrefs:' + prefsOwnerId(),
+    { tabOrder: [], theme: crmTheme, tabNames: {} }); }catch(e){}
   applyCrmBackground();
   renderCrmNav();
   document.getElementById('arrange-overlay').classList.remove('active');
@@ -20076,7 +20119,8 @@ function lcValuation(l){
   if((l.stage||'New') === 'Closed') return '';
   const addr = (l.quiz && l.quiz.address) || l.listingLabel || '';
   return `<button class="lc-setup" onclick="event.stopPropagation();cmaOpen('${l.id}',
-    '${String(l.name||'').replace(/'/g,"\\'")}','${String(addr).replace(/'/g,"\\'")}')">
+    '${String(l.name||'').replace(/'/g,"\\'")}','${String(addr).replace(/'/g,"\\'")}',
+    '${String(l.email||'').replace(/'/g,"\\'")}')">
     <span class="i">\u25EC</span>
     <span class="t"><b>Send them a valuation</b>
       <small>Upload the RPR report and see when they open it</small></span>
@@ -21701,8 +21745,8 @@ function qePreview(){
 
 let cmaFor = null, cmaFile = null, cmaBusy = false, cmaList = [];
 
-function cmaOpen(leadId, name, addr){
-  cmaFor = { id: leadId, name: name || '', addr: addr || '' };
+function cmaOpen(leadId, name, addr, email){
+  cmaFor = { id: leadId, name: name || '', addr: addr || '', email: email || '' };
   cmaFile = null;
   document.getElementById('cma-overlay').classList.add('active');
   cmaRender();
@@ -21813,23 +21857,44 @@ function cmaShowLink(url, addr){
   if(!out) return;
   /* \u26a0 mailto, same reasoning as the Assistant: a valuation is a one-to-one message
      and should leave from the agent's own mailbox. It threads with the conversation
-     they are already having and does not spend the marketing domain's reputation. */
-  const body = encodeURIComponent(
-    `Hi${cmaFor.name ? ' ' + String(cmaFor.name).split(' ')[0] : ''},\n\n`
-    + `Here is the valuation for ${addr}:\n\n${url}\n\n`
-    + `Happy to talk any of it through whenever suits.\n`);
-  const subj = encodeURIComponent(`Your home's value \u2014 ${addr}`);
+     they are already having and does not spend the marketing domain's reputation.
+
+     \u26a0 The URL is built HERE and stashed, never interpolated into an inline onclick.
+     encodeURIComponent does NOT escape an apostrophe \u2014 it is in the unreserved set \u2014
+     so "Your home's value" put a raw ' inside onclick="...href='mailto:...'", closed
+     the JS string early, and the button silently did nothing. Anything encoded is
+     unsafe as an inline attribute; keep it in JS. */
+  window.__cmaMailto = 'mailto:' + encodeURIComponent(cmaFor.email || '')
+    + '?subject=' + encodeURIComponent(`Your home's value \u2014 ${addr}`)
+    + '&body=' + encodeURIComponent(
+        `Hi${cmaFor.name ? ' ' + String(cmaFor.name).split(' ')[0] : ''},\n\n`
+        + `Here is the valuation for ${addr}:\n\n${url}\n\n`
+        + `Happy to talk any of it through whenever suits.\n`);
   out.innerHTML =
     `<div class="cma-done">
       <div class="h">Ready to send</div>
       <input class="cma-link" value="${escapeHtml(url)}" readonly onclick="this.select()">
       <div class="cma-acts">
         <button class="btn-sm" onclick="cmaCopy('${escapeHtml(url)}')">Copy the link</button>
-        <button class="btn-sm primary" onclick="window.location.href='mailto:?subject=${subj}&body=${body}'">Open in email</button>
+        <button class="btn-sm primary" onclick="cmaMail()">Open in email</button>
       </div>
       <p class="cma-fine">Opens are recorded against their lead record and count toward
         their score. They do not need an account or a password.</p>
      </div>`;
+}
+
+/* \u26a0 If no mail client is registered, window.location.href to a mailto: does nothing
+   at all and looks like a broken button. Say so rather than leaving them clicking. */
+function cmaMail(){
+  const href = window.__cmaMailto;
+  if(!href){ showToast('Nothing to send yet.'); return; }
+  const before = Date.now();
+  window.location.href = href;
+  setTimeout(() => {
+    if(Date.now() - before < 1400 && !document.hidden){
+      showToast('No mail app opened \u2014 copy the link and paste it into your email.');
+    }
+  }, 900);
 }
 
 function cmaCopy(url){
