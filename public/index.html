@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v242">
+<meta name="build" content="index-v243">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4255,7 +4255,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v242';
+window.BUILD = 'index-v243';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10344,7 +10344,14 @@ function mkComposeAddress(l){
 function mkListingCredit(l){
   const office = String((l && (l.ListOfficeName || l.listOfficeName)) || '').trim();
   if(!office) return '';
-  if(office.toLowerCase() === String(BROKERAGE_NAME || '').toLowerCase()) return '';
+  /* ⚠ BROKERAGE_NAME is declared INSIDE the AvaniTemplates block, not globally. A
+     bare reference from out here threw a ReferenceError, which killed the rest of
+     mkPickListing() and stopped the whole flyer autofill working. Reached through
+     the namespace, which is how every other cross-block reference in this file
+     already does it — and not copied out as a literal, because a second copy of the
+     brokerage name is a thing that drifts. */
+  const us = String((window.AvaniTemplates && AvaniTemplates.BROKERAGE_NAME) || '');
+  if(us && office.toLowerCase() === us.toLowerCase()) return '';
   return 'Listed by ' + office;
 }
 
@@ -10360,8 +10367,6 @@ async function mkPickListing(key){
   if(!l){ mkState.fields.listingKey = ''; mkState.fields.listingCredit = ''; return; }
   const f = mkState.fields;
   f.listingKey = String(l.ListingKey);
-  // travels with the listing, cleared with it
-  f.listingCredit = mkListingCredit(l);
   f.price   = l.ListPrice || '';
   // UnparsedAddress usually already carries city, state and ZIP. Appending them
   // again produced "…Gulf Shores AL 36542, Gulf Shores, AL, 36542".
@@ -10384,6 +10389,10 @@ async function mkPickListing(key){
   const max = AvaniTemplates.TEMPLATES[mkState.tpl].multi || 1;
   f.chosen  = fresh.slice(0, max);
   f.photo   = f.chosen[0] || '';
+  /* ⚠ Set LAST on purpose. This was the second line, and when it threw it took
+     price, address, beds, baths, size, remarks and photos down with it. Anything
+     added to this function later belongs below the fields a person actually sees. */
+  f.listingCredit = mkListingCredit(l);
   window.__mkPhotoImg = null; window.__mkPhotoSrc = null;
   mkLoadPhotos(() => { mkSide(); mkRender(); });
 }
