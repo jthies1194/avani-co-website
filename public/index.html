@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v257">
+<meta name="build" content="index-v259">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2477,13 +2477,25 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <!-- ============ CRM ============ -->
 <div id="referral-bar" style="display:none;"></div>
 <div id="transfer-overlay"><div class="box"><div id="transfer-body"></div></div></div>
-<div id="cma-overlay"><div class="box"><div id="cma-body"></div></div></div>
+<div id="cma-overlay" onclick="if(event.target===this) cmaClose()">
+  <div class="box">
+    <button class="cma-x" onclick="cmaClose()" aria-label="Close">&times;</button>
+    <div id="cma-body"></div>
+  </div>
+</div>
 <style>
 #cma-overlay{position:fixed;inset:0;background:rgba(10,14,35,.66);z-index:9200;
   display:none;align-items:center;justify-content:center;padding:20px}
 #cma-overlay.active{display:flex}
 #cma-overlay .box{background:var(--ivory,#FBFAF6);border-radius:7px;width:100%;
-  max-width:560px;max-height:92vh;overflow:auto;padding:28px 30px}
+  max-width:560px;max-height:92vh;overflow:auto;padding:28px 30px;position:relative}
+/* \u26a0 The only way out of this was a Close button sitting between the form and the
+   list, so it scrolled off the moment a couple of valuations had been sent. Sticky,
+   in the corner, where every other overlay here puts it. */
+#cma-overlay .cma-x{position:sticky;top:-6px;float:right;margin:-14px -12px 0 0;
+  border:0;background:transparent;font-size:30px;line-height:1;cursor:pointer;
+  color:var(--mut,#7A8199);padding:0 6px;z-index:2}
+#cma-overlay .cma-x:hover{color:var(--ink,#171F63)}
 @media(max-width:560px){ #cma-overlay .box{padding:22px 20px} }
 #cma-overlay h3{font-family:'Fraunces',Georgia,serif;font-size:23px;margin:0 0 6px;
   color:var(--ink,#171F63)}
@@ -4370,7 +4382,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v257';
+window.BUILD = 'index-v259';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6476,7 +6488,7 @@ async function loadEmailConfigIntoForm(){
   const statusEl = document.getElementById('email-status-text');
   if(!statusEl) return;
   try{
-    const res = await fetch('/api/health');
+    const res = await fetch('/api/health?t=' + Date.now(), { cache: 'no-store' });
     const data = await res.json();
     statusEl.textContent = data.emailConfigured
       ? "✓ Email notifications are configured and active."
@@ -11332,7 +11344,17 @@ async function renderVersionStamp(){
   if(!el) return;
   let sv = '?';
   try{
-    const r = await fetch('/api/health');
+    /* \u26a0 There is a SERVICE WORKER on this site (registered near the bottom of this
+       file). A service worker answers from its own cache and is not touched by a hard
+       refresh, by clearing the browser cache, or by a CDN purge \u2014 so a plain
+       fetch('/api/health') can keep returning a months-old response. That is exactly
+       how this stamp sat on an old server number through five deploys of a new one,
+       and a version stamp you cannot trust is worse than none at all.
+
+       Two defences: a changing query string, which misses any cache keyed on URL, and
+       cache:'no-store', which tells both the HTTP cache and a well-behaved worker not
+       to answer from a stored copy. */
+    const r = await fetch('/api/health?t=' + Date.now(), { cache: 'no-store' });
     if(r.ok){ const j = await r.json(); sv = j.serverVersion || '?'; }
   }catch(e){ sv = 'unreachable'; }
   const iv = (window.BUILD || 'index-?').replace('index-','');
@@ -21767,6 +21789,14 @@ function cmaClose(){
   document.getElementById('cma-overlay').classList.remove('active');
   cmaFor = null; cmaFile = null;
 }
+
+/* \u26a0 Escape closes it, matching the marketing studio and the report viewer. Bound
+   once, and it checks the overlay is actually open before swallowing the key. */
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  const o = document.getElementById('cma-overlay');
+  if(o && o.classList.contains('active')){ e.preventDefault(); cmaClose(); }
+});
 
 async function cmaLoad(){
   try{
