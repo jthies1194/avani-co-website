@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v259">
+<meta name="build" content="index-v261">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2707,6 +2707,7 @@ body.in-crm .topbar{display:none}
   <div>
     <div class="t">Arranging your tabs</div>
     <div class="d">Drag one to move it &middot; tap one to change its color &middot;
+      <strong>Names &amp; colors</strong> to call a tab something else &middot;
       normal tapping comes back when you're done</div>
   </div>
   <span class="sp"></span>
@@ -4382,7 +4383,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v259';
+window.BUILD = 'index-v261';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7977,9 +7978,14 @@ function renderCrmNav(){
              title="Previewing \u2014 this is their view">
              <span class="ti">${icon('arrange')}</span><span class="tl">Their view</span></button>`
         : arrangeMode
-          ? `<button class="crm-arrange live" onclick="openTabArrange('color')"
-               title="Color sets and backgrounds">
-               <span class="ti">${icon('arrange')}</span><span class="tl">Themes</span></button>`
+          /* \u26a0 This said "Themes" and opened on the Colors pane. Renaming a tab lives
+             one pane over, so the only route to it was a button that gave no hint it
+             was there. Renamed, and it opens on Names now \u2014 colours are already
+             reachable by tapping a tile while arranging, renaming was not reachable
+             at all. */
+          ? `<button class="crm-arrange live" onclick="openTabArrange('order')"
+               title="Rename your tabs, reorder them, change colors">
+               <span class="ti">${icon('arrange')}</span><span class="tl">Names &amp; colors</span></button>`
             + `<button class="crm-arrange done" onclick="exitArrangeMode()" title="Finished">
                <span class="ti">${icon('tick')}</span><span class="tl">Done</span></button>`
           : `<button class="crm-arrange live${crmSeenArrange ? '' : ' nudge'}"
@@ -20154,7 +20160,7 @@ function lcValuation(l){
   return `<button class="lc-setup" onclick="event.stopPropagation();cmaOpen('${l.id}',
     '${String(l.name||'').replace(/'/g,"\\'")}','${String(addr).replace(/'/g,"\\'")}',
     '${String(l.email||'').replace(/'/g,"\\'")}')">
-    <span class="i">\u25EC</span>
+    <span class="i">${typeof icon === 'function' ? icon('market') : '\u2302'}</span>
     <span class="t"><b>Send them a valuation</b>
       <small>Upload the RPR report and see when they open it</small></span>
     <span class="go">\u2192</span></button>`;
@@ -20601,7 +20607,12 @@ body.crm-dark .lc-running .off{background:#262C42;color:#98A0BE}
   transition:.15s}
 .lc-setup:hover{border-color:#2E3CB0;box-shadow:0 3px 12px rgba(46,60,176,.16);
   transform:translateY(-1px)}
-.lc-setup .i{font-size:17px;color:#2E3CB0;flex:0 0 auto}
+/* \u26a0 Sized for a text glyph originally. The valuation button uses the same inline
+   SVG set as the nav, which renders identically everywhere instead of depending on
+   whichever font happens to have the character \u2014 \u25EC came out as a warning
+   triangle and made every lead card look like it had a problem. */
+.lc-setup .i{font-size:17px;color:#2E3CB0;flex:0 0 auto;display:flex;align-items:center}
+.lc-setup .i svg{width:17px;height:17px}
 .lc-setup .t{flex:1;min-width:0}
 .lc-setup .t b{display:block;font-size:13.5px;color:#2E3CB0}
 .lc-setup .t small{display:block;font-size:11.5px;color:var(--driftwood);margin-top:1px}
