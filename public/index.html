@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v243">
+<meta name="build" content="index-v244">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1456,8 +1456,25 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
       <p>Search every active listing from Gulf Shores to Perdido Key &mdash;
          with a brokerage small enough to answer the phone.</p>
       <a href="#listings" class="btn btn-light" id="hero-cta">Search homes</a>
+      <!-- ⚠ The alerts and valuation doors were buried in a band headed "Not ready to
+           browse alone?", reachable only by scrolling or by guessing that the nav item
+           "Home Value" led there. A door nobody finds is the same as no door. -->
+      <div class="hero-alt">
+        <a href="#" onclick="qzOpen('buy');return false;">Get new listings emailed to me</a>
+        <span>&middot;</span>
+        <a href="#" onclick="qzOpen('sell');return false;">What is my home worth?</a>
+      </div>
     </div>
   </div>
+  <style>
+  .hero-alt{margin-top:15px;font-size:14px;line-height:1.9}
+  .hero-alt a{color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.5);
+    padding-bottom:1px}
+  .hero-alt a:hover{border-bottom-color:#E6C381;color:#E6C381}
+  .hero-alt span{opacity:.5;margin:0 9px}
+  @media(max-width:560px){ .hero-alt{font-size:13.5px} .hero-alt span{display:none}
+    .hero-alt a{display:block;margin-top:7px} }
+  </style>
   <div class="photo-credit"><div><span>Zayde Albiyati</span><span class="b">Salt Air Media</span></div></div>
   <div class="scroll-cue">Scroll</div>
 </section>
@@ -4255,7 +4272,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v243';
+window.BUILD = 'index-v244';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -19665,31 +19682,49 @@ async function ssPreviewEmail(){
         Worth widening before you set it running.</div></div>`;
       return;
     }
+    /* ⚠ The server BUILDS the real email and returns it as d.html — photo cards,
+       gold buttons, listing-office attribution, the lot. This function used to throw
+       that away and redraw a plain approximation from d.items, so the agent approved
+       something that was not the email. Same failure as ?ask= and ?agent=: the thing
+       was built and nothing displayed it.
+
+       Rendered in a sandboxed iframe because it is a whole HTML document with its own
+       table layout — injecting it into the page would leak styles both directions. */
+    const _c = ssCriteria();
+    const tooBroad = !_c.city && !(_c.cities || []).length;
     box.innerHTML = `
+      ${tooBroad ? `<div style="background:#FDF2F1;border-left:3px solid #8A2C22;border-radius:4px;
+        padding:12px 15px;margin-bottom:10px;font-size:13px;line-height:1.6">
+        <b style="color:#8A2C22">No town set — this matches the whole feed.</b><br>
+        That is why Mobile and Satsuma are showing. Add at least one town before you set
+        this running, or they get everything every morning.</div>` : ''}
       <div class="ss-mail">
         <div class="bar">This is exactly what they receive
           <button onclick="document.getElementById('ss-preview').innerHTML=''">Close preview</button></div>
         <div class="bar"><b>Subject:</b> ${escapeHtml(d.subject)}</div>
-        <div class="body">
-          <p>${escapeHtml(d.greeting)}</p>
-          <p>${escapeHtml(d.intro)}</p>
-          ${d.items.map(x => `<div class="li"><b>${escapeHtml(x.price)}</b>
-            <span>${escapeHtml(x.address)}${x.city?', '+escapeHtml(x.city):''}</span>
-            ${x.beds||x.baths ? `<span>${x.beds?x.beds+' bed':''}${x.beds&&x.baths?', ':''}${x.baths?x.baths+' bath':''}</span>` : ''}
-          </div>`).join('')}
-          <p style="margin-top:14px">${escapeHtml(d.signoff)}</p>
-          <p style="white-space:pre-line;color:#5A6288;font-size:12.5px">${escapeHtml(d.from)}</p>
-        </div>
-        <div class="fine">${escapeHtml(d.disclaimer)}<br><br>${escapeHtml(d.footer)}</div>
+        <iframe id="ss-mail-frame" sandbox="" title="Email preview"
+          style="width:100%;height:560px;border:0;display:block;background:#FBFAF7"></iframe>
       </div>
       <div style="font-size:12.5px;color:var(--driftwood);margin-top:7px">
         ${d.count} matched in the last 30 days \u2014 roughly what they would have had.</div>`;
+    /* srcdoc set as a property, not through innerHTML, so the markup is never parsed
+       by this document on the way in. */
+    const fr = document.getElementById('ss-mail-frame');
+    if(fr) fr.srcdoc = d.html || '';
   }catch(e){ box.innerHTML = '<div style="font-size:13px;color:#B4232A">Could not build that.</div>'; }
 }
 
 async function ssCreate(){
   const c = ssCriteria();
   if(!c.email){ showToast('Their email, at least.'); return; }
+  /* ⚠ An alert with no town matches the entire feed — Mobile, Satsuma, Grand Bay,
+     everything. The person on the other end gets the whole MLS every morning and the
+     first they hear of it is when they unsubscribe. Warned at the point it becomes
+     real, not just in the preview they might have skipped. */
+  if(!c.city && !(c.cities || []).length){
+    if(!confirm('This alert has no town set.\n\nThey will receive every new listing in '
+      + 'the whole feed, not just this area. Set it up anyway?')) return;
+  }
   try{
     const r = await fetch('/api/search', {
       method:'POST', headers:{'Content-Type':'application/json'},
