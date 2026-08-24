@@ -2130,7 +2130,7 @@ app.post('/api/alert-signup', async (req, res) => {
             + `Email: ${email}\n`
             + (clean(b.phone) ? `Phone: ${clean(b.phone)}\n` : '')
             + `\nThey will start receiving matches ${rec.pace}.\n`,
-      }).catch(() => {});
+      }).catch(e => console.error(`[quiz] agent notice FAILED for ${owner.email}:`, e.message));
     }
   } catch (e) {}
 
@@ -3575,22 +3575,47 @@ app.post('/api/agent/forgot-password', async (req, res) => {
   // can't be used to check which emails have accounts.
   const genericReply = { ok: true, message: 'If that email has an account, a reset link has been sent.' };
   if (!normalizedEmail) return res.json(genericReply);
+  /* \u26a0 The generic reply above is correct and stays \u2014 it stops this route being used to
+     discover which addresses have accounts. But it was paired with NO logging and a
+     swallowed send error, so when a reset produced no email there was no way to tell
+     whether the address matched, whether mail was configured, or whether the send
+     failed. Silent to the CALLER is right; silent to the LOG is not. */
   try {
-    const { data } = await supabase.from('agents').select('id,name,email').eq('email', normalizedEmail).maybeSingle();
-    if (data) {
-      const token = crypto.randomBytes(24).toString('hex');
-      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
-      await supabase.from('agents').update({ reset_token: token, reset_expires: expires }).eq('id', data.id);
-      if (mailer) {
-        const resetUrl = `${req.protocol}://${req.get('host')}/?reset=${token}`;
-        await mailer.sendMail({
-          to: data.email,
-          subject: `Reset your ${BROKERAGE_NAME} CRM password`,
-          text: `Hi ${data.name},\n\nSomeone requested a password reset for your ${BROKERAGE_NAME} CRM account. If this was you, set a new password here (link expires in 1 hour):\n\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
-        }).catch(() => {});
-      }
+    /* \u26a0 ilike, not eq. Agent emails are lower-cased on creation, but any record made
+       before that or edited by hand in Supabase keeps its capitals \u2014 and an exact match
+       then finds nothing and reports success. */
+    const { data } = await supabase.from('agents')
+      .select('id,name,email').ilike('email', normalizedEmail).maybeSingle();
+    if (!data) {
+      console.warn(`[reset] no agent matches ${normalizedEmail} \u2014 nothing sent`);
+      return res.json(genericReply);
     }
-  } catch (e) {}
+    const token = crypto.randomBytes(24).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+    const { error: upErr } = await supabase.from('agents')
+      .update({ reset_token: token, reset_expires: expires }).eq('id', data.id);
+    if (upErr) {
+      console.error(`[reset] could not store the token for ${data.email}:`, upErr.message);
+      return res.json(genericReply);
+    }
+    if (!mailer) {
+      console.error('[reset] SKIPPED \u2014 mailer not configured. Set RESEND_API_KEY.');
+      return res.json(genericReply);
+    }
+    const resetUrl = `${req.protocol}://${req.get('host')}/?reset=${token}`;
+    try {
+      await mailer.sendMail({
+        to: data.email,
+        subject: `Reset your ${BROKERAGE_NAME} CRM password`,
+        text: `Hi ${data.name},\n\nSomeone requested a password reset for your ${BROKERAGE_NAME} CRM account. If this was you, set a new password here (link expires in 1 hour):\n\n${resetUrl}\n\nIf you didn't request this, you can ignore this email.`,
+      });
+      console.log(`[reset] link sent to ${data.email}`);
+    } catch (e) {
+      console.error(`[reset] send FAILED for ${data.email}:`, e.message);
+    }
+  } catch (e) {
+    console.error('[reset] failed:', e.message);
+  }
   res.json(genericReply);
 });
 
@@ -4861,7 +4886,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v115',
+    serverVersion: 'v116',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4869,7 +4894,6 @@ app.get('/api/health', async (req, res) => {
     mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
     emailConfigured: !!mailer,
     marketingDomainReady: MARKETING_READY,
-    sitePrivate: await siteIsPrivate(),
     aiConfigured: !!ANTHROPIC_API_KEY,
     /* ⚠ The RAW stored value, plus what it resolves to. When robots.txt disagreed
        with the switch there was no way to tell whether the write had failed, the
