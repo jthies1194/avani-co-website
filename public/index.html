@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v240">
+<meta name="build" content="index-v241">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4255,7 +4255,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v240';
+window.BUILD = 'index-v241';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -20444,6 +20444,7 @@ function wnGo(k){
    "Loading…" forever, which is the Part One bug wearing new markup. */
 
 let asMode = 'followup', asLeads = null, asPick = '', asBusy = false, asOut = null;
+let asMls = '';
 
 async function renderAssist(){
   const host = document.getElementById('as-body');
@@ -20459,7 +20460,7 @@ async function renderAssist(){
   asRenderPane();
 }
 
-function asGo(m){ asMode = m; asOut = null; renderAssist(); }
+function asGo(m){ asMode = m; asOut = null; asMls = ''; renderAssist(); }
 
 function asRenderPane(){
   const p = document.getElementById('as-pane');
@@ -20557,16 +20558,29 @@ async function asRunFollowup(){
   }
 }
 
-/* ---------- 2. Listing copy ---------- */
-function asPaneListing(p){
+/* ---------- 2. Listing copy ----------
+   ⚠ Reuses mkLoadListings() and mkListingLabel() from the flyer builder rather than
+   loading the feed a second way. Two loaders for the same list drift, and then one
+   screen offers a listing the other cannot find. Typing a number by hand stays
+   available: the picker holds the first 300, and copy is sometimes wanted for a
+   listing outside that. */
+async function asPaneListing(p){
   p.innerHTML =
     `<div class="as-card">
       <h4>Describe a listing</h4>
-      <p class="s">Pulls the record from the feed and writes from those facts only.
-        If a detail is not in the feed it will be left out rather than guessed at.</p>
+      <p class="s">Pick it and the facts come straight from the live feed &mdash; price,
+        beds, baths, size, remarks. Nothing is invented to fill a gap.</p>
       <div class="as-row">
-        <label class="as-lab">MLS number</label>
-        <input class="as-in" id="as-mls" placeholder="e.g. 397530">
+        <label class="as-lab">Listing</label>
+        <select class="as-in" id="as-listing" onchange="asPickListing(this.value)">
+          <option value="">Loading listings\u2026</option>
+        </select>
+        <div id="as-lrecap" style="font-size:12px;color:var(--mut,#7A8199);margin-top:7px"></div>
+      </div>
+      <div class="as-row">
+        <label class="as-lab">Not in the list? MLS number</label>
+        <input class="as-in" id="as-mls" placeholder="e.g. 397530"
+          oninput="asMls=this.value.trim(); asPickListing('')">
       </div>
       <div class="as-row">
         <label class="as-lab">For</label>
@@ -20579,12 +20593,43 @@ function asPaneListing(p){
       <button class="btn-sm primary" id="as-run" onclick="asRunListing()">Write it</button>
      </div>
      <div id="as-result"></div>`;
+
+  let rows = [];
+  try{ rows = await mkLoadListings(); }catch(e){ rows = []; }
+  const sel = document.getElementById('as-listing');
+  if(!sel) return;                       // they changed mode while it loaded
+  sel.innerHTML = rows.length
+    ? `<option value="">\u2014 choose a listing, or type a number below \u2014</option>`
+      + rows.map(l => `<option value="${escapeHtml(String(l.ListingKey))}">${
+          escapeHtml(mkListingLabel(l))}</option>`).join('')
+    : `<option value="">Nothing loaded \u2014 type an MLS number below</option>`;
+}
+
+/* Show what was picked before anything is written. The whole point of the picker is
+   that nobody has to go and look the numbers up, so the numbers belong on screen. */
+function asPickListing(key){
+  if(key){
+    asMls = key;
+    const box = document.getElementById('as-mls');
+    if(box) box.value = '';
+  }
+  const recap = document.getElementById('as-lrecap');
+  if(!recap) return;
+  const l = (typeof mkListings !== 'undefined')
+    ? mkListings.find(x => String(x.ListingKey) === String(asMls)) : null;
+  recap.innerHTML = l
+    ? `Using: ${escapeHtml(l.UnparsedAddress || '')}${l.City ? ', ' + escapeHtml(l.City) : ''}
+       &middot; $${Number(l.ListPrice||0).toLocaleString()}${
+       l.BedroomsTotal ? ' &middot; ' + l.BedroomsTotal + ' bd' : ''}${
+       l.BathroomsTotalInteger ? ' &middot; ' + l.BathroomsTotalInteger + ' ba' : ''}${
+       l.LivingArea ? ' &middot; ' + Number(l.LivingArea).toLocaleString() + ' sq ft' : ''}`
+    : '';
 }
 
 async function asRunListing(){
   if(asBusy) return;
-  const key = (document.getElementById('as-mls')?.value || '').trim();
-  if(!key){ showToast('Which listing?'); return; }
+  const key = asMls || (document.getElementById('as-mls')?.value || '').trim();
+  if(!key){ showToast('Pick a listing, or type an MLS number.'); return; }
   const btn = document.getElementById('as-run');
   asBusy = true; if(btn){ btn.disabled = true; btn.textContent = 'Writing\u2026'; }
   try{
