@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v238">
+<meta name="build" content="index-v240">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1532,7 +1532,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="mf-foot">
     <button type="button" class="lnk" onclick="clearMoreFilters()">Clear these</button>
     <span class="hint">Want these as they hit the market?
-      <a href="#" onclick="openLeadModal('alerts');return false;">Set up alerts</a></span>
+      <a href="#" onclick="qzOpen('buy');return false;">Set up alerts</a></span>
   </div>
 </div>
 
@@ -1971,13 +1971,13 @@ document.addEventListener('DOMContentLoaded', () => {
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2 L2 9 L12 16 L22 9 Z"/><path d="M6 11 V19 H18 V11"/></svg>
 <h3>Home valuation</h3>
 <p>Find out what your property could sell for in today's market.</p>
-<button onclick="openLeadModal('valuation')">Get my free valuation</button>
+<button onclick="qzOpen('sell')">Get my free valuation</button>
 </div>
 <div class="lead-card">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12 C3 12 7 4 12 4 C17 4 21 12 21 12 C21 12 17 20 12 20 C7 20 3 12 3 12 Z"/><circle cx="12" cy="12" r="3"/></svg>
 <h3>New listing alerts</h3>
 <p>Be first to know when a home matching your search hits BCMLS.</p>
-<button onclick="openLeadModal('alerts')">Set up alerts</button>
+<button onclick="qzOpen('buy')">Set up alerts</button>
 </div>
 <div class="lead-card">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -3083,6 +3083,68 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 </form>
 </div>
 </div>
+
+<!-- ============ QUALIFYING QUIZ ============ -->
+<div class="qz-overlay" id="qz-overlay">
+  <div class="qz">
+    <button class="qz-x" onclick="qzClose()" aria-label="Close">&times;</button>
+    <div class="qz-bar"><div class="qz-fill" id="qz-fill"></div></div>
+    <div class="qz-body" id="qz-body"></div>
+  </div>
+</div>
+<style>
+/* \u26a0 Scoped with a qz- prefix throughout. `.lead-card` was two unrelated
+   components sharing a class and it cost a day; nothing here is a generic name. */
+.qz-overlay{position:fixed;inset:0;background:rgba(10,14,35,.72);backdrop-filter:blur(4px);
+  z-index:9000;display:none;align-items:center;justify-content:center;padding:20px}
+.qz-overlay.active{display:flex}
+.qz{background:var(--ivory,#FBFAF6);border-radius:8px;width:100%;max-width:600px;
+  max-height:92vh;overflow:auto;position:relative;
+  box-shadow:0 30px 90px rgba(10,14,35,.4)}
+.qz-x{position:absolute;top:13px;right:15px;border:0;background:transparent;font-size:27px;
+  line-height:1;color:var(--mut,#7A8199);cursor:pointer;z-index:2}
+.qz-bar{height:3px;background:rgba(20,26,60,.08)}
+.qz-fill{height:100%;width:0;background:var(--gold,#E6C381);transition:width .3s ease}
+.qz-body{padding:36px 38px 32px}
+@media(max-width:560px){ .qz-body{padding:28px 22px 26px} }
+.qz-step{font-size:11px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;
+  color:var(--mut,#7A8199);margin-bottom:9px}
+.qz h3{font-family:'Fraunces',Georgia,serif;font-size:25px;line-height:1.25;margin:0 0 7px;
+  color:var(--ink,#171F63)}
+.qz .qz-sub{font-size:13.5px;line-height:1.6;color:var(--mut,#7A8199);margin:0 0 22px}
+/* Big tap targets. Most of this traffic arrives from a phone. */
+.qz-opts{display:grid;gap:9px;margin-bottom:22px}
+.qz-opts.two{grid-template-columns:1fr 1fr}
+@media(max-width:480px){ .qz-opts.two{grid-template-columns:1fr} }
+.qz-opt{font:inherit;font-size:14.5px;text-align:left;padding:15px 17px;border-radius:5px;
+  border:1.5px solid rgba(20,26,60,.12);background:#fff;color:var(--rl,#0E1433);cursor:pointer;
+  transition:border-color .15s,background .15s}
+.qz-opt:hover{border-color:var(--gold,#E6C381)}
+.qz-opt.on{border-color:var(--ink,#171F63);background:#F4F1E8;font-weight:600}
+.qz-opt .d{display:block;font-size:12px;color:var(--mut,#7A8199);font-weight:400;margin-top:3px}
+.qz-f{margin-bottom:15px}
+.qz-f label{display:block;font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:var(--mut,#7A8199);margin-bottom:6px}
+.qz-f input{width:100%;font:inherit;font-size:15px;padding:13px 14px;border-radius:5px;
+  border:1.5px solid rgba(20,26,60,.12);background:#fff;color:var(--rl,#0E1433)}
+.qz-nav{display:flex;gap:10px;align-items:center;margin-top:6px}
+.qz-next{font:inherit;font-size:15px;font-weight:600;padding:14px 30px;border-radius:5px;
+  border:0;background:var(--ink,#171F63);color:#fff;cursor:pointer}
+.qz-next:disabled{opacity:.4;cursor:default}
+.qz-back{font:inherit;font-size:13.5px;background:transparent;border:0;color:var(--mut,#7A8199);
+  cursor:pointer;padding:10px 4px}
+.qz-skip{margin-left:auto;font-size:12.5px;color:var(--mut,#7A8199);background:transparent;
+  border:0;cursor:pointer;text-decoration:underline}
+.qz-consent{display:flex;gap:9px;align-items:flex-start;margin:4px 0 18px}
+.qz-consent input{margin-top:3px;width:auto;flex:0 0 auto}
+.qz-consent label{font-size:11px;line-height:1.55;color:var(--mut,#7A8199);font-weight:400;
+  letter-spacing:0;text-transform:none}
+.qz-done{text-align:center;padding:14px 0 6px}
+.qz-done .tick{width:52px;height:52px;border-radius:50%;background:#E7F3EC;color:#1F6B49;
+  display:flex;align-items:center;justify-content:center;margin:0 auto 17px;font-size:26px}
+.qz-recap{background:#fff;border:1px solid rgba(20,26,60,.1);border-radius:5px;
+  padding:14px 16px;font-size:13.5px;line-height:1.65;margin:18px 0;text-align:left}
+</style>
 
 <!-- ============ AGENT MODAL ============ -->
 <div class="modal-overlay" id="agent-modal-overlay">
@@ -4193,7 +4255,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v238';
+window.BUILD = 'index-v240';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6480,6 +6542,10 @@ document.addEventListener('DOMContentLoaded', () => {
   try{ refreshClientBar(); }catch(e){}
   // /#crm or /#commissions opens the CRM directly
   if(typeof resolveAgentFromQuery === 'function') resolveAgentFromQuery().then(()=>{ try{ showReferralBar(); }catch(e){} });
+  /* ⚠ After the agent is resolved, never before — the quiz submits with that
+     slug and would otherwise attribute the lead to nobody. */
+  if(typeof qzCheckQuery === 'function') qzCheckQuery();
+  if(typeof qsCheckMls === 'function') qsCheckMls();
   if(typeof maybeShowAgentProfile === 'function'){
     maybeShowAgentProfile().then(shown => { if(shown) return; });
   }
@@ -20628,6 +20694,379 @@ function asMail(){
 }
 
 function asRerun(){ asOut = null; asRenderPane(); }
+
+/* ==================== THE QUALIFYING QUIZ (index 239) ====================
+   One question a screen instead of one long form. Two paths, because a seller and a
+   buyer are not the same person and asking a seller about bedrooms wastes the only
+   attention you get.
+
+   \u26a0 The buyer path ends in a REAL saved search, not a note in a message field. The
+   alert engine, the criteria fields fixed in v210 and searchFilter() have been able
+   to do this the whole time \u2014 the public site simply had no door to them, so every
+   visitor who pressed "Set up alerts" got a lead record and silence.
+
+   \u26a0 Timeline sets the opening lane. The lane engine takes over from there.
+
+   Doors in (Rule 1, and it bit us twice before): the two homepage buttons, the
+   header link, AND ?q=buy / ?q=sell so an ad or a shared link can land straight in
+   it carrying ?agent= for attribution. */
+
+const QZ_TOWNS = ['Gulf Shores','Orange Beach','Fort Morgan','Fairhope','Foley','Daphne',
+  'Spanish Fort','Elberta','Robertsdale','Perdido Key','Mobile','Pensacola area'];
+
+let qzPath = 'buy', qzStep = 0, qzA = {};
+
+function qzOpen(path){
+  qzPath = (path === 'sell') ? 'sell' : 'buy';
+  qzStep = 0; qzA = {};
+  document.getElementById('qz-overlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  qzRender();
+}
+function qzClose(){
+  document.getElementById('qz-overlay').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function qzSteps(){ return qzPath === 'sell' ? QZ_SELL : QZ_BUY; }
+
+/* ---------- buyer ---------- */
+const QZ_BUY = [
+  { key:'cities', kind:'multi', title:'Where are you looking?',
+    sub:'Pick as many as you like \u2014 you can always change it later.',
+    opts: QZ_TOWNS.map(t => ({ v:t, l:t })) },
+  { key:'type', kind:'one', title:'What kind of place?',
+    sub:'', two:true,
+    opts:[ {v:'Residential',l:'A house'}, {v:'Condo',l:'A condo'},
+           {v:'Townhouse',l:'A townhouse'}, {v:'Land',l:'Land to build on'},
+           {v:'',l:'Not sure yet',d:'We will show you everything'} ] },
+  { key:'maxPrice', kind:'one', title:'Roughly what budget?',
+    sub:'A ceiling is enough. Nobody is holding you to it.', two:true,
+    opts:[ {v:250000,l:'Up to $250k'}, {v:400000,l:'$250k \u2013 $400k'},
+           {v:600000,l:'$400k \u2013 $600k'}, {v:900000,l:'$600k \u2013 $900k'},
+           {v:1500000,l:'$900k \u2013 $1.5m'}, {v:0,l:'Above that, or unsure'} ] },
+  { key:'beds', kind:'one', title:'How much room do you need?', sub:'', two:true,
+    opts:[ {v:1,l:'1+ bedroom'}, {v:2,l:'2+ bedrooms'}, {v:3,l:'3+ bedrooms'},
+           {v:4,l:'4+ bedrooms'}, {v:5,l:'5+ bedrooms'}, {v:0,l:'No strong view'} ] },
+  { key:'musts', kind:'multi', title:'Anything it has to have?',
+    sub:'Skip this if nothing is essential.', two:true,
+    opts:[ {v:'waterfront',l:'On the water'}, {v:'view',l:'A water view'},
+           {v:'pool',l:'A pool'}, {v:'newConstruction',l:'Newly built'},
+           {v:'noHoa',l:'No HOA'}, {v:'garage',l:'A garage'} ] },
+  { key:'timeline', kind:'one', title:'When would you like to be moved in?',
+    sub:'This is the one that actually changes how we help you.',
+    opts:[ {v:'now',l:'As soon as I find the right one',d:'We will call you today'},
+           {v:'soon',l:'In the next few months'},
+           {v:'later',l:'Sometime this year'},
+           {v:'looking',l:'Just watching the market for now',d:'No pressure, we will keep you posted'} ] },
+];
+
+/* ---------- seller ---------- */
+const QZ_SELL = [
+  { key:'address', kind:'text', title:'What is the address?',
+    sub:'So we are looking at the right place. This is not published anywhere.',
+    fields:[ {k:'address', l:'Property address', ph:'123 Beach Boulevard, Gulf Shores'} ] },
+  { key:'ptype', kind:'one', title:'What is it?', sub:'', two:true,
+    opts:[ {v:'House',l:'A house'}, {v:'Condo',l:'A condo'},
+           {v:'Townhouse',l:'A townhouse'}, {v:'Land',l:'Land'},
+           {v:'Multi-family',l:'Multi-family'}, {v:'Other',l:'Something else'} ] },
+  { key:'timeline', kind:'one', title:'When are you thinking of selling?',
+    sub:'',
+    opts:[ {v:'now',l:'I am ready now',d:'We will call you today'},
+           {v:'soon',l:'In the next few months'},
+           {v:'later',l:'Later this year'},
+           {v:'looking',l:'Just curious what it is worth',d:'That is a perfectly good reason'} ] },
+  { key:'situation', kind:'multi', title:'Anything we should know?',
+    sub:'None of this is a problem \u2014 it just changes the advice.', two:true,
+    opts:[ {v:'needs work',l:'It needs work'}, {v:'inherited',l:'Inherited property'},
+           {v:'tenants',l:'Tenants in place'}, {v:'relocating',l:'Relocating'},
+           {v:'buying too',l:'Buying another at the same time'},
+           {v:'listed before',l:'It was listed before'} ] },
+];
+
+function qzRender(){
+  const steps = qzSteps();
+  const body = document.getElementById('qz-body');
+  const fill = document.getElementById('qz-fill');
+  if(!body) return;
+  const total = steps.length + 1;                 // + the contact screen
+  if(fill) fill.style.width = Math.round((qzStep / total) * 100) + '%';
+
+  if(qzStep >= steps.length) return qzRenderContact(body, total);
+
+  const s = steps[qzStep];
+  const val = qzA[s.key];
+  let opts = '';
+  if(s.kind === 'text'){
+    opts = s.fields.map(f =>
+      `<div class="qz-f"><label>${f.l}</label>
+        <input id="qz-${f.k}" placeholder="${f.ph||''}" value="${escapeHtml(qzA[f.k]||'')}"
+          oninput="qzA['${f.k}']=this.value; qzSyncNext()"></div>`).join('');
+  } else {
+    opts = `<div class="qz-opts${s.two?' two':''}">` + s.opts.map((o,i) => {
+      const on = s.kind === 'multi'
+        ? (Array.isArray(val) && val.includes(o.v))
+        : (val !== undefined && String(val) === String(o.v));
+      return `<button type="button" class="qz-opt${on?' on':''}" onclick="qzTap(${i})">
+        ${escapeHtml(o.l)}${o.d?`<span class="d">${escapeHtml(o.d)}</span>`:''}</button>`;
+    }).join('') + '</div>';
+  }
+
+  body.innerHTML =
+    `<div class="qz-step">Question ${qzStep+1} of ${total}</div>
+     <h3>${escapeHtml(s.title)}</h3>
+     ${s.sub?`<p class="qz-sub">${escapeHtml(s.sub)}</p>`:'<div style="height:10px"></div>'}
+     ${opts}
+     <div class="qz-nav">
+       ${qzStep>0?'<button class="qz-back" onclick="qzBack()">\u2190 Back</button>':''}
+       <button class="qz-next" id="qz-next" onclick="qzNext()">Continue</button>
+       ${(s.kind==='multi'||s.kind==='text')?'<button class="qz-skip" onclick="qzNext(true)">Skip this</button>':''}
+     </div>`;
+  qzSyncNext();
+}
+
+/* A single-choice answer advances on its own \u2014 an extra Continue tap per screen is
+   most of what makes a long form feel long. Multi-select cannot, because there is no
+   way to know they have finished choosing. */
+function qzTap(i){
+  const s = qzSteps()[qzStep];
+  const o = s.opts[i];
+  if(s.kind === 'multi'){
+    const cur = Array.isArray(qzA[s.key]) ? qzA[s.key] : [];
+    const at = cur.indexOf(o.v);
+    if(at >= 0) cur.splice(at,1); else cur.push(o.v);
+    qzA[s.key] = cur;
+    qzRender();
+  } else {
+    qzA[s.key] = o.v;
+    setTimeout(qzNext, 140);
+  }
+}
+
+function qzSyncNext(){
+  const s = qzSteps()[qzStep];
+  const btn = document.getElementById('qz-next');
+  if(!btn || !s) return;
+  if(s.kind === 'text'){
+    btn.disabled = !s.fields.every(f => String(qzA[f.k]||'').trim());
+  } else if(s.kind === 'multi'){
+    btn.disabled = false;
+  } else {
+    btn.disabled = qzA[s.key] === undefined;
+  }
+}
+
+function qzBack(){ if(qzStep > 0){ qzStep--; qzRender(); } }
+function qzNext(skip){
+  const s = qzSteps()[qzStep];
+  if(!skip && s && s.kind !== 'multi' && s.kind !== 'text' && qzA[s.key] === undefined) return;
+  qzStep++; qzRender();
+}
+
+function qzRenderContact(body, total){
+  const fill = document.getElementById('qz-fill');
+  if(fill) fill.style.width = '92%';
+  const ready = qzA.timeline === 'now';
+  body.innerHTML =
+    `<div class="qz-step">Last one</div>
+     <h3>${qzPath==='sell'?'Where should we send it?':'Where should we send the matches?'}</h3>
+     <p class="qz-sub">${qzPath==='sell'
+        ? 'A real person puts this together \u2014 it is not an automated estimate.'
+        : 'New listings that fit, as they come on. Unsubscribe any time, one click.'}</p>
+     <div class="qz-f"><label>Your name</label>
+       <input id="qz-name" oninput="qzSyncSend()"></div>
+     <div class="qz-f"><label>Email</label>
+       <input id="qz-email" type="email" inputmode="email" oninput="qzSyncSend()"></div>
+     <div class="qz-f"><label>Phone ${ready?'':'(optional)'}</label>
+       <input id="qz-phone" type="tel" inputmode="tel" oninput="qzSyncSend()"></div>
+     <div class="qz-consent">
+       <input type="checkbox" id="qz-consent" onchange="qzSyncSend()">
+       <label for="qz-consent">By submitting, I agree that Avani &amp; Co Real Estate Southern Sands may contact
+         me at the number and email address I have given &mdash; by phone, text and email &mdash;
+         about this inquiry and about other properties, market updates and services that may
+         interest me. This includes contact by automated means, and applies even if my number is
+         on a state or federal Do Not Call list. Message and data rates may apply. Consent is not
+         a condition of any purchase. I can reply STOP to end texts, and every email carries an
+         unsubscribe link.</label>
+     </div>
+     <div class="qz-nav">
+       <button class="qz-back" onclick="qzBack()">\u2190 Back</button>
+       <button class="qz-next" id="qz-send" onclick="qzSend()">
+         ${qzPath==='sell'?'Send it to me':'Start sending me matches'}</button>
+     </div>`;
+  qzSyncSend();
+}
+
+function qzSyncSend(){
+  const btn = document.getElementById('qz-send');
+  if(!btn) return;
+  const n = String(document.getElementById('qz-name')?.value||'').trim();
+  const e = String(document.getElementById('qz-email')?.value||'').trim();
+  const c = !!document.getElementById('qz-consent')?.checked;
+  btn.disabled = !(n && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && c);
+}
+
+/* Turn the answers into the criteria shape searchFilter() already understands. */
+function qzCriteria(){
+  const c = {};
+  if(Array.isArray(qzA.cities) && qzA.cities.length) c.cities = qzA.cities;
+  if(qzA.type) c.type = qzA.type;
+  if(qzA.maxPrice) c.maxPrice = qzA.maxPrice;
+  if(qzA.beds) c.beds = qzA.beds;
+  (qzA.musts || []).forEach(m => { c[m] = m === 'garage' ? 1 : true; });
+  return c;
+}
+
+function qzSummary(){
+  if(qzPath === 'sell'){
+    return [ qzA.address ? 'Address: ' + qzA.address : '',
+             qzA.ptype ? 'Type: ' + qzA.ptype : '',
+             qzA.timeline ? 'Timeline: ' + qzA.timeline : '',
+             (qzA.situation||[]).length ? 'Notes: ' + qzA.situation.join(', ') : '' ]
+           .filter(Boolean).join('\n');
+  }
+  const c = qzCriteria();
+  return [ (c.cities||[]).length ? 'Towns: ' + c.cities.join(', ') : '',
+           c.type ? 'Type: ' + c.type : '',
+           c.maxPrice ? 'Up to $' + Number(c.maxPrice).toLocaleString() : '',
+           c.beds ? c.beds + '+ beds' : '',
+           (qzA.musts||[]).length ? 'Must have: ' + qzA.musts.join(', ') : '',
+           qzA.timeline ? 'Timeline: ' + qzA.timeline : '' ].filter(Boolean).join('\n');
+}
+
+async function qzSend(){
+  const btn = document.getElementById('qz-send');
+  if(btn){ btn.disabled = true; btn.textContent = 'One moment\u2026'; }
+  const name  = String(document.getElementById('qz-name').value||'').trim();
+  const email = String(document.getElementById('qz-email').value||'').trim();
+  const phone = String(document.getElementById('qz-phone').value||'').trim();
+
+  /* The lead goes through the same path every other form uses, so it inherits
+     campaign attribution, agent referral and assignment without any of that being
+     re-implemented here. */
+  const lead = {
+    id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    name, email, phone,
+    message: (qzPath==='sell' ? 'Wants a valuation.\n' : 'Wants listing alerts.\n') + qzSummary(),
+    source: qzPath === 'sell' ? 'quiz-seller' : 'quiz-buyer',
+    type: qzPath === 'sell' ? 'seller' : 'buyer',
+    mlsKey: '', listingLabel: '', stage: 'New', notes: '',
+    lane: qzLane(qzA.timeline),
+    quiz: Object.assign({ path: qzPath }, qzA),
+    consentAt: new Date().toISOString(),
+    assignedAgentId: '',
+    createdAt: new Date().toISOString(),
+  };
+  lead.assignedAgentId = lead.assignedAgentId || await defaultAssigneeId();
+  {const _r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+   if(_r && _r.id){ lead.referredBy = _r.name; lead.referredById = _r.id; }}
+
+  let ok = false;
+  try{ ok = await storeSet('lead:'+lead.id, stampLead(lead)); }catch(e){}
+  try{ sendLeadNotification(lead); }catch(e){}
+
+  /* Buyers also get a real saved search. Sellers do not \u2014 there is nothing to
+     match a seller against, and a valuation is a person's job. */
+  let alertLabel = '';
+  if(qzPath === 'buy'){
+    try{
+      const ref = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+      const r = await fetch('/api/alert-signup', { method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          name, email, phone, consent: true, leadId: lead.id,
+          agentSlug: (ref && ref.slug) || '',
+          pace: qzA.timeline === 'now' ? 'instant' : 'daily',
+          criteria: qzCriteria() }) });
+      const d = await r.json();
+      if(r.ok) alertLabel = d.label || '';
+    }catch(e){}
+  }
+  qzDone(alertLabel, ok);
+}
+
+function qzLane(t){
+  if(t === 'now') return 'fast';
+  if(t === 'soon') return 'steady';
+  return 'slow';
+}
+
+function qzDone(alertLabel, saved){
+  const body = document.getElementById('qz-body');
+  const fill = document.getElementById('qz-fill');
+  if(fill) fill.style.width = '100%';
+  if(!body) return;
+  const ready = qzA.timeline === 'now';
+  body.innerHTML =
+    `<div class="qz-done">
+      <div class="tick">\u2713</div>
+      <h3>${saved ? 'Got it.' : 'Thank you.'}</h3>
+      <p class="qz-sub">${qzPath==='sell'
+        ? (ready ? 'Someone will call you today about the valuation.'
+                 : 'We will put the numbers together and send them over shortly.')
+        : (alertLabel ? 'Your alerts are running.'
+                      : 'We have your details and someone will be in touch.')}</p>
+      ${alertLabel ? `<div class="qz-recap"><strong>Watching for:</strong><br>${escapeHtml(alertLabel)}</div>` : ''}
+      <div class="qz-nav" style="justify-content:center">
+        <button class="qz-next" onclick="qzClose()">Have a look around</button>
+      </div>
+     </div>`;
+}
+
+/* \u26a0 Rule 1 \u2014 after building a mechanism, find the button that reaches it. This is
+   the ad-and-shared-link door: /?q=buy or /?q=sell, and the parameter is stripped
+   from the address bar afterwards so a refresh does not reopen it. ?agent= is
+   resolved first by the existing handler, so attribution is already in place by the
+   time the quiz submits. */
+function qzCheckQuery(){
+  try{
+    const p = new URLSearchParams(location.search);
+    const q = (p.get('q') || '').toLowerCase();
+    if(q !== 'buy' && q !== 'sell') return;
+    setTimeout(() => qzOpen(q), 420);
+    p.delete('q');
+    const rest = p.toString();
+    history.replaceState({}, '', location.pathname + (rest ? '?' + rest : ''));
+  }catch(e){}
+}
+
+/* \u26a0 Rule 1, caught before it shipped this time. The area pages link each listing as
+   /?mls=<ListingKey>, and nothing on this side read that parameter \u2014 exactly what
+   happened with ?ask= and ?agent=, where a mechanism was built and every visitor
+   landed on a homepage that ignored them.
+
+   ALL_LISTINGS is filled by fetchListings() on first render, so a cold deep link
+   arrives before there is anything to search. This waits for the feed rather than
+   assuming, and gives up honestly instead of hanging. */
+async function qsCheckMls(){
+  let key = '';
+  try{
+    const p = new URLSearchParams(location.search);
+    key = (p.get('mls') || '').trim();
+    if(!key) return;
+    p.delete('mls');
+    const rest = p.toString();
+    history.replaceState({}, '', location.pathname + (rest ? '?' + rest : ''));
+  }catch(e){ return; }
+
+  for(let i = 0; i < 24; i++){                    // ~6 seconds, then stop
+    if(ALL_LISTINGS && ALL_LISTINGS.length){
+      const hit = ALL_LISTINGS.find(l =>
+        l.ListingKey === key || String(l.ListingId || '') === key);
+      if(hit){
+        try{ await openListingDetail(hit.ListingKey); }catch(e){}
+        return;
+      }
+      /* In the feed but not in this result set \u2014 most likely it sold or came off
+         while the page that linked here was cached. Say so rather than silently
+         doing nothing. */
+      showToast('That listing is no longer active. Here is everything that is.');
+      return;
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  showToast('Still loading listings \u2014 try that link again in a moment.');
+}
 </script>
 
 <style>
