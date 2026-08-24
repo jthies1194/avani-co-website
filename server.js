@@ -89,7 +89,8 @@ function requireSupabase(res) {
   return true;
 }
 
-// GET a single key -> { key, value } or 404
+// GET a single key -> { key, value }. A key that was never written comes back as
+// value:null with missing:true, NOT a 404 — absent is a normal state here.
 // ---------- server-side sessions ----------
 // Until now every /api/kv call was unauthenticated: anyone who knew the URL
 // could read every lead, commission and agent profile. Sessions fix that, and
@@ -283,7 +284,14 @@ app.get('/api/kv/:key', async (req, res) => {
       .eq('key', req.params.key)
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
-    if (!data) return res.status(404).json({ error: 'not found' });
+    /* \u26a0 A key that has never been written is a NORMAL state for a key-value store,
+       not a failure. Answering 404 made the browser log a red error on every page
+       load for every feature nobody has set up yet \u2014 drip campaigns, tasks, deal
+       submissions, plan history \u2014 and five permanent red lines is how you stop
+       reading the console at all. That is not free: the counters reading zero and the
+       flyer autofill throwing both sat in that noise.
+       storeGet() already turns 404 into null, so it keeps working either way. */
+    if (!data) return res.json({ key: req.params.key, value: null, missing: true });
 
     // Individual leads are stored one per key, so array scoping doesn't cover
     // them — an agent could otherwise read any lead by its id.
@@ -2048,7 +2056,19 @@ app.post('/api/quiz-config', async (req, res) => {
 app.post('/api/quiz-config/reset', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
-  await setSetting('settings:quizConfig', null);
+  /* \u26a0 Same trap as the CMA delete: setSetting(key, null) upserts a null rather than
+     removing the row, and if that is rejected the failure is swallowed and the reset
+     silently does nothing. Real delete, error checked. */
+  try {
+    const { error } = await supabase.from(KV_TABLE).delete().eq('key', 'settings:quizConfig');
+    if (error) {
+      console.error('[quiz-config] reset FAILED:', error.message);
+      return res.status(500).json({ error: 'Could not reset those.' });
+    }
+  } catch (e) {
+    console.error('[quiz-config] reset FAILED:', e.message);
+    return res.status(500).json({ error: 'Could not reset those.' });
+  }
   console.log(`[quiz-config] reset to defaults by ${sess.name || sess.agentId}`);
   res.json({ ok: true });
 });
@@ -4887,9 +4907,13 @@ app.get('/api/mls-test', async (req, res) => {
 });
 
 app.get('/api/health', async (req, res) => {
+  /* \u26a0 Never cached. This route exists to answer "what is actually running", and a
+     cached answer to that question is worse than no answer \u2014 it sent us chasing a
+     deploy that had already worked. */
+  res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v117',
+    serverVersion: 'v120',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5831,9 +5855,22 @@ app.delete('/api/cma/:id', async (req, res) => {
   if (!isStaff(sess) && rec.agentId !== sess.agentId) {
     return res.status(403).json({ error: 'Not yours to remove.' });
   }
-  await setSetting('cma:' + id, null);
-  await setSetting('cmafile:' + id, null);
-  await setSetting('cmaTok:' + cmaToken(id), null);
+  /* \u26a0 setSetting(key, null) is NOT a delete. It upserts a null value, and if the
+     value column rejects null the upsert throws, setSetting swallows it and returns
+     false, and the row survives untouched \u2014 while this route cheerfully reported
+     success and the agent watched a removed valuation stay on screen.
+     A real delete, with the error actually checked, the way /api/kv/:key does it. */
+  const keys = ['cma:' + id, 'cmafile:' + id, 'cmaTok:' + cmaToken(id)];
+  try {
+    const { error } = await supabase.from(KV_TABLE).delete().in('key', keys);
+    if (error) {
+      console.error(`[cma] delete FAILED for ${id}:`, error.message);
+      return res.status(500).json({ error: 'Could not remove that.' });
+    }
+  } catch (e) {
+    console.error(`[cma] delete FAILED for ${id}:`, e.message);
+    return res.status(500).json({ error: 'Could not remove that.' });
+  }
   console.log(`[cma] ${sess.name || sess.agentId} removed "${rec.address}"`);
   res.json({ ok: true });
 });
