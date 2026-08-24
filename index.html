@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v250">
+<meta name="build" content="index-v252">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -61,6 +61,15 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 .crm-gate .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}
 .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}
 .setup-body input,.setup-body select{width:100%;border:1px solid var(--line);border-radius:4px;padding:9px 10px;font-family:'Public Sans',sans-serif;font-size:13.5px;background:var(--sand-light);color:var(--ink);}
+/* ⚠ `width:100%` above is right for text and select, and wrong for a tick box: it
+   stretches the checkbox across the whole panel, so the tick renders centred in a
+   full-width box and its label gets shoved to the far edge and wraps. That is what
+   the exit-intent "Show it" toggle was doing. The same trap was already worked
+   around twice with `.more-f .mf-checks input` and `.alert-row input`, and once
+   more inline in the quiz editor — fixed generically here instead, so the next
+   tick box added to a settings panel does not need to know. */
+.setup-body input[type="checkbox"],.setup-body input[type="radio"]{
+  width:auto;flex:0 0 auto;margin:0}
 .detail-modal{max-width:520px;}
 .detail-photo{height:220px;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:18px;overflow:hidden;}
 .detail-photo svg{width:70px;height:70px;opacity:0.5;}
@@ -4320,7 +4329,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v250';
+window.BUILD = 'index-v252';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4501,7 +4510,7 @@ Keep me signed in on this device
 </label>
 <p style="font-size:11.5px; color:var(--driftwood); margin:4px 0 0;">Leave this unticked on a shared or public computer &mdash; closing the browser will sign you out.</p>
 <button onclick="handleAgentLogin()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Sign in</button>
-<button onclick="handleForgotPassword()" style="background:none; border:none; color:var(--driftwood); font-size:12px; text-decoration:underline; margin-top:14px; padding:0;">Forgot password?</button>
+<button onclick="renderGateForgot()" style="background:none; border:none; color:var(--driftwood); font-size:12px; text-decoration:underline; margin-top:14px; padding:0;">Forgot password?</button>
 `;
 }
 }
@@ -4537,13 +4546,47 @@ currentAgent = data.agent;
 unlockCRM();
 }catch(e){ showToast("Something went wrong — please try again."); }
 }
+/* ⚠ This read the SIGN-IN form's email box and told you to "enter your email above
+   first" — which left a password field sitting above a screen that has nothing to do
+   with your password. Its own step now, with one field on it. */
+function renderGateForgot(){
+const content = document.getElementById('gate-content');
+if(!content) return;
+const prefill = (document.getElementById('gate-email')?.value || '').trim();
+content.innerHTML = `
+<h2>Reset your password</h2>
+<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">Put in the email you sign in with and we will send you a link. It works for one hour.</p>
+<div class="field-label">Email</div>
+<input type="email" id="forgot-email" placeholder="you@example.com" value="${escapeHtml(prefill)}">
+<button onclick="handleForgotPassword()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700; margin-top:12px;">Send me a link</button>
+<button onclick="renderGateContent()" style="background:none; border:none; color:var(--driftwood); font-size:12px; text-decoration:underline; margin-top:14px; padding:0;">\u2190 Back to sign in</button>
+`;
+setTimeout(() => { const f = document.getElementById('forgot-email'); if(f) f.focus(); }, 40);
+}
+
 async function handleForgotPassword(){
-const email = (document.getElementById('gate-email')?.value || '').trim();
-if(!email){ showToast("Enter your email above first, then click Forgot password."); return; }
+const email = (document.getElementById('forgot-email')?.value || '').trim();
+if(!email){ showToast("Put in your email first."); return; }
+const content = document.getElementById('gate-content');
 try{
 await fetch('/api/agent/forgot-password', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email})});
-showToast("If that email has an account, a reset link has been sent.");
-}catch(e){ showToast("Something went wrong — please try again."); }
+/* \u26a0 Same wording whether or not the account exists. The server answers that way on
+   purpose, so this screen must not give away what the server would not. */
+if(content) content.innerHTML = `
+<h2>Check your email</h2>
+<p style="font-size:13.5px; color:var(--driftwood); margin-bottom:20px; line-height:1.5;">If <strong>${escapeHtml(email)}</strong> has an account, a reset link is on its way. It works for one hour. Worth a look in your spam folder if it does not turn up.</p>
+<button onclick="renderGateContent()" style="width:100%; background:var(--marsh); color:var(--sand-light); border:none; border-radius:4px; padding:12px; font-weight:700;">Back to sign in</button>
+`;
+}catch(e){ showToast("Something went wrong \u2014 please try again."); }
+}
+
+/* ⚠ Opens the CRM view so initCRM() runs and paints the set-password screen. Without
+   this the emailed link simply loaded the marketing homepage. */
+function maybeOpenAgentResetFromURL(){
+try{
+  if(!new URLSearchParams(location.search).get('reset')) return;
+  if(typeof switchView === 'function') switchView('crm');
+}catch(e){}
 }
 
 /* --- Broker "View as agent" ---
@@ -6629,6 +6672,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if(typeof resolveAgentFromQuery === 'function') resolveAgentFromQuery().then(()=>{ try{ showReferralBar(); }catch(e){} });
   /* ⚠ After the agent is resolved, never before — the quiz submits with that
      slug and would otherwise attribute the lead to nobody. */
+  /* ⚠ The agent reset link (?reset=) is read inside initCRM(), which only runs when
+     the CRM view opens. On a cold load the marketing site is the active view, so the
+     link from the email landed on the homepage and did nothing at all. The client
+     flow (?creset=) already had its own opener; the agent flow never got one. */
+  if(typeof maybeOpenAgentResetFromURL === 'function') maybeOpenAgentResetFromURL();
   if(typeof qzCheckQuery === 'function') qzCheckQuery();
   if(typeof qsCheckMls === 'function') qsCheckMls();
   if(typeof maybeShowAgentProfile === 'function'){
