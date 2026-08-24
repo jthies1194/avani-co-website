@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v247">
+<meta name="build" content="index-v248">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -190,7 +190,10 @@ header{position:fixed;top:0;left:0;right:0;z-index:100;padding:28px 48px;
   transition:padding .5s,background .5s,box-shadow .5s}
 header.stuck{padding:14px 48px;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);
   box-shadow:0 1px 0 var(--line)}
-.mark{display:flex;align-items:center;gap:15px;min-width:0}
+/* ⚠ NOT min-width:0. Letting this box collapse made the wordmark overflow on top
+   of the nav, because .mark-text is white-space:nowrap and keeps its own width
+   whatever the parent does. It shrinks by FONT SIZE in the queries below. */
+.mark{display:flex;align-items:center;gap:15px}
 .seal{width:auto;height:72px;transition:height .5s;flex-shrink:0}
 header.stuck .seal{height:54px}
 /* ⚠ Between roughly 900 and 1180px the nav ran out of room and printed straight
@@ -300,7 +303,7 @@ header.stuck nav .tel{color:var(--gold)}
   padding-right:.04em}
 .hero-v2 .eyebrow{color:#fff !important;font-weight:600;letter-spacing:.26em;
   text-shadow:0 1px 10px rgba(8,14,40,.6)}
-.hero-v2 .eyebrow{color:rgba(255,255,255,9.00)}
+.hero-v2 .eyebrow{color:rgba(255,255,255,.9)}
 .hero-v2 p{color:#ffffff;font-size:20px;max-width:48ch;margin:30px auto 42px;
   text-shadow:0 1px 20px rgba(23,31,99,.5)}
 .scroll-cue{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);z-index:6;
@@ -351,7 +354,7 @@ header.stuck nav .tel{color:var(--gold)}
 .sec-head.center p{margin-left:auto;margin-right:auto}
 .dark{background:var(--blue-deep);color:var(--ivory)}
 .dark h2,.dark h3{color:var(--ivory)}
-.dark .sec-head p{color:rgba(255,255,255,6.00)}
+.dark .sec-head p{color:rgba(255,255,255,.6)}
 
 /* ---------- listing carousel ---------- */
 .rail{display:flex;gap:34px;overflow-x:auto;scroll-snap-type:x mandatory;
@@ -398,7 +401,7 @@ header.stuck nav .tel{color:var(--gold)}
 .towns{display:flex;flex-wrap:wrap;align-items:center}
 .towns a{font-size:17px;color:rgba(255,255,255,.9);transition:color .3s}
 .towns a:hover{color:var(--gold-pale)}
-.towns .sep{color:rgba(255,255,255,2.00);margin:0 12px}
+.towns .sep{color:rgba(255,255,255,.2);margin:0 12px}
 
 /* ---------- about (asymmetric overlap) ---------- */
 .about{position:relative;background:var(--sand);padding:130px 0}
@@ -439,7 +442,7 @@ header.stuck nav .tel{color:var(--gold)}
 .site-footer .foot a{display:block;padding:3px 0;transition:color .3s}
 .foot a:hover{color:var(--gold-pale)}
 .site-footer .legal{max-width:1340px;margin:0 auto;border-top:1px solid var(--line-light);padding-top:28px;
-  font-size:12.5px;line-height:1.85;color:rgba(255,255,255,3.00)}
+  font-size:12.5px;line-height:1.85;color:rgba(255,255,255,.3)}
 
 @media(max-width:860px){
   nav{display:none}
@@ -1457,7 +1460,6 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <a href="#value">Home Value</a>
     <a href="#market">Our Agents</a>
     <a href="#about">About</a>
-    <a href="tel:2512293216" class="tel">251.229.3216</a>
   </nav>
 </header>
 
@@ -4338,7 +4340,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v247';
+window.BUILD = 'index-v248';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
