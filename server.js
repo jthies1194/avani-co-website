@@ -36,6 +36,37 @@ const BROKERAGE_ADDRESS = '191 Northshore Circle, Suite 100-D, Gulf Shores, AL 3
 const BROKERAGE_PHONE = '251-229-3216';
 
 const app = express();
+
+/* ==================== HTTPS BEHIND THE PROXY ====================
+   \u26a0 GoDaddy terminates TLS in front of this process, so the request that arrives
+   here is plain HTTP. Without `trust proxy`, `req.protocol` returns "http" and the
+   TWENTY-TWO places that build `${req.protocol}://${req.get('host')}` all emit
+   http:// URLs. That was live and it was doing real damage:
+
+     - sitemap.xml advertised http:// URLs to Google
+     - every article and area page emitted an http:// <link rel="canonical">, which
+       Google treats as a different origin from the https:// page it crawled
+     - OG tags, agent-page URLs and listing share links, all http://
+     - password reset, client reset and agent login links, emailed as http://
+     - click-tracking and listing-photo URLs inside alert emails
+
+   `trust proxy` makes Express read X-Forwarded-Proto, which fixes all of them at once
+   rather than editing twenty-two call sites and hoping the twenty-third remembers. */
+app.set('trust proxy', true);
+
+/* \u26a0 Belt and braces: if the proxy does not send X-Forwarded-Proto at all, trust proxy
+   has nothing to read and req.protocol stays "http". Anything that is not a local
+   development host is served over https in practice, so force it. Shadows the getter
+   on the request object itself, which keeps all twenty-two call sites untouched. */
+app.use((req, res, next) => {
+  const host = String(req.get('host') || '');
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(host);
+  if (!local && req.protocol !== 'https') {
+    Object.defineProperty(req, 'protocol', { value: 'https', configurable: true });
+  }
+  next();
+});
+
 // Flyer PDFs run to a few megabytes, so the old 2mb ceiling rejected them.
 app.use(express.json({ limit: '14mb' }));
 
@@ -4830,7 +4861,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v113',
+    serverVersion: 'v115',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4840,6 +4871,11 @@ app.get('/api/health', async (req, res) => {
     marketingDomainReady: MARKETING_READY,
     sitePrivate: await siteIsPrivate(),
     aiConfigured: !!ANTHROPIC_API_KEY,
+    /* ⚠ The RAW stored value, plus what it resolves to. When robots.txt disagreed
+       with the switch there was no way to tell whether the write had failed, the
+       read was wrong, or a cache was stale. Now you can see the value itself. */
+    siteMode: await getSetting('settings:siteMode'),
+    sitePrivate: await siteIsPrivate(),
   });
 });
 
@@ -6206,6 +6242,10 @@ app.post('/api/site-mode', async (req, res) => {
 
 app.get('/robots.txt', async (req, res) => {
   const origin = `${req.protocol}://${req.get('host')}`;
+  /* \u26a0 Never cache this. It is one line long, it changes the moment the broker presses
+     a button, and a stale copy sitting in a CDN says "Disallow: /" to every crawler
+     long after the site went live \u2014 which looks exactly like the switch not working. */
+  res.set('Cache-Control', 'no-store, must-revalidate');
   if (await siteIsPrivate()) {
     return res.type('text/plain').send('User-agent: *\nDisallow: /\n');
   }
@@ -6215,6 +6255,7 @@ app.get('/robots.txt', async (req, res) => {
 
 app.get('/sitemap.xml', async (req, res) => {
   const origin = `${req.protocol}://${req.get('host')}`;
+  res.set('Cache-Control', 'no-store, must-revalidate');
   const urls = [{ loc: origin + '/', pri: '1.0' }];
   try {
     if (supabase) {
