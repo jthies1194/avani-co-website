@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v245">
+<meta name="build" content="index-v246">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3645,7 +3645,7 @@ ${l.photo ? `<img class="card-img" src="${l.photo}" alt="${escapeHtml(l.Unparsed
 ${statsFor(l)}
 </div>
 <div class="card-mls">MLS# ${l.ListingId || l.ListingKey}${listingCredit(l) ? ' \u00b7 ' + escapeHtml(listingCredit(l)) : ''}</div>
-<button class="card-cta" onclick="openLeadModal('listing','${l.ListingKey}','${l.UnparsedAddress.replace(/'/g,"")}, ${l.City}')">Request info</button>
+<button class="card-cta" onclick="openLeadModal('listing','${l.ListingKey}','${l.UnparsedAddress.replace(/'/g,"")}, ${l.City}','${l.ListingId || l.ListingKey}')">Request info</button>
 </div>
 </div>
 `;
@@ -3769,7 +3769,7 @@ document.getElementById('detail-mls').textContent = 'MLS# ' + (listing.ListingId
 })();
 document.getElementById('detail-contact-btn').onclick = function(){
 closeDetailModal();
-openLeadModal('listing', listing.ListingKey, listing.UnparsedAddress.replace(/'/g,"") + ", " + listing.City);
+openLeadModal('listing', listing.ListingKey, listing.UnparsedAddress.replace(/'/g,"") + ", " + listing.City, listing.ListingId || listing.ListingKey);
 };
 document.getElementById('detail-modal-overlay').classList.add('active');
 }
@@ -4119,16 +4119,23 @@ manual:{title:"Add a lead manually", sub:"Add a lead you picked up by phone, in 
 wishlist:{title:"Tell us what you want", sub:"Describe your dream home — beds, baths, location, must-haves — and we'll let you know the moment something matches.", msgLabel:"Describe what you're looking for"},
 article:{title:"Ask about a property", sub:"Tell us the street or the building and we'll give you the real numbers for it.", msgLabel:"Which property, or which street?"},
 };
-function openLeadModal(source, mlsKey, listingLabel){
-currentLeadContext = {source, mlsKey: mlsKey||"", listingLabel: listingLabel||""};
+/* \u26a0 mlsKey is the feed's ListingKey \u2014 a 32-character hash used to look the record
+   back up. It is not the MLS number, and printing it produced
+   "MLS# 24cae62188cf99c8cc8e690886f630fc" in the message the lead sends and in the
+   record the agent reads. The listing card and detail view already showed
+   ListingId correctly; only this path did not. Both are carried now: the key for
+   lookups, the number for humans. */
+function openLeadModal(source, mlsKey, listingLabel, mlsNumber){
+currentLeadContext = {source, mlsKey: mlsKey||"", listingLabel: listingLabel||"",
+  mlsNumber: mlsNumber || mlsKey || ""};
 const copy = MODAL_COPY[source] || MODAL_COPY.contact;
 document.getElementById('modal-title').textContent = copy.title;
-document.getElementById('modal-sub').textContent = source==='listing' ? `Ask about ${listingLabel} (MLS# ${mlsKey})` : copy.sub;
+document.getElementById('modal-sub').textContent = source==='listing' ? `Ask about ${listingLabel} (MLS# ${currentLeadContext.mlsNumber})` : copy.sub;
 document.querySelector('#lf-message-field label').textContent = copy.msgLabel;
 document.getElementById('lf-name').value='';
 document.getElementById('lf-email').value='';
 document.getElementById('lf-phone').value='';
-document.getElementById('lf-message').value = source==='listing' ? `I'm interested in ${listingLabel} (MLS# ${mlsKey}).` : '';
+document.getElementById('lf-message').value = source==='listing' ? `I'm interested in ${listingLabel} (MLS# ${currentLeadContext.mlsNumber}).` : '';
 const showAgentField = source==='manual' && currentAgent && currentAgent.role==='broker';
 document.getElementById('lf-agent-field').style.display = showAgentField ? 'block' : 'none';
 if(showAgentField) loadAgents();
@@ -4168,6 +4175,7 @@ phone: document.getElementById('lf-phone').value.trim(),
 message: document.getElementById('lf-message').value.trim(),
 source: currentLeadContext.source,
 mlsKey: currentLeadContext.mlsKey || "",
+mlsNumber: currentLeadContext.mlsNumber || "",
 listingLabel: currentLeadContext.listingLabel || "",
 // which article brought them, so the content that works can be identified
 fromArticle: (currentLeadContext.source === 'article' && window.__askArticle) || '',
@@ -4272,7 +4280,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v245';
+window.BUILD = 'index-v246';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4793,6 +4801,12 @@ initStageFilters();
 
 window.__leadCount = leads.filter(l => l.stage === 'New').length;
 DASH_LEADS = leads;
+/* ⚠ The counters on Today are rendered from the Today path, which awaits the deals
+   and the tasks but NOT the leads — so even reading the right variable they could
+   paint before there was anything to count. Re-rendered here, at the moment the data
+   actually lands. Safe to call twice: it reads DASH_LEADS synchronously, so the later
+   call always wins with the newer data rather than a stale one. */
+try{ if(typeof renderWhatNeeds === 'function') renderWhatNeeds(); }catch(e){}
 if(crmSection === 'sec-today' && typeof renderDashboard === 'function') renderDashboard();
 if(typeof renderCrmNav === 'function') renderCrmNav();
 let shown = currentFilterStage==='all' ? leads : leads.filter(l=>l.stage===currentFilterStage);
@@ -20491,7 +20505,12 @@ body.crm-dark .wn-c .l{color:#EEF0F8}
    one worth watching — leads with nothing running are how a brokerage quietly
    loses money. */
 function wnCounts(){
-  const L = (typeof leads !== 'undefined' ? leads : [])
+  /* \u26a0 This read `leads`, which is declared with `let` INSIDE loadLeads() and is not
+     a global at all \u2014 so `typeof leads` was 'undefined', the fallback [] was used,
+     and all five counters have read zero since the day they were built. The Leads tab
+     badge said 11 while every counter on Today said 0.
+     DASH_LEADS is the global loadLeads() actually publishes for the dashboard. */
+  const L = (typeof DASH_LEADS !== 'undefined' && Array.isArray(DASH_LEADS) ? DASH_LEADS : [])
     .filter(l => isAdminOrOwner() || l.assignedAgentId === currentAgent.id);
   const day = 86400000, now = Date.now();
   const age = l => Math.floor((now - new Date(l.createdAt).getTime()) / day);
@@ -20534,13 +20553,14 @@ function renderWhatNeeds(){
 }
 
 /* \u26a0 A date tells you when they arrived. An elapsed clock tells you that you are
-   losing them, which is a different feeling and the one that gets a call made. Only
-   shown while it still matters: untouched, and inside two days. After that the
-   "Waiting 2+ days" counter has it and a running clock is just nagging. */
+   losing them, which is a different feeling and the one that gets a call made.
+   Runs for as long as nobody has touched them. It used to stop at two days, which
+   hid the badge exactly when it mattered most \u2014 a lead nobody called for five days
+   is worse than one nobody called for five hours, not better. */
 function lcWaiting(l){
   if(l.firstTouchAt || (l.stage||'New') !== 'New') return '';
   const ms = Date.now() - new Date(l.createdAt).getTime();
-  if(!isFinite(ms) || ms < 0 || ms > 2*86400000) return '';
+  if(!isFinite(ms) || ms < 0) return '';
   const mins = Math.floor(ms/60000);
   const txt = mins < 60 ? mins + 'm'
             : mins < 1440 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm'
