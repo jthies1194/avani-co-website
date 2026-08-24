@@ -2585,7 +2585,14 @@ app.get('/api/articles', async (req, res) => {
 
 app.post('/api/articles', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
-  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  /* \u26a0 isStaff() is broker OR ADMIN, so this route said "Broker only" in its own
+     error message while letting admins through. Hiding the buttons is not a control;
+     this is. What goes out on a public page under the brokerage name is the broker's
+     decision alone. */
+  if (sess.role !== 'broker') {
+    console.warn(`[content] ${sess.name || sess.agentId} (${sess.role}) blocked from writing articles`);
+    return res.status(403).json({ error: 'Only the broker can publish or change articles.' });
+  }
   const list = Array.isArray((req.body || {}).articles) ? req.body.articles : null;
   if (!list) return res.status(400).json({ error: 'Send an articles array.' });
   const clean = list.slice(0, 200).map(a => ({
@@ -4913,7 +4920,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v120',
+    serverVersion: 'v121',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
