@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v264">
+<meta name="build" content="index-v265">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2477,6 +2477,12 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <!-- ============ CRM ============ -->
 <div id="referral-bar" style="display:none;"></div>
 <div id="transfer-overlay"><div class="box"><div id="transfer-body"></div></div></div>
+<div id="vsend-overlay" onclick="if(event.target===this) vidSendClose()">
+  <div class="box">
+    <button class="cma-x" onclick="vidSendClose()" aria-label="Close">&times;</button>
+    <div id="vsend-body"></div>
+  </div>
+</div>
 <div id="cma-overlay" onclick="if(event.target===this) cmaClose()">
   <div class="box">
     <button class="cma-x" onclick="cmaClose()" aria-label="Close">&times;</button>
@@ -2847,6 +2853,13 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
       <button class="btn-sm primary broker-only" style="margin-top:12px"
         onclick="ctNewArticle()">+ Write an article</button>
     </div>
+    <div class="setup-panel">
+      <h3 class="sx-h">Videos</h3>
+      <p class="sx-sub">Listing walkthroughs and marketing pieces. The video stays on
+        YouTube or Vimeo &mdash; paste the link and it becomes something you can send to
+        one person at a time and see whether they watched.</p>
+      <div class="setup-body" id="vid-body">Loading&hellip;</div>
+    </div>
   </div>
   <div>
     <div class="setup-panel">
@@ -3001,6 +3014,34 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-assist">
 <style>
 /* Scoped to #sec-assist. `.lead-card` taught us what unscoped class names do. */
+#vsend-overlay{position:fixed;inset:0;background:rgba(10,14,35,.66);z-index:9200;
+  display:none;align-items:center;justify-content:center;padding:20px}
+#vsend-overlay.active{display:flex}
+#vsend-overlay .box{background:var(--ivory,#FBFAF6);border-radius:7px;width:100%;
+  max-width:520px;max-height:92vh;overflow:auto;padding:26px 28px;position:relative}
+#vsend-overlay h3{font-family:'Fraunces',Georgia,serif;font-size:22px;margin:0 0 6px;
+  color:var(--ink,#171F63)}
+#vsend-overlay .vs-list{margin-top:14px}
+#vsend-overlay .vs-pick{display:block;width:100%;text-align:left;font:inherit;cursor:pointer;
+  background:#fff;border:1px solid rgba(20,26,60,.12);border-radius:5px;padding:12px 14px;
+  margin-bottom:8px}
+#vsend-overlay .vs-pick:hover{border-color:var(--gold,#C89B4E)}
+#vsend-overlay .vs-pick .t{display:block;font-size:14.5px;font-weight:600;color:var(--rl,#0E1433)}
+#vsend-overlay .vs-pick .m{display:block;font-size:12.5px;color:var(--mut,#7A8199);margin-top:2px}
+#sec-content .vid-add{display:grid;gap:8px;margin-bottom:16px}
+#sec-content .vid-add input,#sec-content .vid-add select{font:inherit;font-size:13.5px;
+  padding:9px 11px;border-radius:4px;border:1px solid rgba(20,26,60,.14);background:#fff}
+#sec-content .vid-row{display:flex;gap:12px;align-items:center;background:#fff;
+  border:1px solid rgba(20,26,60,.1);border-radius:5px;padding:10px 12px;margin-bottom:8px}
+#sec-content .vid-row .th{width:76px;height:44px;object-fit:cover;border-radius:3px;
+  flex:0 0 auto;background:#E9E7DF}
+#sec-content .vid-row .th.nothumb{display:flex;align-items:center;justify-content:center;
+  font-weight:700;color:var(--mut,#7A8199)}
+#sec-content .vid-row .mid{flex:1 1 auto;min-width:0}
+#sec-content .vid-row .t{font-size:14px;font-weight:600}
+#sec-content .vid-row .m{font-size:12px;color:var(--mut,#7A8199);margin-top:2px}
+#sec-content .vid-row .acts{display:flex;gap:6px;flex:0 0 auto}
+#sec-content .vid-none{font-size:13px;color:var(--mut,#7A8199);padding:10px 0}
 #tc-pop .tc-rn{padding:0 0 10px;margin:0 0 10px;border-bottom:1px solid rgba(27,32,67,.12)}
 #tc-pop .tc-rn label{display:block;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
   font-weight:700;color:rgba(27,32,67,.5);margin-bottom:5px}
@@ -4394,7 +4435,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v264';
+window.BUILD = 'index-v265';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5019,6 +5060,7 @@ tbody.innerHTML = shown.map(l=>{
     ${why ? `<div class="lc-why">${escapeHtml(why)}</div>` : ''}
     <div class="lc-running">${lcRunning(l)}</div>
     ${typeof lcValuation === 'function' ? lcValuation(l) : ''}
+    ${typeof lcVideo === 'function' ? lcVideo(l) : ''}
     ${l.referredBy ? `<div class="lc-flag">via ${escapeHtml(l.referredBy)}</div>` : ''}
     ${l.transferredFrom ? `<div class="lc-flag">passed on by ${escapeHtml(l.transferredFrom)}</div>` : ''}
     <div class="lc-quick">
@@ -8063,6 +8105,10 @@ function showCrmSection(id){
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     try{ sxRenderPanels(id); }catch(e){}
     if(id === 'sec-content' && typeof renderContent === 'function') renderContent();
+    /* \u26a0 Rule 1. The Videos panel renders into #vid-body and nothing called it on
+       section open, so it would have sat on "Loading\u2026" forever \u2014 the exact bug
+       the two-panel-convention note warns about. */
+    if(id === 'sec-content' && typeof renderVideos === 'function') renderVideos();
     if(id === 'sec-assist'  && typeof renderAssist  === 'function') renderAssist();
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
@@ -20213,6 +20259,16 @@ function lcValuation(l){
     <span class="go">\u2192</span></button>`;
 }
 
+function lcVideo(l){
+  if((l.stage||'New') === 'Closed') return '';
+  return `<button class="lc-setup" onclick="event.stopPropagation();vidSendOpen('${l.id}',
+    '${String(l.name||'').replace(/'/g,"\\'")}','${String(l.email||'').replace(/'/g,"\\'")}')">
+    <span class="i">${typeof icon === 'function' ? icon('content') : ''}</span>
+    <span class="t"><b>Send them a video</b>
+      <small>A walkthrough or a market piece, and you see if they watched</small></span>
+    <span class="go">\u2192</span></button>`;
+}
+
 function lcRunning(l){
   const bits = [];
 
@@ -22030,6 +22086,154 @@ async function cmaDelete(id){
     if(!r.ok) throw new Error('Could not remove it.');
     cmaLoad();
     showToast('Removed.');
+  }catch(e){ showToast(e.message); }
+}
+
+/* ==================== VIDEOS (index 265) ====================
+   A shared library of listing walkthroughs and marketing pieces, and a tracked link
+   per person you send one to.
+
+   \u26a0 The video is not uploaded anywhere. It stays on YouTube or Vimeo where it is
+   already hosted and already fast; what we add is a page on our domain that wraps it,
+   so the open can be counted against the lead. */
+
+let vidList = [], vidBusy = false, vidFor = null;
+
+async function renderVideos(){
+  const host = document.getElementById('vid-body');
+  if(!host) return;
+  try{
+    const r = await fetch('/api/promo');
+    const d = await r.json();
+    vidList = d.promos || [];
+  }catch(e){ host.innerHTML = '<div class="ct-warn">Could not load your videos.</div>'; return; }
+
+  host.innerHTML =
+    `<div class="vid-add">
+      <input id="vid-url" placeholder="Paste a YouTube or Vimeo link">
+      <input id="vid-title" placeholder="What is it? e.g. 122 Oakwood walkthrough">
+      <input id="vid-addr" placeholder="Address (optional)">
+      <select id="vid-kind">
+        <option value="listing">A listing video</option>
+        <option value="marketing">A marketing video</option>
+      </select>
+      <button class="btn-sm primary" id="vid-go" onclick="vidAdd()">Add it</button>
+     </div>
+     ${vidList.length ? vidList.map(v => `
+      <div class="vid-row">
+        ${v.thumb ? `<img class="th" src="${escapeHtml(v.thumb)}" alt="" loading="lazy">`
+                  : `<div class="th nothumb">${escapeHtml((v.provider||'?').slice(0,1).toUpperCase())}</div>`}
+        <div class="mid">
+          <div class="t">${escapeHtml(v.title)}</div>
+          <div class="m">${escapeHtml(v.address || (v.kind === 'listing' ? 'Listing video' : 'Marketing video'))}
+            &middot; sent ${v.sends||0} &middot; <b>opened ${v.opens||0}</b></div>
+        </div>
+        <div class="acts">
+          <a class="btn-sm" href="${escapeHtml(v.sourceUrl)}" target="_blank" rel="noopener">Watch</a>
+          <button class="btn-sm" onclick="vidDrop('${escapeHtml(v.id)}')">Remove</button>
+        </div>
+      </div>`).join('')
+      : '<div class="vid-none">Nothing here yet. Paste a link above and it becomes something you can send.</div>'}`;
+}
+
+async function vidAdd(){
+  if(vidBusy) return;
+  const url = (document.getElementById('vid-url')?.value || '').trim();
+  const title = (document.getElementById('vid-title')?.value || '').trim();
+  if(!url){ showToast('Paste the link first.'); return; }
+  if(!title){ showToast('Give it a name so you can find it later.'); return; }
+  vidBusy = true;
+  const b = document.getElementById('vid-go');
+  if(b){ b.disabled = true; b.textContent = 'Adding\u2026'; }
+  try{
+    const r = await fetch('/api/promo', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url, title,
+        address: document.getElementById('vid-addr')?.value || '',
+        kind: document.getElementById('vid-kind')?.value || 'marketing' }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not add that.');
+    showToast('Added.');
+    renderVideos();
+  }catch(e){ showToast(e.message); }
+  finally{
+    vidBusy = false;
+    const bb = document.getElementById('vid-go');
+    if(bb){ bb.disabled = false; bb.textContent = 'Add it'; }
+  }
+}
+
+async function vidDrop(id){
+  if(!confirm('Remove this video from the library? Links already sent stop working.')) return;
+  try{
+    const r = await fetch('/api/promo/' + encodeURIComponent(id), { method:'DELETE' });
+    if(!r.ok){ const d = await r.json(); throw new Error(d.error || 'Could not remove it.'); }
+    renderVideos();
+    showToast('Removed.');
+  }catch(e){ showToast(e.message); }
+}
+
+/* ---------- sending one from a lead ---------- */
+function vidSendOpen(leadId, name, email){
+  vidFor = { id: leadId, name: name || '', email: email || '' };
+  document.getElementById('vsend-overlay').classList.add('active');
+  vidSendRender();
+}
+function vidSendClose(){
+  document.getElementById('vsend-overlay').classList.remove('active');
+  vidFor = null;
+}
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  const o = document.getElementById('vsend-overlay');
+  if(o && o.classList.contains('active')){ e.preventDefault(); vidSendClose(); }
+});
+
+async function vidSendRender(){
+  const b = document.getElementById('vsend-body');
+  if(!b) return;
+  b.innerHTML = `<h3>Send ${escapeHtml(vidFor.name || 'them')} a video</h3>
+    <p class="cma-sub">They get a page on our site with the video on it, so you can see
+      whether they watched.</p><div class="vs-list">Loading\u2026</div>`;
+  if(!vidList.length){
+    try{ const r = await fetch('/api/promo'); const d = await r.json(); vidList = d.promos || []; }
+    catch(e){ vidList = []; }
+  }
+  const list = b.querySelector('.vs-list');
+  if(!list) return;
+  list.innerHTML = vidList.length
+    ? vidList.map(v => `<button class="vs-pick" onclick="vidSendPick('${escapeHtml(v.id)}')">
+        <span class="t">${escapeHtml(v.title)}</span>
+        <span class="m">${escapeHtml(v.address || (v.kind==='listing'?'Listing video':'Marketing video'))}</span>
+      </button>`).join('')
+    : '<div class="vid-none">No videos yet. Add one under Content first.</div>';
+}
+
+async function vidSendPick(id){
+  try{
+    const r = await fetch('/api/promo/' + encodeURIComponent(id) + '/send', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ leadId: vidFor.id }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not make that link.');
+    const v = vidList.find(x => x.id === id) || { title: 'this' };
+    /* \u26a0 Built here, not in an inline onclick. encodeURIComponent leaves apostrophes
+       alone, and one in a title would otherwise close the JS string. */
+    window.__vidMailto = 'mailto:' + encodeURIComponent(d.lead.email || '')
+      + '?subject=' + encodeURIComponent(v.title)
+      + '&body=' + encodeURIComponent(
+          `Hi${d.lead.name ? ' ' + String(d.lead.name).split(' ')[0] : ''},\n\n`
+          + `Thought you would want to see this:\n\n${d.url}\n\n`);
+    document.getElementById('vsend-body').innerHTML =
+      `<h3>Ready to send</h3>
+       <p class="cma-sub">${escapeHtml(v.title)}</p>
+       <input class="cma-link" value="${escapeHtml(d.url)}" readonly onclick="this.select()">
+       <div class="cma-acts">
+         <button class="btn-sm" onclick="cmaCopy('${escapeHtml(d.url)}')">Copy the link</button>
+         <button class="btn-sm primary" onclick="if(window.__vidMailto) window.location.href=window.__vidMailto">Open in email</button>
+         <button class="btn-sm" onclick="vidSendRender()">Pick another</button>
+       </div>
+       <p class="cma-fine">Opens land on their lead record and count toward their score.</p>`;
   }catch(e){ showToast(e.message); }
 }
 </script>
