@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v244">
+<meta name="build" content="index-v245">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4272,7 +4272,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v244';
+window.BUILD = 'index-v245';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -4809,11 +4809,14 @@ if(window.__wnFilter){
   const F = {
     hot:      l => (l.score||0) >= 60,
     new:      l => (l.stage||'New') === 'New',
+    uncalled: l => !l.firstTouchAt && (l.stage||'New') === 'New'
+                   && (now - new Date(l.createdAt).getTime()) < 2*day,
     stale:    l => (l.stage||'New') === 'New' && age(l) >= 2,
     nofollow: l => !running(l) && !l.unsubscribed,
     replied:  l => !!l.humanTakeover,
   };
   const LABEL = { hot:'Hot right now', new:'Never contacted', stale:'Waiting 2+ days',
+                  uncalled:'Waiting for a call',
                   nofollow:'Nobody following up', replied:'In conversation' };
   if(F[window.__wnFilter]) shown = leads.filter(F[window.__wnFilter]);
   const bar = document.getElementById('wn-active');
@@ -4843,6 +4846,7 @@ tbody.innerHTML = shown.map(l=>{
       <span class="lc-src">${escapeHtml(l.source||'')}</span>
       ${l.humanTakeover ? '<span class="lc-take">yours now</span>' : ''}
       <span class="lc-when">${escapeHtml(fmtDate(l.createdAt))}</span>
+      ${typeof lcWaiting === 'function' ? lcWaiting(l) : ''}
     </div>
     <div class="lc-contact">${escapeHtml(l.email||'')}${l.phone?' \u00b7 '+escapeHtml(l.phone):''}</div>
     ${l.message ? `<div class="lc-msg">${escapeHtml(l.message)}</div>` : ''}
@@ -4966,6 +4970,12 @@ async function updateStage(id, stage){
 const lead = await storeGet('lead:'+id);
 if(!lead) return;
 lead.stage = stage;
+/* \u26a0 Moving somebody off New is the first act that proves a human dealt with them,
+   so it is what stops the clock. Recorded once and never overwritten \u2014 the number
+   that matters is time to FIRST contact, not to the most recent one. */
+if(!lead.firstTouchAt && stage && stage !== 'New'){
+  lead.firstTouchAt = new Date().toISOString();
+}
 await storeSet('lead:'+id, lead);
 loadLeads();
 }
@@ -4973,6 +4983,10 @@ async function updateNotes(id, notes){
 const lead = await storeGet('lead:'+id);
 if(!lead) return;
 lead.notes = notes;
+// writing a note about somebody is also having dealt with them
+if(!lead.firstTouchAt && String(notes||'').trim()){
+  lead.firstTouchAt = new Date().toISOString();
+}
 await storeSet('lead:'+id, lead);
 }
 async function deleteLead(id){
@@ -20492,6 +20506,13 @@ function wnCounts(){
       label:'Hot right now', sub:'Score 60 or better', tone:'#B4232A' },
     { k:'new',      n: L.filter(l => (l.stage||'New') === 'New').length,
       label:'Never contacted', sub:'Still sitting at New', tone:'#D2604A' },
+    /* \u26a0 Measured in HOURS, not days. "Waiting 2+ days" was already too late to be
+       useful \u2014 by then the person has called somebody else. This one only counts
+       people who arrived in the last two days and have never been touched, which is
+       the window where a call still changes the outcome. */
+    { k:'uncalled',  n: L.filter(l => !l.firstTouchAt && (l.stage||'New') === 'New'
+        && (now - new Date(l.createdAt).getTime()) < 2*day).length,
+      label:'Waiting for a call', sub:'Nobody has spoken to them', tone:'#8A2C22' },
     { k:'stale',    n: L.filter(l => (l.stage||'New') === 'New' && age(l) >= 2).length,
       label:'Waiting 2+ days', sub:'New and untouched', tone:'#C9971F' },
     { k:'nofollow', n: L.filter(l => !running(l) && !l.unsubscribed).length,
@@ -20510,6 +20531,24 @@ function renderWhatNeeds(){
       <div class="l">${escapeHtml(c.label)}</div>
       <div class="s">${escapeHtml(c.sub)}</div>
     </button>`).join('')}</div>`;
+}
+
+/* \u26a0 A date tells you when they arrived. An elapsed clock tells you that you are
+   losing them, which is a different feeling and the one that gets a call made. Only
+   shown while it still matters: untouched, and inside two days. After that the
+   "Waiting 2+ days" counter has it and a running clock is just nagging. */
+function lcWaiting(l){
+  if(l.firstTouchAt || (l.stage||'New') !== 'New') return '';
+  const ms = Date.now() - new Date(l.createdAt).getTime();
+  if(!isFinite(ms) || ms < 0 || ms > 2*86400000) return '';
+  const mins = Math.floor(ms/60000);
+  const txt = mins < 60 ? mins + 'm'
+            : mins < 1440 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm'
+            : Math.floor(mins/1440) + 'd ' + Math.floor((mins%1440)/60) + 'h';
+  // under an hour is fine, under four is slipping, beyond that it is cold
+  const tone = mins < 60 ? '#1F6B49' : mins < 240 ? '#C9971F' : '#8A2C22';
+  return `<span class="lc-wait" style="--wt:${tone}" title="Nobody has contacted them yet">
+    waiting ${txt}</span>`;
 }
 
 /* Pressing one takes you to those people, filtered. */
@@ -21264,6 +21303,9 @@ async function plFillListings(){
 </script>
 
 <style>
+#crm-main .lc-wait{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--wt);border:1px solid var(--wt);border-radius:3px;
+  padding:2px 7px;margin-left:6px;white-space:nowrap}
 .wn-active{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   background:linear-gradient(100deg,#F2F4FD,#FAFBFF);border:1px solid rgba(46,60,176,.3);
   border-radius:11px;padding:11px 15px;margin-bottom:12px;font-size:13.5px;color:#1B2043}
