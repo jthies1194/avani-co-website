@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v256">
+<meta name="build" content="index-v257">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4370,7 +4370,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v256';
+window.BUILD = 'index-v257';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -14363,12 +14363,14 @@ async function buildTaxDoc(which, year){
 <div class="sub">Yours alone &mdash; nobody else's view changes.</div>
 
 <div class="arr-tabs">
-  <button id="art-order"  class="on" onclick="arrTab('order')">Order</button>
+  <button id="art-order"  class="on" onclick="arrTab('order')">Names &amp; order</button>
   <button id="art-color"  onclick="arrTab('color')">Colors</button>
   <button id="art-bg"     onclick="arrTab('bg')">Background</button>
 </div>
 
-<div id="arr-pane-order" class="arr-pane on"><div class="arr-list" id="arr-list"></div></div>
+<div id="arr-pane-order" class="arr-pane on">
+  <div id="arr-hint" style="font-size:12.5px;line-height:1.6;color:var(--driftwood,#7A8199);margin:2px 0 12px"></div>
+  <div class="arr-list" id="arr-list"></div></div>
 <div id="arr-pane-color" class="arr-pane"><div id="arr-colors"></div></div>
 <div id="arr-pane-bg"    class="arr-pane"><div id="arr-bgs"></div></div>
 
@@ -14422,6 +14424,12 @@ function arrTab(which){
 function renderArrangeList(){
   const host = document.getElementById('arr-list');
   if(!host) return;
+  /* \u26a0 The rename field looks like a plain label until somebody tells you it is not,
+     and this pane was called "Order", which is the last place you would look for it. */
+  const hint = document.getElementById('arr-hint');
+  if(hint) hint.innerHTML = 'Type over any name to call it what you would look for '
+    + '\u2014 <em>Taxes / Money</em> works, so does a hyphen. Drag the handle to reorder. '
+    + 'Clear a name to put the original back.';
   const byId = {};
   CRM_SECTIONS.forEach(sc => { byId[sc.id] = sc; });
 
@@ -14434,8 +14442,11 @@ function renderArrangeList(){
       <span class="gr">\u2807</span>
       <span class="nm"><span class="chip">${icon(sc.icon)}</span>
         <input class="arr-nm" value="${escapeHtml((arrNames && arrNames[sc.id]) || sc.label)}"
-          placeholder="${escapeHtml(sc.label)}" spellcheck="false"
+          placeholder="${escapeHtml(sc.label)}" spellcheck="false" maxlength="22"
           onclick="event.stopPropagation()"
+          onpointerdown="event.stopPropagation(); const r=this.closest('.arr-item'); if(r) r.draggable=false;"
+          onfocus="const r=this.closest('.arr-item'); if(r) r.draggable=false;"
+          onblur="const r=this.closest('.arr-item'); if(r) r.draggable=true;"
           oninput="renameTab('${sc.id}', this.value)"></span>
       <button onclick="moveTab(${i},-1)" ${i===0?'disabled':''} title="Up">\u2191</button>
       <button onclick="moveTab(${i},1)" ${i===arrDraft.length-1?'disabled':''} title="Down">\u2193</button>
