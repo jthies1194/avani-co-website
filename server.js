@@ -1669,6 +1669,9 @@ const SCORE_EVENTS = {
   timeline_90:      { pts: 20, why: 'moving within 90 days' },
   financing:        { pts: 15, why: 'mentioned financing or pre-approval' },
   article_click:    { pts:  6, why: 'read something we sent' },
+  /* ⚠ Between 'asked to see a property' (30) and 'has definite plans to sell'
+     (25). Opening a valuation of your own house is not casual reading. */
+  cma_open:         { pts: 22, why: 'opened the valuation of their home' },
   favorited:        { pts:  8, why: 'saved a property' },
   visits_multi:     { pts:  8, why: 'been back to the site several times' },
   repeat_view:      { pts:  5, why: 'looked at the same property again' },
@@ -4886,7 +4889,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v116',
+    serverVersion: 'v117',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5623,6 +5626,217 @@ ${esc(BROKERAGE_ADDRESS)}<br>
 <a href="${origin}/insights">Guides</a></div>
 </div></body></html>`;
 }
+
+
+/* ==================== CMA DELIVERY (server 117) ====================
+   The report itself is produced in RPR. Nothing here analyses anything, adds a cover
+   page, or touches the numbers \u2014 the RPR PDF already carries the subject photo, both
+   licence numbers, the brokerage details and the "this is not an appraisal" wording
+   that Alabama requires. Wrapping our own cover around that would give the seller two
+   cover pages and make it look assembled rather than produced.
+
+   What is missing from RPR is the part we own: knowing the seller opened it, and
+   having that count toward the lead's score. Opening a valuation on your own house
+   three times on a Sunday evening is the strongest buying signal a seller ever gives,
+   and it currently vanishes.
+
+   \u26a0 LICENSING, UNRESOLVED. Emailing an RPR PDF to your own client is the intended
+   use and nobody would question it. Storing it, serving it from our domain behind a
+   token and recording engagement is a different act, and the report also contains
+   MLS-derived data reaching us through RPR's licence rather than through Bridge.
+   RPR's Terms of Use and RPR support are the places that settle it. Built so it can
+   be switched off in one place if the answer comes back differently: delete the two
+   routes below and the CRM falls back to plain email with an attachment. */
+
+const CMA_MAX_BYTES = 9 * 1024 * 1024;     // ~12MB base64, under the 14mb json ceiling
+
+function cmaToken(id) {
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('cma:' + id).digest('hex').slice(0, 24);
+}
+
+/* ---------- the agent uploads what RPR produced ---------- */
+app.post('/api/cma', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+
+  const b = req.body || {};
+  const clean = (v, n) => String(v == null ? '' : v).slice(0, n).trim();
+  const data = String(b.dataBase64 || '');
+  if (!data) return res.status(400).json({ error: 'No file came through.' });
+
+  /* \u26a0 Check the bytes, not the file name. A PDF starts %PDF-, which is JVBERi0 once
+     base64-encoded. Renaming a .exe does not get past this. */
+  if (!/^JVBERi0/.test(data.replace(/^data:[^,]*,/, ''))) {
+    return res.status(400).json({ error: 'That does not look like a PDF.' });
+  }
+  const raw = data.replace(/^data:[^,]*,/, '');
+  const bytes = Math.ceil(raw.length * 3 / 4);
+  if (bytes > CMA_MAX_BYTES) {
+    return res.status(413).json({ error: 'That PDF is too big \u2014 9MB is the ceiling.' });
+  }
+
+  /* Ownership decided here, on the real session, same rule as everywhere else. */
+  const lead = await loadOwnLead(sess, b.leadId);
+  if (!lead) return res.status(404).json({ error: 'Not your lead, or no longer there.' });
+
+  const id = 'cma_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  const rec = {
+    id,
+    leadId: lead.id,
+    leadName: lead.name || '',
+    address: clean(b.address, 140) || 'Your home',
+    note: clean(b.note, 400),
+    filename: clean(b.filename, 90).replace(/[^A-Za-z0-9._ -]/g, '') || 'report.pdf',
+    bytes,
+    agentId: sess.agentId,
+    agentName: sess.name || '',
+    createdAt: new Date().toISOString(),
+    opens: [],
+  };
+  /* \u26a0 The file lives under its OWN key prefix. Anything that lists 'cma:' to show the
+     agent what has been sent would otherwise drag several megabytes of base64 back on
+     every render. */
+  await setSetting('cmafile:' + id, { b64: raw });
+  await setSetting('cma:' + id, rec);
+  await setSetting('cmaTok:' + cmaToken(id), { id });
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  console.log(`[cma] ${sess.name || sess.agentId} attached "${rec.address}" to ${lead.name || lead.id}`);
+  res.json({ ok: true, cma: rec, url: `${origin}/cma/${cmaToken(id)}` });
+});
+
+/* ---------- what the seller opens ---------- */
+app.get('/cma/:tok', async (req, res, next) => {
+  const map = await getSetting('cmaTok:' + String(req.params.tok || '').slice(0, 40));
+  if (!map || !map.id) return next();
+  const rec = await getSetting('cma:' + map.id);
+  if (!rec) return next();
+
+  /* \u26a0 Never indexed. This is one seller's valuation of one house, reachable only by
+     the token in their email \u2014 the same rule the article previews follow. */
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-store');
+
+  /* Record the open, then score it. Wrapped so a scoring failure cannot stop the
+     seller seeing their report \u2014 but logged, because a silent failure here means the
+     tracking quietly stops being true. */
+  try {
+    rec.opens = Array.isArray(rec.opens) ? rec.opens : [];
+    rec.opens.push({ at: new Date().toISOString(),
+      ua: String(req.get('user-agent') || '').slice(0, 120) });
+    rec.opens = rec.opens.slice(-50);
+    await setSetting('cma:' + map.id, rec);
+
+    const lead = await getSetting('lead:' + rec.leadId);
+    if (lead) {
+      lead.events = Array.isArray(lead.events) ? lead.events : [];
+      lead.events.push({ k: 'cma_open', at: new Date().toISOString(),
+        note: rec.address.slice(0, 120) });
+      lead.lastActivity = new Date().toISOString();
+      const { score, band } = leadScore(lead);
+      lead.score = score; lead.band = band.key;
+      try { laneApply(lead, Date.now()); } catch (e) {}
+      await setSetting('lead:' + rec.leadId, lead);
+      console.log(`[cma] ${lead.name || rec.leadId} opened "${rec.address}" `
+        + `(${rec.opens.length} time${rec.opens.length === 1 ? '' : 's'})`);
+    }
+  } catch (e) { console.error('[cma] could not record the open:', e.message); }
+
+  const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const first = String(rec.leadName || '').trim().split(/\s+/)[0] || '';
+
+  res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>${esc(rec.address)}</title>
+<style>
+body{margin:0;background:#FBFAF7;color:#141A3C;
+  font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
+.w{max-width:620px;margin:0 auto;padding:44px 22px 60px}
+.eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;font-weight:700}
+h1{font-family:Georgia,serif;font-size:30px;line-height:1.2;font-weight:400;margin:12px 0 6px}
+.sub{color:#5A6178;margin:0 0 26px;font-size:15px}
+.note{background:#fff;border:1px solid rgba(20,26,60,.1);border-left:3px solid #C89B4E;
+  border-radius:4px;padding:16px 18px;margin:0 0 26px;font-size:15px;line-height:1.7}
+.btn{display:inline-block;background:#171F63;color:#fff;text-decoration:none;
+  padding:15px 28px;border-radius:4px;font-weight:700;font-size:15px}
+.btn:hover{background:#C89B4E;color:#241A08}
+.meta{font-size:13px;color:#7A8199;margin-top:14px}
+.ft{margin-top:38px;padding-top:22px;border-top:1px solid rgba(20,26,60,.12);
+  font-size:13px;color:#5A6178;line-height:1.7}
+.ft strong{color:#141A3C}
+</style></head><body><div class="w">
+<div class="eb">${esc(BROKERAGE_NAME)}</div>
+<h1>${first ? esc(first) + ', here' : 'Here'} is what your home looks like on today's market</h1>
+<p class="sub">${esc(rec.address)}</p>
+${rec.note ? `<div class="note">${esc(rec.note)}</div>` : ''}
+<a class="btn" href="${origin}/cma/${esc(req.params.tok)}/file">Open the report</a>
+<div class="meta">PDF &middot; prepared ${esc(new Date(rec.createdAt).toLocaleDateString('en-US',
+  { month: 'long', day: 'numeric', year: 'numeric' }))}</div>
+<div class="ft">
+  Prepared by <strong>${esc(rec.agentName)}</strong>, ${esc(BROKERAGE_NAME)}<br>
+  ${esc(BROKERAGE_PHONE)}<br><br>
+  Questions about any of it? Reply to the email this came in on, or call.
+</div>
+</div></body></html>`);
+});
+
+/* The file itself. Inline, so it opens in the browser rather than landing in
+   downloads where nobody looks at it. */
+app.get('/cma/:tok/file', async (req, res, next) => {
+  const map = await getSetting('cmaTok:' + String(req.params.tok || '').slice(0, 40));
+  if (!map || !map.id) return next();
+  const rec = await getSetting('cma:' + map.id);
+  const file = await getSetting('cmafile:' + map.id);
+  if (!rec || !file || !file.b64) return next();
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-store');
+  res.type('application/pdf');
+  res.set('Content-Disposition', `inline; filename="${rec.filename}"`);
+  res.send(Buffer.from(file.b64, 'base64'));
+});
+
+/* ---------- what the agent sees ---------- */
+app.get('/api/cma', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const leadId = String(req.query.leadId || '').slice(0, 80);
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'cma:%');
+    const origin = `${req.protocol}://${req.get('host')}`;
+    let rows = (data || []).map(x => x.value).filter(Boolean);
+    if (leadId) rows = rows.filter(r => r.leadId === leadId);
+    /* Same scoping rule as the lead book: an agent sees what belongs to their people. */
+    if (!isStaff(sess)) rows = rows.filter(r => r.agentId === sess.agentId);
+    rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    res.json({ ok: true, cmas: rows.slice(0, 60).map(r => ({
+      ...r, url: `${origin}/cma/${cmaToken(r.id)}`, openCount: (r.opens || []).length,
+      lastOpen: (r.opens || []).length ? r.opens[r.opens.length - 1].at : null,
+    })) });
+  } catch (e) {
+    console.error('[cma list]', e.message);
+    res.status(500).json({ error: 'Could not read those.' });
+  }
+});
+
+app.delete('/api/cma/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const id = String(req.params.id || '').slice(0, 80);
+  const rec = await getSetting('cma:' + id);
+  if (!rec) return res.status(404).json({ error: 'Not there.' });
+  if (!isStaff(sess) && rec.agentId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not yours to remove.' });
+  }
+  await setSetting('cma:' + id, null);
+  await setSetting('cmafile:' + id, null);
+  await setSetting('cmaTok:' + cmaToken(id), null);
+  console.log(`[cma] ${sess.name || sess.agentId} removed "${rec.address}"`);
+  res.json({ ok: true });
+});
 
 app.get('/homes/:slug', async (req, res, next) => {
   const a = AREAS.find(x => x.slug === String(req.params.slug || '').toLowerCase());
