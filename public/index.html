@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v261">
+<meta name="build" content="index-v264">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2769,7 +2769,10 @@ body.in-crm .topbar{display:none}
 <style>
 /* Writing, editing, publishing and deleting are the broker's. Agents send what
    has already been approved. */
-body:not(.is-staff) #sec-content .broker-only{display:none}
+/* \u26a0 is-broker, not is-staff. Publishing to a public page under the brokerage name is
+   the broker's decision. Settings below deliberately stays on is-staff \u2014 an admin
+   running the business side needs it. */
+body:not(.is-broker) #sec-content .broker-only{display:none}
 .ct-grid{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
 @media(max-width:1000px){ .ct-grid{grid-template-columns:1fr} }
 .ct-art{border:1px solid var(--hair,rgba(20,26,60,.1));border-radius:4px;background:#fff;
@@ -2998,6 +3001,13 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-assist">
 <style>
 /* Scoped to #sec-assist. `.lead-card` taught us what unscoped class names do. */
+#tc-pop .tc-rn{padding:0 0 10px;margin:0 0 10px;border-bottom:1px solid rgba(27,32,67,.12)}
+#tc-pop .tc-rn label{display:block;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:rgba(27,32,67,.5);margin-bottom:5px}
+#tc-pop .tc-rn input{width:100%;font:inherit;font-size:14px;font-weight:600;padding:7px 9px;
+  border-radius:5px;border:1px solid rgba(27,32,67,.18);background:#fff;color:#1B2043}
+#tc-pop .tc-rn input:focus{outline:none;border-color:#C89B4E}
+#tc-pop .tc-hint{font-size:10.5px;line-height:1.45;color:rgba(27,32,67,.5);margin-top:5px}
 #arrange-overlay .arr-nm{font:inherit;font-size:14px;font-weight:600;color:inherit;
   background:transparent;border:0;border-bottom:1px dashed rgba(20,26,60,.28);
   padding:2px 0 3px;width:100%;max-width:190px;min-width:80px;border-radius:0}
@@ -3668,7 +3678,8 @@ document.getElementById('view-crm').classList.toggle('active', v==='crm');
 /* The marketing header belongs to the public site. Inside the CRM it only ate
    the top of the screen and the tabs kept sliding underneath it. */
 document.body.classList.toggle('in-crm', v==='crm');
-try{ document.body.classList.toggle('is-staff', v==='crm' && isAdminOrOwner()); }catch(e){}
+try{ document.body.classList.toggle('is-staff', v==='crm' && isAdminOrOwner());
+     document.body.classList.toggle('is-broker', v==='crm' && isOwner()); }catch(e){}
 document.getElementById('chat-fab').style.display = v==='site' ? 'flex' : 'none';
 if(v==='crm'){ document.getElementById('chat-panel').classList.remove('open'); initCRM(); }
 // the workspace tint belongs to the CRM only \u2014 never leave it on the public site
@@ -4383,13 +4394,17 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v261';
+window.BUILD = 'index-v264';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
    only hoist within their own <script> block, and these are used throughout. */
 function isOwner(){ return !!(currentAgent && currentAgent.role === 'broker'); }
 function isAdminOrOwner(){ return !!(currentAgent && (currentAgent.role === 'broker' || currentAgent.role === 'admin')); }
+/* ⚠ isAdminOrOwner() is broker OR ADMIN, and the class it drives is called
+   "broker-only" — so an admin saw every control the broker did, including Publish,
+   Edit and Delete on articles. The narrower test is isOwner(), defined further down
+   in this same file. Do not add a third name for it. */
 /* Admins run the business side but never see leads. */
 function isAdminOnly(){ return !!(currentAgent && currentAgent.role === 'admin'); }
 function canSeeLeads(){ return !!currentAgent && currentAgent.role !== 'admin'; }
@@ -7944,7 +7959,8 @@ function renderCrmNav(){
   if(!nav || !currentAgent) return;
   // the button sits on the row under this nav and follows the same role rules
   try{ ideaSyncButton(); }catch(e){}
-  try{ document.body.classList.toggle('is-staff', isAdminOrOwner()); }catch(e){}
+  try{ document.body.classList.toggle('is-staff', isAdminOrOwner());
+       document.body.classList.toggle('is-broker', isOwner()); }catch(e){}
   try{ crmMeasureNav(); }catch(e){}
   const isBroker = isAdminOrOwner();
   // A section the current role can't see must never stay open — otherwise
@@ -15447,7 +15463,19 @@ document.addEventListener('DOMContentLoaded', () => { try{ eiInit(); }catch(e){}
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
 #tc-pop .sw i.on{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #1B2043}
 </style>
-<div id="tc-pop"><div class="hd" id="tc-name">Color</div><div class="sw" id="tc-sw"></div></div>
+<div id="tc-pop">
+  <div class="hd" id="tc-name">Color</div>
+  <!-- ⚠ Renaming lived two clicks away behind a button that gave no hint it was
+       there, and went unfound across three attempts to signpost it. This is where
+       people already tap when they want to change a tab, so this is where it goes. -->
+  <div class="tc-rn">
+    <label for="tc-rename">Call it</label>
+    <input id="tc-rename" maxlength="22" spellcheck="false" autocomplete="off"
+      oninput="setTileName(this.value)">
+    <div class="tc-hint">Type what you would look for &mdash; blank puts the original back</div>
+  </div>
+  <div class="sw" id="tc-sw"></div>
+</div>
 
 <script>
 /* ---------- drag to reorder, in place ----------
@@ -15522,8 +15550,22 @@ document.addEventListener('DOMContentLoaded', () => { try{ eiInit(); }catch(e){}
   document.addEventListener('touchend', onUp);
 })();
 
-/* ---------- tapping a tile in arrange mode sets its color ---------- */
+/* ---------- tapping a tile in arrange mode sets its color and its name ---------- */
 let tcId = null;
+
+/* \u26a0 Saves as you type, unlike the overlay version which is a draft. A popover has
+   no Done button and closes when you look away, so a draft here would silently throw
+   the change away \u2014 which is the same failure that made this feature look missing in
+   the first place. Debounced so it is not a write per keystroke. */
+let tcNameTimer = null;
+function setTileName(value){
+  if(!tcId) return;
+  const v = String(value == null ? '' : value).slice(0, 22);
+  if(v.trim()) crmTabNames[tcId] = v; else delete crmTabNames[tcId];
+  renderCrmNav();
+  clearTimeout(tcNameTimer);
+  tcNameTimer = setTimeout(() => { try{ saveTabOrder(); }catch(e){} }, 600);
+}
 function openTileColor(id){
   tcId = id;
   const pop = document.getElementById('tc-pop');
@@ -15531,7 +15573,12 @@ function openTileColor(id){
   const ordered = visibleOrderedSections();
   const idx = ordered.findIndex(s => s.id === id);
   const cur = tabColor(ordered[idx] || sec, idx);
-  document.getElementById('tc-name').textContent = (sec ? sec.label : 'Tab') + ' color';
+  document.getElementById('tc-name').textContent = (sec ? sec.label : 'Tab');
+  const rn = document.getElementById('tc-rename');
+  if(rn){
+    rn.value = (crmTabNames && crmTabNames[id]) || '';
+    rn.placeholder = sec ? sec.label : '';
+  }
   document.getElementById('tc-sw').innerHTML = SWATCHES.map(c =>
     `<i class="${c.toLowerCase()===String(cur).toLowerCase()?'on':''}" style="background:${c}"
       onclick="setTileColor('${c}')"></i>`).join('')
