@@ -1868,6 +1868,127 @@ app.post('/api/search', async (req, res) => {
   res.json({ ok: true, search: rec });
 });
 
+/* ==================== PUBLIC ALERT SIGN-UP (server 110) ====================
+   The gap this closes: the public "Set up listing alerts" button created a LEAD and
+   nothing else. No saved search was ever written, so nobody who asked for alerts on
+   the public site ever received one until an agent noticed and built it by hand. The
+   alert engine, the criteria fields fixed in v210 and the matching in searchFilter()
+   were all sitting there with no public door to them.
+
+   \u26a0 This is the only unauthenticated route that writes a savedSearch record, so it
+   validates hard and rate-limits by IP. Everything it writes is owned by a real
+   agent, resolved server-side from the slug — the visitor does not get to name an
+   owner, they get to name the agent whose link they arrived on. */
+
+const QUIZ_IPS = new Map();
+const QUIZ_CAP = 8;                       // per IP per hour
+function quizRateOk(ip) {
+  const hour = Math.floor(Date.now() / 3600000);
+  const key = hour + ':' + ip;
+  const n = (QUIZ_IPS.get(key) || 0) + 1;
+  QUIZ_IPS.set(key, n);
+  if (QUIZ_IPS.size > 2000) {
+    for (const k of QUIZ_IPS.keys()) if (!k.startsWith(hour + ':')) QUIZ_IPS.delete(k);
+  }
+  return n <= QUIZ_CAP;
+}
+
+/* Timeline is the single most useful thing a quiz collects, so it decides the lane
+   rather than sitting in a notes field. The lane engine then runs its own rules from
+   there — this only sets the starting point. */
+function laneFromTimeline(t) {
+  if (t === 'now' || t === 'ready') return 'fast';
+  if (t === 'soon') return 'steady';
+  return 'slow';
+}
+
+app.post('/api/alert-signup', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  if (!quizRateOk(ip)) return res.status(429).json({ error: 'Too many sign-ups from here just now.' });
+
+  const b = req.body || {};
+  const clean = v => String(v == null ? '' : v).slice(0, 90).trim();
+  const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n) : ''; };
+
+  const email = clean(b.email).toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.status(400).json({ error: 'That email address does not look right.' });
+  }
+  /* \u26a0 Consent is not decoration. The disclosure the visitor ticked is on the form;
+     refusing without it here is what makes the record defensible later. */
+  if (b.consent !== true) return res.status(400).json({ error: 'We need the consent box ticked.' });
+
+  /* Owner is resolved from the slug on the server. A visitor who arrived on an
+     agent's link belongs to that agent; otherwise the qualifying broker. */
+  let owner = null;
+  try {
+    const { data } = await supabase.from('agents').select('id,name,email,role,active').order('name');
+    const list = (data || []).filter(a => a.active !== false);
+    const slug = clean(b.agentSlug);
+    if (slug) owner = list.find(a => slugify(a.name) === slugify(slug)) || null;
+    if (!owner) owner = list.find(a => a.role === 'broker') || list[0] || null;
+  } catch (e) { return res.status(500).json({ error: 'Could not read the roster.' }); }
+  if (!owner) return res.status(503).json({ error: 'No agent is set up to receive this yet.' });
+
+  const c = b.criteria || {};
+  const criteria = {
+    city: clean(c.city), type: clean(c.type),
+    minPrice: num(c.minPrice), maxPrice: num(c.maxPrice),
+    beds: num(c.beds), baths: num(c.baths),
+    waterfront: !!c.waterfront, pool: !!c.pool,
+    view: !!c.view, newConstruction: !!c.newConstruction, noHoa: !!c.noHoa,
+    garage: num(c.garage), stories: num(c.stories),
+    acres: num(c.acres), sqft: num(c.sqft), maxSqft: num(c.maxSqft),
+    yearBuilt: num(c.yearBuilt), maxHoa: num(c.maxHoa),
+  };
+  if (Array.isArray(c.cities) && c.cities.length) {
+    criteria.cities = c.cities.map(clean).filter(Boolean).slice(0, 12);
+    if (!criteria.city) criteria.city = criteria.cities[0];
+  }
+  /* Nothing to match on means an alert that mails them the whole MLS every morning.
+     Better to take the lead and let a person set the search. */
+  const hasSomething = criteria.city || (criteria.cities || []).length || criteria.maxPrice
+    || criteria.beds || criteria.type;
+  if (!hasSomething) return res.status(400).json({ error: 'Tell us at least a town or a budget.' });
+
+  const id = 'ss_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  const rec = {
+    id, agentId: owner.id, agentName: owner.name || '', agentEmail: owner.email || '',
+    leadId: clean(b.leadId), name: clean(b.name), email,
+    pace: ['instant', 'daily', 'weekly'].includes(b.pace) ? b.pace : 'daily',
+    criteria,
+    source: 'quiz',
+    consentAt: new Date().toISOString(),
+    consentIp: ip.slice(0, 45),
+    lastSent: new Date().toISOString(),
+    sentKeys: [],
+    createdAt: new Date().toISOString(),
+  };
+  await setSetting('savedSearch:' + owner.id + ':' + id, rec);
+  await setSetting('ssTok:' + searchToken(id), { key: 'savedSearch:' + owner.id + ':' + id });
+  console.log(`[quiz] alert "${searchLabel(criteria)}" for ${rec.name || email} \u2192 ${owner.name}`);
+
+  /* Fire and forget, same rule as the open-house sign-in: a mail failure must not
+     fail the sign-up, because the record is already saved and it is the record that
+     matters. */
+  try {
+    if (mailer && owner.email) {
+      mailer.sendMail({
+        to: owner.email,
+        subject: `New alert sign-up \u2014 ${rec.name || email}`,
+        text: `${rec.name || '(no name)'} just set up listing alerts from the site.\n\n`
+            + `Looking for: ${searchLabel(criteria)}\n`
+            + `Email: ${email}\n`
+            + (clean(b.phone) ? `Phone: ${clean(b.phone)}\n` : '')
+            + `\nThey will start receiving matches ${rec.pace}.\n`,
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  res.json({ ok: true, searchId: id, assignedTo: owner.name || '', label: searchLabel(criteria) });
+});
+
 app.get('/api/search/mine', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const out = [];
@@ -4485,7 +4606,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v109',
+    serverVersion: 'v111',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -4967,6 +5088,304 @@ async function loadAgentForSeo(slug){
     serviceArea: serviceAreaSentence(licensed),
   };
 }
+
+
+/* ==================== AREA PAGES (server 111) ====================
+   The free-traffic gap. Indexable page types were: homepage, agent bios, /insights,
+   and articles. Nothing on this site answered "homes for sale in Gulf Shores" — the
+   highest-intent unpaid search in this market — so that traffic went to Zillow.
+
+   \u26a0 SCALED CONTENT. Google's spam policy targets pages generated at volume to rank.
+   The defence here is not word count, it is that every page is anchored to LIVE
+   inventory from the feed: real active counts, a real price range, real property
+   types, updated hourly. A page that tells you there are 47 condos in Orange Beach
+   between $310k and $1.2m right now is not thin content, and no competitor's
+   template can say it. Twelve towns, hand-written intros, no generation loop.
+
+   \u26a0 FAIR HOUSING. Area pages are exactly where steering language appears — "great
+   for families", "safe", "good schools". Every intro below is about GEOGRAPHY and
+   HOUSING STOCK only, and each one is run through fhScan() at boot so a careless
+   edit later gets caught rather than published. */
+
+const AREAS = [
+  { slug:'gulf-shores', name:'Gulf Shores', city:'Gulf Shores',
+    blurb:'Gulf-front high-rises along West Beach and East Beach, canal and lagoon homes '
+        + 'on the north side, and detached houses inland toward the Foley line. Most of '
+        + 'the condo stock sits on Beach Boulevard and West Beach Boulevard.' },
+  { slug:'orange-beach', name:'Orange Beach', city:'Orange Beach',
+    blurb:'Almost entirely condominium, concentrated on Perdido Beach Boulevard, with '
+        + 'the deep-water and Ono Island market handling most of the single-family '
+        + 'inventory. Marina and boat-slip properties trade here more than anywhere else '
+        + 'on this coast.' },
+  { slug:'fort-morgan', name:'Fort Morgan', city:'Fort Morgan',
+    blurb:'The peninsula west of Gulf Shores \u2014 low-density, largely stilted beach '
+        + 'houses on the Gulf and Mobile Bay sides, with far fewer mid-rise buildings '
+        + 'than the towns to the east. Rental-history properties are common.' },
+  { slug:'fairhope', name:'Fairhope', city:'Fairhope',
+    blurb:'Eastern Shore of Mobile Bay. A walkable older core with early-twentieth-century '
+        + 'housing stock, bluff properties overlooking the bay, and newer subdivisions '
+        + 'spreading east toward County Road 13 and Highway 181.' },
+  { slug:'daphne', name:'Daphne', city:'Daphne',
+    blurb:'North of Fairhope on the Eastern Shore, and the closest Baldwin County town '
+        + 'to the Mobile causeway. Mostly subdivision single-family, with bay-adjacent '
+        + 'properties along Main Street and Highway 98.' },
+  { slug:'foley', name:'Foley', city:'Foley',
+    blurb:'Inland from the beaches and the largest concentration of new construction in '
+        + 'south Baldwin County. Predominantly detached single-family on full lots, with '
+        + 'acreage available on the outskirts toward Elberta and Magnolia Springs.' },
+  { slug:'spanish-fort', name:'Spanish Fort', city:'Spanish Fort',
+    blurb:'At the top of the Eastern Shore where I-10 crosses the delta. Newer '
+        + 'subdivision housing, some bay and delta frontage, and the shortest commute in '
+        + 'Baldwin County to downtown Mobile.' },
+  { slug:'elberta', name:'Elberta', city:'Elberta',
+    blurb:'Rural south Baldwin between Foley and the Florida line. Acreage, barndominiums '
+        + 'and detached homes on large lots, with far fewer subdivisions than the coast.' },
+  { slug:'robertsdale', name:'Robertsdale', city:'Robertsdale',
+    blurb:'Central Baldwin County agricultural land and small-lot single-family, with '
+        + 'more acreage per dollar than anywhere south of it.' },
+  { slug:'perdido-key', name:'Perdido Key', city:'Perdido Key',
+    blurb:'The Florida side of the state line \u2014 Gulf-front and sound-side condominium '
+        + 'towers along Perdido Key Drive, with a thin strip of detached houses between '
+        + 'the two waters.' },
+  { slug:'magnolia-springs', name:'Magnolia Springs', city:'Magnolia Springs',
+    blurb:'A small river town on the Magnolia River, known for waterfront homes with '
+        + 'private docks and the live-oak canopy along Oak Street.' },
+  { slug:'bon-secour', name:'Bon Secour', city:'Bon Secour',
+    blurb:'Working waterfront on the Bon Secour River between Gulf Shores and Foley. '
+        + 'River-frontage properties and small acreage, with commercial seafood still '
+        + 'operating on the water.' },
+];
+
+/* \u26a0 Boot-time check on our own copy. If somebody edits a blurb later and reaches
+   for the language that gets brokerages sued, the log says so on the next restart. */
+AREAS.forEach(a => {
+  const hits = fhScan(a.blurb + ' ' + a.name);
+  if (hits.length) {
+    console.error(`[areas] \u26a0 FAIR HOUSING in "${a.name}" copy: `
+      + hits.map(h => `"${h.phrase}" (${h.why})`).join(', '));
+  }
+});
+
+/* The feed is the expensive part and this data barely moves, so one call per town
+   per hour. Without this a crawler walking twelve pages hammers Bridge. */
+const AREA_CACHE = new Map();
+const AREA_TTL = 3600000;
+
+async function areaStats(city) {
+  const hit = AREA_CACHE.get(city);
+  if (hit && Date.now() - hit.at < AREA_TTL) return hit.data;
+  const esc = String(city).replace(/'/g, "''");
+  const out = { count: 0, min: null, max: null, beds: {}, types: {}, sample: [] };
+  try {
+    const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
+      $filter: `${ACTIVE_ONLY} and contains(City,'${esc}')`,
+      $select: 'ListingKey,ListingId,UnparsedAddress,City,ListPrice,BedroomsTotal,'
+             + 'BathroomsTotalInteger,LivingArea,PropertySubType,ListOfficeName',
+      $top: 200, $orderby: 'ListPrice desc',
+    });
+    const rows = (d.value || []).filter(r => r.ListPrice > 0);
+    out.count = rows.length;
+    if (rows.length) {
+      const prices = rows.map(r => Number(r.ListPrice)).sort((a, b) => a - b);
+      out.min = prices[0];
+      out.max = prices[prices.length - 1];
+      out.median = prices[Math.floor(prices.length / 2)];
+      rows.forEach(r => {
+        const t = r.PropertySubType || 'Other';
+        out.types[t] = (out.types[t] || 0) + 1;
+      });
+      /* A handful of real listings, newest-priced-first, each carrying its IDX
+         credit. Not a full search result \u2014 the point of the page is the town. */
+      out.sample = rows.slice(0, 6).map(r => ({
+        key: r.ListingKey || r.ListingId || '',
+        addr: r.UnparsedAddress || '',
+        price: Number(r.ListPrice),
+        beds: r.BedroomsTotal || null,
+        baths: r.BathroomsTotalInteger || null,
+        sqft: r.LivingArea || null,
+        credit: listingCredit(r),
+      }));
+    }
+  } catch (e) {
+    console.warn(`[areas] feed failed for ${city}:`, e.message);
+  }
+  AREA_CACHE.set(city, { at: Date.now(), data: out });
+  return out;
+}
+
+function money(n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+
+function areaSeoHtml(a, stats, origin, agentSlug, noindex, articles) {
+  const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const url = `${origin}/homes/${a.slug}`;
+  const q = agentSlug ? `&agent=${encodeURIComponent(agentSlug)}` : '';
+  const title = `Homes for sale in ${a.name}, AL`;
+  const desc = stats.count
+    ? `${stats.count} active listings in ${a.name} right now, from ${money(stats.min)} to `
+      + `${money(stats.max)}. Live from Gulf Coast MLS, updated hourly.`
+    : `Current listings and market detail for ${a.name} on the Alabama Gulf Coast.`;
+
+  const topTypes = Object.entries(stats.types || {})
+    .sort((x, y) => y[1] - x[1]).slice(0, 4);
+
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: title,
+    description: desc,
+    url,
+    about: { '@type': 'Place', name: `${a.name}, Alabama` },
+    provider: {
+      '@type': 'RealEstateAgent', name: BROKERAGE_NAME, url: origin,
+      telephone: BROKERAGE_PHONE, address: BROKERAGE_ADDRESS,
+      areaServed: AREAS.map(x => ({ '@type': 'Place', name: x.name })),
+    },
+  };
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)} | ${esc(BROKERAGE_NAME)}</title>
+<meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${url}">${noindex ? '\n<meta name="robots" content="noindex,nofollow">' : ''}
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${url}">
+<script type="application/ld+json">${JSON.stringify(ld)}</script>
+<style>
+body{margin:0;background:#FBFAF7;color:#141A3C;
+  font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
+.w{max-width:760px;margin:0 auto;padding:38px 22px 70px}
+a{color:#C89B4E}
+.eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;font-weight:700}
+h1{font-family:Georgia,serif;font-size:34px;line-height:1.15;font-weight:400;margin:12px 0 14px}
+p{font-size:16px;margin:0 0 18px}
+.lede{font-size:17px;color:#3D456B}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:26px 0 30px}
+@media(max-width:560px){.nums{grid-template-columns:1fr 1fr}}
+.num{background:#fff;border:1px solid rgba(20,26,60,.1);border-radius:5px;padding:15px 16px}
+.num .k{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:#7A8199;font-weight:700}
+.num .v{font-family:Georgia,serif;font-size:24px;margin-top:5px;line-height:1.1}
+h2{font-family:Georgia,serif;font-size:23px;font-weight:400;margin:34px 0 12px}
+.li{display:block;background:#fff;border:1px solid rgba(20,26,60,.1);border-radius:5px;
+  padding:14px 16px;margin-bottom:9px;text-decoration:none;color:#141A3C}
+.li:hover{border-color:#C89B4E}
+.li .a{font-weight:600;font-size:15px}
+.li .m{font-size:13px;color:#5A6178;margin-top:3px}
+.li .c{font-size:11px;color:#8A90A6;margin-top:6px}
+.cta{margin-top:36px;padding:24px;background:#fff;border:1px solid rgba(20,26,60,.1);
+  border-left:3px solid #C89B4E;border-radius:4px}
+.cta h2{margin:0 0 8px;font-size:22px}
+.cta p{font-size:15px;color:#3D456B}
+.btn{display:inline-block;background:#C89B4E;color:#241A08;text-decoration:none;
+  padding:12px 22px;border-radius:3px;font-weight:700;font-size:13px;
+  letter-spacing:.05em;text-transform:uppercase;margin-top:6px}
+.near{margin-top:34px;padding-top:22px;border-top:1px solid rgba(20,26,60,.12)}
+.near a{display:inline-block;margin:0 14px 9px 0;font-size:14px}
+.dis{margin-top:34px;padding:16px 18px;background:#fff;border:1px solid rgba(20,26,60,.12);
+  border-radius:4px;font-size:12.5px;line-height:1.6;color:#5A6178}
+.ft{margin-top:22px;padding-top:20px;border-top:1px solid rgba(20,26,60,.1);
+  font-size:13px;color:#7A8199}
+</style></head><body><div class="w">
+<div class="eb">Baldwin County &middot; Alabama Gulf Coast</div>
+<h1>${esc(title)}</h1>
+<p class="lede">${esc(a.blurb)}</p>
+${stats.count ? `<div class="nums">
+  <div class="num"><div class="k">On the market</div><div class="v">${stats.count}</div></div>
+  <div class="num"><div class="k">From</div><div class="v">${money(stats.min)}</div></div>
+  <div class="num"><div class="k">Up to</div><div class="v">${money(stats.max)}</div></div>
+</div>
+<p>Right now there ${stats.count === 1 ? 'is' : 'are'} <strong>${stats.count}</strong> active
+${stats.count === 1 ? 'listing' : 'listings'} in ${esc(a.name)}, priced between
+${money(stats.min)} and ${money(stats.max)}, with a midpoint around ${money(stats.median)}.
+${topTypes.length ? 'Most of it is ' + topTypes.map(([t, n]) =>
+  `${esc(t.toLowerCase())} (${n})`).join(', ') + '.' : ''}
+These figures come straight from Gulf Coast MLS and are refreshed hourly, so they move
+with the market rather than being written once and forgotten.</p>` :
+`<p>Live inventory for ${esc(a.name)} is not loading at the moment. Every active listing
+is searchable on the main site.</p>`}
+
+${stats.sample.length ? `<h2>A few of them</h2>
+${stats.sample.map(s => `<a class="li" href="${origin}/?mls=${encodeURIComponent(s.key)}${q}">
+  <div class="a">${esc(s.addr)}</div>
+  <div class="m">${money(s.price)}${s.beds ? ' &middot; ' + s.beds + ' bd' : ''}${
+    s.baths ? ' &middot; ' + s.baths + ' ba' : ''}${
+    s.sqft ? ' &middot; ' + Number(s.sqft).toLocaleString() + ' sq ft' : ''}</div>
+  ${s.credit ? `<div class="c">${esc(s.credit)}</div>` : ''}
+</a>`).join('')}` : ''}
+
+<div class="cta">
+  <h2>Tell us what you are looking for in ${esc(a.name)}</h2>
+  <p>Six questions, about a minute. We will email you the ones that fit as they come on
+     the market, and stop the moment you say so.</p>
+  <a class="btn" href="${origin}/?q=buy${q}">Set up alerts for ${esc(a.name)}</a>
+</div>
+
+<div class="near"><div class="eb">Nearby</div><br>
+${AREAS.filter(x => x.slug !== a.slug).slice(0, 7).map(x =>
+  `<a href="${origin}/homes/${x.slug}${agentSlug ? '?agent=' + encodeURIComponent(agentSlug) : ''}">${esc(x.name)}</a>`).join('')}
+</div>
+
+${(articles && articles.length) ? `<div class="near"><div class="eb">Worth reading first</div><br>
+${articles.slice(0, 3).map(o =>
+  `<a href="${origin}/insights/${o.slug}${agentSlug ? '?agent=' + encodeURIComponent(agentSlug) : ''}">${esc(o.title)}</a>`).join('')}
+</div>` : ''}
+
+<div class="dis">${esc(DISCLAIMER_GENERAL)}</div>
+<div class="ft">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}<br>
+${esc(BROKERAGE_ADDRESS)}<br>
+<a href="${origin}/">Search every active listing</a> &nbsp;&middot;&nbsp;
+<a href="${origin}/insights">Guides</a></div>
+</div></body></html>`;
+}
+
+app.get('/homes/:slug', async (req, res, next) => {
+  const a = AREAS.find(x => x.slug === String(req.params.slug || '').toLowerCase());
+  if (!a) return next();
+  try {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const who = String(req.query.agent || '').slice(0, 60).replace(/[^a-z0-9-]/gi, '');
+    const [stats, articles] = await Promise.all([
+      areaStats(a.city),
+      articlesPublic().catch(() => []),
+    ]);
+    res.type('html').send(
+      areaSeoHtml(a, stats, origin, who, await siteIsPrivate(), articles));
+  } catch (e) {
+    console.error('[areas]', e.message);
+    next();
+  }
+});
+
+/* The index, so the twelve pages are reachable by a crawler and by a person. */
+app.get('/homes', async (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const esc = t => String(t || '').replace(/</g, '&lt;');
+  const priv = await siteIsPrivate();
+  res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Where to buy on the Alabama Gulf Coast | ${esc(BROKERAGE_NAME)}</title>
+<meta name="description" content="Live listing counts and price ranges for every town we cover in Baldwin County and the Perdido Key corridor.">
+<link rel="canonical" href="${origin}/homes">${priv ? '\n<meta name="robots" content="noindex,nofollow">' : ''}
+<style>body{margin:0;background:#FBFAF7;color:#141A3C;font-family:'Public Sans',system-ui,sans-serif;line-height:1.7}
+.w{max-width:760px;margin:0 auto;padding:38px 22px 70px}a{color:#141A3C;text-decoration:none}
+h1{font-family:Georgia,serif;font-size:34px;font-weight:400;margin:0 0 8px}
+.s{color:#5A6178;margin:0 0 26px}
+.it{display:block;padding:18px 0;border-bottom:1px solid rgba(20,26,60,.1)}
+.it .t{font-family:Georgia,serif;font-size:21px}
+.it .b{font-size:14px;color:#5A6178;margin-top:4px;line-height:1.55}
+.it:hover .t{color:#C89B4E}
+.ft{margin-top:28px;font-size:13px;color:#7A8199}</style></head><body><div class="w">
+<h1>Where to buy on this coast</h1>
+<p class="s">Twelve towns, each with what is actually on the market there today.</p>
+${AREAS.map(a => `<a class="it" href="${origin}/homes/${a.slug}">
+  <div class="t">${esc(a.name)}</div>
+  <div class="b">${esc(a.blurb.slice(0, 150))}${a.blurb.length > 150 ? '\u2026' : ''}</div></a>`).join('')}
+<div class="ft">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}<br>
+<a href="${origin}/">Search every active listing</a></div>
+</div></body></html>`);
+});
 
 app.get('/:slug', async (req, res, next) => {
   const slug = req.params.slug || '';
@@ -5593,6 +6012,10 @@ app.get('/sitemap.xml', async (req, res) => {
       urls.push({ loc: origin + '/insights/' + a.slug, pri: '0.7' });
     });
   } catch (e) { console.warn('[sitemap] articles failed:', e.message); }
+  /* Area pages carry the highest commercial intent of anything here, so they go in
+     above the guides. */
+  urls.push({ loc: origin + '/homes', pri: '0.9' });
+  AREAS.forEach(a => { urls.push({ loc: origin + '/homes/' + a.slug, pri: '0.9' }); });
   const today = new Date().toISOString().slice(0, 10);
   res.type('application/xml').send(
 `<?xml version="1.0" encoding="UTF-8"?>
