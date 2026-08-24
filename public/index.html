@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v253">
+<meta name="build" content="index-v254">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4365,7 +4365,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v253';
+window.BUILD = 'index-v254';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -20066,12 +20066,14 @@ const LS_QUICK = [
 /* What is actually running for this person. The point is that you should not have
    to click anything to find out — the old version only told you once you pressed
    a button, and then only by saying it had switched something off. */
-/* \u26a0 Shown for sellers, and for anyone we do not know either way \u2014 a buyer lead is
-   often a seller too, and the one thing worse than an extra button is a missing one
-   on the person who was about to list. Hidden once they are Closed. */
+/* \u26a0 I wrote a comment here saying a buyer lead is often a seller too, and then hid
+   the button on buyers anyway. So it was missing from almost every lead in the book
+   and looked like it had never shipped. Everyone who is not Closed gets it now.
+
+   Most people buying on this coast are selling something to do it. An extra button
+   costs a glance; a missing one costs the valuation nobody offered. */
 function lcValuation(l){
   if((l.stage||'New') === 'Closed') return '';
-  if(l.type === 'buyer' && !(l.quiz && l.quiz.path === 'sell')) return '';
   const addr = (l.quiz && l.quiz.address) || l.listingLabel || '';
   return `<button class="lc-setup" onclick="event.stopPropagation();cmaOpen('${l.id}',
     '${String(l.name||'').replace(/'/g,"\\'")}','${String(addr).replace(/'/g,"\\'")}')">
