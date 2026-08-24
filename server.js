@@ -1902,6 +1902,123 @@ function laneFromTimeline(t) {
   return 'slow';
 }
 
+
+/* ==================== EDITABLE QUIZ (server 113) ====================
+   The broker asked to add and edit the questions. Fair housing is the reason this
+   needs a gate rather than a plain text box: a public form is exactly where steering
+   language does damage, and it does damage under the brokerage's licence.
+
+   \u26a0 The gate is a WARNING, not a veto. The broker knows fair housing and asked to be
+   shown flags and allowed to confirm \u2014 so a flagged save is refused ONCE, returns
+   what tripped and why, and goes through on a second request carrying acknowledged.
+   Every acknowledged flag is logged with who confirmed it and when, because the value
+   of the log is that it exists if anyone ever asks.
+
+   \u26a0 Nothing here can change the ANSWER SHAPES the rest of the system depends on.
+   `key` is fixed to the known set: rewriting a key to something searchFilter() has
+   never heard of would produce an alert quietly matching nothing. Wording is the
+   broker's; plumbing is not. */
+
+const QUIZ_KEYS = {
+  buy:  ['cities', 'type', 'maxPrice', 'beds', 'musts', 'timeline'],
+  sell: ['address', 'ptype', 'timeline', 'situation'],
+};
+
+async function quizConfig() {
+  const saved = await getSetting('settings:quizConfig');
+  return (saved && saved.buy && saved.sell) ? saved : null;   // null = client defaults
+}
+
+/* Public. The quiz itself has to read this before anybody has signed in. */
+app.get('/api/quiz-config', async (req, res) => {
+  res.json({ ok: true, config: await quizConfig() });
+});
+
+app.post('/api/quiz-config', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+
+  const b = req.body || {};
+  const cfg = b.config || {};
+  const clean = (v, n) => String(v == null ? '' : v).slice(0, n).trim();
+
+  const out = {};
+  for (const path of ['buy', 'sell']) {
+    const allowed = QUIZ_KEYS[path];
+    const steps = Array.isArray(cfg[path]) ? cfg[path] : [];
+    out[path] = steps.slice(0, 10).map(s => {
+      const step = {
+        key: allowed.includes(s.key) ? s.key : allowed[0],
+        kind: ['one', 'multi', 'text'].includes(s.kind) ? s.kind : 'one',
+        title: clean(s.title, 120),
+        sub: clean(s.sub, 240),
+        two: !!s.two,
+      };
+      if (step.kind === 'text') {
+        step.fields = (Array.isArray(s.fields) ? s.fields : []).slice(0, 3)
+          .map(f => ({ k: clean(f.k, 24) || 'address', l: clean(f.l, 60), ph: clean(f.ph, 90) }));
+      } else {
+        step.opts = (Array.isArray(s.opts) ? s.opts : []).slice(0, 14).map(o => ({
+          v: (typeof o.v === 'number') ? o.v : clean(o.v, 60),
+          l: clean(o.l, 90),
+          d: clean(o.d, 120),
+        })).filter(o => o.l);
+      }
+      return step;
+    }).filter(s => s.title);
+  }
+  if (!out.buy.length || !out.sell.length) {
+    return res.status(400).json({ error: 'Each path needs at least one question.' });
+  }
+
+  /* Every word that will appear on a public form, checked in one pass. */
+  const flags = [];
+  const look = (where, text) => {
+    fhScan(text).forEach(h => flags.push({ where, phrase: h.phrase, why: h.why }));
+  };
+  ['buy', 'sell'].forEach(path => {
+    out[path].forEach((s, i) => {
+      const at = `${path} \u00b7 question ${i + 1}`;
+      look(at + ' \u00b7 title', s.title);
+      look(at + ' \u00b7 note', s.sub);
+      (s.opts || []).forEach(o => { look(at + ' \u00b7 answer', o.l); look(at + ' \u00b7 answer note', o.d); });
+      (s.fields || []).forEach(f => look(at + ' \u00b7 field', f.l + ' ' + f.ph));
+    });
+  });
+
+  if (flags.length && b.acknowledged !== true) {
+    console.warn(`[quiz-config] refused once for ${sess.name || sess.agentId}: `
+      + flags.map(f => `"${f.phrase}" (${f.why})`).join(', '));
+    return res.status(409).json({ error: 'fairhousing', flags });
+  }
+
+  const record = {
+    ...out,
+    updatedAt: new Date().toISOString(),
+    updatedBy: sess.name || sess.agentId,
+    /* \u26a0 Kept on the record, not just in the log. If it is ever asked who approved
+       wording that got flagged, the answer is on the thing itself. */
+    acknowledgedFlags: flags.length ? flags : undefined,
+  };
+  await setSetting('settings:quizConfig', record);
+  if (flags.length) {
+    console.warn(`[quiz-config] SAVED WITH ${flags.length} ACKNOWLEDGED FLAG(S) by `
+      + `${record.updatedBy}: ` + flags.map(f => `"${f.phrase}" (${f.why})`).join(', '));
+  } else {
+    console.log(`[quiz-config] saved clean by ${record.updatedBy}`);
+  }
+  res.json({ ok: true, flags });
+});
+
+/* Back to the built-in questions, for when an edit has gone wrong. */
+app.post('/api/quiz-config/reset', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  await setSetting('settings:quizConfig', null);
+  console.log(`[quiz-config] reset to defaults by ${sess.name || sess.agentId}`);
+  res.json({ ok: true });
+});
+
 app.post('/api/alert-signup', async (req, res) => {
   if (!requireSupabase(res)) return;
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
@@ -4713,7 +4830,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v112',
+    serverVersion: 'v113',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
