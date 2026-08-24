@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v237">
+<meta name="build" content="index-v238">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2908,6 +2908,60 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 </div>
 </div></div>
 
+<div class="crm-sec" id="sec-assist">
+<style>
+/* Scoped to #sec-assist. `.lead-card` taught us what unscoped class names do. */
+#sec-assist .as-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+#sec-assist .as-tabs button{font:inherit;font-size:13px;font-weight:600;cursor:pointer;
+  padding:9px 15px;border-radius:4px;border:1px solid var(--hair,rgba(20,26,60,.1));
+  background:#fff;color:var(--rl,#0E1433)}
+#sec-assist .as-tabs button.on{background:var(--ink,#171F63);color:#fff;border-color:var(--ink,#171F63)}
+#sec-assist .as-card{background:#fff;border:1px solid var(--hair,rgba(20,26,60,.1));
+  border-radius:5px;padding:20px 22px;margin-bottom:14px}
+#sec-assist .as-card > h4{margin:0 0 4px;font-size:15px;font-weight:700}
+#sec-assist .as-card > .s{font-size:12.5px;color:var(--mut,#7A8199);line-height:1.6;margin:0 0 16px}
+#sec-assist label.as-lab{display:block;font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:var(--mut,#7A8199);margin:0 0 6px}
+#sec-assist input.as-in,#sec-assist textarea.as-in,#sec-assist select.as-in{
+  width:100%;font:inherit;font-size:13.5px;padding:10px 12px;border-radius:4px;
+  border:1px solid var(--hair,rgba(20,26,60,.14));background:#fff;color:var(--rl,#0E1433)}
+#sec-assist textarea.as-in{line-height:1.65;resize:vertical}
+#sec-assist .as-row{margin-bottom:15px}
+#sec-assist .as-people{max-height:270px;overflow:auto;border:1px solid var(--hair,rgba(20,26,60,.1));
+  border-radius:4px}
+#sec-assist .as-p{display:flex;gap:11px;align-items:center;padding:9px 13px;cursor:pointer;
+  border-bottom:1px solid var(--hair,rgba(20,26,60,.07));font-size:13.5px}
+#sec-assist .as-p:last-child{border-bottom:0}
+#sec-assist .as-p:hover{background:#FAFAF7}
+#sec-assist .as-p.on{background:#F4F1E8}
+#sec-assist .as-p .n{font-weight:600}
+#sec-assist .as-p .m{color:var(--mut,#7A8199);font-size:12px;margin-left:auto;text-align:right}
+#sec-assist .as-out{border:1px solid var(--hair,rgba(20,26,60,.14));border-radius:4px;
+  background:#FCFCFA;padding:16px 18px;margin-top:16px}
+#sec-assist .as-out .as-body{font-size:14px;line-height:1.72;white-space:pre-wrap}
+#sec-assist .as-acts{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+/* Flags are warnings on work the agent is about to put their licence behind, so
+   they read as warnings and sit ABOVE the draft, not under it. */
+#sec-assist .as-flag{border-radius:4px;padding:13px 15px;margin-bottom:14px;
+  background:#FDF2F1;border-left:3px solid #8A2C22}
+#sec-assist .as-flag .h{font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+  font-weight:700;color:#8A2C22;margin-bottom:7px}
+#sec-assist .as-flag ul{margin:0;padding-left:17px;font-size:13px;line-height:1.65}
+#sec-assist .as-flag code{background:rgba(138,44,34,.09);padding:1px 5px;border-radius:3px;
+  font-size:12.5px}
+#sec-assist .as-note{background:#FFFBF0;border-left:3px solid #C9971F;border-radius:4px;
+  padding:11px 14px;font-size:12.5px;line-height:1.6;margin-bottom:14px}
+#sec-assist .as-wait{color:var(--mut,#7A8199);font-size:13px;padding:14px 0}
+#sec-assist .as-credit{font-size:11.5px;color:var(--mut,#7A8199);margin-top:11px;
+  padding-top:11px;border-top:1px solid var(--hair,rgba(20,26,60,.1))}
+</style>
+<div class="setup-panel">
+  <h3 class="sx-h">Assistant</h3>
+  <p class="sx-sub">Drafting help that can see your own records. It writes; you decide
+    what goes out. Nothing here sends anything on its own.</p>
+  <div class="setup-body" id="as-body">Loading&hellip;</div>
+</div>
+</div>
 <div class="crm-sec" id="sec-pipeline"></div>
 <div class="crm-sec" id="sec-tracker"></div>
 <div class="crm-sec" id="sec-calendar"></div>
@@ -4139,7 +4193,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v237';
+window.BUILD = 'index-v238';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6397,6 +6451,14 @@ async function submitContactForm(){
     mlsKey: '', listingLabel: '', stage: 'New', notes: '', assignedAgentId: '',
     createdAt: new Date().toISOString(),
   };
+  /* ⚠ This was the ONE public form that never called defaultAssigneeId(), so its
+     leads were stored with an empty assignedAgentId — not the referring agent, not
+     the broker, nobody, and no agent saw them in their list. defaultAssigneeId() is
+     also where a referral BECOMES an assignment, so anyone arriving on an agent's
+     link and using the contact form lost that attribution completely. */
+  lead.assignedAgentId = lead.assignedAgentId || await defaultAssigneeId();
+  {const _r = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+   if(_r && _r.id){ lead.referredBy = _r.name; lead.referredById = _r.id; }}
   try{
     await storeSet('lead:'+lead.id, stampLead(lead));
     sendLeadNotification(lead);
@@ -7195,6 +7257,7 @@ function referralLedgerHtml(year){
    Taxes is separate from Commissions on purpose: one is what agents earned, the
    other is what gets filed. */
 const ICON = {
+  assist: '<path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
   today:   '<path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M7.1 16.9l-2.1 2.1"/><circle cx="12" cy="12" r="4"/>',
   leads:   '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   money:   '<path d="M12 2v20"/><path d="M17 6.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.8 5 3.3 5 1.4 5 3.4-2.2 3.3-5 3.3-5-1.4-5-3.3"/>',
@@ -7236,6 +7299,10 @@ const CRM_SECTIONS = [
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
   { id:'sec-content',     label:'Content',     icon:'content',  color:'#C89B4E' },
+  /* ⚠ noAdmin, same as Leads. Two of its three jobs read the lead book and
+     canSeeLeads() excludes admins — a tab that is two-thirds broken is worse
+     than no tab at all. */
+  { id:'sec-assist',      label:'Assistant',   icon:'assist',   color:'#7A5CBF', noAdmin:true },
   { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', brokerOnly:true },  // sign blue
   { id:'sec-reviews',     label:'Reviews',     icon:'reviews',  color:'#C9971F' },   // agents see their own  // gold
   { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B' },  // slate blue
@@ -7544,6 +7611,8 @@ const FIND_INDEX = [
   ['sec-password','My password','password change login security'],
   ['sec-setup','Settings','settings preferences'],
   ['sec-setup','What reaches you','notifications alerts emails what reaches me notify turn off nudges'],
+  ['sec-setup','Can the world find this site?','site mode private public search engines google index indexed discoverable robots sitemap seo hidden'],
+  ['sec-assist','Assistant','assistant ai claude draft write follow up followup listing description copy ask my leads'],
   ['sec-agents','Agents','agents team roster add agent commission plan preview as'],
   ['sec-agents','Award tiers','awards tiers bronze silver gold platinum volume recognition where the bar sits'],
   ['sec-content','Content','articles newsletter send broadcast publish insights blog'],
@@ -7697,6 +7766,7 @@ function showCrmSection(id){
     if(id === 'sec-agents'){ loadAgents(); if(typeof renderAdminRequests === 'function') renderAdminRequests(); }
     try{ sxRenderPanels(id); }catch(e){}
     if(id === 'sec-content' && typeof renderContent === 'function') renderContent();
+    if(id === 'sec-assist'  && typeof renderAssist  === 'function') renderAssist();
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
       /* ⚠ renderNotify was only ever called from a `.setup-head` click handler,
@@ -20299,6 +20369,265 @@ function wnGo(k){
   showCrmSection('sec-leads');
   setTimeout(() => { if(typeof loadLeads === 'function') loadLeads(); }, 60);
 }
+
+/* ==================== THE ASSISTANT TAB (index 238) ====================
+   Three jobs, one panel. Written in the NEW panel convention — an <h3 class="sx-h">
+   with no .setup-head — which means sxLiftPanels() cannot see it and it gets no
+   data-sx-render. It is rendered by the explicit call in showCrmSection instead.
+   ⚠ Any panel written this way needs that call adding by hand or it shows
+   "Loading…" forever, which is the Part One bug wearing new markup. */
+
+let asMode = 'followup', asLeads = null, asPick = '', asBusy = false, asOut = null;
+
+async function renderAssist(){
+  const host = document.getElementById('as-body');
+  if(!host) return;
+  const tab = (id, label) =>
+    `<button class="${asMode===id?'on':''}" onclick="asGo('${id}')">${label}</button>`;
+  host.innerHTML =
+    `<div class="as-tabs">
+       ${tab('followup','Write a follow-up')}
+       ${tab('listing','Describe a listing')}
+       ${tab('ask','Ask about my leads')}
+     </div><div id="as-pane"></div>`;
+  asRenderPane();
+}
+
+function asGo(m){ asMode = m; asOut = null; renderAssist(); }
+
+function asRenderPane(){
+  const p = document.getElementById('as-pane');
+  if(!p) return;
+  if(asMode === 'followup') return asPaneFollowup(p);
+  if(asMode === 'listing')  return asPaneListing(p);
+  return asPaneAsk(p);
+}
+
+/* ---------- 1. Follow-up ---------- */
+async function asPaneFollowup(p){
+  p.innerHTML =
+    `<div class="as-card">
+      <h4>Write a follow-up</h4>
+      <p class="s">Pick somebody. The draft is written from what is actually on their
+        record &mdash; what they looked at, what they asked for, how long it has been
+        &mdash; so it should not read like a template. Read it before you use it.</p>
+      <div class="as-row">
+        <label class="as-lab">Who</label>
+        <input class="as-in" id="as-q" placeholder="Search your people\u2026"
+          oninput="asRenderPeople(this.value)" style="margin-bottom:9px">
+        <div class="as-people" id="as-people"><div class="as-wait">Loading your people\u2026</div></div>
+      </div>
+      <div class="as-row">
+        <label class="as-lab">As</label>
+        <select class="as-in" id="as-ch">
+          <option value="email">An email</option>
+          <option value="text">A text message</option>
+        </select>
+      </div>
+      <div class="as-row">
+        <label class="as-lab">Anything to work in? (optional)</label>
+        <input class="as-in" id="as-note"
+          placeholder="e.g. the Fort Morgan place came back on the market">
+      </div>
+      <button class="btn-sm primary" id="as-run" onclick="asRunFollowup()">Write it</button>
+     </div>
+     <div id="as-result"></div>`;
+  if(!asLeads) await asLoadLeads();
+  asRenderPeople('');
+}
+
+async function asLoadLeads(){
+  try{
+    const keys = await storeListKeys('lead:');
+    const rows = await Promise.all(keys.map(k => storeGet(k)));
+    asLeads = rows.filter(l => l &&
+      (isAdminOrOwner() || l.assignedAgentId === currentAgent.id))
+      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||'')));
+  }catch(e){ asLeads = []; }
+}
+
+function asRenderPeople(filter){
+  const host = document.getElementById('as-people');
+  if(!host) return;
+  if(!asLeads){ host.innerHTML = '<div class="as-wait">Loading\u2026</div>'; return; }
+  const q = String(filter||'').toLowerCase();
+  const shown = asLeads.filter(l => !q ||
+    (String(l.name||'') + ' ' + String(l.email||'')).toLowerCase().includes(q)).slice(0, 120);
+  if(!asLeads.length){
+    host.innerHTML = '<div class="as-wait">No leads on your book yet.</div>'; return;
+  }
+  host.innerHTML = shown.length
+    ? shown.map(l => `<div class="as-p ${asPick===l.id?'on':''}" onclick="asPickOne('${l.id}')">
+        <span class="n">${escapeHtml(l.name||'(no name)')}</span>
+        <span class="m">${escapeHtml(l.stage||'New')}${l.lane?' \u00b7 '+escapeHtml(l.lane):''}</span>
+      </div>`).join('')
+    : '<div class="as-wait">Nobody matches that.</div>';
+}
+
+function asPickOne(id){ asPick = id; asRenderPeople(document.getElementById('as-q')?.value || ''); }
+
+async function asRunFollowup(){
+  if(asBusy) return;
+  if(!asPick){ showToast('Pick who it is for first.'); return; }
+  const btn = document.getElementById('as-run');
+  asBusy = true; if(btn){ btn.disabled = true; btn.textContent = 'Writing\u2026'; }
+  try{
+    const r = await fetch('/api/ai/followup', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        leadId: asPick,
+        channel: document.getElementById('as-ch')?.value || 'email',
+        note: document.getElementById('as-note')?.value || '' }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not draft that.');
+    asOut = d;
+    asShowResult(d.draft, d.fairHousing, d.figuresFound, null, {
+      channel: d.channel, lead: d.lead });
+  }catch(e){ showToast(e.message); }
+  finally{
+    asBusy = false;
+    const b = document.getElementById('as-run');
+    if(b){ b.disabled = false; b.textContent = 'Write it'; }
+  }
+}
+
+/* ---------- 2. Listing copy ---------- */
+function asPaneListing(p){
+  p.innerHTML =
+    `<div class="as-card">
+      <h4>Describe a listing</h4>
+      <p class="s">Pulls the record from the feed and writes from those facts only.
+        If a detail is not in the feed it will be left out rather than guessed at.</p>
+      <div class="as-row">
+        <label class="as-lab">MLS number</label>
+        <input class="as-in" id="as-mls" placeholder="e.g. 397530">
+      </div>
+      <div class="as-row">
+        <label class="as-lab">For</label>
+        <select class="as-in" id="as-kind">
+          <option value="listing">MLS public remarks</option>
+          <option value="flyer">A flyer</option>
+          <option value="social">A social post</option>
+        </select>
+      </div>
+      <button class="btn-sm primary" id="as-run" onclick="asRunListing()">Write it</button>
+     </div>
+     <div id="as-result"></div>`;
+}
+
+async function asRunListing(){
+  if(asBusy) return;
+  const key = (document.getElementById('as-mls')?.value || '').trim();
+  if(!key){ showToast('Which listing?'); return; }
+  const btn = document.getElementById('as-run');
+  asBusy = true; if(btn){ btn.disabled = true; btn.textContent = 'Writing\u2026'; }
+  try{
+    const r = await fetch('/api/ai/listing-copy', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ mlsKey: key, kind: document.getElementById('as-kind')?.value }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not write that.');
+    asOut = d;
+    asShowResult(d.draft, d.fairHousing, [], d.credit, null);
+  }catch(e){ showToast(e.message); }
+  finally{
+    asBusy = false;
+    const b = document.getElementById('as-run');
+    if(b){ b.disabled = false; b.textContent = 'Write it'; }
+  }
+}
+
+/* ---------- 3. Ask ---------- */
+function asPaneAsk(p){
+  p.innerHTML =
+    `<div class="as-card">
+      <h4>Ask about my leads</h4>
+      <p class="s">Answered from your own book and nothing else. Contact details are
+        not sent anywhere &mdash; it can see stages, lanes, scores and dates, so ask it
+        about those.</p>
+      <div class="as-row">
+        <label class="as-lab">Question</label>
+        <textarea class="as-in" id="as-qq" rows="3"
+          placeholder="Who has gone quiet for more than three weeks?"></textarea>
+      </div>
+      <button class="btn-sm primary" id="as-run" onclick="asRunAsk()">Ask</button>
+     </div>
+     <div id="as-result"></div>`;
+}
+
+async function asRunAsk(){
+  if(asBusy) return;
+  const q = (document.getElementById('as-qq')?.value || '').trim();
+  if(!q){ showToast('Ask something first.'); return; }
+  const btn = document.getElementById('as-run');
+  asBusy = true; if(btn){ btn.disabled = true; btn.textContent = 'Thinking\u2026'; }
+  try{
+    const r = await fetch('/api/ai/ask', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ question: q }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not answer that.');
+    asOut = d;
+    asShowResult(d.answer, [], [], null, null,
+      d.truncated ? `Looked at ${d.considered} of your ${d.total} leads.` : '');
+  }catch(e){ showToast(e.message); }
+  finally{
+    asBusy = false;
+    const b = document.getElementById('as-run');
+    if(b){ b.disabled = false; b.textContent = 'Ask'; }
+  }
+}
+
+/* ---------- shared result view ---------- */
+function asShowResult(text, fh, figures, credit, send, foot){
+  const host = document.getElementById('as-result');
+  if(!host) return;
+  const flags = (fh && fh.length)
+    ? `<div class="as-flag">
+         <div class="h">Fair housing \u2014 read before you use this</div>
+         <ul>${fh.map(h => `<li><code>${escapeHtml(h.phrase)}</code> \u2014 ${escapeHtml(h.why)}</li>`).join('')}</ul>
+       </div>` : '';
+  const figs = (figures && figures.length)
+    ? `<div class="as-note"><strong>Check these numbers:</strong>
+         ${figures.map(f => escapeHtml(f)).join(', ')} \u2014 confirm each one against the
+         record before this goes out.</div>` : '';
+  const acts = [];
+  acts.push(`<button class="btn-sm" onclick="asCopy()">Copy it</button>`);
+  if(send && send.channel === 'email' && send.lead && send.lead.email){
+    acts.push(`<button class="btn-sm primary" onclick="asMail()">Open in email</button>`);
+  }
+  acts.push(`<button class="btn-sm" onclick="asRerun()">Write another</button>`);
+  host.innerHTML =
+    `${flags}${figs}
+     <div class="as-out">
+       <textarea class="as-in as-body" id="as-text" rows="9">${escapeHtml(text||'')}</textarea>
+       ${credit ? `<div class="as-credit">${escapeHtml(credit)} \u2014 this credit must travel with the copy.</div>` : ''}
+       ${foot ? `<div class="as-credit">${escapeHtml(foot)}</div>` : ''}
+       <div class="as-acts">${acts.join('')}</div>
+     </div>`;
+}
+
+function asCopy(){
+  const t = document.getElementById('as-text');
+  if(!t) return;
+  navigator.clipboard.writeText(t.value)
+    .then(() => showToast('Copied.'))
+    .catch(() => { t.select(); showToast('Press Ctrl+C to copy.'); });
+}
+
+/* ⚠ Deliberately mailto, not a server send. A one-to-one follow-up should leave
+   from the agent's own mailbox: it threads with their earlier replies, it does not
+   spend the new marketing domain's reputation, and nothing can go out without the
+   agent pressing send themselves. Change this only on purpose. */
+function asMail(){
+  const t = document.getElementById('as-text');
+  if(!t || !asOut || !asOut.lead) return;
+  const body = encodeURIComponent(t.value);
+  const to = encodeURIComponent(asOut.lead.email || '');
+  window.location.href = `mailto:${to}?body=${body}`;
+}
+
+function asRerun(){ asOut = null; asRenderPane(); }
 </script>
 
 <style>
