@@ -3898,6 +3898,108 @@ It's yours now — log in at bamacoast.com to work it.`,
   }
 });
 
+
+/* ==================== SPEED TO LEAD (server 112) ====================
+   The agent copy of a new-lead alert was a plain list of fields ending "Call them
+   before someone else does." It did not say the one thing that decides whether to
+   stop what you are doing: when they want to move.
+
+   The quiz asks that directly now. "As soon as I find the right one" and "just
+   watching the market" are different phone calls and one of them is this afternoon.
+
+   \u26a0 This changes what the notification SAYS. It does not add any new automated
+   contact with the lead \u2014 everything here goes to the agent's own inbox and their
+   own phone, which is why there is no TCPA question to answer. */
+
+const URGENCY = {
+  now:     { rank: 3, label: 'READY NOW',        line: 'Wants to move as soon as they find the right one.' },
+  soon:    { rank: 2, label: 'NEXT FEW MONTHS',  line: 'Looking to move in the next few months.' },
+  later:   { rank: 1, label: 'LATER THIS YEAR',  line: 'Thinking about later this year.' },
+  looking: { rank: 0, label: 'JUST WATCHING',    line: 'Watching the market, no timeline yet.' },
+};
+
+/* Turn the quiz answers back into something a person reads in three seconds while
+   holding a phone. Falls back quietly for leads that did not come through the quiz. */
+function leadBrief(b) {
+  const q = b.quiz || {};
+  const out = [];
+  if (q.path === 'sell') {
+    if (q.address)   out.push('Property: ' + q.address);
+    if (q.ptype)     out.push('Type: ' + q.ptype);
+    if (Array.isArray(q.situation) && q.situation.length) out.push('Notes: ' + q.situation.join(', '));
+  } else {
+    if (Array.isArray(q.cities) && q.cities.length) out.push('Wants: ' + q.cities.join(', '));
+    if (q.type)      out.push('Type: ' + q.type);
+    if (q.maxPrice)  out.push('Up to $' + Number(q.maxPrice).toLocaleString());
+    if (q.beds)      out.push(q.beds + '+ bedrooms');
+    if (Array.isArray(q.musts) && q.musts.length) out.push('Must have: ' + q.musts.join(', '));
+  }
+  return out;
+}
+
+function speedToLeadHtml(b, origin) {
+  const esc = t => String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const u = URGENCY[(b.quiz || {}).timeline] || null;
+  const brief = leadBrief(b);
+  const phone = String(b.phone || '').replace(/[^0-9+]/g, '');
+  const tone = u && u.rank >= 3 ? '#8A2C22' : u && u.rank === 2 ? '#C9971F' : '#3D456B';
+
+  const btn = (href, label, bg, fg) =>
+    `<a href="${href}" style="display:inline-block;background:${bg};color:${fg};
+      text-decoration:none;padding:14px 22px;border-radius:4px;font:700 15px/1 Arial,Helvetica,sans-serif;
+      margin:0 8px 8px 0">${label}</a>`;
+
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FBFAF7">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+  style="background:#FBFAF7"><tr><td align="center" style="padding:22px 14px 34px">
+<table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0"
+  style="max-width:480px;width:100%;background:#ffffff;border:1px solid #dcdce4;border-radius:6px">
+  ${u ? `<tr><td style="background:${tone};padding:11px 18px;
+    font:700 12px/1 Arial,Helvetica,sans-serif;letter-spacing:.14em;color:#ffffff">
+    ${esc(u.label)}</td></tr>` : ''}
+  <tr><td style="padding:20px 18px 6px">
+    <div style="font:700 24px/1.2 Georgia,serif;color:#0E1433">${esc(b.name || 'Someone')}</div>
+    ${u ? `<div style="font:400 14px/1.5 Arial,Helvetica,sans-serif;color:#3D456B;margin-top:5px">
+      ${esc(u.line)}</div>` : ''}
+  </td></tr>
+  ${brief.length ? `<tr><td style="padding:12px 18px 4px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:#FBFAF7;border-radius:4px">
+      <tr><td style="padding:13px 15px;font:400 14px/1.75 Arial,Helvetica,sans-serif;color:#141A3C">
+        ${brief.map(esc).join('<br>')}</td></tr></table></td></tr>` : ''}
+  ${b.message ? `<tr><td style="padding:12px 18px 0;
+    font:400 14px/1.6 Arial,Helvetica,sans-serif;color:#3D456B">
+    &ldquo;${esc(String(b.message).slice(0, 400))}&rdquo;</td></tr>` : ''}
+  <tr><td style="padding:18px 18px 4px">
+    ${phone ? btn('tel:' + phone, 'Call ' + esc(b.phone), '#1F6B49', '#ffffff') : ''}
+    ${b.email ? btn('mailto:' + esc(b.email), 'Email them', '#C89B4E', '#241A08') : ''}
+  </td></tr>
+  <tr><td style="padding:4px 18px 18px;font:400 13px/1.7 Arial,Helvetica,sans-serif;color:#7A8199">
+    ${b.email ? esc(b.email) + '<br>' : ''}${b.source ? 'Came in through: ' + esc(b.source) : ''}
+    <br><a href="${origin}/#crm" style="color:#C89B4E">Open it in the CRM</a>
+  </td></tr>
+</table>
+<div style="font:400 12px/1.6 Arial,Helvetica,sans-serif;color:#9aa0b0;margin-top:14px;
+  max-width:480px">${esc(BROKERAGE_NAME)} &middot; ${esc(BROKERAGE_PHONE)}</div>
+</td></tr></table></body></html>`;
+}
+
+/* The carrier gateway drops anything long or formatted, so this stays short, plain,
+   and leads with the timeline \u2014 the part that decides whether to pull over. */
+function speedToLeadSms(b) {
+  const u = URGENCY[(b.quiz || {}).timeline];
+  const q = b.quiz || {};
+  const where = Array.isArray(q.cities) && q.cities.length ? q.cities[0]
+              : (q.address ? String(q.address).split(',')[0] : '');
+  return [
+    u ? u.label : 'NEW LEAD',
+    b.name || '',
+    b.phone || b.email || '',
+    where,
+  ].filter(Boolean).join(' - ').slice(0, 140);
+}
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email is not configured yet — set RESEND_API_KEY in the hosting environment variables.' });
@@ -3943,18 +4045,23 @@ app.post('/api/notify-lead', async (req, res) => {
                 await mailer.sendMail({
                   to: prof.smsAddress,
                   subject: 'New lead',
-                  text: `${name || 'New lead'} ${phone || email || ''} - ${source || 'website'}`.slice(0, 140),
+                  text: speedToLeadSms(req.body || {}),
                 });
                 console.log(`[lead notification] text sent to ${prof.smsAddress}`);
               } catch (e) {
                 console.warn(`[lead notification] text FAILED to ${prof.smsAddress}: ${e.message}`);
               }
             }
+            /* ⚠ The subject line IS the notification on a lock screen, so the
+               timeline belongs in it. "New lead: Dawn Whitfield" and "READY NOW
+               — Dawn Whitfield" get opened at different speeds. */
+            const _stlU = URGENCY[((req.body || {}).quiz || {}).timeline];
             const extra = [ag.email];
             for (const to of extra) {
               await mailer.sendMail({
                 to,
-                subject: `New lead: ${name || 'Unknown'}`,
+                subject: (_stlU ? _stlU.label + ' \u2014 ' : 'New lead: ') + (name || 'Unknown'),
+                html: speedToLeadHtml(req.body || {}, `${req.protocol}://${req.get('host')}`),
                 text: `${name || 'Someone'} just inquired through bamacoast.com.
 
 Name:  ${name || '(not provided)'}
@@ -4606,7 +4713,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v111',
+    serverVersion: 'v112',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
