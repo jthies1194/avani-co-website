@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v250">
+<meta name="build" content="index-v251">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -61,6 +61,15 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 .crm-gate .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}
 .field-label{font-size:11.5px;font-weight:600;color:var(--marsh);text-align:left;margin-bottom:5px;}
 .setup-body input,.setup-body select{width:100%;border:1px solid var(--line);border-radius:4px;padding:9px 10px;font-family:'Public Sans',sans-serif;font-size:13.5px;background:var(--sand-light);color:var(--ink);}
+/* ⚠ `width:100%` above is right for text and select, and wrong for a tick box: it
+   stretches the checkbox across the whole panel, so the tick renders centred in a
+   full-width box and its label gets shoved to the far edge and wraps. That is what
+   the exit-intent "Show it" toggle was doing. The same trap was already worked
+   around twice with `.more-f .mf-checks input` and `.alert-row input`, and once
+   more inline in the quiz editor — fixed generically here instead, so the next
+   tick box added to a settings panel does not need to know. */
+.setup-body input[type="checkbox"],.setup-body input[type="radio"]{
+  width:auto;flex:0 0 auto;margin:0}
 .detail-modal{max-width:520px;}
 .detail-photo{height:220px;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:18px;overflow:hidden;}
 .detail-photo svg{width:70px;height:70px;opacity:0.5;}
@@ -4320,7 +4329,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v250';
+window.BUILD = 'index-v251';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
