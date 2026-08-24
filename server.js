@@ -1680,6 +1680,9 @@ const SCORE_EVENTS = {
   /* ⚠ Between 'asked to see a property' (30) and 'has definite plans to sell'
      (25). Opening a valuation of your own house is not casual reading. */
   cma_open:         { pts: 22, why: 'opened the valuation of their home' },
+  /* \u26a0 Below cma_open. Watching a video you were sent is real interest, but opening a
+     valuation of your own house is a stronger signal than watching a walkthrough. */
+  video_play:       { pts: 14, why: 'watched a video we sent' },
   favorited:        { pts:  8, why: 'saved a property' },
   visits_multi:     { pts:  8, why: 'been back to the site several times' },
   repeat_view:      { pts:  5, why: 'looked at the same property again' },
@@ -4920,7 +4923,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v121',
+    serverVersion: 'v122',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5687,6 +5690,207 @@ function cmaToken(id) {
 }
 
 /* ---------- the agent uploads what RPR produced ---------- */
+
+/* ==================== VIDEO PROMOS (server 122) ====================
+   A library of videos \u2014 listing walkthroughs, marketing pieces \u2014 and a tracked link
+   per person you send one to.
+
+   \u26a0 Nothing is hosted here. The video stays on YouTube or Vimeo, where it is already
+   paid for, already transcoded and already served fast. This stores a link and wraps
+   it in a page we control so the open can be counted. Hosting video out of this
+   Express process would be slow, expensive and pointless.
+
+   \u26a0 The embed URL is BUILT by us from a parsed id, never taken from what was pasted.
+   An <iframe src> that a user can set is an open door \u2014 anything from a phishing page
+   to a keylogger, framed inside a page carrying the brokerage name. Two providers,
+   both matched against a strict pattern, and anything else is refused. */
+
+const VID_PROVIDERS = [
+  { key: 'youtube', re: /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/,
+    embed: id => `https://www.youtube-nocookie.com/embed/${id}`,
+    thumb: id => `https://i.ytimg.com/vi/${id}/hqdefault.jpg` },
+  { key: 'vimeo',   re: /vimeo\.com\/(?:video\/)?(\d{6,12})/,
+    embed: id => `https://player.vimeo.com/video/${id}`,
+    thumb: () => '' },
+];
+
+function parseVideo(url) {
+  const u = String(url || '').trim();
+  for (const p of VID_PROVIDERS) {
+    const m = u.match(p.re);
+    if (m) return { provider: p.key, videoId: m[1], embed: p.embed(m[1]), thumb: p.thumb(m[1]) };
+  }
+  return null;
+}
+
+function promoToken(promoId, leadId) {
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('promo:' + promoId + ':' + leadId).digest('hex').slice(0, 24);
+}
+
+/* ---------- the library ---------- */
+app.post('/api/promo', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const clean = (v, n) => String(v == null ? '' : v).slice(0, n).trim();
+
+  const parsed = parseVideo(b.url);
+  if (!parsed) {
+    return res.status(400).json({
+      error: 'Paste a YouTube or Vimeo link. Those are the two we can embed safely.' });
+  }
+  const title = clean(b.title, 120);
+  if (!title) return res.status(400).json({ error: 'Give it a name so you can find it later.' });
+
+  const id = 'vid_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  const rec = {
+    id, title, note: clean(b.note, 400),
+    kind: ['listing', 'marketing'].includes(b.kind) ? b.kind : 'marketing',
+    address: clean(b.address, 140),
+    ...parsed,
+    sourceUrl: clean(b.url, 400),
+    ownerId: sess.agentId, ownerName: sess.name || '',
+    shared: b.shared !== false,          // brokerage-wide unless they say otherwise
+    createdAt: new Date().toISOString(),
+    sends: 0, opens: 0,
+  };
+  await setSetting('promo:' + id, rec);
+  console.log(`[promo] ${sess.name || sess.agentId} added "${title}" (${parsed.provider})`);
+  res.json({ ok: true, promo: rec });
+});
+
+app.get('/api/promo', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'promo:%');
+    let rows = (data || []).map(x => x.value).filter(Boolean);
+    /* Shared videos are the brokerage's; unshared ones belong to whoever added them. */
+    if (!isStaff(sess)) rows = rows.filter(r => r.shared || r.ownerId === sess.agentId);
+    rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    res.json({ ok: true, promos: rows.slice(0, 200) });
+  } catch (e) {
+    console.error('[promo list]', e.message);
+    res.status(500).json({ error: 'Could not read those.' });
+  }
+});
+
+app.delete('/api/promo/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const id = String(req.params.id || '').slice(0, 80);
+  const rec = await getSetting('promo:' + id);
+  if (!rec) return res.status(404).json({ error: 'Not there.' });
+  if (!isStaff(sess) && rec.ownerId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not yours to remove.' });
+  }
+  try {
+    const { error } = await supabase.from(KV_TABLE).delete().eq('key', 'promo:' + id);
+    if (error) throw new Error(error.message);
+  } catch (e) {
+    console.error(`[promo] delete FAILED for ${id}:`, e.message);
+    return res.status(500).json({ error: 'Could not remove that.' });
+  }
+  console.log(`[promo] ${sess.name || sess.agentId} removed "${rec.title}"`);
+  res.json({ ok: true });
+});
+
+/* ---------- sending one to a person ---------- */
+app.post('/api/promo/:id/send', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const rec = await getSetting('promo:' + String(req.params.id || '').slice(0, 80));
+  if (!rec) return res.status(404).json({ error: 'That video is no longer there.' });
+
+  const lead = await loadOwnLead(sess, (req.body || {}).leadId);
+  if (!lead) return res.status(404).json({ error: 'Not your lead, or no longer there.' });
+
+  /* \u26a0 The token is derived from the two ids rather than stored, so sending the same
+     video to the same person twice gives the SAME link \u2014 which means the open count
+     keeps adding up instead of starting again and quietly under-reporting. */
+  const tok = promoToken(rec.id, lead.id);
+  await setSetting('promoTok:' + tok, {
+    promoId: rec.id, leadId: lead.id,
+    agentId: sess.agentId, agentName: sess.name || '',
+    sentAt: new Date().toISOString(),
+  });
+  rec.sends = (rec.sends || 0) + 1;
+  await setSetting('promo:' + rec.id, rec);
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  console.log(`[promo] ${sess.name || sess.agentId} sent "${rec.title}" to ${lead.name || lead.id}`);
+  res.json({ ok: true, url: `${origin}/v/${tok}`,
+    lead: { id: lead.id, name: lead.name || '', email: lead.email || '' } });
+});
+
+/* ---------- what they open ---------- */
+app.get('/v/:tok', async (req, res, next) => {
+  const map = await getSetting('promoTok:' + String(req.params.tok || '').slice(0, 40));
+  if (!map || !map.promoId) return next();
+  const rec = await getSetting('promo:' + map.promoId);
+  if (!rec) return next();
+
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-store');
+
+  try {
+    rec.opens = (rec.opens || 0) + 1;
+    await setSetting('promo:' + map.promoId, rec);
+    const lead = await getSetting('lead:' + map.leadId);
+    if (lead) {
+      lead.events = Array.isArray(lead.events) ? lead.events : [];
+      lead.events.push({ k: 'video_play', at: new Date().toISOString(),
+        note: String(rec.title).slice(0, 120) });
+      lead.lastActivity = new Date().toISOString();
+      const { score, band } = leadScore(lead);
+      lead.score = score; lead.band = band.key;
+      try { laneApply(lead, Date.now()); } catch (e) {}
+      await setSetting('lead:' + map.leadId, lead);
+      console.log(`[promo] ${lead.name || map.leadId} opened "${rec.title}"`);
+    }
+  } catch (e) { console.error('[promo] could not record the open:', e.message); }
+
+  const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const origin = `${req.protocol}://${req.get('host')}`;
+
+  res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>${esc(rec.title)}</title>
+<style>
+body{margin:0;background:#0E1433;color:#F5F3EC;
+  font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
+.w{max-width:860px;margin:0 auto;padding:34px 20px 56px}
+.eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#E6C381;font-weight:700}
+h1{font-family:Georgia,serif;font-size:29px;line-height:1.22;font-weight:400;margin:11px 0 6px}
+.ad{color:rgba(245,243,236,.65);margin:0 0 22px;font-size:15px}
+.fr{position:relative;padding-bottom:56.25%;height:0;border-radius:7px;overflow:hidden;
+  background:#000;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.fr iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.note{background:rgba(255,255,255,.06);border-left:3px solid #E6C381;border-radius:4px;
+  padding:15px 17px;margin:24px 0 0;font-size:15px;line-height:1.7}
+.ft{margin-top:32px;padding-top:22px;border-top:1px solid rgba(245,243,236,.16);
+  font-size:14px;color:rgba(245,243,236,.7);line-height:1.75}
+.ft strong{color:#F5F3EC}
+.ft a{color:#E6C381}
+</style></head><body><div class="w">
+<div class="eb">${esc(BROKERAGE_NAME)}</div>
+<h1>${esc(rec.title)}</h1>
+${rec.address ? `<p class="ad">${esc(rec.address)}</p>` : '<div style="height:8px"></div>'}
+<div class="fr"><iframe src="${esc(rec.embed)}" title="${esc(rec.title)}"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture"
+  referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+${rec.note ? `<div class="note">${esc(rec.note)}</div>` : ''}
+<div class="ft">
+  Sent by <strong>${esc(map.agentName || '')}</strong>, ${esc(BROKERAGE_NAME)}<br>
+  ${esc(BROKERAGE_PHONE)}<br><br>
+  <a href="${origin}/">See everything else on the market</a>
+</div>
+</div></body></html>`);
+});
+
 app.post('/api/cma', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
