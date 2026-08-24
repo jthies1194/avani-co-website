@@ -4084,6 +4084,11 @@ app.post('/api/request-review', async (req, res) => {
 });
 
 app.post('/api/draft-reply', async (req, res) => {
+  /* ⚠ This route had NO session check. Anyone who knew the path could spend the
+     brokerage's Anthropic budget from anywhere. Every other AI route requires a
+     session; this one was written before that pattern settled and was missed. */
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!aiRateOk(sess.agentId)) return res.status(429).json({ error: 'Too many drafts today.' });
   if (!ANTHROPIC_API_KEY) {
     return res.status(503).json({ error: 'AI drafting is not configured yet. Set ANTHROPIC_API_KEY in the hosting environment variables.' });
   }
@@ -4097,6 +4102,311 @@ app.post('/api/draft-reply', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+/* ==================== THE ASSISTANT INSIDE THE CRM (server 109) ====================
+   Three jobs: draft a follow-up for one lead, write a listing description from the
+   feed, and answer questions about the agent's own book.
+
+   ⚠ guardTopic() above is an INBOUND guard. It catches a visitor asking a steering
+   question and deflects before Claude is ever called. These routes need the opposite.
+   The agent's request is legitimate; the risk is in what comes BACK. Marketing copy
+   is exactly where fair housing violations live — "perfect for families", "safe
+   neighborhood", "walking distance to good schools" — and this copy goes out under
+   the brokerage's name and the agent's licence. So the scan runs on the OUTPUT.
+
+   ⚠ It FLAGS, it does not silently rewrite. An agent who never sees what was caught
+   learns nothing and will write the same phrase by hand next week.
+
+   ⚠ Nothing here sends. Every route returns a draft. */
+
+const FH_COPY = [
+  { re: /\bfamily[\s-]?friendly\b/i,                                    why: 'familial status' },
+  { re: /\b(perfect|great|ideal|good|wonderful)\s+(for\s+)?(a\s+)?(famil(y|ies)|kids|children)\b/i, why: 'familial status' },
+  { re: /\b(no|not for)\s+(kids|children)\b/i,                          why: 'familial status' },
+  { re: /\b(safe|secure|low[\s-]?crime|crime[\s-]?free)\s+(area|neighborhood|neighbourhood|community|street)\b/i, why: 'race / national origin (coded)' },
+  { re: /\b(good|great|top|excellent|best|desirable)\s+school(s|\sdistrict)?\b/i, why: 'familial status / race (coded)' },
+  { re: /\bwalking distance to\s+(school|church)/i,                     why: 'familial status / religion' },
+  { re: /\b(church|churches|synagogue|mosque|temple|congregation|parish)\b/i, why: 'religion' },
+  { re: /\b(christian|catholic|jewish|muslim|hindu)\b/i,                why: 'religion' },
+  { re: /\b(exclusive|private|restricted|select)\s+(community|neighborhood|neighbourhood|enclave)\b/i, why: 'race / national origin (coded)' },
+  { re: /\b(adult|senior|retiree|55\+)\s+(only|community|living)\b/i,   why: 'familial status / age — lawful only for registered HOPA housing' },
+  { re: /\b(young professionals|empty nesters|singles|newlyweds|bachelor)\b/i, why: 'familial status / age' },
+  { re: /\b(quiet|mature|established|traditional)\s+(neighborhood|neighbourhood|community)\b/i, why: 'familial status (coded)' },
+  { re: /\b(ethnic|racial|integrated|diverse)\s+(area|neighborhood|neighbourhood|community)\b/i, why: 'race / national origin' },
+  { re: /\b(handicap|disabled|wheelchair)[\s-]?(accessible|friendly)?\b/i, why: 'disability — describe the feature, not who it suits' },
+  { re: /\bmust be (employed|working)\b/i,                              why: 'source of income' },
+  { re: /\bno (section 8|vouchers|housing assistance)\b/i,              why: 'source of income' },
+];
+
+/* Returns what tripped, with the protected class named. The agent sees the reason,
+   not just a red box, because the reason is the part that transfers. */
+function fhScan(text) {
+  const t = String(text || '');
+  const hits = [];
+  FH_COPY.forEach(({ re, why }) => {
+    const m = t.match(re);
+    if (m && !hits.some(h => h.phrase.toLowerCase() === m[0].toLowerCase())) {
+      hits.push({ phrase: m[0], why });
+    }
+  });
+  return hits;
+}
+
+/* Figures invented in a follow-up are worse than in an article — an article is read,
+   a follow-up is relied on. Same scan the article drafter uses. */
+function figureScan(text) {
+  return String(text || '').match(/\$[\d,]+(\.\d+)?|\b\d+(\.\d+)?\s?%/g) || [];
+}
+
+/* ⚠ In memory on purpose. This exists to stop a loop or a stuck button burning
+   the API budget, not to stop a determined attacker, and it resets on restart.
+   A per-agent KV counter would survive restarts and cost a round trip per call. */
+const AI_CALLS = new Map();
+const AI_DAILY_CAP = 120;
+function aiRateOk(agentId) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = day + ':' + agentId;
+  const n = (AI_CALLS.get(key) || 0) + 1;
+  AI_CALLS.set(key, n);
+  if (AI_CALLS.size > 500) {
+    for (const k of AI_CALLS.keys()) if (!k.startsWith(day)) AI_CALLS.delete(k);
+  }
+  return n <= AI_DAILY_CAP;
+}
+
+/* ⚠ Ownership is decided here, on the real session, never from the request body.
+   Same rule as segmentLeads(): the client-side picker is convenience. And note it
+   reads sess.agentId — under View as, the broker is still the broker, which is the
+   correct answer for a route that reaches personal data. */
+async function loadOwnLead(sess, leadId) {
+  const id = String(leadId || '').slice(0, 80);
+  if (!id) return null;
+  const lead = await getSetting('lead:' + id);
+  if (!lead) return null;
+  if (!isStaff(sess) && lead.assignedAgentId !== sess.agentId) {
+    console.warn(`[ai] agent ${sess.agentId} blocked drafting for lead owned by ${lead.assignedAgentId || '(nobody)'}`);
+    return null;
+  }
+  return lead;
+}
+
+const AI_VOICE = [
+  `You write for ${BROKERAGE_NAME}, a brokerage on the Alabama Gulf Coast.`,
+  '',
+  'Voice: direct, specific, unhurried. Short sentences. Write like a person who',
+  'knows the area, not like marketing. No "nestled", no "dream home", no "stunning",',
+  'no "must see", no exclamation marks. American English.',
+  '',
+  'HARD RULES — these are licence conditions, not style preferences:',
+  '1. Never describe an AREA or WHO LIVES THERE. No schools, no safety, no crime, no',
+  '   churches, no "family friendly", no "quiet neighborhood", no demographics of any',
+  '   kind. Describe the PROPERTY and the FACTS you were given. This is fair housing',
+  '   and it does not require intent to be a violation.',
+  '2. Never invent a number. No prices, sizes, fees, rates, days on market or',
+  '   percentages unless the figure was given to you above. If you need one you do',
+  '   not have, leave it out or say it depends.',
+  '3. Never give legal, tax, lending or insurance advice, and never opine on what a',
+  '   property is worth or what someone should offer. Say who to ask.',
+  '4. Never state who pays commission or that representation is free.',
+].join('\n');
+
+/* ---------- 1. Draft a follow-up for one lead ---------- */
+app.post('/api/ai/followup', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'AI is not configured. Set ANTHROPIC_API_KEY.' });
+  if (!aiRateOk(sess.agentId)) return res.status(429).json({ error: 'That is a lot of drafts today. Try again tomorrow.' });
+
+  const b = req.body || {};
+  const lead = await loadOwnLead(sess, b.leadId);
+  if (!lead) return res.status(404).json({ error: 'Not your lead, or no longer there.' });
+
+  const channel = b.channel === 'text' ? 'text' : 'email';
+  const note = String(b.note || '').trim().slice(0, 400);
+
+  /* ⚠ Deliberately NOT sending email or phone to the API. Nothing in the drafting
+     job needs contact details, and the less that leaves the building the better. */
+  const days = lead.createdAt
+    ? Math.round((Date.now() - new Date(lead.createdAt).getTime()) / 86400000) : null;
+  const viewed = Array.isArray(lead.viewedListings)
+    ? lead.viewedListings.slice(0, 6).map(v => v.label || v.address || v).join('; ') : '';
+  const crit = lead.criteria || lead.searchCriteria || null;
+
+  const facts = [
+    'First name: ' + String(lead.name || '').split(' ')[0],
+    'Stage: ' + (lead.stage || 'New'),
+    'Lane: ' + (lead.lane || 'steady'),
+    lead.score ? 'Engagement score: ' + lead.score : '',
+    days !== null ? 'On the books: ' + days + ' days' : '',
+    lead.source ? 'Came from: ' + lead.source : '',
+    lead.listingLabel ? 'Enquired about: ' + lead.listingLabel : '',
+    lead.fromArticle ? 'Read the article: ' + lead.fromArticle : '',
+    viewed ? 'Listings they have looked at: ' + viewed : '',
+    crit ? 'What they are looking for: ' + JSON.stringify(crit).slice(0, 400) : '',
+    lead.message ? 'What they originally said: ' + String(lead.message).slice(0, 400) : '',
+    note ? 'The agent adds: ' + note : '',
+  ].filter(Boolean).join('\n');
+
+  const shape = channel === 'text'
+    ? 'Write a TEXT MESSAGE. Under 320 characters. No signature block, no subject.'
+    : 'Write an EMAIL BODY only — no subject line, no signature block. Three to five sentences.';
+
+  const system = AI_VOICE + '\n\n' + [
+    'You are drafting a follow-up from ' + (sess.name || 'the agent') + ' to one specific',
+    'person who is already in this agent\'s database. It must read as though the agent',
+    'wrote it after looking at the record — reference something real from the facts',
+    'below. A message that could have been sent to anybody is a failure.',
+    '',
+    shape,
+    'Return ONLY the message text. No preamble, no quotes around it, no explanation.',
+  ].join('\n');
+
+  try {
+    const draft = (await callClaude(system, [{ role: 'user', content: facts }], 600)).trim();
+    const fh = fhScan(draft);
+    const figures = figureScan(draft);
+    if (fh.length) console.warn(`[ai/followup] fair-housing flag for ${sess.agentId}: ${fh.map(h => h.phrase).join(', ')}`);
+    console.log(`[ai/followup] ${channel} draft for lead ${lead.id} by ${sess.name || sess.agentId}`);
+    res.json({ ok: true, draft, channel, fairHousing: fh, figuresFound: figures,
+      lead: { id: lead.id, name: lead.name, email: lead.email || '', phone: lead.phone || '' } });
+  } catch (e) {
+    console.error('[ai/followup]', e.message);
+    res.status(500).json({ error: 'Could not draft that right now.' });
+  }
+});
+
+/* ---------- 2. Write a listing description from the feed ---------- */
+app.post('/api/ai/listing-copy', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'AI is not configured. Set ANTHROPIC_API_KEY.' });
+  if (!aiRateOk(sess.agentId)) return res.status(429).json({ error: 'That is a lot of drafts today. Try again tomorrow.' });
+
+  const key = String((req.body || {}).mlsKey || '').trim().slice(0, 60);
+  const kind = ['flyer', 'social', 'listing'].includes((req.body || {}).kind) ? req.body.kind : 'listing';
+  if (!key) return res.status(400).json({ error: 'Which listing? Paste the MLS number.' });
+
+  let r;
+  try {
+    const url = `OData/${BRIDGE_DATASET}/Property`;
+    const data = await bridgeGet(url, {
+      $filter: `ListingKey eq '${key.replace(/'/g, "''")}' or ListingId eq '${key.replace(/'/g, "''")}'`,
+      $top: 1,
+    });
+    r = (data.value || [])[0];
+  } catch (e) {
+    console.error('[ai/listing-copy] feed:', e.message);
+    return res.status(502).json({ error: 'Could not reach the MLS feed.' });
+  }
+  if (!r) return res.status(404).json({ error: 'No listing with that number in the feed.' });
+
+  const facts = [
+    'Address: ' + (r.UnparsedAddress || ''),
+    'City: ' + (r.City || ''),
+    r.ListPrice ? 'List price: $' + Number(r.ListPrice).toLocaleString() : '',
+    r.BedroomsTotal ? 'Bedrooms: ' + r.BedroomsTotal : '',
+    r.BathroomsTotalInteger ? 'Bathrooms: ' + r.BathroomsTotalInteger : '',
+    r.LivingArea ? 'Living area: ' + r.LivingArea + ' sq ft' : '',
+    r.YearBuilt ? 'Year built: ' + r.YearBuilt : '',
+    r.LotSizeAcres ? 'Lot: ' + r.LotSizeAcres + ' acres' : '',
+    r.PropertySubType ? 'Type: ' + r.PropertySubType : '',
+    r.SubdivisionName ? 'Subdivision: ' + r.SubdivisionName : '',
+    r.PublicRemarks ? 'Existing remarks from the listing agent: ' + String(r.PublicRemarks).slice(0, 1500) : '',
+  ].filter(Boolean).join('\n');
+
+  const shape = {
+    listing: 'Write PUBLIC REMARKS for the MLS. 120 to 180 words, one paragraph.',
+    flyer:   'Write flyer copy. Two short paragraphs, 60 to 90 words total.',
+    social:  'Write a social post. Under 60 words. No hashtag spam — at most two.',
+  }[kind];
+
+  const system = AI_VOICE + '\n\n' + shape + '\n'
+    + 'Use only the facts below. If a fact is missing, leave it out rather than guessing.\n'
+    + 'Return ONLY the copy. No preamble, no heading.';
+
+  try {
+    const draft = (await callClaude(system, [{ role: 'user', content: facts }], 700)).trim();
+    const fh = fhScan(draft);
+    if (fh.length) console.warn(`[ai/listing-copy] fair-housing flag for ${sess.agentId}: ${fh.map(h => h.phrase).join(', ')}`);
+    /* ⚠ Same IDX condition as everywhere else — if this is another brokerage's
+       listing, the credit travels with the copy. */
+    const credit = listingCredit(r);
+    console.log(`[ai/listing-copy] ${kind} for ${key} by ${sess.name || sess.agentId}`);
+    res.json({ ok: true, draft, kind, credit, fairHousing: fh,
+      listing: { address: r.UnparsedAddress || '', price: r.ListPrice || null, key: r.ListingKey || key } });
+  } catch (e) {
+    console.error('[ai/listing-copy]', e.message);
+    res.status(500).json({ error: 'Could not write that right now.' });
+  }
+});
+
+/* ---------- 3. Ask a question about your own book ---------- */
+app.post('/api/ai/ask', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'AI is not configured. Set ANTHROPIC_API_KEY.' });
+  if (!aiRateOk(sess.agentId)) return res.status(429).json({ error: 'That is a lot of questions today. Try again tomorrow.' });
+
+  const q = String((req.body || {}).question || '').trim().slice(0, 500);
+  if (!q) return res.status(400).json({ error: 'Ask something.' });
+
+  let all = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    all = (data || []).map(x => x.value).filter(Boolean);
+  } catch (e) { return res.status(500).json({ error: 'Could not read leads.' }); }
+
+  /* ⚠ The scoping rule, applied server-side and not negotiable from the client.
+     An agent asking "who has gone quiet" gets their own book and nobody else's. */
+  const staff = isStaff(sess);
+  const mine = all.filter(l => staff || l.assignedAgentId === sess.agentId);
+
+  /* ⚠ No email addresses, no phone numbers, no message bodies leave the building.
+     Everything the question needs is structural. Name is included because the answer
+     is useless without it; contact details are not, so they stay here. */
+  const now = Date.now();
+  const rows = mine.slice(0, 250).map(l => ({
+    name: l.name || '(no name)',
+    stage: l.stage || 'New',
+    lane: l.lane || 'steady',
+    score: l.score || 0,
+    type: l.type || '',
+    source: l.source || '',
+    city: (l.criteria && (l.criteria.city || (l.criteria.cities || [])[0])) || '',
+    daysOnBooks: l.createdAt ? Math.round((now - new Date(l.createdAt).getTime()) / 86400000) : null,
+    daysSinceTouch: l.lastTouchAt ? Math.round((now - new Date(l.lastTouchAt).getTime()) / 86400000) : null,
+    unsubscribed: !!l.unsubscribed,
+  }));
+
+  const system = [
+    'You answer questions about a real estate agent\'s own lead list. You are given',
+    'the whole list as JSON. Answer only from it.',
+    '',
+    'Be concrete. Name people. Give counts. If the answer is a list, keep it short and',
+    'ordered by whatever the question implies matters.',
+    'If the data does not contain the answer, say so plainly rather than estimating.',
+    'Never invent a lead, a number, or a date.',
+    '',
+    'You are looking at structure, not contact details — you do not have their email',
+    'or phone, and you should not pretend to.',
+    '',
+    'Do not characterise areas, schools, safety or who lives somewhere, even if asked.',
+    'Do not advise on price, contracts, tax or law.',
+    'Plain prose. No headings. Under 200 words unless a list genuinely needs more.',
+  ].join('\n');
+
+  const payload = `Question: ${q}\n\nThe list (${rows.length} of ${mine.length} shown):\n`
+    + JSON.stringify(rows);
+
+  try {
+    const answer = (await callClaude(system, [{ role: 'user', content: payload }], 900)).trim();
+    console.log(`[ai/ask] "${q.slice(0, 60)}" over ${rows.length} leads for ${sess.name || sess.agentId}`);
+    res.json({ ok: true, answer, considered: rows.length, total: mine.length,
+      truncated: mine.length > rows.length });
+  } catch (e) {
+    console.error('[ai/ask]', e.message);
+    res.status(500).json({ error: 'Could not answer that right now.' });
+  }
+});
+
 
 // ---------- Broker first-time setup security ----------
 // Prevents anyone from self-provisioning a broker account if the agent
@@ -4175,7 +4485,7 @@ app.get('/api/mls-test', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   res.json({
     ok: true,
-    serverVersion: 'v108',
+    serverVersion: 'v109',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
