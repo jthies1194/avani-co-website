@@ -4638,7 +4638,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v292';
+window.BUILD = 'index-v293';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5259,16 +5259,39 @@ document.getElementById('empty-state').style.display = shown.length===0 ? 'block
    ReferenceError from the temporal dead zone \u2014 not undefined, a throw \u2014 and it killed
    this function halfway through the render. typeof is the only safe way to ask.
    That is why the table appeared once and then the old cards came back. */
+/* \u26a0 v293: the order here was backwards. `ltView` is initialised to 'table' at its
+   declaration, so it is ALWAYS truthy \u2014 the `||` never fell through and
+   localStorage.getItem('leadView') was never once reached. ltSetView wrote that key
+   on every click and nothing in the file read it. The preference was stored
+   perfectly and thrown away on every reload. Saved value first, live variable
+   second, 'table' last. */
 let ltWant = 'table';
 try{
-  ltWant = (typeof ltView !== 'undefined' && ltView)
-    || localStorage.getItem('leadView') || 'table';
-}catch(e){ ltWant = 'table'; }
+  ltWant = localStorage.getItem('leadView')
+    || (typeof ltView !== 'undefined' && ltView) || 'table';
+}catch(e){
+  try{ ltWant = (typeof ltView !== 'undefined' && ltView) || 'table'; }
+  catch(e2){ ltWant = 'table'; }
+}
 /* \u26a0 Wrapped. Twice now the table has thrown somewhere inside and the page has
    silently fallen back to cards with nothing in the console to say why \u2014 which looks
    exactly like "the button does nothing". A view that can fail should say so and then
    get out of the way, not disappear without a word. */
+/* ⚠ Before the branch, not inside it. v292 put this call in the table path only, so
+   switching to Cards with the sheet open left the lock on. Every repaint of this
+   screen gets the chance to give the scroll back. */
+try{ if(typeof ltUnlockIfClosed === 'function') ltUnlockIfClosed(); }catch(e){}
+
 let ltFailed = false;
+if(ltWant === 'table' && typeof ltRows !== 'function'){
+  /* \u26a0 The silent third case. The old code was `if(want==='table' && typeof ltRows
+     === 'function')` \u2014 if ltRows was not there the whole condition was simply false
+     and the cards painted with nothing said anywhere. That is indistinguishable from
+     "the broker prefers cards". Say it. */
+  ltFailed = 'ltRows is not defined \u2014 the script block that builds the table did not run';
+  console.error('[leads] the table view is unavailable: ltRows is not a function. The '
+    + 'last script block threw before it finished. Look for an earlier error.');
+}
 if(ltWant === 'table' && typeof ltRows === 'function'){
  try{
   const q = String(ltQuery||'').toLowerCase();
@@ -5276,7 +5299,13 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
     (String(l.name||'')+' '+String(l.email||'')+' '+String(l.phone||'')+' '+
      String(l.listingLabel||'')+' '+ltWants(l)).toLowerCase().includes(q)) : shown;
   try{ ltView = 'table'; }catch(e){}
-  if(!ltSel && list.length) ltSel = list[0].id;
+  /* \u26a0 v293: this line used to run unconditionally, which made the \u00d7 useless. Closing
+     the panel sets ltSel=null and repaints \u2014 and the repaint immediately re-selected
+     list[0] and drew its detail. If you had the top lead open, \u00d7 looked like a dead
+     button; otherwise it looked like it jumped you to a stranger. The flag lives on
+     window because loadLeads and ltDeselect are in different script blocks. */
+  if(!ltSel && list.length && !window.__ltNoAuto) ltSel = list[0].id;
+  window.__ltNoAuto = false;
   /* \u26a0 A side panel needs a side. Below this width there is not one, and stacking it
      under the TABLE put it eighteen rows down the page \u2014 built, rendered, and invisible.
      Narrow screens get the detail directly under the row that was tapped instead. */
@@ -5306,10 +5335,10 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
      Rendered only when opened, so tapping a name is not a scroll. */
   if(ltSel && !phone) ltPanel(ltSel);
   if(phone && ltSheet) ltPanel(ltSel);
-  try{ if(typeof ltAfterPaint === 'function') ltAfterPaint(); }catch(e){}
+  try{ if(typeof ltAfterPaint === 'function') ltAfterPaint('table'); }catch(e){}
   return;
  }catch(err){
-   ltFailed = true;
+   ltFailed = (err && err.message) ? err.message : String(err);
    console.error('[leads] the table view failed, falling back to cards:', err);
    try{
      const b = document.getElementById('lt-v-table');
@@ -5369,6 +5398,26 @@ tbody.innerHTML = shown.map(l=>{
   </div>
 </div>`;
 }).join('');
+
+  /* ⚠ v293. Two things the cards path never did.
+
+     One: ltAfterPaint() was called from exactly one place — inside the table branch's
+     try, just before its return. So the Table/Cards highlight was only ever updated
+     when the TABLE drew. Render cards and the switch kept whatever it was last told,
+     which is how you end up looking at a screen full of cards with Table lit up and
+     conclude that the Cards button is broken. It was working; it just never said so.
+
+     Two: ltFailed was assigned and never read. A view that falls back to another view
+     has to say it fell back, on the screen, to the person holding the mouse — not
+     into a console nobody has open. */
+  try{ if(typeof ltAfterPaint === 'function') ltAfterPaint('cards'); }catch(e){}
+  if(ltFailed){
+    const msg = (typeof ltFailed === 'string')
+      ? ltFailed : 'no reason was recorded';
+    tbody.insertAdjacentHTML('afterbegin',
+      '<div class="lt-fellback">The table view could not draw, so these are the cards.'
+      + '<span>' + escapeHtml(msg) + '</span></div>');
+  }
   /* ⚠ Applied here, after the cards exist. Doing it from the caller lost the
      race: showCrmSection('sec-leads') starts its own loadLeads(), which repaints
      and wipes any highlight set beforehand. */
@@ -8516,6 +8565,11 @@ function renderCrmNav(){
 }
 
 function showCrmSection(id){
+  /* ⚠ Leaving Leads with the phone sheet open used to freeze the whole app. The sheet
+     lives inside #sec-leads, so hiding the section hid it — but hiding is not closing,
+     and the body scroll lock it had taken stayed on with no visible control left to
+     release it. Close it before anything else moves. */
+  try{ if(typeof ltCloseSheet === 'function') ltCloseSheet(); }catch(e){}
   // opening a section means they are done arranging, whatever they pressed
   if(arrangeMode && typeof exitArrangeMode === 'function') exitArrangeMode();
   // and that they have seen whatever was waiting there
@@ -21078,6 +21132,13 @@ async function ntToggle(k){
 #crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:#8A2C22}
 #crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;overflow:auto}
 #crm-main .lt-empty{padding:20px 12px;font-size:13px;color:var(--mut)}
+/* ⚠ Not styled as an error box. It is not the broker's fault and there is nothing for
+   him to do about it — it exists so that "why am I looking at cards" has an answer on
+   the screen instead of in a console. */
+#crm-main .lt-fellback{background:#FFF7E4;border:1px solid #E6C381;border-radius:5px;
+  padding:10px 13px;margin-bottom:14px;font-size:13px;color:#5C4718;line-height:1.5}
+#crm-main .lt-fellback span{display:block;margin-top:4px;font-size:11.5px;
+  font-family:'IBM Plex Mono',monospace;color:#8A6A12;word-break:break-word}
 #crm-main .lt-hd{display:flex;align-items:baseline;gap:8px}
 #crm-main .lt-hd .nm{font-weight:600;font-size:15.5px;flex:1 1 auto;min-width:0}
 #crm-main .lt-hd .sc{font-size:12px;font-weight:600;white-space:nowrap}
@@ -23359,12 +23420,22 @@ async function wcSend(){
    per agent. A rewrite of the busiest screen in the CRM should be reversible by the
    person using it, not only by me. */
 
-let ltView = 'table', ltSel = null, ltQuery = '';
+/* ⚠ Initialised FROM the saved preference, not to a hardcoded 'table'. It was the
+   hardcoded default that made the localStorage read in loadLeads unreachable. */
+let ltView = (function(){
+  try{ return localStorage.getItem('leadView') || 'table'; }catch(e){ return 'table'; }
+})();
+let ltSel = null, ltQuery = '';
 
-function ltAfterPaint(){
+/* ⚠ Takes what was ACTUALLY rendered, not what was asked for. When the table throws
+   and the cards paint instead, the switch has to show cards — otherwise the highlight
+   is reporting an intention rather than the screen, which is the same failure as the
+   version stamp reading server 117 while 118 was running. */
+function ltAfterPaint(rendered){
+  const v = rendered || ltView;
   const t = document.getElementById('lt-v-table'), c = document.getElementById('lt-v-cards');
-  if(t) t.classList.toggle('primary', ltView === 'table');
-  if(c) c.classList.toggle('primary', ltView !== 'table');
+  if(t) t.classList.toggle('primary', v === 'table');
+  if(c) c.classList.toggle('primary', v !== 'table');
 }
 
 function ltSetView(v){
@@ -23439,12 +23510,31 @@ function ltIsPhone(){
 }
 let ltSheet = false;
 let ltMore = false;
+/* ⚠ Our own lock, tracked separately. The report viewer, the market letter, the
+   article editor and two modals all set body.overflow themselves — so "clear it if
+   the sheet is shut" would happily unlock the page underneath somebody else's open
+   modal. Only release what we took. */
+let ltLocked = false;
 
 function ltCloseSheet(){
   ltSheet = false;
   const s = document.getElementById('lt-sheet');
   if(s) s.classList.remove('on');
-  document.body.style.overflow = '';
+  if(ltLocked){ document.body.style.overflow = ''; ltLocked = false; }
+}
+
+/* ⚠ v292 called this on every render and never defined it. The call was wrapped in
+   `typeof x === 'function'`, so it was a silent no-op that passed the syntax gate and
+   read, in the handoff notes, as a shipped fix. It is the reason the freeze survived:
+   the sheet sets body.overflow:hidden, hiding #sec-leads hides the fixed sheet without
+   closing it, and nothing ever gave the scroll back. Here it is for real. */
+function ltUnlockIfClosed(){
+  const s = document.getElementById('lt-sheet');
+  const open = !!(s && s.classList.contains('on'));
+  if(!open){
+    ltSheet = false;
+    if(ltLocked){ document.body.style.overflow = ''; ltLocked = false; }
+  }
 }
 function ltToggleMore(){
   ltMore = !ltMore;
@@ -23484,6 +23574,7 @@ function ltPick(id){
   if(ltIsPhone()){
     ltSheet = true;
     document.body.style.overflow = 'hidden';
+    ltLocked = true;
     const s = document.getElementById('lt-sheet');
     if(s) s.classList.add('on');
     ltPanel(id);
@@ -23504,8 +23595,27 @@ function ltDeselect(){
   const s = document.getElementById('lt-sheet');
   if(s && s.classList.contains('on')){ ltCloseSheet(); return; }
   ltSel = null;
+  /* ⚠ loadLeads re-selects list[0] whenever ltSel is empty, so setting it to null and
+     repainting put the first lead straight back on screen. This tells that one repaint
+     the empty selection was deliberate. It clears itself. */
+  try{ window.__ltNoAuto = true; }catch(e){}
   if(typeof loadLeads === 'function') loadLeads();
 }
+
+/* ⚠ The sheet had exactly one way out: the Back button. Escape did nothing, because
+   nothing bound it — and every other overlay in this file binds it. Sheet first; if
+   there is no sheet, the panel. */
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape') return;
+  try{
+    const s = document.getElementById('lt-sheet');
+    if(s && s.classList.contains('on')){ e.preventDefault(); ltCloseSheet(); return; }
+    if(ltSel && typeof crmSection !== 'undefined' && crmSection === 'sec-leads'
+       && ltView === 'table' && document.getElementById('lt-panel')){
+      e.preventDefault(); ltDeselect();
+    }
+  }catch(err){}
+});
 
 /* The panel. Everything the card had, plus the three things it never could do. */
 async function ltPanel(id){
@@ -23528,7 +23638,16 @@ async function ltPanelInner(id){
   const host = useSheet
     ? document.getElementById('lt-sheet-body')
     : document.getElementById('lt-panel');
-  if(!host) return;
+  /* ⚠ This was a bare `return`. A missing host is the one way this function can leave
+     the detail blank without logging anything at all — so the console stayed clean
+     while the panel stayed empty, and that is the exact combination we spent a session
+     failing to explain. Silence was the bug. */
+  if(!host){
+    console.error('[leads] the detail panel failed: no host element. Looked for '
+      + (useSheet ? '#lt-sheet-body' : '#lt-panel')
+      + '. The table view is probably not the thing on screen.');
+    return;
+  }
   const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
   if(!l){ host.innerHTML = '<div class="lt-empty">Pick somebody on the left.</div>'; return; }
 
