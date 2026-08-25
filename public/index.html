@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v265">
+<meta name="build" content="index-v267">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2628,7 +2628,9 @@ body.in-crm .topbar{display:none}
 #crm-main .find-hit .fl{font-weight:600;flex:1}
 #crm-main .find-hit .ft{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
   color:var(--mut);white-space:nowrap}
-#crm-main .find-none{padding:11px 13px;font-size:12.5px;color:var(--mut);line-height:1.5}
+#crm-main .find-h{font-size:10px;letter-spacing:.13em;text-transform:uppercase;font-weight:700;
+  color:rgba(255,255,255,.42);padding:9px 13px 4px}
+.find-none{padding:11px 13px;font-size:12.5px;color:var(--mut);line-height:1.5}
 #crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:5px 12px;font-size:11.5px;
   font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
   background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
@@ -4435,7 +4437,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v265';
+window.BUILD = 'index-v267';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7955,37 +7957,150 @@ function findGo(id){
   showCrmSection(id);
 }
 
+/* ==================== FINDING THINGS (index 266) ====================
+   The old finder did one thing: `(label + keywords).includes(query)`. So the whole
+   phrase had to appear, in order, spelled correctly. "my deals" found nothing unless
+   those two words sat together in the keyword string; "wentwood" found nothing at all,
+   because it only ever searched screen NAMES and never the things on them.
+
+   Three changes:
+   1. Every word has to match SOMETHING, in any order. "deals my" works. So does
+      "commission split" against a screen whose keywords carry both words apart.
+   2. Near-misses count. A word of five letters or more matches a keyword it is one
+      character away from, so "comission" and "morgage" still land.
+   3. It searches your RECORDS too \u2014 leads, deals, agents, articles, videos \u2014 not
+      just the screens. Typing a client's name or a property address takes you to them.
+
+   \u26a0 Records are read from what is already in memory. Nothing new is fetched, so a
+   collection nobody has opened yet simply is not searched. That is the right trade:
+   a search box that fires network calls per keystroke is worse than one that misses
+   a tab you have not visited. */
+
+/* Cheap one-edit check. Only called for words worth checking, never in a hot loop. */
+function fzNear(a, b){
+  if(a === b) return true;
+  const la = a.length, lb = b.length;
+  if(Math.abs(la - lb) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while(i < la && j < lb){
+    if(a[i] === b[j]){ i++; j++; continue; }
+    if(++edits > 1) return false;
+    if(la > lb) i++; else if(lb > la) j++; else { i++; j++; }
+  }
+  return edits + (la - i) + (lb - j) <= 1;
+}
+
+/* Does this haystack satisfy every word of the query? Returns a score, 0 for no. */
+function fzScore(haystack, words){
+  const hay = String(haystack || '').toLowerCase();
+  const toks = hay.split(/[^a-z0-9]+/).filter(Boolean);
+  let score = 0;
+  for(const w of words){
+    if(hay.startsWith(w)){ score += 6; continue; }          // best: the name itself
+    if(toks.some(t => t === w)){ score += 5; continue; }     // whole word
+    if(toks.some(t => t.startsWith(w))){ score += 4; continue; }
+    if(hay.includes(w)){ score += 3; continue; }
+    if(w.length >= 5 && toks.some(t => fzNear(t, w))){ score += 2; continue; }
+    return 0;                                               // a word matched nothing
+  }
+  return score;
+}
+
+/* What is already loaded and worth searching. Each entry says where it lives so the
+   result can say "in Leads" rather than making them guess. */
+function findRecords(words){
+  const out = [];
+  const add = (text, label, sub, sec, go) => {
+    const s = fzScore(text, words);
+    if(s > 0) out.push({ s, label, sub, sec, go });
+  };
+  try{
+    (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).slice(0, 400).forEach(l => {
+      add([l.name, l.email, l.phone, l.listingLabel].filter(Boolean).join(' '),
+        l.name || l.email || 'Lead',
+        'Lead \u00b7 ' + (l.stage || 'New'), 'sec-leads', null);
+    });
+  }catch(e){}
+  try{
+    (typeof plDeals !== 'undefined' ? plDeals : []).slice(0, 200).forEach(d => {
+      add([d.address, d.client, d.coAgent, d.coBrokerage].filter(Boolean).join(' '),
+        d.address || 'Deal',
+        'Deal \u00b7 ' + (d.stage || d.status || 'open'), 'sec-pipeline', null);
+    });
+  }catch(e){}
+  try{
+    (typeof ctArts !== 'undefined' ? ctArts : []).slice(0, 100).forEach(a => {
+      add([a.title, a.teaser].filter(Boolean).join(' '),
+        a.title || 'Article',
+        'Article \u00b7 ' + (a.published ? 'live' : 'draft'), 'sec-content', null);
+    });
+  }catch(e){}
+  try{
+    (typeof vidList !== 'undefined' ? vidList : []).slice(0, 100).forEach(v => {
+      add([v.title, v.address].filter(Boolean).join(' '),
+        v.title || 'Video', 'Video', 'sec-content', null);
+    });
+  }catch(e){}
+  return out.sort((a, b) => b.s - a.s).slice(0, 5);
+}
+
 function findRun(){
   const inp = document.getElementById('find-q');
   const box = document.getElementById('find-res');
   if(!inp || !box) return;
-  const q = (inp.value || '').trim().toLowerCase();
-  if(q.length < 2){ box.style.display = 'none'; return; }
+  const raw = (inp.value || '').trim().toLowerCase();
+  if(raw.length < 2){ box.style.display = 'none'; return; }
+
+  /* \u26a0 Filler words are dropped. People type how they speak \u2014 "where is my commission"
+     \u2014 and requiring "where" and "is" to match something would sink it. */
+  const STOP = ['where','is','are','the','a','an','my','me','i','do','does','can','find',
+                'show','go','to','of','for','in','on','it','how','what','see','get'];
+  let words = raw.split(/[^a-z0-9]+/).filter(Boolean).filter(w => !STOP.includes(w));
+  if(!words.length) words = raw.split(/[^a-z0-9]+/).filter(Boolean);   // it was all filler
+  if(!words.length){ box.style.display = 'none'; return; }
+
   let allowed = [];
   try{ allowed = allowedSections().map(sc => sc.id); }catch(e){}
+
   const seen = [];
-  const hits = FIND_INDEX.filter(([id,label,keys]) => {
-    if(allowed.length && !allowed.includes(id)) return false;
-    /* \u26a0 The agent's own name for the tab is searchable TOO, not INSTEAD. Rename
-       Taxes to Money and both words still find it \u2014 otherwise renaming quietly
-       breaks the one feature built for people who cannot remember where things are. */
-    const mine = (crmTabNames && crmTabNames[id]) || '';
-    return (label + ' ' + keys + ' ' + mine).toLowerCase().includes(q);
-  }).filter(([id,label]) => {
-    const k = id + '|' + label;
-    if(seen.includes(k)) return false;
-    seen.push(k); return true;
-  }).slice(0, 7);
+  const screens = FIND_INDEX
+    .filter(([id]) => !allowed.length || allowed.includes(id))
+    .map(([id,label,keys]) => {
+      const mine = (crmTabNames && crmTabNames[id]) || '';
+      /* The label is weighted above the keywords: a screen actually called "Taxes"
+         should beat one that merely mentions tax. */
+      const s = Math.max(fzScore(label + ' ' + mine, words) * 2,
+                         fzScore(label + ' ' + keys + ' ' + mine, words));
+      return { s, id, label };
+    })
+    .filter(h => h.s > 0)
+    .filter(h => { const k = h.id + '|' + h.label;
+      if(seen.includes(k)) return false; seen.push(k); return true; })
+    .sort((a,b) => b.s - a.s)
+    .slice(0, 6);
+
+  const recs = findRecords(words);
+
   const tabLabel = id => {
     const sc = (typeof CRM_SECTIONS !== 'undefined') && CRM_SECTIONS.find(x => x.id === id);
     return sc ? secLabel(sc) : '';
   };
-  box.innerHTML = hits.length
-    ? hits.map(([id,label]) => `<button class="find-hit" onclick="findGo('${id}')">
-        <span class="fl">${escapeHtml(label)}</span>
-        <span class="ft">${escapeHtml(tabLabel(id))}</span></button>`).join('')
-    : `<div class="find-none">Nothing matches that. Try a word you would say out loud
-        &mdash; "alerts", "tiers", "1099".</div>`;
+
+  let html = '';
+  if(screens.length){
+    html += `<div class="find-h">Screens</div>` + screens.map(h =>
+      `<button class="find-hit" onclick="findGo('${h.id}')">
+        <span class="fl">${escapeHtml(h.label)}</span>
+        <span class="ft">${escapeHtml(tabLabel(h.id))}</span></button>`).join('');
+  }
+  if(recs.length){
+    html += `<div class="find-h">In your records</div>` + recs.map(r =>
+      `<button class="find-hit" onclick="findGo('${r.sec}')">
+        <span class="fl">${escapeHtml(r.label)}</span>
+        <span class="ft">${escapeHtml(r.sub)}</span></button>`).join('');
+  }
+  box.innerHTML = html || `<div class="find-none">Nothing matches that. Try a word you
+    would say out loud &mdash; a client's name, an address, "alerts", "1099".</div>`;
   box.style.display = 'block';
 }
 
@@ -22129,6 +22244,7 @@ async function renderVideos(){
             &middot; sent ${v.sends||0} &middot; <b>opened ${v.opens||0}</b></div>
         </div>
         <div class="acts">
+          <button class="btn-sm primary" onclick="vidPickLead('${escapeHtml(v.id)}')">Send</button>
           <a class="btn-sm" href="${escapeHtml(v.sourceUrl)}" target="_blank" rel="noopener">Watch</a>
           <button class="btn-sm" onclick="vidDrop('${escapeHtml(v.id)}')">Remove</button>
         </div>
@@ -22171,6 +22287,48 @@ async function vidDrop(id){
     renderVideos();
     showToast('Removed.');
   }catch(e){ showToast(e.message); }
+}
+
+/* \u26a0 Sending only existed on the lead card, so the library was a list you could look
+   at and not use \u2014 which is how it read: "doesn't do anything, can't send it to
+   anyone". Both directions work now: pick a person then a video, or a video then a
+   person. */
+let vidPicked = null;
+
+async function vidPickLead(promoId){
+  vidPicked = promoId;
+  document.getElementById('vsend-overlay').classList.add('active');
+  const b = document.getElementById('vsend-body');
+  const v = vidList.find(x => x.id === promoId) || { title: 'this video' };
+  b.innerHTML = `<h3>Who is it for?</h3>
+    <p class="cma-sub">${escapeHtml(v.title)}</p>
+    <input class="as-in" id="vs-q" placeholder="Search your people\u2026"
+      oninput="vidLeadList(this.value)"
+      style="width:100%;font:inherit;font-size:13.5px;padding:10px 12px;border-radius:4px;
+             border:1px solid rgba(20,26,60,.14);background:#fff;margin-bottom:10px">
+    <div class="vs-list" id="vs-leads">Loading\u2026</div>`;
+  if(!asLeads) { try{ await asLoadLeads(); }catch(e){ asLeads = []; } }
+  vidLeadList('');
+}
+
+function vidLeadList(filter){
+  const host = document.getElementById('vs-leads');
+  if(!host) return;
+  const q = String(filter||'').toLowerCase();
+  const rows = (asLeads || []).filter(l => !q ||
+    (String(l.name||'') + ' ' + String(l.email||'')).toLowerCase().includes(q)).slice(0, 60);
+  host.innerHTML = rows.length
+    ? rows.map(l => `<button class="vs-pick" onclick="vidSendTo('${l.id}',
+        '${String(l.name||'').replace(/'/g,"\\'")}','${String(l.email||'').replace(/'/g,"\\'")}')">
+        <span class="t">${escapeHtml(l.name || '(no name)')}</span>
+        <span class="m">${escapeHtml(l.email || '')} \u00b7 ${escapeHtml(l.stage || 'New')}</span>
+      </button>`).join('')
+    : '<div class="vid-none">Nobody matches that.</div>';
+}
+
+function vidSendTo(leadId, name, email){
+  vidFor = { id: leadId, name: name || '', email: email || '' };
+  vidSendPick(vidPicked);
 }
 
 /* ---------- sending one from a lead ---------- */
