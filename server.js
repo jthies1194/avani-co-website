@@ -1741,7 +1741,7 @@ app.post('/api/playbooks', async (req, res) => {
   if (!isStaff(sess)) return res.status(403).json({ error: 'Only the broker can change these.' });
   const list = Array.isArray((req.body || {}).playbooks) ? req.body.playbooks : null;
   if (!list) return res.status(400).json({ error: 'Nothing given.' });
-  await setSetting('settings:playbooks', list.slice(0, 40));
+  if (!await mustSet(res, 'settings:playbooks', list.slice(0, 40))) return;
   console.log(`[playbooks] ${sess.name} saved ${list.length}`);
   res.json({ ok: true });
 });
@@ -1907,8 +1907,9 @@ app.post('/api/search', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   if (!rec.email) return res.status(400).json({ error: 'An email address, at least.' });
-  await setSetting('savedSearch:' + sess.agentId + ':' + id, rec);
-  await setSetting('ssTok:' + searchToken(id), { key: 'savedSearch:' + sess.agentId + ':' + id });
+  if (!await mustSet(res, 'savedSearch:' + sess.agentId + ':' + id, rec)) return;
+  if (!await mustSet(res, 'ssTok:' + searchToken(id),
+        { key: 'savedSearch:' + sess.agentId + ':' + id })) return;
   console.log(`[search] ${sess.name} set up "${searchLabel(rec.criteria)}" for ${rec.name || rec.email}`);
   res.json({ ok: true, search: rec });
 });
@@ -2139,8 +2140,9 @@ app.post('/api/alert-signup', async (req, res) => {
     sentKeys: [],
     createdAt: new Date().toISOString(),
   };
-  await setSetting('savedSearch:' + owner.id + ':' + id, rec);
-  await setSetting('ssTok:' + searchToken(id), { key: 'savedSearch:' + owner.id + ':' + id });
+  if (!await mustSet(res, 'savedSearch:' + owner.id + ':' + id, rec)) return;
+  if (!await mustSet(res, 'ssTok:' + searchToken(id),
+        { key: 'savedSearch:' + owner.id + ':' + id })) return;
   console.log(`[quiz] alert "${searchLabel(criteria)}" for ${rec.name || email} \u2192 ${owner.name}`);
 
   /* Fire and forget, same rule as the open-house sign-in: a mail failure must not
@@ -2614,7 +2616,7 @@ app.post('/api/articles', async (req, res) => {
     slug: articleSlugify(a.slug || a.title || ''),
     updatedAt: new Date().toISOString(),
   })).filter(a => a.title);
-  await setSetting(ARTICLES_KEY, clean);
+  if (!await mustSet(res, ARTICLES_KEY, clean)) return;
   res.json({ ok: true, articles: clean });
 });
 
@@ -3713,19 +3715,81 @@ function normalizeRole(r) {
 /* ---------- admin approval + bypass ----------
    An admin can do everything except touch the broker's own account. To do that
    they either request approval, or use a bypass code the broker has issued. */
+/* ==================== THE KEY-VALUE HELPERS ====================
+   \u26a0 These two are the single most load-bearing pair of functions in the file \u2014 55
+   call sites between them \u2014 and until server 127 they could not report a failure.
+
+   supabase-js does NOT throw on a database error. It resolves with `{ data, error }`.
+   So the `catch` blocks these used to have never fired for the thing they were there
+   to catch, and `setSetting` returned TRUE on a failed write. It did not hide
+   failures; it reported them as successes.
+
+   That is behind at least three bugs found so far: a removed CMA that stayed on
+   screen, a quiz reset that silently did nothing, and a password-reset token that was
+   never stored. Only 3 of the 55 callers check the return value, so the log is the
+   only place a failure can surface \u2014 which is why every failure now logs. */
 async function getSetting(key) {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.from('kv_store').select('value').eq('key', key).maybeSingle();
+    const { data, error } = await supabase.from(KV_TABLE)
+      .select('value').eq('key', key).maybeSingle();
+    if (error) {
+      console.error(`[kv] READ FAILED for "${key}":`, error.message);
+      return null;
+    }
     return data ? data.value : null;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.error(`[kv] READ THREW for "${key}":`, e.message);
+    return null;
+  }
 }
+
 async function setSetting(key, value) {
+  if (!supabase) {
+    console.error(`[kv] WRITE SKIPPED for "${key}" \u2014 no database configured`);
+    return false;
+  }
+  try {
+    const { error } = await supabase.from(KV_TABLE)
+      .upsert({ key, value }, { onConflict: 'key' });
+    if (error) {
+      /* \u26a0 The loud one. A write that fails silently is how a broker presses Save,
+         sees "Saved", and finds the change gone tomorrow. */
+      console.error(`[kv] WRITE FAILED for "${key}":`, error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(`[kv] WRITE THREW for "${key}":`, e.message);
+    return false;
+  }
+}
+
+/* \u26a0 A real delete, because setSetting(key, null) is NOT one \u2014 it upserts a null
+   value and leaves the row. Use this. */
+/* Write, and answer 500 if it did not stick. Returns false once it has already sent
+   the response, so a route reads:  if (!await mustSet(res, key, val)) return;
+   \u26a0 27 routes still report success without checking. They all LOG a failure now, which
+   is the safety net, but anywhere a person is told "Saved" should use this. */
+async function mustSet(res, key, value) {
+  const ok = await setSetting(key, value);
+  if (!ok) res.status(500).json({ error: 'That did not save. Try again.' });
+  return ok;
+}
+
+async function delSetting(key) {
   if (!supabase) return false;
   try {
-    await supabase.from('kv_store').upsert({ key, value }, { onConflict: 'key' });
+    const { error } = await supabase.from(KV_TABLE).delete().eq('key', key);
+    if (error) {
+      console.error(`[kv] DELETE FAILED for "${key}":`, error.message);
+      return false;
+    }
     return true;
-  } catch (e) { return false; }
+  } catch (e) {
+    console.error(`[kv] DELETE THREW for "${key}":`, e.message);
+    return false;
+  }
 }
 
 async function bypassCodeValid(code) {
@@ -4923,7 +4987,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v126',
+    serverVersion: 'v127',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
