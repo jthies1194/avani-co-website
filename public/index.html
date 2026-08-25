@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v267">
+<meta name="build" content="index-v270">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2896,6 +2896,13 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
     the broker.</p>
   <div class="setup-body" id="nt-body">Loading&hellip;</div>
 </div>
+<div class="setup-panel" id="ql-panel">
+  <h3 class="sx-h">Outside tools</h3>
+  <p class="sx-sub">ShowingTime, Redex, Paragon, the MLS &mdash; whatever you open all day.
+    They sit at the end of the tab row and open in a new window. They cannot open inside
+    the CRM: every one of these systems blocks that on purpose.</p>
+  <div class="setup-body" id="ql-body">Loading&hellip;</div>
+</div>
 <div class="setup-panel broker-only" id="qe-panel">
   <h3 class="sx-h">The questions people are asked</h3>
   <p class="sx-sub">The six screens a visitor sees when they press
@@ -3044,6 +3051,20 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 #sec-content .vid-row .m{font-size:12px;color:var(--mut,#7A8199);margin-top:2px}
 #sec-content .vid-row .acts{display:flex;gap:6px;flex:0 0 auto}
 #sec-content .vid-none{font-size:13px;color:var(--mut,#7A8199);padding:10px 0}
+#sec-setup .ql-row{display:grid;grid-template-columns:1fr 1.6fr auto;gap:8px;margin-bottom:8px}
+@media(max-width:620px){ #sec-setup .ql-row{grid-template-columns:1fr} }
+#sec-setup .ql-row input{font:inherit;font-size:13.5px;padding:9px 11px;border-radius:4px;
+  border:1px solid rgba(20,26,60,.14);background:#fff}
+#sec-setup .ql-acts{display:flex;gap:8px;margin-top:10px}
+#sec-setup .ql-h{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  font-weight:700;color:var(--mut,#7A8199);margin:0 0 4px}
+#crm-nav .crm-ext{display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+  opacity:.82;border-style:dashed !important}
+#crm-nav .crm-ext:hover{opacity:1}
+#tc-pop .tc-fav{display:block;width:100%;text-align:left;font:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer;background:#fff;border:1px solid rgba(27,32,67,.18);
+  border-radius:5px;padding:8px 10px;margin-bottom:10px;color:#1B2043}
+#tc-pop .tc-fav.on{background:#F4F1E8;border-color:#C89B4E;color:#7A5A16}
 #tc-pop .tc-rn{padding:0 0 10px;margin:0 0 10px;border-bottom:1px solid rgba(27,32,67,.12)}
 #tc-pop .tc-rn label{display:block;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
   font-weight:700;color:rgba(27,32,67,.5);margin-bottom:5px}
@@ -3934,7 +3955,14 @@ function closeDetailModal(){ document.getElementById('detail-modal-overlay').cla
 
 function shareListing(platform){
 if(!currentDetailListing) return;
-const url = location.origin + location.pathname + '?listing=' + encodeURIComponent(currentDetailListing.ListingKey);
+/* \u26a0 /listing/<key>, not /?listing=<key>. The second is the app shell: a social
+   crawler does not run JavaScript, so Facebook read the site's generic tags and
+   posted a grey box saying "bamacoast.com" with no address, price or photo. The
+   first is a real page the server renders with its own og: tags.
+   \u26a0 The agent slug rides along so a share still attributes the lead. */
+const ref = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
+const url = location.origin + '/listing/' + encodeURIComponent(currentDetailListing.ListingKey)
+  + (ref && ref.slug ? '?agent=' + encodeURIComponent(ref.slug) : '');
 const text = `${currentDetailListing.UnparsedAddress}, ${currentDetailListing.City} — $${currentDetailListing.ListPrice.toLocaleString()}`;
 if(platform === 'facebook'){
 window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url), '_blank', 'width=600,height=500');
@@ -4437,7 +4465,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v267';
+window.BUILD = 'index-v270';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -7834,6 +7862,10 @@ function visibleOrderedSections(){
    nothing else: the section id never moves, so nothing that references a tab by id
    — links, the search index, notifications — has any idea it happened. */
 let crmTabNames = {};
+/* ⚠ Pinned tabs, per agent, kept with their order and colors. A favorite is not a
+   separate row — it is just sorted to the front, so nothing else about the nav has
+   to change and a pinned tab still drags, recolors and renames like any other. */
+let crmTabFavs = [];
 
 function secLabel(sc){
   if(!sc) return '';
@@ -7842,10 +7874,15 @@ function secLabel(sc){
 }
 
 function orderedSections(list){
-  if(!Array.isArray(crmTabOrder) || !crmTabOrder.length) return list;
   const rank = {};
-  crmTabOrder.forEach((id, i) => { rank[id] = i; });
+  (Array.isArray(crmTabOrder) ? crmTabOrder : []).forEach((id, i) => { rank[id] = i; });
+  const fav = id => {
+    const i = (crmTabFavs || []).indexOf(id);
+    return i < 0 ? 999 : i;              // pinned ones first, in the order pinned
+  };
   return list.slice().sort((a, b) => {
+    const fa = fav(a.id), fb = fav(b.id);
+    if(fa !== fb) return fa - fb;
     const ra = rank[a.id] == null ? 999 : rank[a.id];
     const rb = rank[b.id] == null ? 999 : rank[b.id];
     return ra - rb;
@@ -7892,6 +7929,15 @@ async function loadTabOrder(){
     const p = await storeGet('crmPrefs:' + prefsOwnerId());
     if(p && Array.isArray(p.tabOrder)) crmTabOrder = p.tabOrder;
     if(p && p.tabNames && typeof p.tabNames === 'object') crmTabNames = p.tabNames;
+    if(p && Array.isArray(p.tabFavs)) crmTabFavs = p.tabFavs;
+    /* Fetched once and cached on window; renderCrmNav runs on every tab change and
+       must not fire a request each time. */
+    try{
+      const lr = await fetch('/api/quick-links');
+      const ld = await lr.json();
+      window.__quickLinks = Array.isArray(ld.links) ? ld.links : [];
+      window.__myLinks    = Array.isArray(ld.mine)  ? ld.mine  : [];
+    }catch(e){ window.__quickLinks = []; window.__myLinks = []; }
     if(p && p.theme){
       crmTheme = Object.assign({ palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} }, p.theme);
       if(!PALETTES[crmTheme.palette]) crmTheme.palette = 'coastal';
@@ -7912,7 +7958,8 @@ async function saveTabOrder(){
   if(!owner) return false;
   try{
     return await storeSet('crmPrefs:' + owner,
-      { tabOrder: crmTabOrder || [], theme: crmTheme, tabNames: crmTabNames || {} });
+      { tabOrder: crmTabOrder || [], theme: crmTheme, tabNames: crmTabNames || {},
+        tabFavs: crmTabFavs || [] });
   }catch(e){ return false; }
 }
 
@@ -7943,6 +7990,7 @@ const FIND_INDEX = [
   ['sec-setup','What reaches you','notifications alerts emails what reaches me notify turn off nudges'],
   ['sec-setup','Can the world find this site?','site mode private public search engines google index indexed discoverable robots sitemap seo hidden'],
   ['sec-setup','The questions people are asked','quiz questions edit wording buyer seller funnel form screens ask'],
+  ['sec-setup','Outside tools','showingtime redex paragon gcmls perchwell mls links shortcuts tabs external tools'],
   ['sec-assist','Assistant','assistant ai claude draft write follow up followup listing description copy ask my leads'],
   ['sec-agents','Agents','agents team roster add agent commission plan preview as'],
   ['sec-agents','Award tiers','awards tiers bronze silver gold platinum volume recognition where the bar sits'],
@@ -8127,6 +8175,15 @@ function renderCrmNav(){
   nav.classList.toggle('arranging', !!arrangeMode);
   const banner = document.getElementById('arr-banner');
   if(banner) banner.classList.toggle('on', !!arrangeMode);
+  /* \u26a0 Appended after the real tabs, visually separated, and they open in a new tab
+     rather than pretending to be part of the CRM. Nothing here can be embedded \u2014
+     every one of these systems blocks framing on purpose. */
+  const extras = []
+    .concat(Array.isArray(window.__quickLinks) ? window.__quickLinks : [])
+    .concat(Array.isArray(window.__myLinks) ? window.__myLinks : [])
+    .map(l => `<a class="crm-ext" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer"
+        title="Opens ${escapeHtml(l.label)} in a new tab">
+        <span class="ti">${icon('links')}</span><span class="tl">${escapeHtml(l.label)}</span></a>`).join('');
   nav.innerHTML = visibleOrderedSections()
     .map((sc, idx) => {
       let n = sc.badge ? sc.badge() : 0;
@@ -8163,7 +8220,11 @@ function renderCrmNav(){
                <span class="ti">${icon('tick')}</span><span class="tl">Done</span></button>`
           : `<button class="crm-arrange live${crmSeenArrange ? '' : ' nudge'}"
                onclick="enterArrangeMode()" title="Drag your tabs into the order you like, pick colors">
-               <span class="ti">${icon('arrange')}</span><span class="tl">Make it yours</span></button>`);
+               <span class="ti">${icon('arrange')}</span><span class="tl">Make it yours</span></button>`)
+    /* \u26a0 Outside tools last, after the arrange controls, so they never sit between
+       two CRM tabs and look like one. Hidden while arranging \u2014 they are not yours to
+       drag or recolor. */
+    + (arrangeMode ? '' : extras);
 }
 
 function showCrmSection(id){
@@ -8233,6 +8294,7 @@ function showCrmSection(id){
          Panels here are always open, so they must be rendered on section open. */
       if(typeof renderNotify === 'function') renderNotify();
       if(typeof renderSiteMode === 'function') renderSiteMode();
+      if(typeof renderQuickLinks === 'function') renderQuickLinks();
       if(typeof renderQuizEdit === 'function') renderQuizEdit();
       if(typeof renderIdeas === 'function') renderIdeas(); }
     if(id === 'sec-reviews'){
@@ -15629,6 +15691,7 @@ document.addEventListener('DOMContentLoaded', () => { try{ eiInit(); }catch(e){}
   <!-- ⚠ Renaming lived two clicks away behind a button that gave no hint it was
        there, and went unfound across three attempts to signpost it. This is where
        people already tap when they want to change a tab, so this is where it goes. -->
+  <button class="tc-fav" id="tc-fav" onclick="toggleTileFav()"></button>
   <div class="tc-rn">
     <label for="tc-rename">Call it</label>
     <input id="tc-rename" maxlength="22" spellcheck="false" autocomplete="off"
@@ -15719,6 +15782,17 @@ let tcId = null;
    the change away \u2014 which is the same failure that made this feature look missing in
    the first place. Debounced so it is not a write per keystroke. */
 let tcNameTimer = null;
+/* \u26a0 Saves immediately, like the rename beside it. A popover has no Done button. */
+function toggleTileFav(){
+  if(!tcId) return;
+  crmTabFavs = Array.isArray(crmTabFavs) ? crmTabFavs : [];
+  const i = crmTabFavs.indexOf(tcId);
+  if(i >= 0) crmTabFavs.splice(i, 1); else crmTabFavs.push(tcId);
+  openTileColor(tcId);          // repaint the button's own state
+  renderCrmNav();
+  try{ saveTabOrder(); }catch(e){}
+}
+
 function setTileName(value){
   if(!tcId) return;
   const v = String(value == null ? '' : value).slice(0, 22);
@@ -15739,6 +15813,12 @@ function openTileColor(id){
   if(rn){
     rn.value = (crmTabNames && crmTabNames[id]) || '';
     rn.placeholder = sec ? sec.label : '';
+  }
+  const fv = document.getElementById('tc-fav');
+  if(fv){
+    const on = (crmTabFavs || []).includes(id);
+    fv.classList.toggle('on', on);
+    fv.textContent = on ? '\u2605  Pinned to the front' : '\u2606  Pin it to the front';
   }
   document.getElementById('tc-sw').innerHTML = SWATCHES.map(c =>
     `<i class="${c.toLowerCase()===String(cur).toLowerCase()?'on':''}" style="background:${c}"
@@ -22392,6 +22472,91 @@ async function vidSendPick(id){
          <button class="btn-sm" onclick="vidSendRender()">Pick another</button>
        </div>
        <p class="cma-fine">Opens land on their lead record and count toward their score.</p>`;
+  }catch(e){ showToast(e.message); }
+}
+
+/* ==================== OUTSIDE TOOLS (index 268) ====================
+   \u26a0 Asked for long ago and never built. They cannot be embedded \u2014 ShowingTime,
+   Paragon and the rest all send frame-blocking headers, and the only way round that
+   would be proxying somebody's authenticated session, which is not a thing to do to
+   an MLS. A link that opens in a new tab is the honest version. */
+let qlDraft = [], qlMine = [];
+
+async function renderQuickLinks(){
+  const host = document.getElementById('ql-body');
+  if(!host) return;
+  try{
+    const r = await fetch('/api/quick-links');
+    const d = await r.json();
+    qlDraft = (d.links || []).slice();
+    qlMine  = (d.mine  || []).slice();
+  }catch(e){ host.innerHTML = '<div class="ct-warn">Could not load those.</div>'; return; }
+  if(!qlDraft.length) qlDraft = [{ label:'', url:'' }];
+  if(!qlMine.length)  qlMine  = [{ label:'', url:'' }];
+  qlPaint();
+}
+
+/* Two lists, one shape. The brokerage block only renders for the broker; the personal
+   block renders for everyone, because a link only they can see needs no gate. */
+function qlRows(rows, which){
+  return rows.map((l, i) => `<div class="ql-row">
+      <input placeholder="ShowingTime" value="${escapeHtml(l.label||'')}"
+        oninput="qlSet('${which}',${i},'label',this.value)">
+      <input placeholder="showingtime.com" value="${escapeHtml(l.url||'')}"
+        oninput="qlSet('${which}',${i},'url',this.value)">
+      <button class="btn-sm" onclick="qlDrop('${which}',${i})">Remove</button>
+    </div>`).join('');
+}
+
+function qlPaint(){
+  const host = document.getElementById('ql-body');
+  if(!host) return;
+  const broker = (typeof isOwner === 'function') && isOwner();
+  host.innerHTML =
+    (broker ? `<div class="ql-h">Everyone&rsquo;s</div>
+      <p class="sx-sub" style="margin:0 0 10px">On every agent&rsquo;s tab row. Only you can
+        change these.</p>
+      ${qlRows(qlDraft, 'shared')}
+      <div class="ql-acts">
+        <button class="btn-sm" onclick="qlAdd('shared')">+ Another</button>
+        <button class="btn-sm primary" onclick="qlSave('shared')">Save these</button>
+      </div>` : '')
+    + `<div class="ql-h"${broker ? ' style="margin-top:22px"' : ''}>Just mine</div>
+       <p class="sx-sub" style="margin:0 0 10px">Only on your tab row \u2014 nobody else sees
+         these. Your own MLS, a lender&rsquo;s rate sheet, a folder you live in.</p>
+       ${qlRows(qlMine, 'mine')}
+       <div class="ql-acts">
+         <button class="btn-sm" onclick="qlAdd('mine')">+ Another</button>
+         <button class="btn-sm primary" onclick="qlSave('mine')">Save mine</button>
+       </div>
+       <p class="sx-sub" style="margin-top:10px">Everyone signs in with their own
+         credentials as usual &mdash; this only saves hunting for the address.</p>`;
+}
+
+function qlList(which){ return which === 'mine' ? qlMine : qlDraft; }
+function qlSet(which, i, k, v){ const a = qlList(which); if(a[i]) a[i][k] = v; }
+function qlDrop(which, i){
+  const a = qlList(which);
+  a.splice(i,1);
+  if(!a.length) a.push({label:'',url:''});
+  qlPaint();
+}
+function qlAdd(which){ qlList(which).push({label:'',url:''}); qlPaint(); }
+
+async function qlSave(which){
+  const mine = which === 'mine';
+  const rows = qlList(which).filter(l => (l.label||'').trim() && (l.url||'').trim());
+  try{
+    const r = await fetch(mine ? '/api/quick-links/mine' : '/api/quick-links', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ links: rows }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not save those.');
+    if(mine){ qlMine = (d.links||[]).slice(); window.__myLinks = d.links || []; }
+    else    { qlDraft = (d.links||[]).slice(); window.__quickLinks = d.links || []; }
+    if(!qlList(which).length) qlList(which).push({label:'',url:''});
+    renderCrmNav();
+    qlPaint();
+    showToast('Saved \u2014 on your tab row now.');
   }catch(e){ showToast(e.message); }
 }
 </script>
