@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v291">
+<meta name="build" content="index-v292">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4638,7 +4638,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v291';
+window.BUILD = 'index-v292';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5282,6 +5282,7 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
      Narrow screens get the detail directly under the row that was tapped instead. */
   const wide = (typeof ltIsWide === 'function') ? ltIsWide() : true;
   const phone = (typeof ltIsPhone === 'function') ? ltIsPhone() : false;
+  try{ if(typeof ltUnlockIfClosed === 'function') ltUnlockIfClosed(); }catch(e){}
   tbody.innerHTML = wide
     ? `<div class="lt-wrap">
         <div class="lt-list">
@@ -21080,6 +21081,9 @@ async function ntToggle(k){
 #crm-main .lt-hd{display:flex;align-items:baseline;gap:8px}
 #crm-main .lt-hd .nm{font-weight:600;font-size:15.5px;flex:1 1 auto;min-width:0}
 #crm-main .lt-hd .sc{font-size:12px;font-weight:600;white-space:nowrap}
+#crm-main .lt-x{border:0;background:transparent;font-size:24px;line-height:1;cursor:pointer;
+  color:var(--mut);padding:0 0 0 8px;flex:0 0 auto}
+#crm-main .lt-x:hover{color:var(--ink,#171F63)}
 #crm-main .lt-contact{font-size:12px;color:var(--mut);margin:3px 0 10px;line-height:1.55}
 #crm-main .lt-btns{display:flex;gap:6px;margin-bottom:10px}
 #crm-main .lt-btns .btn-sm{flex:1;text-align:center;text-decoration:none}
@@ -23494,6 +23498,15 @@ function ltPick(id){
 
 function ltFilter(v){ ltQuery = v; loadLeads(); }
 
+/* ⚠ Closes whichever form the detail is in. There was no way out of the inline panel
+   at all — the only escape was leaving the screen entirely. */
+function ltDeselect(){
+  const s = document.getElementById('lt-sheet');
+  if(s && s.classList.contains('on')){ ltCloseSheet(); return; }
+  ltSel = null;
+  if(typeof loadLeads === 'function') loadLeads();
+}
+
 /* The panel. Everything the card had, plus the three things it never could do. */
 async function ltPanel(id){
   try{ return await ltPanelInner(id); }
@@ -23541,6 +23554,7 @@ async function ltPanelInner(id){
     `<div class="lt-hd">
       <div class="nm">${escapeHtml(l.name || '\u2014')}</div>
       <div class="sc" style="color:${B.color}">${l.score||0} · ${escapeHtml(B.label)}</div>
+      <button class="lt-x" onclick="ltDeselect()" aria-label="Close">&times;</button>
      </div>
      <div class="lt-contact">${escapeHtml(l.email||'')}${l.phone?'<br>'+escapeHtml(l.phone):''}</div>
      <div class="lt-btns">
