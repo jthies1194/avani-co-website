@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v289">
+<meta name="build" content="index-v291">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4638,7 +4638,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v289';
+window.BUILD = 'index-v291';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5264,7 +5264,13 @@ try{
   ltWant = (typeof ltView !== 'undefined' && ltView)
     || localStorage.getItem('leadView') || 'table';
 }catch(e){ ltWant = 'table'; }
+/* \u26a0 Wrapped. Twice now the table has thrown somewhere inside and the page has
+   silently fallen back to cards with nothing in the console to say why \u2014 which looks
+   exactly like "the button does nothing". A view that can fail should say so and then
+   get out of the way, not disappear without a word. */
+let ltFailed = false;
 if(ltWant === 'table' && typeof ltRows === 'function'){
+ try{
   const q = String(ltQuery||'').toLowerCase();
   const list = q ? shown.filter(l =>
     (String(l.name||'')+' '+String(l.email||'')+' '+String(l.phone||'')+' '+
@@ -5301,6 +5307,14 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
   if(phone && ltSheet) ltPanel(ltSel);
   try{ if(typeof ltAfterPaint === 'function') ltAfterPaint(); }catch(e){}
   return;
+ }catch(err){
+   ltFailed = true;
+   console.error('[leads] the table view failed, falling back to cards:', err);
+   try{
+     const b = document.getElementById('lt-v-table');
+     if(b) b.title = 'Table view hit an error \u2014 see the console';
+   }catch(e){}
+ }
 }
 
 tbody.innerHTML = shown.map(l=>{
@@ -23482,7 +23496,25 @@ function ltFilter(v){ ltQuery = v; loadLeads(); }
 
 /* The panel. Everything the card had, plus the three things it never could do. */
 async function ltPanel(id){
-  const host = document.getElementById('lt-sheet-body') || document.getElementById('lt-panel');
+  try{ return await ltPanelInner(id); }
+  catch(err){
+    console.error('[leads] the detail panel failed:', err);
+    const h = document.getElementById('lt-panel') || document.getElementById('lt-sheet-body');
+    if(h) h.innerHTML = '<div class="lt-empty">Could not show this one \u2014 the console '
+      + 'has the reason.</div>';
+  }
+}
+
+async function ltPanelInner(id){
+  /* \u26a0 The sheet is always in the DOM \u2014 hidden, but present \u2014 so `sheet || panel`
+     always picked the sheet and wrote the detail into an invisible element. The list
+     rendered, the row highlighted, and the panel underneath stayed blank. Only use the
+     sheet when it is actually open. */
+  const sheet = document.getElementById('lt-sheet');
+  const useSheet = sheet && sheet.classList.contains('on');
+  const host = useSheet
+    ? document.getElementById('lt-sheet-body')
+    : document.getElementById('lt-panel');
   if(!host) return;
   const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
   if(!l){ host.innerHTML = '<div class="lt-empty">Pick somebody on the left.</div>'; return; }
