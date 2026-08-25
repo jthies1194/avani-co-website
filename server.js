@@ -4923,7 +4923,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v122',
+    serverVersion: 'v123',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5708,9 +5708,11 @@ function cmaToken(id) {
 const VID_PROVIDERS = [
   { key: 'youtube', re: /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/,
     embed: id => `https://www.youtube-nocookie.com/embed/${id}`,
+    watch: id => `https://www.youtube.com/watch?v=${id}`,
     thumb: id => `https://i.ytimg.com/vi/${id}/hqdefault.jpg` },
   { key: 'vimeo',   re: /vimeo\.com\/(?:video\/)?(\d{6,12})/,
     embed: id => `https://player.vimeo.com/video/${id}`,
+    watch: id => `https://vimeo.com/${id}`,
     thumb: () => '' },
 ];
 
@@ -5718,7 +5720,8 @@ function parseVideo(url) {
   const u = String(url || '').trim();
   for (const p of VID_PROVIDERS) {
     const m = u.match(p.re);
-    if (m) return { provider: p.key, videoId: m[1], embed: p.embed(m[1]), thumb: p.thumb(m[1]) };
+    if (m) return { provider: p.key, videoId: m[1], embed: p.embed(m[1]),
+                    watchUrl: p.watch(m[1]), thumb: p.thumb(m[1]) };
   }
   return null;
 }
@@ -5749,7 +5752,12 @@ app.post('/api/promo', async (req, res) => {
     kind: ['listing', 'marketing'].includes(b.kind) ? b.kind : 'marketing',
     address: clean(b.address, 140),
     ...parsed,
-    sourceUrl: clean(b.url, 400),
+    /* \u26a0 CANONICAL, built from the parsed id \u2014 not what was pasted. People paste the
+       provider's EMBED CODE, not a link: a whole <div><iframe src=...> blob. The
+       regex finds the id inside it happily, but storing the blob and then putting it
+       in an href produced bamacoast.com/<div style="padding:56.25%... and a 400 from
+       Cloudflare. Never round-trip user input into a URL attribute. */
+    sourceUrl: parsed.watchUrl,
     ownerId: sess.agentId, ownerName: sess.name || '',
     shared: b.shared !== false,          // brokerage-wide unless they say otherwise
     createdAt: new Date().toISOString(),
