@@ -3384,6 +3384,41 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 </div></div>
 
 <div class="crm-sec" id="sec-expenses"><div class="setup-panel" id="expenses-panel">
+<style>
+/* ⚠ Scoped. `.lead-card` taught us what an unscoped class name does in this file. */
+#crm-main .rcp-link,#crm-main .rcp-add,#crm-main .rcp-x{font:inherit;font-size:11.5px;
+  font-weight:600;cursor:pointer;border-radius:3px;padding:4px 8px;
+  border:1px solid var(--line);background:#fff;color:var(--marsh)}
+#crm-main .rcp-link:hover,#crm-main .rcp-add:hover{border-color:var(--gd,#C89B4E)}
+#crm-main .rcp-add{color:var(--driftwood);border-style:dashed}
+#crm-main .rcp-x{border:0;background:transparent;color:#C0483C;padding:4px 5px}
+#crm-main .rcp-none{color:var(--driftwood)}
+/* The viewer. Fixed inset, scrolled internally — the same shape as the leads sheet,
+   and for the same reason: an overlay that animates is where iOS Safari puts the
+   address bar through it. */
+#rcp-view{display:none;position:fixed;inset:0;z-index:9500;background:rgba(14,20,51,.72);
+  flex-direction:column;padding:22px}
+#rcp-view.on{display:flex}
+#rcp-view .rcp-bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  margin-bottom:12px;color:#fff}
+#rcp-view .rcp-bar .t{font-size:14px;font-weight:600;margin-right:auto}
+#rcp-view .rcp-bar a,#rcp-view .rcp-bar button{font:inherit;font-size:13px;font-weight:600;
+  cursor:pointer;border-radius:4px;padding:7px 13px;border:1px solid rgba(255,255,255,.5);
+  background:transparent;color:#fff;text-decoration:none}
+#rcp-view .rcp-bar a:hover,#rcp-view .rcp-bar button:hover{background:#fff;color:#171F63}
+#rcp-view #rcp-view-body{flex:1 1 auto;min-height:0;background:#fff;border-radius:6px;
+  overflow:auto;display:flex;align-items:flex-start;justify-content:center}
+#rcp-view #rcp-view-body iframe{width:100%;height:100%;border:0}
+#rcp-view #rcp-view-body img{max-width:100%;height:auto;display:block}
+</style>
+<div id="rcp-view" data-url="">
+  <div class="rcp-bar">
+    <span class="t">Receipt</span>
+    <a id="rcp-dl" href="#" download>Download</a>
+    <button onclick="rcpClose()" aria-label="Close">Close</button>
+  </div>
+  <div id="rcp-view-body"></div>
+</div>
 <div class="setup-head" onclick="toggleExpensesPanel()">
 <h3>🧾 Business expenses</h3>
 <span id="expenses-caret">▾</span>
@@ -4660,7 +4695,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v294';
+window.BUILD = 'index-v295';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6120,13 +6155,14 @@ return `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:
 <tr style="text-align:left; color:var(--driftwood); font-size:11px; text-transform:uppercase;">
 <th style="padding:6px 8px;">Date</th><th style="padding:6px 8px;">Category</th>
 <th style="padding:6px 8px;">Description</th>${currentAgent.role==='broker'&&exTab==='all'?'<th style="padding:6px 8px;">Who</th>':''}
-<th style="padding:6px 8px; text-align:right;">Amount</th>${canDelete?'<th></th>':''}</tr>
+<th style="padding:6px 8px; text-align:right;">Amount</th><th style="padding:6px 8px;">Receipt</th>${canDelete?'<th></th>':''}</tr>
 ${list.map(e=>`<tr style="border-top:1px solid var(--line);">
 <td style="padding:8px;">${e.date}</td>
 <td style="padding:8px;">${escapeHtml(e.category)}</td>
 <td style="padding:8px;">${escapeHtml(e.description||'')}${e.payee?`<div style="color:var(--driftwood);font-size:11.5px;">Paid to ${escapeHtml(e.payee)}${e.method?' \u00b7 '+escapeHtml(e.method):''}${e.ref?' #'+escapeHtml(e.ref):''}</div>`:''}${e.notes?`<div style="color:var(--driftwood);font-size:11.5px;">${escapeHtml(e.notes)}</div>`:''}</td>
 ${currentAgent.role==='broker'&&exTab==='all'?`<td style="padding:8px; color:var(--driftwood);">${escapeHtml(e.agentName||'')}</td>`:''}
 <td style="padding:8px; text-align:right; font-weight:600;">${fmtMoney(e.amount)}</td>
+<td style="padding:8px; white-space:nowrap;">${rcpCell(e, canDelete)}</td>
 ${canDelete?`<td style="padding:8px;"><button class="del-btn" onclick="removeExpense('${e.id}')" title="Remove">\u2715</button></td>`:''}
 </tr>`).join('')}</table></div>`;
 }
@@ -6143,6 +6179,12 @@ return `<h4 style="margin:20px 0 8px; font-size:13px;">Log an expense</h4>
 <div><div class="field-label">Check / reference #</div><input id="ex-ref" placeholder="optional"></div>
 <div><div class="field-label">Notes</div><input id="ex-notes" placeholder="optional"></div>
 </div>
+<!-- ⚠ The file is held here and uploaded AFTER the expense is saved, because the
+     upload route needs an expenseId to attach to and there isn't one yet. If the
+     expense saves and the upload then fails, the expense still stands and Attach is
+     waiting on the row — the number is the record, the paper is the evidence. -->
+<div class="field-label" style="margin-top:12px;">Receipt <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--driftwood);">— photo or PDF, optional. You can also attach one later.</span></div>
+<input type="file" id="ex-receipt" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png">
 <button class="btn-sm primary" style="margin-top:10px;" onclick="addExpense()">Add expense</button>`;
 }
 
@@ -6209,18 +6251,160 @@ const payee  = (document.getElementById('ex-payee')||{}).value || '';
 const method = (document.getElementById('ex-method')||{}).value || '';
 const ref    = (document.getElementById('ex-ref')||{}).value || '';
 const notes  = (document.getElementById('ex-notes')||{}).value || '';
-list.push({ id:'exp_'+Date.now(), date, category, description, amount,
+const id = 'exp_'+Date.now();
+list.push({ id, date, category, description, amount,
 payee: payee.trim(), method, ref: ref.trim(), notes: notes.trim(),
 agentId: currentAgent.id, agentName: currentAgent.name });
 await storeSet('settings:expenses', list);
 ['ex-desc','ex-amount','ex-payee','ex-ref','ex-notes'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+/* ⚠ After the save, never before — the route attaches to an expense id that does not
+   exist until the line above. rcpUpload reloads the screen itself. */
+const fInp = document.getElementById('ex-receipt');
+const f = fInp && fInp.files && fInp.files[0];
+if(fInp) fInp.value = '';
+if(f){ showToast("Expense logged."); await rcpUpload(id, f); return; }
 showToast("Expense logged.");
 loadExpenses();
+}
+
+/* ==================== RECEIPTS ON EXPENSES (index 295) ====================
+   ⚠ The file never travels with the expense row. settings:expenses is one array read
+   whole on every render, every print and the year-end package; base64 in there would
+   mean a year of receipts pulled down the wire to draw a table of numbers. The row
+   carries an id, a filename and a size. The bytes live under receipt:<id> and are
+   fetched only when somebody actually looks at one.
+
+   ⚠ The viewer fetches rather than linking. /api/receipt/:id needs the session token,
+   which the fetch wrapper adds — but a browser sends no Authorization header for an
+   <img src> or an <a href>, so a plain link would 401 every time. Fetch, make a blob
+   URL, show that. */
+
+const RECEIPT_MAX_MB = 9;
+
+function rcpPick(expenseId){
+  /* Built and thrown away each time. A single persistent input remembers the last
+     file, so re-picking the SAME file fires no change event and looks like a dead
+     button — the exact shape of the tab-rename bug. */
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png';
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    document.body.removeChild(inp);
+    if(f) rcpUpload(expenseId, f);
+  };
+  inp.click();
+}
+
+async function rcpUpload(expenseId, file){
+  /* ⚠ Caught here, before a 12MB read and a round trip. An iPhone in High Efficiency
+     mode produces HEIC, no browser will render it, and the fix is on the phone — so
+     say so now rather than after the upload fails. */
+  if(/\.hei[cf]$/i.test(file.name || '')){
+    alert('That is an iPhone HEIC photo, which browsers cannot display.\n\n'
+      + 'On the phone: Settings \u2192 Camera \u2192 Formats \u2192 Most Compatible, then retake it.\n'
+      + 'Or open the photo, tap Edit then Done — that saves a JPEG copy.');
+    return;
+  }
+  if(file.size > RECEIPT_MAX_MB * 1024 * 1024){
+    alert('That file is ' + Math.round(file.size / 1024 / 1024) + 'MB. '
+      + RECEIPT_MAX_MB + 'MB is the ceiling.');
+    return;
+  }
+  showToast('Uploading the receipt\u2026');
+  try{
+    const dataBase64 = await new Promise((ok, no) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result || ''));
+      r.onerror = () => no(new Error('Could not read that file.'));
+      r.readAsDataURL(file);
+    });
+    const res = await fetch('/api/receipt', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ expenseId, dataBase64, filename: file.name || '' }),
+    });
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'That did not upload.');
+    showToast('Receipt attached.');
+    loadExpenses();
+  }catch(e){ alert(e.message); }
+}
+
+async function rcpOpen(id){
+  showToast('Opening\u2026');
+  try{
+    const res = await fetch('/api/receipt/' + encodeURIComponent(id));
+    if(!res.ok){
+      let msg = 'Could not open that.';
+      try{ msg = (await res.json()).error || msg; }catch(e){}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const isPdf = (blob.type || '').includes('pdf');
+    const box = document.getElementById('rcp-view');
+    const body = document.getElementById('rcp-view-body');
+    body.innerHTML = isPdf
+      ? `<iframe src="${url}" title="Receipt"></iframe>`
+      : `<img src="${url}" alt="Receipt">`;
+    document.getElementById('rcp-dl').href = url;
+    box.classList.add('on');
+    /* ⚠ Revoked on close, not here. Revoking now kills the iframe before it paints. */
+    box.dataset.url = url;
+  }catch(e){ alert(e.message); }
+}
+
+function rcpClose(){
+  const box = document.getElementById('rcp-view');
+  if(!box) return;
+  box.classList.remove('on');
+  document.getElementById('rcp-view-body').innerHTML = '';
+  if(box.dataset.url){ try{ URL.revokeObjectURL(box.dataset.url); }catch(e){} box.dataset.url = ''; }
+}
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape') return;
+  const box = document.getElementById('rcp-view');
+  if(box && box.classList.contains('on')){ e.preventDefault(); rcpClose(); }
+});
+
+async function rcpRemove(id){
+  if(!confirm('Remove this receipt?\n\nThe expense stays; only the file goes.')) return;
+  try{
+    const res = await fetch('/api/receipt/' + encodeURIComponent(id), { method:'DELETE' });
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'Could not remove that.');
+    showToast('Receipt removed.');
+    loadExpenses();
+  }catch(e){ alert(e.message); }
+}
+
+function rcpCell(e, canEdit){
+  if(e.receipt && e.receipt.id){
+    const kb = Math.max(1, Math.round((e.receipt.bytes || 0) / 1024));
+    return `<button class="rcp-link" onclick="rcpOpen('${e.receipt.id}')"
+              title="${escapeHtml(e.receipt.filename || '')} \u00b7 ${kb}kb">&#128206; View</button>`
+      + (canEdit ? `<button class="rcp-x" onclick="rcpRemove('${e.receipt.id}')"
+              title="Remove the receipt">\u2715</button>` : '');
+  }
+  return canEdit
+    ? `<button class="rcp-add" onclick="rcpPick('${e.id}')">Attach</button>`
+    : `<span class="rcp-none">\u2014</span>`;
 }
 
 async function removeExpense(id){
 if(!confirm("Remove this expense?")) return;
 let list = await storeGet('settings:expenses') || [];
+/* ⚠ The file first. The row is the only thing that points at receipt:<id>, so
+   dropping the row before the blob leaves an orphan nothing can reach or delete.
+   The receipt route rewrites the array, so it is re-read afterwards. */
+const doomed = list.find(e => e.id === id);
+if(doomed && doomed.receipt && doomed.receipt.id){
+  try{ await fetch('/api/receipt/' + encodeURIComponent(doomed.receipt.id), { method:'DELETE' }); }
+  catch(e){ console.error('[receipt] could not remove the file for ' + id, e); }
+  list = await storeGet('settings:expenses') || [];
+}
 list = list.filter(e => e.id !== id);
 await storeSet('settings:expenses', list);
 showToast("Expense removed.");
@@ -7803,12 +7987,16 @@ function printExpenses(){
     <td>${escapeHtml(e.description||'')}</td><td>${escapeHtml(e.payee||'')}</td>
     <td>${escapeHtml(e.method||'')}${e.ref?' #'+escapeHtml(e.ref):''}</td>
     ${!agentId?`<td>${escapeHtml(e.agentName||'')}</td>`:''}
+    <td>${e.receipt && e.receipt.id ? 'Yes' : '\u2014'}</td>
     <td class="num">${fmtMoney(e.amount)}</td></tr>`).join('');
+  /* ⚠ A column, not the file. The accountant's first question about any line is
+     whether there is paper behind it, and this answers that at a glance without
+     trying to staple nine megabytes of JPEG into a printed table. */
   printReport(`Business expenses — ${who} — ${exYear}`,
     `<table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid to</th><th>Method</th>
-      ${!agentId?'<th>Agent</th>':''}<th class="num">Amount</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="7">No expenses recorded.</td></tr>'}</tbody>
-      <tfoot><tr><td colspan="${!agentId?6:5}">Total</td><td class="num">${fmtMoney(total)}</td></tr></tfoot>
+      ${!agentId?'<th>Agent</th>':''}<th>Receipt</th><th class="num">Amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8">No expenses recorded.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="${!agentId?7:6}">Total</td><td class="num">${fmtMoney(total)}</td></tr></tfoot>
     </table>`);
 }
 
