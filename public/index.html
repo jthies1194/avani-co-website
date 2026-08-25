@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v280">
+<meta name="build" content="index-v282">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2794,6 +2794,10 @@ body.in-crm .topbar{display:none}
 <div class="crm-toolbar">
 <div class="stage-filters" id="stage-filters"></div>
 <div class="toolbar-actions">
+<span class="lt-switch">
+  <button class="btn-sm" id="lt-v-table" onclick="ltSetView('table')">Table</button>
+  <button class="btn-sm" id="lt-v-cards" onclick="ltSetView('cards')">Cards</button>
+</span>
 <button class="btn-sm" onclick="document.getElementById('csv-file-input').click()">Import CSV</button>
 <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="handleCSVImport(event)">
 <button class="btn-sm" onclick="exportCSV()">Export CSV</button>
@@ -4612,7 +4616,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v280';
+window.BUILD = 'index-v282';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5219,6 +5223,31 @@ if(window.__wnFilter){
 }
 const tbody = document.getElementById('lead-tbody');
 document.getElementById('empty-state').style.display = shown.length===0 ? 'block':'none';
+
+/* \u26a0 The one seam. Cards were the only option; now the table paints here instead and
+   the cards below are left exactly as they were. Switching back is a click. */
+try{ if(!ltView) ltView = localStorage.getItem('leadView') || 'table'; }catch(e){}
+if(ltView === 'table' && typeof ltRows === 'function'){
+  const q = String(ltQuery||'').toLowerCase();
+  const list = q ? shown.filter(l =>
+    (String(l.name||'')+' '+String(l.email||'')+' '+String(l.phone||'')+' '+
+     String(l.listingLabel||'')+' '+ltWants(l)).toLowerCase().includes(q)) : shown;
+  if(!ltSel && list.length) ltSel = list[0].id;
+  tbody.innerHTML =
+    `<div class="lt-wrap">
+      <div class="lt-list">
+        <div class="lt-search"><input placeholder="Name, email, phone, address"
+          value="${escapeHtml(ltQuery)}" oninput="ltFilter(this.value)"></div>
+        <table class="lt-tbl"><tbody>${ltRows(list)}</tbody></table>
+        ${list.length ? '' : '<div class="lt-empty">Nobody matches that.</div>'}
+      </div>
+      <div class="lt-panel" id="lt-panel"></div>
+     </div>`;
+  if(ltSel) ltPanel(ltSel);
+  try{ if(typeof ltAfterPaint === 'function') ltAfterPaint(); }catch(e){}
+  return;
+}
+
 tbody.innerHTML = shown.map(l=>{
   const sc = l.score || 0;
   const B = (typeof LS_BANDS !== 'undefined' && LS_BANDS[l.band||'nurture']) || { label:'New', color:'#8C93AD' };
@@ -20954,6 +20983,61 @@ async function ntToggle(k){
   border-radius:2px;padding:3px 8px;font-size:9.5px;letter-spacing:.09em}
 #crm-main .lc-take{background:var(--gd);color:#241A08;border-radius:2px;padding:3px 8px;
   font-size:9.5px;letter-spacing:.09em}
+/* ---------- the table view ---------- */
+#crm-main .lt-switch{display:inline-flex;gap:0;margin-right:8px}
+#crm-main .lt-switch .btn-sm{border-radius:0}
+#crm-main .lt-switch .btn-sm:first-child{border-radius:4px 0 0 4px}
+#crm-main .lt-switch .btn-sm:last-child{border-radius:0 4px 4px 0;margin-left:-1px}
+#crm-main .lt-wrap{display:flex;gap:0;border:1px solid var(--hair2);border-radius:6px;
+  overflow:hidden;background:#fff;align-items:stretch}
+#crm-main .lt-list{flex:1 1 auto;min-width:0;border-right:1px solid var(--hair2)}
+#crm-main .lt-search{padding:9px 11px;border-bottom:1px solid var(--hair2)}
+#crm-main .lt-search input{width:100%;font:inherit;font-size:13.5px;padding:8px 11px;
+  border-radius:4px;border:1px solid var(--hair2);background:#fff}
+#crm-main .lt-tbl{width:100%;border-collapse:collapse;table-layout:fixed}
+#crm-main .lt-row{cursor:pointer;border-top:1px solid var(--hair2)}
+#crm-main .lt-row:first-child{border-top:0}
+#crm-main .lt-row:hover{background:#FAFAF7}
+#crm-main .lt-row.on{background:#F4F1E8}
+#crm-main .lt-nm{padding:9px 11px;font-size:14px}
+#crm-main .lt-nm .n{font-weight:600}
+#crm-main .lt-nm .s{font-size:12px;color:var(--mut);margin-top:2px}
+#crm-main .lt-src{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;
+  margin-left:5px;vertical-align:1px}
+#crm-main .lt-sc{width:42px;padding:9px 4px;font-size:14px;font-weight:600;text-align:left}
+#crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:#8A2C22}
+#crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;overflow:auto}
+#crm-main .lt-empty{padding:20px 12px;font-size:13px;color:var(--mut)}
+#crm-main .lt-hd{display:flex;align-items:baseline;gap:8px}
+#crm-main .lt-hd .nm{font-weight:600;font-size:15.5px;flex:1 1 auto;min-width:0}
+#crm-main .lt-hd .sc{font-size:12px;font-weight:600;white-space:nowrap}
+#crm-main .lt-contact{font-size:12px;color:var(--mut);margin:3px 0 10px;line-height:1.55}
+#crm-main .lt-btns{display:flex;gap:6px;margin-bottom:10px}
+#crm-main .lt-btns .btn-sm{flex:1;text-align:center;text-decoration:none}
+#crm-main .lt-alert{background:#FDF2F1;color:#8A2C22;font-size:12px;padding:7px 10px;
+  border-radius:4px;margin-bottom:12px;line-height:1.5}
+#crm-main .lt-lab{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  color:var(--mut);margin:14px 0 5px}
+#crm-main .lt-facts{font-size:12.5px;line-height:1.7;color:var(--rl)}
+#crm-main .lt-note,#crm-main .lt-sel{width:100%;font:inherit;font-size:12.5px;padding:7px 9px;
+  border-radius:4px;border:1px solid var(--hair2);background:#fff}
+#crm-main .lt-note{line-height:1.6;resize:vertical}
+#crm-main .lt-sel{margin-top:6px}
+#crm-main .lt-stack{display:flex;flex-direction:column;gap:5px}
+#crm-main .lt-stack .btn-sm{text-align:left}
+#crm-main .lt-tags{display:flex;flex-wrap:wrap;gap:5px}
+#crm-main .lt-tag{font:inherit;font-size:11.5px;padding:3px 8px;border-radius:3px;cursor:pointer;
+  border:1px solid var(--hair2);background:#fff;color:var(--rl)}
+#crm-main .lt-tag.on{background:var(--ink,#171F63);color:#fff;border-color:var(--ink,#171F63)}
+#crm-main .lt-hist{font-size:12px;line-height:1.8;color:var(--mut);border-left:2px solid var(--hair2);
+  padding-left:9px}
+#crm-main .lt-two{display:flex;gap:6px;margin-top:10px}
+#crm-main .lt-two .lt-sel{margin-top:0}
+@media(max-width:900px){
+  #crm-main .lt-wrap{flex-direction:column}
+  #crm-main .lt-list{border-right:0;border-bottom:1px solid var(--hair2)}
+  #crm-main .lt-panel{width:auto}
+}
 #crm-main .lc-when{font-size:11.5px;color:var(--mut);letter-spacing:.03em}
 #crm-main .lc-contact{font-size:12.5px;color:var(--mut);margin-top:4px}
 #crm-main .lc-msg{background:var(--pp);border-left:2px solid var(--hair);padding:9px 13px;
@@ -23170,6 +23254,326 @@ async function wcSend(){
     renderWelcome();
   }catch(e){ showToast(e.message); }
   finally{ wcBusy = false; }
+}
+
+/* ==================== THE TABLE VIEW (index 281) ====================
+   The card list put one lead across the full width with fourteen controls on it, so
+   ten leads was a scroll and you could never compare two people. This is a row each,
+   with the detail for whichever one is selected in a panel beside it.
+
+   ⚠ The cards are NOT deleted. `ltView` switches between them and the preference is
+   per agent. A rewrite of the busiest screen in the CRM should be reversible by the
+   person using it, not only by me. */
+
+let ltView = 'table', ltSel = null, ltQuery = '';
+
+function ltAfterPaint(){
+  const t = document.getElementById('lt-v-table'), c = document.getElementById('lt-v-cards');
+  if(t) t.classList.toggle('primary', ltView === 'table');
+  if(c) c.classList.toggle('primary', ltView !== 'table');
+}
+
+function ltSetView(v){
+  ltView = v;
+  try{ localStorage.setItem('leadView', v); }catch(e){}
+  loadLeads();
+}
+
+/* What a person is after, in one line. The quiz collects all of it. */
+function ltWants(l){
+  const q = l.quiz || {}, c = l.criteria || {};
+  const town = (typeof leadTownClient === 'function') ? leadTownClient(l)
+    : ((q.cities && q.cities[0]) || (c.cities && c.cities[0]) || c.city || '');
+  const bits = [];
+  if(q.path === 'sell' || l.type === 'seller'){
+    bits.push('selling');
+    if(q.address) bits.push(String(q.address).split(',')[0]);
+  } else {
+    const max = q.maxPrice || c.maxPrice;
+    if(max) bits.push('to $' + (Number(max)/1000 >= 1000
+      ? (Number(max)/1000000).toFixed(1).replace(/\.0$/,'') + 'm'
+      : Math.round(Number(max)/1000) + 'k'));
+    const beds = q.beds || c.beds;
+    if(beds) bits.push(beds + 'bd');
+  }
+  return [town, bits.join(' · ')].filter(Boolean).join(' · ');
+}
+
+/* Colour by where they came from. A cash-offer enquiry and a newsletter click are not
+   the same person, and you should not have to read the word to tell. */
+const LT_SRC = {
+  'quiz-buyer':  ['quiz', '#1F6B49', '#E7F3EC'],
+  'quiz-seller': ['valuation', '#5B3FA8', '#EFEAFB'],
+  'cash-offer':  ['cash offer', '#8A2C22', '#FDF2F1'],
+  'open-house':  ['open house', '#8A6A12', '#FFF7E4'],
+  'article':     ['article', '#1B4F8A', '#E8F1FB'],
+  'alerts':      ['alerts', '#5A6178', '#F1F1F4'],
+  'listing':     ['listing', '#1B4F8A', '#E8F1FB'],
+  'import':      ['imported', '#5A6178', '#F1F1F4'],
+};
+function ltSrcTag(s){
+  const k = String(s || '').toLowerCase();
+  const hit = LT_SRC[k] || [k || 'lead', '#5A6178', '#F1F1F4'];
+  return `<span class="lt-src" style="color:${hit[1]};background:${hit[2]}">${escapeHtml(hit[0])}</span>`;
+}
+
+function ltRows(list){
+  if(!list.length) return '';
+  return list.map(l => {
+    const sc = l.score || 0;
+    const B = (typeof LS_BANDS !== 'undefined' && LS_BANDS[l.band||'nurture']) || { color:'#8C93AD' };
+    const wait = (typeof lcWaitingText === 'function') ? lcWaitingText(l) : '';
+    return `<tr class="lt-row${ltSel===l.id?' on':''}" onclick="ltPick('${l.id}')">
+      <td class="lt-nm">
+        <span class="n">${escapeHtml(l.name || '\u2014')}</span> ${ltSrcTag(l.source)}
+        <div class="s">${escapeHtml(ltWants(l) || l.email || '')}${
+          l.assignedAgentId ? ' · ' + escapeHtml(agentName(l.assignedAgentId)) : ''}</div>
+      </td>
+      <td class="lt-sc" style="color:${B.color}">${sc}</td>
+      <td class="lt-w">${wait}</td>
+    </tr>`;
+  }).join('');
+}
+
+function ltPick(id){
+  ltSel = id;
+  document.querySelectorAll('.lt-row').forEach(r => r.classList.remove('on'));
+  const row = document.querySelector(`.lt-row[onclick*="${id}"]`);
+  if(row) row.classList.add('on');
+  ltPanel(id);
+}
+
+function ltFilter(v){ ltQuery = v; loadLeads(); }
+
+/* The panel. Everything the card had, plus the three things it never could do. */
+async function ltPanel(id){
+  const host = document.getElementById('lt-panel');
+  if(!host) return;
+  const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
+  if(!l){ host.innerHTML = '<div class="lt-empty">Pick somebody on the left.</div>'; return; }
+
+  const B = (typeof LS_BANDS !== 'undefined' && LS_BANDS[l.band||'nurture']) || { label:'New', color:'#8C93AD' };
+  const wait = (typeof lcWaitingText === 'function') ? lcWaitingText(l) : '';
+  const phone = String(l.phone||'').replace(/[^0-9+]/g,'');
+  const q = l.quiz || {}, c = l.criteria || {};
+  const facts = [
+    (q.cities || c.cities || []).join(', ') || c.city || '',
+    q.address || '',
+    (q.maxPrice || c.maxPrice) ? 'Up to $' + Number(q.maxPrice || c.maxPrice).toLocaleString() : '',
+    (q.beds || c.beds) ? (q.beds || c.beds) + '+ beds' : '',
+    (q.musts || []).join(', '),
+    l.source ? 'Came in through ' + l.source : '',
+  ].filter(Boolean);
+
+  const ev = (Array.isArray(l.events) ? l.events : []).slice(-6).reverse();
+  const EVW = { cma_open:'Opened the valuation', video_play:'Watched a video',
+    article_click:'Read something we sent', letter_sent:'Sent the market letter',
+    welcomed:'Introduced to the site', unclaimed:'Went unclaimed', quiz:'Finished the quiz' };
+
+  host.innerHTML =
+    `<div class="lt-hd">
+      <div class="nm">${escapeHtml(l.name || '\u2014')}</div>
+      <div class="sc" style="color:${B.color}">${l.score||0} · ${escapeHtml(B.label)}</div>
+     </div>
+     <div class="lt-contact">${escapeHtml(l.email||'')}${l.phone?'<br>'+escapeHtml(l.phone):''}</div>
+     <div class="lt-btns">
+       ${phone?`<a class="btn-sm" href="tel:${phone}">Call</a>`:''}
+       ${l.email?`<a class="btn-sm" href="mailto:${escapeHtml(l.email)}">Email</a>`:''}
+     </div>
+     ${wait ? `<div class="lt-alert">Nobody has spoken to them · ${wait.replace(/<[^>]*>/g,'')}</div>` : ''}
+
+     ${facts.length ? `<div class="lt-lab">What they want</div>
+       <div class="lt-facts">${facts.map(escapeHtml).join('<br>')}</div>` : ''}
+     ${l.message ? `<div class="lt-facts" style="font-style:italic">${escapeHtml(String(l.message).slice(0,300))}</div>` : ''}
+
+     <div class="lt-lab">Notes</div>
+     <textarea class="lt-note" rows="2" placeholder="Prefers evenings\u2026"
+       onchange="updateNotes('${l.id}', this.value)">${escapeHtml(l.notes||'')}</textarea>
+
+     <div class="lt-lab">Running now</div>
+     <div id="lt-running">${(typeof lcRunning === 'function') ? lcRunning(l) : ''}</div>
+     <select class="lt-sel" id="lt-seq" onchange="ltStartSeq('${l.id}', this.value)">
+       <option value="">Put them on a sequence\u2026</option>
+     </select>
+
+     <div class="lt-lab">Send them</div>
+     <div class="lt-stack">
+       <button class="btn-sm" onclick="ltAssist('${l.id}')">A follow-up</button>
+       <button class="btn-sm" onclick="cmaOpen('${l.id}','${escapeHtml(String(l.name||'').replace(/'/g,"\\'"))}','${escapeHtml(String(q.address||l.listingLabel||'').replace(/'/g,"\\'"))}','${escapeHtml(String(l.email||'').replace(/'/g,"\\'"))}')">A valuation from RPR</button>
+       <button class="btn-sm" onclick="vidSendOpen('${l.id}','${escapeHtml(String(l.name||'').replace(/'/g,"\\'"))}','${escapeHtml(String(l.email||'').replace(/'/g,"\\'"))}')">A video</button>
+       <button class="btn-sm" onclick="ltSendListings('${l.id}')">Some listings</button>
+       ${l.welcomedAt ? '' :
+         `<button class="btn-sm" onclick="ltWelcome('${l.id}')">An introduction to the site</button>`}
+     </div>
+     ${l.welcomedAt ? `<div class="lt-hist" style="margin-top:6px">Introduced ${
+        escapeHtml(new Date(l.welcomedAt).toLocaleDateString('en-US',
+          { month:'short', day:'numeric' }))}</div>` : ''}
+
+     <div class="lt-lab">Mark</div>
+     <div class="lt-tags">${(typeof LS_QUICK !== 'undefined' ? LS_QUICK : []).map(q2 =>
+       `<button class="lt-tag" onclick="lsLog('${l.id}','${q2[0]}')">${escapeHtml(q2[1])}</button>`).join('')}</div>
+
+     ${ev.length ? `<div class="lt-lab">What they have done</div>
+       <div class="lt-hist">${ev.map(e =>
+         escapeHtml((EVW[e.k] || e.k) + (e.note ? ' \u2014 ' + e.note : ''))).join('<br>')}</div>` : ''}
+
+     <div class="lt-lab">Who they are</div>
+     <div class="lt-tags">
+       ${['buyer','seller','both'].map(t =>
+         `<button class="lt-tag${(l.type||'')===t?' on':''}" onclick="ltSetType('${l.id}','${t}')">${t}</button>`).join('')}
+     </div>
+
+     <div class="lt-two">
+       <select class="lt-sel" onchange="updateStage('${l.id}', this.value)">
+         ${(typeof STAGES !== 'undefined' ? STAGES : []).map(s =>
+           `<option ${((l.stage||'New')===s)?'selected':''}>${s}</option>`).join('')}
+       </select>
+       <select class="lt-sel" id="lt-assign-${l.id}" onchange="stageAssignChange('${l.id}')">
+         <option value="">Unassigned</option>
+         ${(typeof agents !== 'undefined' ? agents : []).map(a =>
+           `<option value="${a.id}" ${a.id===l.assignedAgentId?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}
+       </select>
+     </div>
+     <div class="lt-stack" style="margin-top:8px">
+       <button class="btn-sm" onclick="openTransferLead('${l.id}')">Pass to another agent</button>
+     </div>`;
+
+  ltFillSequences(l);
+}
+
+/* ⚠ lead.drip.campaignId is READ in five places — the server processes it, the card
+   shows it, the counters use it — and was never WRITTEN anywhere. Sequences could be
+   built and never started. This is the missing half. */
+async function ltFillSequences(l){
+  const sel = document.getElementById('lt-seq');
+  if(!sel) return;
+  let list = [];
+  try{ list = (await storeGet('settings:dripCampaigns')) || []; }catch(e){}
+  if(!list.length){ sel.innerHTML = '<option value="">No sequences built yet</option>'; return; }
+  const on = l.drip && l.drip.campaignId && !l.drip.stopped ? l.drip.campaignId : '';
+  sel.innerHTML = `<option value="">${on ? 'Change sequence\u2026' : 'Put them on a sequence\u2026'}</option>`
+    + list.map(c => `<option value="${escapeHtml(c.id)}" ${c.id===on?'selected':''}>${escapeHtml(c.name||'Untitled')}</option>`).join('')
+    + (on ? '<option value="__stop">Stop the sequence</option>' : '');
+}
+
+async function ltStartSeq(id, campaignId){
+  if(!campaignId) return;
+  const lead = await storeGet('lead:'+id);
+  if(!lead) return;
+  if(campaignId === '__stop'){
+    lead.drip = Object.assign({}, lead.drip, { stopped: true });
+    await storeSet('lead:'+id, lead);
+    showToast('Sequence stopped.');
+  } else {
+    /* step 0, starting now — the server walks it from here */
+    lead.drip = { campaignId, step: 0, startedAt: new Date().toISOString(), stopped: false };
+    await storeSet('lead:'+id, lead);
+    showToast('On the sequence. The first message goes out on its schedule.');
+  }
+  loadLeads();
+}
+
+/* \u26a0 The bulk version under Content already existed and its route already accepted a
+   leadIds array \u2014 nothing had ever called it with one. This is the individual door to
+   a thing that was built and unreachable from where you would look for it. */
+async function ltWelcome(id){
+  const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
+  if(!l) return;
+  if(!l.email){ showToast('No email address on this one.'); return; }
+  if(!confirm(`Send ${l.name || 'them'} the introduction?\n\n`
+    + `It goes once and only once \u2014 they will not get it again.`)) return;
+  try{
+    const r = await fetch('/api/welcome/send', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ leadIds: [id], cap: 1 }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not send that.');
+    showToast(d.sent ? 'Sent.' : (d.note || 'They have already had one.'));
+    loadLeads();
+  }catch(e){ showToast(e.message); }
+}
+
+async function ltSetType(id, type){
+  const lead = await storeGet('lead:'+id);
+  if(!lead) return;
+  lead.type = (lead.type === type) ? '' : type;
+  await storeSet('lead:'+id, lead);
+  loadLeads();
+}
+
+function ltAssist(id){
+  if(typeof showCrmSection === 'function') showCrmSection('sec-assist');
+  setTimeout(() => {
+    if(typeof asGo === 'function') asGo('followup');
+    setTimeout(() => { if(typeof asPickOne === 'function') asPickOne(id); }, 250);
+  }, 120);
+}
+
+/* Plain text version of the waiting badge, for use where markup would be wrong. */
+function lcWaitingText(l){
+  if(l.firstTouchAt || (l.stage||'New') !== 'New') return '';
+  const ms = Date.now() - new Date(l.createdAt).getTime();
+  if(!isFinite(ms) || ms < 0) return '';
+  const m = Math.floor(ms/60000);
+  return m < 60 ? m + 'm'
+       : m < 1440 ? Math.floor(m/60) + 'h ' + (m%60) + 'm'
+       : Math.floor(m/1440) + 'd ' + Math.floor((m%1440)/60) + 'h';
+}
+
+/* Same fallback chain the server uses, so a lead's town reads the same in both. */
+function leadTownClient(l){
+  if(!l) return '';
+  const q = l.quiz || {}, c = l.criteria || {};
+  if(Array.isArray(q.cities) && q.cities.length) return String(q.cities[0]);
+  if(Array.isArray(c.cities) && c.cities.length) return String(c.cities[0]);
+  if(c.city) return String(c.city);
+  const label = String(l.listingLabel || '');
+  if(label.includes(',')){
+    const tail = label.split(',').pop().trim().replace(/\s+[A-Z]{2}\s*\d{0,5}$/, '').trim();
+    if(tail) return tail;
+  }
+  return '';
+}
+
+/* Hand-picked listings, as opposed to the automatic alerts. Reuses the video sender's
+   overlay and the listing picker the flyer builder already caches. */
+async function ltSendListings(id){
+  const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
+  if(!l) return;
+  document.getElementById('vsend-overlay').classList.add('active');
+  const b = document.getElementById('vsend-body');
+  b.innerHTML = `<h3>Send ${escapeHtml(l.name||'them')} some listings</h3>
+    <p class="cma-sub">Pick a few. They get a link to each, and you see which ones they
+      actually opened \u2014 which is more than the automatic alerts tell you.</p>
+    <div class="vs-list">Loading listings\u2026</div>`;
+  let rows = [];
+  try{ rows = await mkLoadListings(); }catch(e){ rows = []; }
+  const list = b.querySelector('.vs-list');
+  if(!list) return;
+  list.innerHTML = rows.length
+    ? rows.slice(0, 60).map(v => `<button class="vs-pick" onclick="ltPickListing('${escapeHtml(String(v.ListingKey))}','${escapeHtml(String(l.id))}')">
+        <span class="t">${escapeHtml(v.UnparsedAddress||'')}</span>
+        <span class="m">${escapeHtml(v.City||'')} \u00b7 $${Number(v.ListPrice||0).toLocaleString()}</span>
+      </button>`).join('')
+    : '<div class="vid-none">No listings loaded.</div>';
+}
+
+function ltPickListing(key, leadId){
+  const url = location.origin + '/listing/' + encodeURIComponent(key);
+  const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === leadId) || {};
+  window.__ltMailto = 'mailto:' + encodeURIComponent(l.email || '')
+    + '?subject=' + encodeURIComponent('One I thought you would want to see')
+    + '&body=' + encodeURIComponent(`Hi${l.name ? ' ' + String(l.name).split(' ')[0] : ''},\n\n`
+        + `Have a look at this one:\n\n${url}\n\n`);
+  document.getElementById('vsend-body').innerHTML =
+    `<h3>Ready to send</h3>
+     <input class="cma-link" value="${escapeHtml(url)}" readonly onclick="this.select()">
+     <div class="cma-acts">
+       <button class="btn-sm" onclick="cmaCopy('${escapeHtml(url)}')">Copy the link</button>
+       <button class="btn-sm primary" onclick="if(window.__ltMailto) window.location.href=window.__ltMailto">Open in email</button>
+       <button class="btn-sm" onclick="ltSendListings('${escapeHtml(leadId)}')">Pick another</button>
+     </div>
+     <p class="cma-fine">The page carries the listing-office credit and your agent link.</p>`;
 }
 </script>
 
