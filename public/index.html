@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v272">
+<meta name="build" content="index-v273">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4493,7 +4493,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v272';
+window.BUILD = 'index-v273';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5071,14 +5071,17 @@ if(window.__wnFilter){
       .some(x => (x.email||'').toLowerCase() === (l.email||'').toLowerCase() && l.email && x.pace !== 'paused');
     return feed || (l.drip && l.drip.campaignId && !l.drip.stopped);
   };
+  /* \u26a0 Must match wnCounts() exactly. A counter saying 4 that filters to 7 people is
+     how you stop trusting the screen. */
+  const notClosed = l => (l.stage||'New') !== 'Closed';
   const F = {
-    hot:      l => (l.score||0) >= 60,
+    hot:      l => notClosed(l) && (l.score||0) >= 60,
     new:      l => (l.stage||'New') === 'New',
     uncalled: l => !l.firstTouchAt && (l.stage||'New') === 'New'
                    && (now - new Date(l.createdAt).getTime()) < 2*day,
     stale:    l => (l.stage||'New') === 'New' && age(l) >= 2,
-    nofollow: l => !running(l) && !l.unsubscribed,
-    replied:  l => !!l.humanTakeover,
+    nofollow: l => notClosed(l) && !running(l) && !l.unsubscribed,
+    replied:  l => notClosed(l) && !!l.humanTakeover,
   };
   const LABEL = { hot:'Hot right now', new:'Never contacted', stale:'Waiting 2+ days',
                   uncalled:'Waiting for a call',
@@ -21069,7 +21072,12 @@ function wnCounts(){
      badge said 11 while every counter on Today said 0.
      DASH_LEADS is the global loadLeads() actually publishes for the dashboard. */
   const L = (typeof DASH_LEADS !== 'undefined' && Array.isArray(DASH_LEADS) ? DASH_LEADS : [])
-    .filter(l => isAdminOrOwner() || l.assignedAgentId === currentAgent.id);
+    .filter(l => isAdminOrOwner() || l.assignedAgentId === currentAgent.id)
+    /* \u26a0 Closed leads are out of all of these. Every counter here is a prompt to do
+       something, and there is nothing to do about a deal that already closed. Left in,
+       "Nobody following up" counted every closed sale in the book and the number meant
+       nothing \u2014 which is worse than a wrong number, because you stop looking at it. */
+    .filter(l => (l.stage||'New') !== 'Closed');
   const day = 86400000, now = Date.now();
   const age = l => Math.floor((now - new Date(l.createdAt).getTime()) / day);
   const running = l => {
