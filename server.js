@@ -4923,7 +4923,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v123',
+    serverVersion: 'v126',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5732,6 +5732,81 @@ function promoToken(promoId, leadId) {
 }
 
 /* ---------- the library ---------- */
+/* ==================== OUTSIDE TOOLS (server 124) ====================
+   Asked for a long time ago and never built: tabs for ShowingTime, Redex, Paragon,
+   GCMLS, Perchwell. They cannot be embedded \u2014 every one of them sends
+   X-Frame-Options or a frame-ancestors policy precisely to stop that, and getting
+   round it would mean proxying somebody's authenticated session, which is not
+   something to do to an MLS. So they open in a new tab with the saved link.
+
+   \u26a0 The value is small and real: one place to launch from, the same links for
+   everybody, and a new agent who does not yet know which of five systems does what.
+
+   \u26a0 Broker writes, everyone reads. An agent adding a link that everyone sees is a
+   way to put an arbitrary destination in front of the whole brokerage. */
+function cleanLinks(raw) {
+  const out = [];
+  for (const l of (Array.isArray(raw) ? raw : []).slice(0, 12)) {
+    const label = String(l.label || '').slice(0, 24).trim();
+    let url = String(l.url || '').slice(0, 400).trim();
+    if (!label || !url) continue;
+    /* \u26a0 Upgrade http, prepend when there is no scheme at all, and leave anything with
+       a different scheme to be rejected below. Prepending blindly turned
+       http://x into https://http://x. */
+    if (/^http:\/\//i.test(url)) url = 'https://' + url.slice(7);
+    else if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url.replace(/^\/*/, '');
+    try { const u = new URL(url); if (u.protocol !== 'https:') continue; }
+    catch (e) { continue; }
+    out.push({ label, url });
+  }
+  return out;
+}
+
+app.get('/api/quick-links', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const shared = await getSetting('settings:quickLinks');
+  /* \u26a0 An agent's own links are keyed to their id and returned separately, so the
+     client can show them apart and so nobody ever receives anybody else's.
+
+     \u26a0 VIEW AS: this reads the REAL session, so a broker previewing an agent sees their
+     own personal links rather than that agent's. Colors and layout deliberately follow
+     the previewed agent; these deliberately do not. Personal means personal, including
+     from the broker, and nobody asked for the ability to read everyone's bookmarks. */
+  const mine = await getSetting('quickLinks:' + sess.agentId);
+  res.json({ ok: true,
+    links: Array.isArray(shared) ? shared : [],
+    mine: Array.isArray(mine) ? mine : [] });
+});
+
+/* Their own. No role check \u2014 a personal link is only ever in front of the person who
+   typed it, which is exactly why this one does not need the broker gate below. */
+app.post('/api/quick-links/mine', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!Array.isArray((req.body || {}).links)) {
+    return res.status(400).json({ error: 'Send a links array.' });
+  }
+  const clean = cleanLinks(req.body.links);
+  await setSetting('quickLinks:' + sess.agentId, clean);
+  console.log(`[links] ${sess.name || sess.agentId} saved ${clean.length} personal link(s)`);
+  res.json({ ok: true, links: clean });
+});
+
+app.post('/api/quick-links', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role !== 'broker') {
+    return res.status(403).json({ error: 'Only the broker can change these.' });
+  }
+  if (!Array.isArray((req.body || {}).links)) {
+    return res.status(400).json({ error: 'Send a links array.' });
+  }
+  /* \u26a0 Same cleaner as the personal list. https only, and it must parse: a javascript:
+     or data: URL on a row the whole brokerage clicks only has to work once. */
+  const clean = cleanLinks(req.body.links);
+  await setSetting('settings:quickLinks', clean);
+  console.log(`[links] ${sess.name || sess.agentId} saved ${clean.length} outside tool link(s)`);
+  res.json({ ok: true, links: clean });
+});
+
 app.post('/api/promo', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
@@ -6092,6 +6167,112 @@ app.delete('/api/cma/:id', async (req, res) => {
   }
   console.log(`[cma] ${sess.name || sess.agentId} removed "${rec.address}"`);
   res.json({ ok: true });
+});
+
+
+/* ==================== SHARING A LISTING (server 126) ====================
+   \u26a0 The share buttons sent `/?listing=KEY` \u2014 the app shell with a query string. A
+   social crawler does not run JavaScript, so Facebook fetched that, found the site's
+   generic tags, and rendered a grey box reading "bamacoast.com". No address, no price,
+   no photo. Sharing a listing produced a post nobody would click.
+
+   Anything meant to be shared has to be a real page the server renders, with its own
+   og:title, og:description and og:image. Same lesson as the article pages.
+
+   \u26a0 noindex on purpose. Whether every listing in the feed should become an indexable
+   page on this domain is an IDX question for Baldwin REALTORS, not one to answer by
+   accident while fixing a share button. Crawlers read og: tags regardless of
+   noindex, so sharing works either way. */
+app.get('/listing/:key', async (req, res, next) => {
+  const key = String(req.params.key || '').slice(0, 60);
+  if (!key) return next();
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const who = String(req.query.agent || '').slice(0, 60).replace(/[^a-z0-9-]/gi, '');
+
+  let r;
+  try {
+    const esc = key.replace(/'/g, "''");
+    const data = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
+      $filter: `(ListingKey eq '${esc}' or ListingId eq '${esc}') and ${ACTIVE_ONLY}`,
+      $top: 1,
+    });
+    r = (data.value || [])[0];
+  } catch (e) {
+    console.error('[listing share] feed:', e.message);
+    return next();
+  }
+  /* Gone off market between the post and the click \u2014 which is normal, and better
+     handled by sending them to the search than by a dead page. */
+  if (!r) return res.redirect(302, origin + '/#listings');
+
+  const e = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const price = r.ListPrice ? '$' + Number(r.ListPrice).toLocaleString() : 'Price on request';
+  const addr  = [r.UnparsedAddress, r.City].filter(Boolean).join(', ');
+  const bits  = [
+    r.BedroomsTotal ? r.BedroomsTotal + ' bd' : '',
+    r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' ba' : '',
+    r.LivingArea ? Number(r.LivingArea).toLocaleString() + ' sq ft' : '',
+  ].filter(Boolean).join(' \u00b7 ');
+  const img = listingPhotoUrl(r, origin);
+  const credit = listingCredit(r);
+  const remarks = String(r.PublicRemarks || '').replace(/\s+/g, ' ').trim();
+  const desc = [price, bits, remarks].filter(Boolean).join(' \u2014 ').slice(0, 300);
+  const canon = `${origin}/listing/${encodeURIComponent(r.ListingKey || key)}`
+    + (who ? `?agent=${encodeURIComponent(who)}` : '');
+  const into = `${origin}/?listing=${encodeURIComponent(r.ListingKey || key)}`
+    + (who ? `&agent=${encodeURIComponent(who)}` : '');
+
+  console.log(`[listing share] ${addr} viewed${who ? ' via ' + who : ''}`);
+
+  res.set('Cache-Control', 'public, max-age=600');
+  res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,follow">
+<title>${e(addr)} \u2014 ${e(price)}</title>
+<meta name="description" content="${e(desc)}">
+<link rel="canonical" href="${e(canon)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${e(BROKERAGE_NAME)}">
+<meta property="og:title" content="${e(addr)} \u2014 ${e(price)}">
+<meta property="og:description" content="${e(desc)}">
+<meta property="og:url" content="${e(canon)}">
+${img ? `<meta property="og:image" content="${e(img)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="800">` : ''}
+<meta name="twitter:card" content="${img ? 'summary_large_image' : 'summary'}">
+<meta name="twitter:title" content="${e(addr)} \u2014 ${e(price)}">
+<meta name="twitter:description" content="${e(desc)}">
+${img ? `<meta name="twitter:image" content="${e(img)}">` : ''}
+<style>
+body{margin:0;background:#FBFAF7;color:#141A3C;
+  font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
+.w{max-width:720px;margin:0 auto;padding:30px 20px 60px}
+.eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;font-weight:700}
+.hero{width:100%;border-radius:7px;display:block;margin:14px 0 20px;background:#E9E7DF}
+h1{font-family:Georgia,serif;font-size:31px;line-height:1.2;font-weight:400;margin:0 0 4px}
+.pr{font-family:Georgia,serif;font-size:27px;color:#171F63;margin:0 0 6px}
+.bits{font-size:15px;color:#5A6178;margin:0 0 20px}
+.rm{font-size:15px;line-height:1.75;margin:0 0 24px}
+.btn{display:inline-block;background:#171F63;color:#fff;text-decoration:none;
+  padding:15px 28px;border-radius:4px;font-weight:700;font-size:15px}
+.btn:hover{background:#C89B4E;color:#241A08}
+.cr{font-size:12.5px;color:#7A8199;margin-top:22px;padding-top:16px;
+  border-top:1px solid rgba(20,26,60,.12)}
+.ft{font-size:13px;color:#5A6178;margin-top:8px;line-height:1.7}
+</style></head><body><div class="w">
+<div class="eb">${e(BROKERAGE_NAME)}</div>
+${img ? `<img class="hero" src="${e(img)}" alt="${e(addr)}">` : ''}
+<h1>${e(r.UnparsedAddress || 'Address on request')}</h1>
+<div class="pr">${e(price)}</div>
+<div class="bits">${e([r.City, r.StandardStatus].filter(Boolean).join(' \u00b7 '))}${
+  bits ? ' \u00b7 ' + e(bits) : ''}</div>
+${remarks ? `<p class="rm">${e(remarks.slice(0, 900))}</p>` : ''}
+<a class="btn" href="${e(into)}">See the photos and more like it</a>
+${credit ? `<div class="cr">${e(credit)}</div>` : ''}
+<div class="ft">${e(BROKERAGE_NAME)} &middot; ${e(BROKERAGE_PHONE)}<br>
+${e(DISCLAIMER_GENERAL).slice(0, 400)}</div>
+</div></body></html>`);
 });
 
 app.get('/homes/:slug', async (req, res, next) => {
