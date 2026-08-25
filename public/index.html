@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v282">
+<meta name="build" content="index-v283">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -4616,7 +4616,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v282';
+window.BUILD = 'index-v283';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5226,12 +5226,22 @@ document.getElementById('empty-state').style.display = shown.length===0 ? 'block
 
 /* \u26a0 The one seam. Cards were the only option; now the table paints here instead and
    the cards below are left exactly as they were. Switching back is a click. */
-try{ if(!ltView) ltView = localStorage.getItem('leadView') || 'table'; }catch(e){}
-if(ltView === 'table' && typeof ltRows === 'function'){
+/* \u26a0 ltView is declared with `let` in the LAST script block, and loadLeads() lives in
+   an early one. A bare reference to a `let` that has not executed yet is a
+   ReferenceError from the temporal dead zone \u2014 not undefined, a throw \u2014 and it killed
+   this function halfway through the render. typeof is the only safe way to ask.
+   That is why the table appeared once and then the old cards came back. */
+let ltWant = 'table';
+try{
+  ltWant = (typeof ltView !== 'undefined' && ltView)
+    || localStorage.getItem('leadView') || 'table';
+}catch(e){ ltWant = 'table'; }
+if(ltWant === 'table' && typeof ltRows === 'function'){
   const q = String(ltQuery||'').toLowerCase();
   const list = q ? shown.filter(l =>
     (String(l.name||'')+' '+String(l.email||'')+' '+String(l.phone||'')+' '+
      String(l.listingLabel||'')+' '+ltWants(l)).toLowerCase().includes(q)) : shown;
+  try{ ltView = 'table'; }catch(e){}
   if(!ltSel && list.length) ltSel = list[0].id;
   tbody.innerHTML =
     `<div class="lt-wrap">
