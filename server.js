@@ -5160,7 +5160,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v131',
+    serverVersion: 'v132',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6026,7 +6026,11 @@ const RESET_GROUPS = {
   },
   deals: {
     label: 'Deals, commissions and expenses',
-    prefixes: ['agentDeals:'],
+    /* ⚠ 'receipt:' belongs here. The expense ROWS live in settings:expenses and the
+       receipt FILES live under their own prefix, so clearing the expenses without
+       this line would delete every row and leave the scanned receipts behind as
+       orphaned blobs nothing points at and nothing can reach. */
+    prefixes: ['agentDeals:', 'receipt:'],
     settings: ['settings:closedDeals', 'settings:closedYears', 'settings:expenses',
                'settings:dealSubmissions', 'settings:agentPlanHistory'],
   },
@@ -6891,6 +6895,158 @@ app.delete('/api/cma/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+
+/* ==================== RECEIPTS ON EXPENSES (server 132) ====================
+   An expense with no receipt is a number the accountant has to take on faith. This
+   attaches the paper — a PDF from a vendor, or far more often a photograph of a
+   till receipt taken in a truck.
+
+   ⚠ THE FILE DOES NOT GO ON THE EXPENSE ROW. Every expense in the brokerage lives in
+   ONE array under settings:expenses, and that array is read whole on every render of
+   the expenses screen, every print, and the year-end package. Putting base64 in it
+   would mean a year of receipts is dragged down the wire to draw a table of numbers.
+   Each file gets its own receipt:<id> key. The row carries an id, a filename and a
+   byte count — enough to draw a link, and nothing more.
+
+   ⚠ Photographs, not just PDFs. Agents scan receipts with a phone, so JPEG and PNG
+   are first-class here. HEIC is refused BY NAME with an instruction, because an
+   iPhone shooting in High Efficiency produces a file no browser will render and
+   "that did not work" is a useless thing to tell somebody standing in a parking lot. */
+
+const RECEIPT_MAX_BYTES = 9 * 1024 * 1024;   // ~12MB base64, under the 14mb json ceiling
+
+/* ⚠ The bytes decide the type, not the file name. Renaming a .exe to .pdf gets you
+   nowhere. Each entry is the base64 prefix a file of that type always starts with. */
+const RECEIPT_TYPES = [
+  { test: /^JVBERi0/,      mime: 'application/pdf', ext: 'pdf' },   // %PDF-
+  { test: /^\/9j\//,       mime: 'image/jpeg',      ext: 'jpg' },   // FF D8 FF
+  { test: /^iVBORw0KGgo/,  mime: 'image/png',       ext: 'png' },   // \x89PNG\r\n
+];
+
+function receiptSniff(raw) {
+  return RECEIPT_TYPES.find(t => t.test.test(raw)) || null;
+}
+
+/* Who is allowed to touch this receipt. Ownership is not stored on the blob — it is
+   read from the expense row that points at it, so it can never drift out of step with
+   the ledger. Staff see everything, the way they do with deals and commissions. */
+async function receiptOwner(id) {
+  const list = await getSetting('settings:expenses');
+  if (!Array.isArray(list)) return null;
+  return list.find(e => e && e.receipt && e.receipt.id === id) || null;
+}
+
+app.post('/api/receipt', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+
+  const b = req.body || {};
+  const expenseId = String(b.expenseId || '').slice(0, 80);
+  const data = String(b.dataBase64 || '');
+  if (!expenseId) return res.status(400).json({ error: 'No expense was named.' });
+  if (!data) return res.status(400).json({ error: 'No file came through.' });
+
+  const raw = data.replace(/^data:[^,]*,/, '');
+  const name = String(b.filename || '').slice(0, 90);
+
+  const kind = receiptSniff(raw);
+  if (!kind) {
+    if (/\.heic$|\.heif$/i.test(name)) {
+      return res.status(400).json({ error:
+        'That is an iPhone HEIC photo, which browsers cannot display. On the phone: ' +
+        'Settings \u2192 Camera \u2192 Formats \u2192 Most Compatible, then retake it. Or open the ' +
+        'photo, tap Edit and Done, which saves a JPEG copy.' });
+    }
+    return res.status(400).json({ error:
+      'That is not a PDF, a JPEG or a PNG. A photo of the receipt is fine.' });
+  }
+
+  const bytes = Math.ceil(raw.length * 3 / 4);
+  if (bytes > RECEIPT_MAX_BYTES) {
+    return res.status(413).json({ error: 'That file is too big \u2014 9MB is the ceiling.' });
+  }
+
+  const list = await getSetting('settings:expenses');
+  if (!Array.isArray(list)) return res.status(404).json({ error: 'No expenses to attach to.' });
+  const row = list.find(e => e && e.id === expenseId);
+  if (!row) return res.status(404).json({ error: 'That expense is no longer there.' });
+  if (!isStaff(sess) && row.agentId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not your expense.' });
+  }
+
+  const id = 'rcp_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+  const filename = (name.replace(/[^A-Za-z0-9._ -]/g, '') || ('receipt.' + kind.ext));
+
+  /* ⚠ The blob first. If the row is written first and the blob write then fails, the
+     screen shows a receipt link pointing at nothing. This way the worst case is an
+     unreferenced blob, which the reset sweep collects. */
+  if (!await mustSet(res, 'receipt:' + id, { b64: raw, mime: kind.mime })) return;
+
+  /* ⚠ Replacing an existing receipt removes the old blob. Otherwise re-photographing a
+     blurry receipt leaves the blurry one in the database for ever. */
+  const previous = row.receipt && row.receipt.id;
+
+  row.receipt = { id, filename, bytes, mime: kind.mime,
+                  uploadedAt: new Date().toISOString(),
+                  byId: sess.agentId, byName: sess.name || '' };
+
+  if (!await mustSet(res, 'settings:expenses', list)) {
+    await delSetting('receipt:' + id);
+    return;
+  }
+  if (previous && previous !== id) await delSetting('receipt:' + previous);
+
+  console.log(`[receipt] ${sess.name || sess.agentId} attached ${filename} ` +
+              `(${Math.round(bytes / 1024)}kb ${kind.mime}) to expense ${expenseId}`);
+  res.json({ ok: true, receipt: row.receipt });
+});
+
+/* The file itself. Inline, so it opens rather than landing in downloads where nobody
+   looks at it. Behind a session — unlike a CMA, which is deliberately reachable by an
+   unauthenticated seller holding a token, a receipt is internal and has no such need. */
+app.get('/api/receipt/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const id = String(req.params.id || '').slice(0, 80);
+
+  const row = await receiptOwner(id);
+  if (!row) return res.status(404).json({ error: 'Not there.' });
+  if (!isStaff(sess) && row.agentId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not yours.' });
+  }
+  const file = await getSetting('receipt:' + id);
+  if (!file || !file.b64) return res.status(404).json({ error: 'The file is missing.' });
+
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-store');
+  res.type(file.mime || 'application/octet-stream');
+  res.set('Content-Disposition',
+    `inline; filename="${(row.receipt.filename || 'receipt').replace(/["\\]/g, '')}"`);
+  res.send(Buffer.from(file.b64, 'base64'));
+});
+
+app.delete('/api/receipt/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const id = String(req.params.id || '').slice(0, 80);
+
+  const list = await getSetting('settings:expenses');
+  if (!Array.isArray(list)) return res.status(404).json({ error: 'Not there.' });
+  const row = list.find(e => e && e.receipt && e.receipt.id === id);
+  if (!row) return res.status(404).json({ error: 'Not there.' });
+  if (!isStaff(sess) && row.agentId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not yours to remove.' });
+  }
+
+  const was = row.receipt.filename;
+  delete row.receipt;
+  if (!await mustSet(res, 'settings:expenses', list)) return;
+  /* A real delete, checked. setSetting(key, null) upserts a null and leaves the row. */
+  await delSetting('receipt:' + id);
+
+  console.log(`[receipt] ${sess.name || sess.agentId} removed ${was} from expense ${row.id}`);
+  res.json({ ok: true });
+});
 
 /* ==================== SHARING A LISTING (server 126) ====================
    \u26a0 The share buttons sent `/?listing=KEY` \u2014 the app shell with a query string. A
