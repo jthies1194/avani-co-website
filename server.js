@@ -5160,7 +5160,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v132',
+    serverVersion: 'v133',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6895,6 +6895,112 @@ app.delete('/api/cma/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+
+/* ==================== DELETING A LEAD IS NOT LOSING ONE (server 133) ====================
+   ⚠ A lead was deleted by one click on an × and could not be got back. deleteLead()
+   called storeDelete('lead:'+id) with no confirmation and no copy kept, and the row
+   was gone from the database the moment the mouse came up. Real leads are the only
+   irreplaceable thing in here — everything else can be re-entered from a bank
+   statement or an MLS feed. A person who filled in a form once will not do it again.
+
+   ⚠ `settings:leadArchive` already EXISTED — named in the admin key blocklist, named
+   in the reset groups — and was written by absolutely nothing. Three references, zero
+   writes. Same shape as drip.campaignId: it read as a built feature from every angle
+   except the one that mattered. This is the half that was missing. */
+
+const LEAD_ARCHIVE_MAX = 300;
+
+app.post('/api/lead/:id/archive', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin') {
+    return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+  }
+  const lead = await loadOwnLead(sess, req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Not your lead, or no longer there.' });
+
+  const archive = (await getSetting('settings:leadArchive')) || [];
+  const list = Array.isArray(archive) ? archive : [];
+  /* The whole record, not a summary. A restore has to give back exactly what was
+     there — score, events, quiz answers, drip state — or it is not a restore. */
+  list.unshift({
+    lead,
+    deletedAt: new Date().toISOString(),
+    deletedById: sess.agentId,
+    deletedByName: sess.name || '',
+  });
+  /* ⚠ Capped, because this array is read whole. Oldest fall off the end. */
+  if (list.length > LEAD_ARCHIVE_MAX) list.length = LEAD_ARCHIVE_MAX;
+
+  /* ⚠ The copy is written BEFORE the original is removed. The other order loses the
+     lead outright if the archive write fails — which, given setSetting used to return
+     true on failed writes, is not hypothetical. mustSet answers 500 and stops. */
+  if (!await mustSet(res, 'settings:leadArchive', list)) return;
+
+  const { error } = await supabase.from(KV_TABLE).delete().eq('key', 'lead:' + lead.id);
+  if (error) {
+    console.error(`[lead archive] delete FAILED for ${lead.id}:`, error.message);
+    return res.status(500).json({ error: 'Could not remove that. Nothing was lost.' });
+  }
+  console.log(`[lead archive] ${sess.name || sess.agentId} deleted "${lead.name || lead.id}" — recoverable`);
+  res.json({ ok: true, id: lead.id, name: lead.name || '' });
+});
+
+app.get('/api/lead/archive', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin') {
+    return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+  }
+  const archive = (await getSetting('settings:leadArchive')) || [];
+  let rows = Array.isArray(archive) ? archive : [];
+  /* Same scoping as the lead book: an agent sees what was theirs. */
+  if (!isStaff(sess)) rows = rows.filter(r => r.lead && r.lead.assignedAgentId === sess.agentId);
+  res.json({ ok: true, deleted: rows.slice(0, 100).map(r => ({
+    id: r.lead ? r.lead.id : '',
+    name: (r.lead && r.lead.name) || '',
+    email: (r.lead && r.lead.email) || '',
+    phone: (r.lead && r.lead.phone) || '',
+    source: (r.lead && r.lead.source) || '',
+    createdAt: (r.lead && r.lead.createdAt) || '',
+    deletedAt: r.deletedAt, deletedByName: r.deletedByName || '',
+  })) });
+});
+
+app.post('/api/lead/restore/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role === 'admin') {
+    return res.status(403).json({ error: 'Leads are not available to admin accounts.' });
+  }
+  const id = String(req.params.id || '').slice(0, 80);
+  const archive = (await getSetting('settings:leadArchive')) || [];
+  const list = Array.isArray(archive) ? archive : [];
+  const at = list.findIndex(r => r.lead && r.lead.id === id);
+  if (at < 0) return res.status(404).json({ error: 'That is not in the deleted list.' });
+
+  const entry = list[at];
+  if (!isStaff(sess) && entry.lead.assignedAgentId !== sess.agentId) {
+    return res.status(403).json({ error: 'Not yours to restore.' });
+  }
+  /* ⚠ Never overwrite a live record. If something now occupies that key — a
+     re-submission from the same person, most likely — the restore stops rather than
+     silently replacing whatever is there with an older copy. */
+  const existing = await getSetting('lead:' + id);
+  if (existing) {
+    return res.status(409).json({ error: 'A lead with that id is already back in the list.' });
+  }
+
+  /* Lead first, then the archive entry. If the second write fails the worst case is a
+     duplicate row in the deleted list, which is visible and harmless. The other order
+     can lose the record entirely. */
+  if (!await mustSet(res, 'lead:' + id, entry.lead)) return;
+  list.splice(at, 1);
+  await setSetting('settings:leadArchive', list);
+
+  console.log(`[lead archive] ${sess.name || sess.agentId} restored "${entry.lead.name || id}"`);
+  res.json({ ok: true, lead: entry.lead });
+});
 
 /* ==================== RECEIPTS ON EXPENSES (server 132) ====================
    An expense with no receipt is a number the accountant has to take on faith. This
