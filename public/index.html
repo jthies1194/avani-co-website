@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v283">
+<meta name="build" content="index-v287">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1470,7 +1470,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
         <span>&middot;</span>
         <a href="#" onclick="qzOpen('sell');return false;">What is my home worth?</a>
         <span>&middot;</span>
-        <a href="#" onclick="qzOpen('cash');return false;">See a cash offer</a>
+        <a class="cash" href="#" onclick="qzOpen('cash');return false;"><span class="tag">$</span>See a cash offer</a>
       </div>
     </div>
   </div>
@@ -1494,7 +1494,16 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .cash-fine strong{color:rgba(245,243,236,.85)}
 @media(max-width:700px){ .cash-band{padding:40px 0} .cash-band h2{font-size:27px}
   .cash-inner{padding:0 22px} }
-.hero-alt{margin-top:22px;display:flex;gap:12px;flex-wrap:wrap}
+/* ⚠ justify-content, not text-align. The hero centres its children with text-align,
+   which a flex container ignores entirely — so these three sat hard left underneath a
+   centred headline and a centred button. */
+.hero-alt{margin-top:22px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+/* The cash offer is the one people click on impulse, so it should be the one that
+   catches the eye. Gold fill against two outlined siblings. */
+.hero-alt a.cash{background:#E6C381;border-color:#E6C381;color:#241A08;font-weight:700}
+.hero-alt a.cash:hover{background:#fff;border-color:#fff;color:#171F63}
+.hero-alt a.cash .tag{display:inline-block;margin-right:7px;font-weight:700;font-size:17px;
+  vertical-align:-1px}
   .hero-alt a{display:inline-block;font-size:15px;font-weight:600;letter-spacing:.02em;
     color:#fff;text-decoration:none;padding:13px 22px;border-radius:4px;
     border:1.5px solid rgba(255,255,255,.55);background:rgba(10,14,35,.34);
@@ -2807,6 +2816,15 @@ body.in-crm .topbar{display:none}
 
 <!-- Was a table with a sticky last column. Cards in a plain container instead:
      the old cell and sticky rules kept overriding the card layout. -->
+<!-- ⚠ Inside #crm-main on purpose. It is position:fixed so the DOM position does not
+     affect where it appears, but every .lt-* rule is scoped to #crm-main — put it
+     outside and the sheet renders completely unstyled. -->
+<div id="lt-sheet">
+  <div class="lt-sheet-bar">
+    <button onclick="ltCloseSheet()" aria-label="Back">&larr; Back to the list</button>
+  </div>
+  <div id="lt-sheet-body"></div>
+</div>
 <div class="lead-list-wrap">
 <div id="lead-tbody"></div>
 <div id="empty-state" class="empty-state" style="display:none;">
@@ -4616,7 +4634,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v283';
+window.BUILD = 'index-v287';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5243,17 +5261,34 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
      String(l.listingLabel||'')+' '+ltWants(l)).toLowerCase().includes(q)) : shown;
   try{ ltView = 'table'; }catch(e){}
   if(!ltSel && list.length) ltSel = list[0].id;
-  tbody.innerHTML =
-    `<div class="lt-wrap">
-      <div class="lt-list">
-        <div class="lt-search"><input placeholder="Name, email, phone, address"
-          value="${escapeHtml(ltQuery)}" oninput="ltFilter(this.value)"></div>
-        <table class="lt-tbl"><tbody>${ltRows(list)}</tbody></table>
-        ${list.length ? '' : '<div class="lt-empty">Nobody matches that.</div>'}
-      </div>
-      <div class="lt-panel" id="lt-panel"></div>
-     </div>`;
-  if(ltSel) ltPanel(ltSel);
+  /* \u26a0 A side panel needs a side. Below this width there is not one, and stacking it
+     under the TABLE put it eighteen rows down the page \u2014 built, rendered, and invisible.
+     Narrow screens get the detail directly under the row that was tapped instead. */
+  const wide = (typeof ltIsWide === 'function') ? ltIsWide() : true;
+  const phone = (typeof ltIsPhone === 'function') ? ltIsPhone() : false;
+  tbody.innerHTML = wide
+    ? `<div class="lt-wrap">
+        <div class="lt-list">
+          <div class="lt-search"><input placeholder="Name, email, phone, address"
+            value="${escapeHtml(ltQuery)}" oninput="ltFilter(this.value)"></div>
+          <table class="lt-tbl"><tbody>${ltRows(list)}</tbody></table>
+          ${list.length ? '' : '<div class="lt-empty">Nobody matches that.</div>'}
+        </div>
+        <div class="lt-panel" id="lt-panel"></div>
+       </div>`
+    : `<div class="lt-wrap narrow">
+        <div class="lt-list">
+          <div class="lt-search"><input placeholder="Name, email, phone, address"
+            value="${escapeHtml(ltQuery)}" oninput="ltFilter(this.value)"></div>
+          <table class="lt-tbl"><tbody>${ltRows(list, !phone)}</tbody></table>
+          ${list.length ? '' : '<div class="lt-empty">Nobody matches that.</div>'}
+        </div>
+       </div>`;
+  /* \u26a0 On a phone the detail is a sheet over the list, the way a phone app does it \u2014
+     eleven sections inlined under a row pushed the next person a whole screen away.
+     Rendered only when opened, so tapping a name is not a scroll. */
+  if(ltSel && !phone) ltPanel(ltSel);
+  if(phone && ltSheet) ltPanel(ltSel);
   try{ if(typeof ltAfterPaint === 'function') ltAfterPaint(); }catch(e){}
   return;
 }
@@ -21043,11 +21078,29 @@ async function ntToggle(k){
   padding-left:9px}
 #crm-main .lt-two{display:flex;gap:6px;margin-top:10px}
 #crm-main .lt-two .lt-sel{margin-top:0}
-@media(max-width:900px){
-  #crm-main .lt-wrap{flex-direction:column}
-  #crm-main .lt-list{border-right:0;border-bottom:1px solid var(--hair2)}
-  #crm-main .lt-panel{width:auto}
-}
+/* \u26a0 phone: a sheet over the list. Not position:fixed with a transform \u2014 an
+   overlay that animates in is where iOS Safari puts the address bar through it. Plain
+   fixed inset, scrolled internally, and the body underneath is locked. */
+#crm-main #lt-sheet{position:fixed;inset:0;background:var(--ivory,#FBFAF7);z-index:9400;
+  display:none;flex-direction:column}
+#crm-main #lt-sheet.on{display:flex}
+#crm-main #lt-sheet .lt-sheet-bar{flex:0 0 auto;padding:12px 14px;
+  border-bottom:1px solid var(--hair2);background:#fff}
+#crm-main #lt-sheet .lt-sheet-bar button{font:inherit;font-size:14px;font-weight:600;
+  border:0;background:transparent;color:var(--ink,#171F63);cursor:pointer;padding:4px 0}
+#crm-main #lt-sheet-body{flex:1 1 auto;overflow:auto;padding:14px 16px 40px}
+#crm-main #lt-sheet-body .lt-stack .btn-sm{text-align:center;padding:9px}
+#crm-main .lt-more{width:100%;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  background:#fff;border:1px solid var(--hair2);border-radius:4px;padding:8px;
+  color:var(--mut);margin-top:14px}
+#crm-main .lt-more:hover{color:var(--ink,#171F63);border-color:var(--gold,#C89B4E)}
+/* \u26a0 narrow: the panel is a row inside the table, not a column beside it */
+#crm-main .lt-wrap.narrow{display:block}
+#crm-main .lt-wrap.narrow .lt-list{border-right:0}
+#crm-main .lt-panel.narrow{width:auto;padding:14px 12px 16px;background:#FBFAF7;
+  border-top:1px solid var(--hair2)}
+#crm-main .lt-inline > td{padding:0;background:#FBFAF7}
+#crm-main .lt-panel.narrow .lt-stack .btn-sm{text-align:center}
 #crm-main .lc-when{font-size:11.5px;color:var(--mut);letter-spacing:.03em}
 #crm-main .lc-contact{font-size:12.5px;color:var(--mut);margin-top:4px}
 #crm-main .lc-msg{background:var(--pp);border-left:2px solid var(--hair);padding:9px 13px;
@@ -21788,11 +21841,14 @@ const QZ_SELL = [
            {v:'later',l:'Later this year'},
            {v:'looking',l:'Just curious what it is worth',d:'That is a perfectly good reason'} ] },
   { key:'situation', kind:'multi', title:'Anything we should know?',
-    sub:'None of this is a problem \u2014 it just changes the advice.', two:true,
-    opts:[ {v:'needs work',l:'It needs work'}, {v:'inherited',l:'Inherited property'},
+    sub:'None of this is a problem \u2014 it just changes the advice. Pick any, or none.',
+    two:true,
+    opts:[ {v:'nothing',l:'Nothing unusual, I just want to sell'},
+           {v:'needs work',l:'It needs work'}, {v:'inherited',l:'Inherited property'},
            {v:'tenants',l:'Tenants in place'}, {v:'relocating',l:'Relocating'},
            {v:'buying too',l:'Buying another at the same time'},
-           {v:'listed before',l:'It was listed before'} ] },
+           {v:'listed before',l:'It was listed before'},
+           {v:'other',l:'Something else \u2014 I will explain'} ] },
 ];
 
 function qzRender(){
@@ -21880,10 +21936,10 @@ function qzRenderContact(body, total){
   const ready = qzA.timeline === 'now';
   body.innerHTML =
     `<div class="qz-step">Last one</div>
-     <h3>${qzCash ? 'Where should we send the offers?'
+     <h3>${qzCash ? 'How do we reach you?'
         : qzPath==='sell' ? 'Where should we send it?' : 'Where should we send the matches?'}</h3>
      <p class="qz-sub">${qzCash
-        ? 'We will take your property to the cash buyers we deal with and come back with what they say, alongside what the open market looks like.'
+        ? 'The next step is a conversation, not an email. We will call to walk through the house and what the process actually involves, then take it to the cash buyers we deal with.'
         : qzPath==='sell'
         ? 'A real person puts this together \u2014 it is not an automated estimate.'
         : 'New listings that fit, as they come on. Unsubscribe any time, one click.'}</p>
@@ -22023,7 +22079,7 @@ function qzDone(alertLabel, saved){
       <div class="tick">\u2713</div>
       <h3>${saved ? 'Got it.' : 'Thank you.'}</h3>
       <p class="qz-sub">${qzCash
-        ? 'We will take this to the cash buyers we work with and come back with whatever they say, along with what we think the open market would pay.'
+        ? 'We will call you to walk through the house and talk through how this works. After that we take it to the cash buyers, and bring back what they say alongside what the open market would pay.'
         : qzPath==='sell'
         ? (ready ? 'Someone will call you today about the valuation.'
                  : 'We will put the numbers together and send them over shortly.')
@@ -23320,6 +23376,12 @@ const LT_SRC = {
   'alerts':      ['alerts', '#5A6178', '#F1F1F4'],
   'listing':     ['listing', '#1B4F8A', '#E8F1FB'],
   'import':      ['imported', '#5A6178', '#F1F1F4'],
+  /* Real sources seen in the first import. Anything unmapped still falls back to grey
+     with its own name, so a new source is never invisible — just uncoloured. */
+  'remax.com':     ['remax.com', '#1B4F8A', '#E8F1FB'],
+  'propertyboost': ['propertyboost', '#8A6A12', '#FFF7E4'],
+  'direct website':['website', '#1F6B49', '#E7F3EC'],
+  'office website':['website', '#1F6B49', '#E7F3EC'],
 };
 function ltSrcTag(s){
   const k = String(s || '').toLowerCase();
@@ -23327,7 +23389,37 @@ function ltSrcTag(s){
   return `<span class="lt-src" style="color:${hit[1]};background:${hit[2]}">${escapeHtml(hit[0])}</span>`;
 }
 
-function ltRows(list){
+/* \u26a0 One breakpoint, asked once and re-asked when it changes. Measuring the window on
+   every render and hoping is how a layout ends up half in one mode and half in the
+   other after a resize. */
+function ltIsWide(){
+  try{ return window.matchMedia('(min-width: 1040px)').matches; }catch(e){ return true; }
+}
+/* Three layouts, not two. Wide gets a side panel, a laptop at an awkward width gets the
+   detail under the row, and a phone gets a full sheet. */
+function ltIsPhone(){
+  try{ return window.matchMedia('(max-width: 700px)').matches; }catch(e){ return false; }
+}
+let ltSheet = false;
+let ltMore = false;
+
+function ltCloseSheet(){
+  ltSheet = false;
+  const s = document.getElementById('lt-sheet');
+  if(s) s.classList.remove('on');
+  document.body.style.overflow = '';
+}
+function ltToggleMore(){
+  ltMore = !ltMore;
+  if(ltSel) ltPanel(ltSel);
+}
+try{
+  window.matchMedia('(min-width: 1040px)').addEventListener('change', () => {
+    if(ltView === 'table' && typeof loadLeads === 'function') loadLeads();
+  });
+}catch(e){}
+
+function ltRows(list, inline){
   if(!list.length) return '';
   return list.map(l => {
     const sc = l.score || 0;
@@ -23341,12 +23433,26 @@ function ltRows(list){
       </td>
       <td class="lt-sc" style="color:${B.color}">${sc}</td>
       <td class="lt-w">${wait}</td>
-    </tr>`;
+    </tr>${inline && ltSel === l.id
+      ? `<tr class="lt-inline"><td colspan="3"><div class="lt-panel narrow" id="lt-panel"></div></td></tr>`
+      : ''}`;
   }).join('');
 }
 
 function ltPick(id){
   ltSel = id;
+  /* \u26a0 On narrow the detail lives inside the row, so the table has to be repainted to
+     move it. On wide only the panel changes and the list stays perfectly still, which
+     is the whole point of the side layout. */
+  if(ltIsPhone()){
+    ltSheet = true;
+    document.body.style.overflow = 'hidden';
+    const s = document.getElementById('lt-sheet');
+    if(s) s.classList.add('on');
+    ltPanel(id);
+    return;
+  }
+  if(!ltIsWide()){ if(typeof loadLeads === 'function') loadLeads(); return; }
   document.querySelectorAll('.lt-row').forEach(r => r.classList.remove('on'));
   const row = document.querySelector(`.lt-row[onclick*="${id}"]`);
   if(row) row.classList.add('on');
@@ -23357,7 +23463,7 @@ function ltFilter(v){ ltQuery = v; loadLeads(); }
 
 /* The panel. Everything the card had, plus the three things it never could do. */
 async function ltPanel(id){
-  const host = document.getElementById('lt-panel');
+  const host = document.getElementById('lt-sheet-body') || document.getElementById('lt-panel');
   if(!host) return;
   const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
   if(!l){ host.innerHTML = '<div class="lt-empty">Pick somebody on the left.</div>'; return; }
@@ -23419,19 +23525,22 @@ async function ltPanel(id){
         escapeHtml(new Date(l.welcomedAt).toLocaleDateString('en-US',
           { month:'short', day:'numeric' }))}</div>` : ''}
 
+     <button class="lt-more" onclick="ltToggleMore()">${ltMore
+       ? '\u2212 Less' : '+ Mark, type and history'}</button>
+     ${!ltMore ? '' : `
      <div class="lt-lab">Mark</div>
      <div class="lt-tags">${(typeof LS_QUICK !== 'undefined' ? LS_QUICK : []).map(q2 =>
        `<button class="lt-tag" onclick="lsLog('${l.id}','${q2[0]}')">${escapeHtml(q2[1])}</button>`).join('')}</div>
-
-     ${ev.length ? `<div class="lt-lab">What they have done</div>
-       <div class="lt-hist">${ev.map(e =>
-         escapeHtml((EVW[e.k] || e.k) + (e.note ? ' \u2014 ' + e.note : ''))).join('<br>')}</div>` : ''}
 
      <div class="lt-lab">Who they are</div>
      <div class="lt-tags">
        ${['buyer','seller','both'].map(t =>
          `<button class="lt-tag${(l.type||'')===t?' on':''}" onclick="ltSetType('${l.id}','${t}')">${t}</button>`).join('')}
      </div>
+
+     ${ev.length ? `<div class="lt-lab">What they have done</div>
+       <div class="lt-hist">${ev.map(e =>
+         escapeHtml((EVW[e.k] || e.k) + (e.note ? ' \u2014 ' + e.note : ''))).join('<br>')}</div>` : ''}`}
 
      <div class="lt-two">
        <select class="lt-sel" onchange="updateStage('${l.id}', this.value)">
