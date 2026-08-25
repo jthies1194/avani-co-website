@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v278">
+<meta name="build" content="index-v280">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -1469,6 +1469,8 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
         <a href="#" onclick="qzOpen('buy');return false;">Get new listings emailed to me</a>
         <span>&middot;</span>
         <a href="#" onclick="qzOpen('sell');return false;">What is my home worth?</a>
+        <span>&middot;</span>
+        <a href="#" onclick="qzOpen('cash');return false;">See a cash offer</a>
       </div>
     </div>
   </div>
@@ -1476,7 +1478,23 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   /* \u26a0 These were set as a quiet footnote and were genuinely hard to see against a
      photograph. They are one of the two things we actually want a stranger to do,
      so they are buttons now, not fine print. */
-  .hero-alt{margin-top:22px;display:flex;gap:12px;flex-wrap:wrap}
+  .cash-band{background:var(--ink,#171F63);color:#F5F3EC;padding:56px 0}
+.cash-inner{max-width:820px;margin:0 auto;padding:0 28px}
+.cash-eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-pale,#E6C381);
+  font-weight:700;margin-bottom:12px}
+.cash-band h2{font-family:'Fraunces',Georgia,serif;font-size:34px;line-height:1.2;
+  font-weight:400;margin:0 0 14px;color:#fff}
+.cash-lead{font-size:16.5px;line-height:1.75;color:rgba(245,243,236,.86);margin:0 0 24px;
+  max-width:640px}
+.cash-cta{display:inline-block;background:var(--gold-pale,#E6C381);color:#241A08;
+  text-decoration:none;padding:15px 30px;border-radius:4px;font-weight:700;font-size:15px}
+.cash-cta:hover{background:#fff}
+.cash-fine{font-size:12.5px;line-height:1.7;color:rgba(245,243,236,.62);margin:26px 0 0;
+  max-width:640px;padding-top:18px;border-top:1px solid rgba(245,243,236,.18)}
+.cash-fine strong{color:rgba(245,243,236,.85)}
+@media(max-width:700px){ .cash-band{padding:40px 0} .cash-band h2{font-size:27px}
+  .cash-inner{padding:0 22px} }
+.hero-alt{margin-top:22px;display:flex;gap:12px;flex-wrap:wrap}
   .hero-alt a{display:inline-block;font-size:15px;font-weight:600;letter-spacing:.02em;
     color:#fff;text-decoration:none;padding:13px 22px;border-radius:4px;
     border:1.5px solid rgba(255,255,255,.55);background:rgba(10,14,35,.34);
@@ -1991,6 +2009,24 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="comm-less" onclick="commToggle()">Show fewer</button>
       <div class="comm-hint">Or just type a place name into the search at the top.</div>
 </section>
+
+<!-- ⚠ Its own band rather than a fourth card in the one below. A cash offer is a
+     different question from "what is my home worth", and it carries a disclosure that
+     has to be read before somebody fills anything in — not after. -->
+<div class="cash-band" id="cash">
+  <div class="cash-inner">
+    <div class="cash-eb">For sellers</div>
+    <h2>Want to see a cash offer on your home?</h2>
+    <p class="cash-lead">Cash buyers are buyers like any other, and taking your property
+      to them is part of what a listing agent does. We will bring you what they offer and
+      what we think the open market would pay, and you decide. Most people find the second
+      number is higher. Some do not, and for those the certainty is worth it.</p>
+    <a class="cash-cta" href="#" onclick="qzOpen('cash');return false;">See what they would offer</a>
+    <p class="cash-fine"><strong>Who we work for:</strong> you. We act as your listing
+      agent and are paid from the sale, whoever ends up buying. No offer is promised and
+      no amount is real until it is in writing.</p>
+  </div>
+</div>
 
 <div class="lead-band" id="value">
 <div class="lead-band-inner">
@@ -3431,6 +3467,11 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
   cursor:pointer;padding:10px 4px}
 .qz-skip{margin-left:auto;font-size:12.5px;color:var(--mut,#7A8199);background:transparent;
   border:0;cursor:pointer;text-decoration:underline}
+/* \u26a0 The cash-offer disclosure. Body size, not fine print \u2014 it is the part that says
+   who we work for, and hiding it is exactly what makes these funnels a problem. */
+.qz-plain{background:#fff;border:1px solid rgba(20,26,60,.14);border-left:3px solid var(--ink,#171F63);
+  border-radius:4px;padding:14px 16px;margin:0 0 18px;font-size:13px;line-height:1.65;
+  color:var(--rl,#0E1433)}
 .qz-consent{display:flex;gap:9px;align-items:flex-start;margin:4px 0 18px}
 .qz-consent input{margin-top:3px;width:auto;flex:0 0 auto}
 .qz-consent label{font-size:11px;line-height:1.55;color:var(--mut,#7A8199);font-weight:400;
@@ -4571,7 +4612,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v278';
+window.BUILD = 'index-v280';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -21577,10 +21618,13 @@ function asRerun(){ asOut = null; asRenderPane(); }
 const QZ_TOWNS = ['Gulf Shores','Orange Beach','Fort Morgan','Fairhope','Foley','Daphne',
   'Spanish Fort','Elberta','Robertsdale','Perdido Key','Mobile','Pensacola area'];
 
-let qzPath = 'buy', qzStep = 0, qzA = {};
+let qzPath = 'buy', qzStep = 0, qzA = {}, qzCash = false;
 
 async function qzOpen(path){
-  qzPath = (path === 'sell') ? 'sell' : 'buy';
+  /* \u26a0 'cash' is the seller path wearing different words. One funnel, so the address,
+     timeline and situation questions cannot drift apart from the valuation version. */
+  qzCash = (path === 'cash');
+  qzPath = (path === 'sell' || path === 'cash') ? 'sell' : 'buy';
   qzStep = 0; qzA = {};
   /* \u26a0 Overlay FIRST, then fetch. Awaiting before this made the button feel dead on
      a slow connection \u2014 nothing happened until the request came back. The panel
@@ -21742,10 +21786,18 @@ function qzRenderContact(body, total){
   const ready = qzA.timeline === 'now';
   body.innerHTML =
     `<div class="qz-step">Last one</div>
-     <h3>${qzPath==='sell'?'Where should we send it?':'Where should we send the matches?'}</h3>
-     <p class="qz-sub">${qzPath==='sell'
+     <h3>${qzCash ? 'Where should we send the offers?'
+        : qzPath==='sell' ? 'Where should we send it?' : 'Where should we send the matches?'}</h3>
+     <p class="qz-sub">${qzCash
+        ? 'We will take your property to the cash buyers we deal with and come back with what they say, alongside what the open market looks like.'
+        : qzPath==='sell'
         ? 'A real person puts this together \u2014 it is not an automated estimate.'
         : 'New listings that fit, as they come on. Unsubscribe any time, one click.'}</p>
+     ${qzCash ? `<div class="qz-plain">
+        <b>Who we work for.</b> You. We act as your listing agent and are paid from the
+        sale, whoever ends up buying &mdash; so we have no reason to push you toward a cash
+        offer or away from one. No offer is promised, and no amount is real until it is in
+        writing. Worth comparing against what the open market would pay before you decide.</div>` : ''}
      <div class="qz-f"><label>Your name</label>
        <input id="qz-name" oninput="qzSyncSend()"></div>
      <div class="qz-f"><label>Email</label>
@@ -21820,8 +21872,10 @@ async function qzSend(){
   const lead = {
     id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000),
     name, email, phone,
-    message: (qzPath==='sell' ? 'Wants a valuation.\n' : 'Wants listing alerts.\n') + qzSummary(),
-    source: qzPath === 'sell' ? 'quiz-seller' : 'quiz-buyer',
+    message: (qzCash ? 'Asked for a cash offer.\n'
+             : qzPath==='sell' ? 'Wants a valuation.\n'
+             : 'Wants listing alerts.\n') + qzSummary(),
+    source: qzCash ? 'cash-offer' : (qzPath === 'sell' ? 'quiz-seller' : 'quiz-buyer'),
     type: qzPath === 'sell' ? 'seller' : 'buyer',
     mlsKey: '', listingLabel: '', stage: 'New', notes: '',
     lane: qzLane(qzA.timeline),
@@ -21874,7 +21928,9 @@ function qzDone(alertLabel, saved){
     `<div class="qz-done">
       <div class="tick">\u2713</div>
       <h3>${saved ? 'Got it.' : 'Thank you.'}</h3>
-      <p class="qz-sub">${qzPath==='sell'
+      <p class="qz-sub">${qzCash
+        ? 'We will take this to the cash buyers we work with and come back with whatever they say, along with what we think the open market would pay.'
+        : qzPath==='sell'
         ? (ready ? 'Someone will call you today about the valuation.'
                  : 'We will put the numbers together and send them over shortly.')
         : (alertLabel ? 'Your alerts are running.'
