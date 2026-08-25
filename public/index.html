@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v273">
+<meta name="build" content="index-v274">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2898,6 +2898,13 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
     the broker.</p>
   <div class="setup-body" id="nt-body">Loading&hellip;</div>
 </div>
+<div class="setup-panel broker-only" id="rs-panel">
+  <h3 class="sx-h">Clear the test data</h3>
+  <p class="sx-sub">Everything in here was seeded to prove the system works. Clearing it
+    before real leads arrive is what makes the numbers on Today mean something. Your
+    agents, settings, articles, tab layouts and outside tools are never touched.</p>
+  <div class="setup-body" id="rs-body">Loading&hellip;</div>
+</div>
 <div class="setup-panel" id="ql-panel">
   <h3 class="sx-h">Outside tools</h3>
   <p class="sx-sub">ShowingTime, Redex, Paragon, the MLS &mdash; whatever you open all day.
@@ -3053,6 +3060,19 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 #sec-content .vid-row .m{font-size:12px;color:var(--mut,#7A8199);margin-top:2px}
 #sec-content .vid-row .acts{display:flex;gap:6px;flex:0 0 auto}
 #sec-content .vid-none{font-size:13px;color:var(--mut,#7A8199);padding:10px 0}
+#sec-setup .rs-row{display:flex;align-items:center;gap:11px;padding:11px 13px;
+  background:#fff;border:1px solid rgba(20,26,60,.1);border-radius:5px;margin-bottom:7px;
+  cursor:pointer;font-size:14px}
+#sec-setup .rs-row.off{opacity:.45;cursor:default}
+#sec-setup .rs-row .l{flex:1 1 auto}
+#sec-setup .rs-row .n{font-weight:700;color:var(--mut,#7A8199)}
+#sec-setup .rs-warn{background:#FDF2F1;border-left:3px solid #8A2C22;border-radius:4px;
+  padding:12px 14px;margin:12px 0;font-size:13px;line-height:1.6}
+#sec-setup .rs-go{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#sec-setup .rs-go input{font:inherit;font-size:13.5px;padding:9px 11px;border-radius:4px;
+  border:1px solid rgba(20,26,60,.14);background:#fff;max-width:170px}
+#sec-setup #rs-btn:not(:disabled){background:#8A2C22;color:#fff;border-color:#8A2C22}
+#sec-setup .rs-none{font-size:13px;color:var(--mut,#7A8199);padding:10px 0}
 #sec-setup .ql-row{display:grid;grid-template-columns:1fr 1.6fr auto;gap:8px;margin-bottom:8px}
 @media(max-width:620px){ #sec-setup .ql-row{grid-template-columns:1fr} }
 #sec-setup .ql-row input{font:inherit;font-size:13.5px;padding:9px 11px;border-radius:4px;
@@ -4493,7 +4513,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v273';
+window.BUILD = 'index-v274';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -8022,6 +8042,7 @@ const FIND_INDEX = [
   ['sec-setup','Can the world find this site?','site mode private public search engines google index indexed discoverable robots sitemap seo hidden'],
   ['sec-setup','The questions people are asked','quiz questions edit wording buyer seller funnel form screens ask'],
   ['sec-setup','Outside tools','showingtime redex paragon gcmls perchwell mls links shortcuts tabs external tools'],
+  ['sec-setup','Clear the test data','reset wipe clear test dummy fake seeded sample start fresh empty delete demo data'],
   ['sec-assist','Assistant','assistant ai claude draft write follow up followup listing description copy ask my leads'],
   ['sec-agents','Agents','agents team roster add agent commission plan preview as'],
   ['sec-agents','Award tiers','awards tiers bronze silver gold platinum volume recognition where the bar sits'],
@@ -8326,6 +8347,7 @@ function showCrmSection(id){
       if(typeof renderNotify === 'function') renderNotify();
       if(typeof renderSiteMode === 'function') renderSiteMode();
       if(typeof renderQuickLinks === 'function') renderQuickLinks();
+      if(typeof renderReset === 'function') renderReset();
       if(typeof renderQuizEdit === 'function') renderQuizEdit();
       if(typeof renderIdeas === 'function') renderIdeas(); }
     if(id === 'sec-reviews'){
@@ -22594,6 +22616,90 @@ async function qlSave(which){
     qlPaint();
     showToast('Saved \u2014 on your tab row now.');
   }catch(e){ showToast(e.message); }
+}
+
+/* ==================== CLEARING THE TEST DATA (index 274) ====================
+   \u26a0 The counts come from the server before anything is offered, so what is on screen
+   is what is actually there \u2014 not a guess, and not a list of categories that might be
+   empty. A destructive action with nothing shown in front of it is how the wrong box
+   gets ticked. */
+let rsGroups = [], rsPick = [], rsBusy = false;
+
+async function renderReset(){
+  const host = document.getElementById('rs-body');
+  if(!host) return;
+  try{
+    const r = await fetch('/api/reset/preview');
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not read that.');
+    rsGroups = d.groups || [];
+  }catch(e){ host.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`; return; }
+
+  const total = rsGroups.reduce((a,g) => a + (g.count||0), 0);
+  if(!total){
+    host.innerHTML = '<div class="rs-none">Nothing to clear \u2014 there are no records of '
+      + 'these kinds in the database.</div>';
+    return;
+  }
+  host.innerHTML =
+    rsGroups.map(g => `<label class="rs-row${g.count ? '' : ' off'}">
+      <input type="checkbox" ${g.count ? '' : 'disabled'}
+        ${rsPick.includes(g.key) ? 'checked' : ''}
+        onchange="rsToggle('${g.key}', this.checked)">
+      <span class="l">${escapeHtml(g.label)}</span>
+      <span class="n">${g.count}</span>
+    </label>`).join('')
+    + `<div class="rs-warn">
+        <b>This cannot be undone.</b> Agents, settings, articles, tab layouts and outside
+        tools are never touched \u2014 only the records ticked above.</div>
+       <div class="rs-go">
+         <input id="rs-confirm" placeholder="Type DELETE" autocomplete="off"
+           oninput="rsSync()">
+         <button class="btn-sm" id="rs-btn" onclick="rsRun()" disabled>Clear them</button>
+       </div>`;
+  rsSync();
+}
+
+function rsToggle(k, on){
+  const i = rsPick.indexOf(k);
+  if(on && i < 0) rsPick.push(k);
+  if(!on && i >= 0) rsPick.splice(i, 1);
+  rsSync();
+}
+
+/* \u26a0 Both conditions, every time: something ticked AND the word typed. */
+function rsSync(){
+  const btn = document.getElementById('rs-btn');
+  if(!btn) return;
+  const typed = (document.getElementById('rs-confirm')?.value || '').trim() === 'DELETE';
+  btn.disabled = !(typed && rsPick.length);
+  const n = rsGroups.filter(g => rsPick.includes(g.key)).reduce((a,g) => a + (g.count||0), 0);
+  btn.textContent = n ? `Clear ${n} record${n===1?'':'s'}` : 'Clear them';
+}
+
+async function rsRun(){
+  if(rsBusy) return;
+  rsBusy = true;
+  const btn = document.getElementById('rs-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Clearing\u2026'; }
+  try{
+    const r = await fetch('/api/reset', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ groups: rsPick, confirm: 'DELETE' }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not clear those.');
+    rsPick = [];
+    showToast(d.deleted ? `Cleared ${d.deleted} record${d.deleted===1?'':'s'}.`
+                        : (d.note || 'Nothing to clear.'));
+    renderReset();
+    /* Everything on screen was counting the records that just went. */
+    try{ if(typeof loadLeads === 'function') loadLeads(); }catch(e){}
+    try{ if(typeof renderWhatNeeds === 'function') renderWhatNeeds(); }catch(e){}
+  }catch(e){ showToast(e.message); }
+  finally{
+    rsBusy = false;
+    rsSync();
+  }
 }
 </script>
 
