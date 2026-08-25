@@ -5160,7 +5160,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v130',
+    serverVersion: 'v131',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6261,6 +6261,115 @@ function letterText(s, first, sender, origin, unsub) {
 }
 
 /* Who would get it, and what each of them would see. Changes nothing. */
+
+/* ==================== THE WELCOME (server 131) ====================
+   An introduction for people who are already in the database but have never heard
+   from the site \u2014 imports from a previous system, an old spreadsheet, anybody added
+   by hand. Everything built so far assumes a lead arrived through the site and knows
+   what it is. Eighteen imported names do not.
+
+   \u26a0 Sent once per person, ever. `welcomedAt` on the record is the guard, so an import
+   run twice or a second press of the button cannot introduce somebody twice.
+
+   \u26a0 This is a marketing send under CAN-SPAM: real postal address, honest subject,
+   working unsubscribe. All three below, none of them optional. It goes only to people
+   already in the database with an existing relationship \u2014 never a purchased list. */
+
+app.post('/api/welcome/preview', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+  const mine = (data || []).map(x => x.value).filter(Boolean)
+    .filter(l => isStaff(sess) || l.assignedAgentId === sess.agentId);
+  const eligible = mine.filter(l => l.email && !l.unsubscribed && !l.welcomedAt);
+  res.json({ ok: true,
+    eligible: eligible.length,
+    already: mine.filter(l => l.welcomedAt).length,
+    noEmail: mine.filter(l => !l.email).length,
+    unsubscribed: mine.filter(l => l.unsubscribed).length,
+    sample: eligible.slice(0, 8).map(l => ({ name: l.name || '(no name)', email: l.email })) });
+});
+
+function welcomeText(lead, sender, origin, slug, unsub) {
+  const first = String(lead.name || '').trim().split(/\s+/)[0] || 'there';
+  const link = origin + (slug ? '/?agent=' + encodeURIComponent(slug) : '/');
+  const town = (typeof leadTown === 'function') ? leadTown(lead) : '';
+  return [
+    `Hi ${first},`,
+    '',
+    `I have put our listings online in one place, and I wanted you to have the address`,
+    `before anybody else does.`,
+    '',
+    link,
+    '',
+    `You can search every active listing on the coast${town ? ', including ' + town : ''} \u2014 no`,
+    `sign-in needed to look around. If you make a free account it will remember your`,
+    `favourites and email you when something new comes up that fits.`,
+    '',
+    `No obligation and nothing automated at you. If you would rather I just called when`,
+    `something good turns up, reply and say so and I will.`,
+    '',
+    '\u2014',
+    sender.name || '',
+    BROKERAGE_NAME,
+    BROKERAGE_PHONE,
+    BROKERAGE_ADDRESS,
+    '',
+    DISCLAIMER_GENERAL,
+    '',
+    `Not interested in emails from us? ${unsub}`,
+  ].join('\n');
+}
+
+app.post('/api/welcome/send', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mailer) return res.status(503).json({ error: 'Email is not configured.' });
+
+  /* \u26a0 Capped, like the market letter. This is very often the first real send from a
+     brand-new domain, which is exactly when a large batch does the most damage. */
+  const cap = Math.min(Math.max(parseInt((req.body || {}).cap, 10) || 25, 1), 200);
+  const only = Array.isArray((req.body || {}).leadIds) ? (req.body || {}).leadIds : null;
+
+  const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const slug = slugify(sess.name || '');
+
+  const queue = [];
+  for (const row of (data || [])) {
+    const l = row.value;
+    if (!l || !l.email || l.unsubscribed || l.welcomedAt) continue;
+    if (!isStaff(sess) && l.assignedAgentId !== sess.agentId) continue;
+    if (only && !only.includes(l.id)) continue;
+    queue.push({ key: row.key, lead: l });
+    if (queue.length >= cap) break;
+  }
+  if (!queue.length) return res.json({ ok: true, sent: 0, note: 'Everybody has already had one.' });
+
+  let sent = 0, failed = 0;
+  for (let i = 0; i < queue.length; i += 8) {
+    await Promise.all(queue.slice(i, i + 8).map(async ({ key, lead }) => {
+      const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+      try {
+        await mailer.sendMail({
+          to: lead.email,
+          marketing: true,
+          subject: `Every listing on the coast, in one place`,
+          text: welcomeText(lead, sess, origin, slug, unsub),
+        });
+        sent++;
+        lead.welcomedAt = new Date().toISOString();
+        lead.events = Array.isArray(lead.events) ? lead.events : [];
+        lead.events.push({ k: 'welcomed', at: lead.welcomedAt });
+        await setSetting(key, lead);
+      } catch (e) { failed++; console.error('[welcome]', lead.email, e.message); }
+    }));
+    if (i + 8 < queue.length) await new Promise(r => setTimeout(r, 900));
+  }
+  console.log(`[welcome] ${sent} sent, ${failed} failed, by ${sess.name || sess.agentId}`);
+  res.json({ ok: true, sent, failed });
+});
+
 app.post('/api/market-letter/preview', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
