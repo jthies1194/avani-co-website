@@ -4987,7 +4987,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v127',
+    serverVersion: 'v128',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5825,6 +5825,130 @@ function cleanLinks(raw) {
   }
   return out;
 }
+
+
+/* ==================== CLEARING THE TEST DATA (server 128) ====================
+   Everything in here was seeded to prove the system works. Left in place it makes the
+   first real week unreadable: "12 new leads" means nothing if eleven are invented, and
+   the counters on Today go back to being numbers nobody trusts.
+
+   \u26a0 THIS DELETES THINGS AND CANNOT BE UNDONE. Three guards, in this order:
+   1. Broker only. Not isStaff \u2014 an admin should not be able to empty the database.
+   2. A preview endpoint that COUNTS what would go, per category, changing nothing.
+      A destructive action with no preview is how the wrong category gets picked.
+   3. The word DELETE, typed. Not a checkbox, not an "are you sure" \u2014 both of those
+      get clicked through.
+
+   \u26a0 WHAT IS DELIBERATELY NEVER TOUCHED, whatever is selected:
+   agents, agent profiles and HR records, per-agent tab preferences and notification
+   settings, articles, quiz wording, outside-tool links, site mode, award tiers,
+   playbooks, the reel, testimonials, resource links, drip campaign definitions, and
+   every other configuration key. Configuration is the work; records are the test. */
+
+const RESET_GROUPS = {
+  leads: {
+    label: 'Leads and their alerts',
+    prefixes: ['lead:', 'savedSearch:', 'ssTok:'],
+    settings: ['settings:leadArchive'],
+  },
+  deals: {
+    label: 'Deals, commissions and expenses',
+    prefixes: ['agentDeals:'],
+    settings: ['settings:closedDeals', 'settings:closedYears', 'settings:expenses',
+               'settings:dealSubmissions', 'settings:agentPlanHistory'],
+  },
+  sends: {
+    label: 'Valuations, videos, open houses and sends',
+    prefixes: ['cma:', 'cmafile:', 'cmaTok:', 'promo:', 'promoTok:',
+               'tracker:', 'trackerTok:', 'openHouse:', 'ohTok:'],
+    settings: ['settings:broadcasts'],
+  },
+  clients: {
+    label: 'Client accounts and their sessions',
+    prefixes: ['client:', 'clientSession:', 'clientReset:'],
+    settings: [],
+  },
+  tasks: {
+    label: 'Task lists and suggestions',
+    prefixes: ['crmTasks:'],
+    settings: ['settings:ideas'],
+  },
+};
+
+/* \u26a0 A key must match a prefix EXACTLY at the start. 'cma:' must not sweep up
+   'cmafile:' by accident \u2014 they are listed separately on purpose, and a startsWith
+   on a shorter prefix elsewhere is how a delete quietly takes more than it named. */
+async function resetScan(groups) {
+  if (!supabase) return { rows: [], counts: {} };
+  const { data, error } = await supabase.from(KV_TABLE).select('key');
+  if (error) throw new Error(error.message);
+  const all = (data || []).map(r => r.key).filter(Boolean);
+  const rows = [];
+  const counts = {};
+  for (const g of groups) {
+    const def = RESET_GROUPS[g];
+    if (!def) continue;
+    const hit = all.filter(k =>
+      def.prefixes.some(p => k.startsWith(p)) || def.settings.includes(k));
+    counts[g] = hit.length;
+    rows.push(...hit);
+  }
+  return { rows: [...new Set(rows)], counts };
+}
+
+app.get('/api/reset/preview', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role !== 'broker') return res.status(403).json({ error: 'Broker only.' });
+  try {
+    const all = Object.keys(RESET_GROUPS);
+    const { counts } = await resetScan(all);
+    res.json({ ok: true,
+      groups: all.map(g => ({ key: g, label: RESET_GROUPS[g].label, count: counts[g] || 0 })) });
+  } catch (e) {
+    console.error('[reset preview]', e.message);
+    res.status(500).json({ error: 'Could not read the database.' });
+  }
+});
+
+app.post('/api/reset', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (sess.role !== 'broker') return res.status(403).json({ error: 'Broker only.' });
+
+  const b = req.body || {};
+  if (String(b.confirm || '').trim() !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm.' });
+  }
+  const groups = (Array.isArray(b.groups) ? b.groups : []).filter(g => RESET_GROUPS[g]);
+  if (!groups.length) return res.status(400).json({ error: 'Nothing was selected.' });
+
+  let rows;
+  try { ({ rows } = await resetScan(groups)); }
+  catch (e) {
+    console.error('[reset]', e.message);
+    return res.status(500).json({ error: 'Could not read the database.' });
+  }
+  if (!rows.length) {
+    return res.json({ ok: true, deleted: 0, note: 'There was nothing there to remove.' });
+  }
+
+  /* \u26a0 Logged BEFORE the delete and in full. If this ever removes something it should
+     not have, the log is the only record of what was there. */
+  console.warn(`[reset] ${sess.name || sess.agentId} is deleting ${rows.length} record(s) `
+    + `across [${groups.join(', ')}]`);
+
+  let deleted = 0;
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    const { error } = await supabase.from(KV_TABLE).delete().in('key', chunk);
+    if (error) {
+      console.error(`[reset] FAILED after ${deleted}:`, error.message);
+      return res.status(500).json({ error: `Removed ${deleted}, then hit an error. Run it again.` });
+    }
+    deleted += chunk.length;
+  }
+  console.warn(`[reset] done \u2014 ${deleted} record(s) removed by ${sess.name || sess.agentId}`);
+  res.json({ ok: true, deleted });
+});
 
 app.get('/api/quick-links', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
