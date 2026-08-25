@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v271">
+<meta name="build" content="index-v272">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -3070,19 +3070,25 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
   padding:13px 14px;font-family:'Jost',sans-serif;font-size:15px;font-weight:500;
   color:var(--driftwood);cursor:pointer;transition:.2s;margin-bottom:-2px;
   display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
-  text-decoration:none;opacity:.62}
+  text-decoration:none}
+/* \u26a0 First pass at this was opacity:.62 on an already-muted color, which read as
+   DISABLED \u2014 the worst of the three possible readings, worse than too loud. These
+   are live links people are meant to click. Full strength, gold icon like a real tab,
+   and the only thing marking them as different is the arrow. */
 #crm-nav .crm-ext .ti{display:inline-flex;align-items:center;justify-content:center;
-  width:26px;height:26px;border-radius:8px;color:var(--driftwood);
-  background:rgba(255,255,255,.07);transition:.2s}
+  width:26px;height:26px;border-radius:8px;color:var(--gold-pale,#E6C381);
+  background:rgba(230,195,129,.14);transition:.2s}
 #crm-nav .crm-ext .ti svg{width:15px;height:15px}
 /* long names get cut rather than pushing the row apart — "PERCHWELL MLS LOGIN" was
    wider than three real tabs put together */
-#crm-nav .crm-ext .tl{max-width:11ch;overflow:hidden;text-overflow:ellipsis;
+/* 11ch cut "ShowingTime" down to "Showin\u2026", which is not a word. 15 leaves the
+   common ones whole and still stops a long one wrecking the row. */
+#crm-nav .crm-ext .tl{max-width:15ch;overflow:hidden;text-overflow:ellipsis;
   text-transform:none;letter-spacing:0}
-#crm-nav .crm-ext::after{content:'\2197';font-size:11px;opacity:.5;margin-left:-3px}
-#crm-nav .crm-ext:hover{opacity:1;color:var(--sand-light,#EDE9DD)}
-#crm-nav .crm-ext:hover .ti{background:rgba(255,255,255,.14)}
-@media(max-width:820px){ #crm-nav .crm-ext .tl{max-width:8ch} }
+#crm-nav .crm-ext::after{content:'\2197';font-size:11px;opacity:.55;margin-left:-2px}
+#crm-nav .crm-ext:hover{color:var(--gold-pale,#E6C381)}
+#crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.26)}
+@media(max-width:820px){ #crm-nav .crm-ext .tl{max-width:10ch} }
 #tc-pop .tc-fav{display:block;width:100%;text-align:left;font:inherit;font-size:12.5px;
   font-weight:600;cursor:pointer;background:#fff;border:1px solid rgba(27,32,67,.18);
   border-radius:5px;padding:8px 10px;margin-bottom:10px;color:#1B2043}
@@ -4487,7 +4493,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v271';
+window.BUILD = 'index-v272';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
