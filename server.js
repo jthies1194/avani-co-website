@@ -617,22 +617,10 @@ app.get('/api/market-stats', async (req, res) => {
   }
 
   try {
-    // pull the Baldwin market in bulk, then compute locally
-    const rows = [];
-    const PAGE = 200;
-    for (let skip = 0; skip < 1200; skip += PAGE) {
-      const filter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
-      const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-        + `?access_token=${encodeURIComponent(token)}`
-        + `&$filter=${encodeURIComponent(filter)}`
-        + `&$orderby=ModificationTimestamp desc&$top=${PAGE}&$skip=${skip}`;
-      const r = await fetch(url);
-      if (!r.ok) break;
-      const j = await r.json();
-      const v = j.value || [];
-      rows.push(...v);
-      if (v.length < PAGE) break;
-    }
+    /* \u26a0 One pull, shared with the monthly market letter. Two functions computing
+       "the market" from two separate fetches is how the letter says 47 homes and the
+       website says 45 on the same morning. */
+    const rows = await marketRows();
 
     const now = Date.now();
     const daysAgo = iso => iso ? (now - new Date(iso).getTime()) / 86400000 : 9999;
@@ -677,7 +665,9 @@ app.get('/api/market-stats', async (req, res) => {
       byCity,
       byType,
     };
-    marketCache = { data: payload, at: Date.now() };
+    /* \u26a0 Merge, do not replace \u2014 reassigning the whole object dropped the shared
+       rows and made the next letter re-pull 1,200 records for nothing. */
+    marketCache.data = payload; marketCache.at = Date.now();
     console.log(`[market-stats] ${priced.length} active Baldwin listings, median ${payload.overall.median}`);
     res.json(payload);
   } catch (e) {
@@ -4987,7 +4977,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v128',
+    serverVersion: 'v129',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -5948,6 +5938,258 @@ app.post('/api/reset', async (req, res) => {
   }
   console.warn(`[reset] done \u2014 ${deleted} record(s) removed by ${sess.name || sess.agentId}`);
   res.json({ ok: true, deleted });
+});
+
+
+/* ==================== THE MONTHLY MARKET LETTER (server 129) ====================
+   The thing that runs whether or not anybody remembers. One email a month per person,
+   about the town they told us they care about, built from live inventory at the moment
+   of sending.
+
+   \u26a0 Why this and not another lead source: the scoring engine, the lane engine and the
+   click tracking are all built and all idle, because nothing goes out. A database
+   nobody touches produces no signals, so the machinery that finds warm people has
+   nothing to work with. Someone who opens three months running and then clicks two
+   listings is a person about to move \u2014 and that is a daily viable lead the agent
+   already knows, rather than a stranger who has to be bought.
+
+   \u26a0 ACTIVE DATA ONLY. Everything here \u2014 counts, ranges, new this month, price cuts,
+   days on market \u2014 comes from active listings, because that is the feed we have. It
+   never says what anything SOLD for. Sellers want that number most; it needs the
+   closed data we declined to buy, and inventing it is not an option.
+
+   \u26a0 Nothing sends itself without being asked. There is no cron on this host, so this
+   is a route the broker triggers. That is a feature, not a gap: a letter that goes out
+   monthly on its own, to a list nobody re-read, is how a brokerage ends up apologising. */
+
+const LETTER_LOG = 'settings:marketLetters';
+
+/* ⚠ The bulk pull that /api/market-stats already does, lifted out so the letter and
+   the stats page cannot drift apart — two functions computing "the market" from two
+   different pulls is how a letter says 47 and the website says 45. */
+async function marketRows() {
+  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
+  if (!token || !dataset) throw new Error('MLS not configured.');
+  if (marketCache.rows && Date.now() - marketCache.rowsAt < 30 * 60 * 1000) return marketCache.rows;
+  const rows = [];
+  const PAGE = 200;
+  for (let skip = 0; skip < 1200; skip += PAGE) {
+    const filter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
+    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+      + `?access_token=${encodeURIComponent(token)}`
+      + `&$filter=${encodeURIComponent(filter)}`
+      + `&$orderby=ModificationTimestamp desc&$top=${PAGE}&$skip=${skip}`;
+    const r = await fetch(url);
+    if (!r.ok) break;
+    const j = await r.json();
+    const v = j.value || [];
+    rows.push(...v);
+    if (v.length < PAGE) break;
+  }
+  marketCache.rows = rows;
+  marketCache.rowsAt = Date.now();
+  return rows;
+}
+
+/* Which town a person actually cares about. The quiz asks directly, so that answer
+   wins; otherwise fall back to a saved search or the listing they enquired about.
+   ⚠ Returns '' rather than guessing. Somebody with no town gets no letter, which is
+   better than a letter about the wrong place. */
+function leadTown(l) {
+  if (!l) return '';
+  const q = l.quiz || {};
+  if (Array.isArray(q.cities) && q.cities.length) return String(q.cities[0]);
+  const c = l.criteria || {};
+  if (Array.isArray(c.cities) && c.cities.length) return String(c.cities[0]);
+  if (c.city) return String(c.city);
+  if (l.city) return String(l.city);
+  /* "412 Sandpiper Ln, Gulf Shores" — the town is what follows the last comma. */
+  const label = String(l.listingLabel || '');
+  if (label.includes(',')) {
+    const tail = label.split(',').pop().trim().replace(/\s+[A-Z]{2}\s*\d{0,5}$/, '').trim();
+    if (tail) return tail;
+  }
+  return '';
+}
+
+
+
+/* One town, from the rows already pulled for market-stats. */
+function letterTownStats(rows, town) {
+  const now = Date.now();
+  const days = iso => iso ? (now - new Date(iso).getTime()) / 86400000 : 9999;
+  const subset = rows.filter(r =>
+    String(r.City || '').toLowerCase() === String(town).toLowerCase() && Number(r.ListPrice) > 0);
+  if (!subset.length) return null;
+  const prices = subset.map(r => Number(r.ListPrice)).sort((a, b) => a - b);
+  const mid = prices[Math.floor(prices.length / 2)];
+  const dom = subset.map(r => days(r.OnMarketDate || r.ModificationTimestamp))
+    .filter(d => d < 3650).sort((a, b) => a - b);
+  return {
+    town,
+    count: subset.length,
+    low: prices[0],
+    high: prices[prices.length - 1],
+    median: mid,
+    new30: subset.filter(r => days(r.OnMarketDate || r.ModificationTimestamp) <= 30).length,
+    /* A price cut is the most honest signal in an active-only feed: it says the
+       market disagreed with somebody. */
+    cut: subset.filter(r => Number(r.OriginalListPrice) > Number(r.ListPrice)).length,
+    medianDom: dom.length ? Math.round(dom[Math.floor(dom.length / 2)]) : 0,
+  };
+}
+
+function money(n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+
+function letterText(s, first, sender, origin, unsub) {
+  const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const lines = [
+    `Hi ${first},`,
+    '',
+    `Here is where ${s.town} stands as of ${month}.`,
+    '',
+    `\u00b7 ${s.count} home${s.count === 1 ? '' : 's'} on the market right now`,
+    `\u00b7 From ${money(s.low)} to ${money(s.high)}, with the midpoint around ${money(s.median)}`,
+    s.new30 ? `\u00b7 ${s.new30} came on in the last 30 days` : '',
+    s.cut ? `\u00b7 ${s.cut} ${s.cut === 1 ? 'has' : 'have'} dropped their asking price` : '',
+    s.medianDom ? `\u00b7 The typical one has been listed about ${s.medianDom} days` : '',
+    '',
+    'That is every active listing, counted this morning, not an estimate.',
+    '',
+    `See them: ${origin}/homes/${slugify(s.town)}`,
+    '',
+    'If you want to know what any particular one would mean for you, just reply.',
+    '',
+    '\u2014',
+    sender.name || '',
+    BROKERAGE_NAME,
+    BROKERAGE_PHONE,
+    BROKERAGE_ADDRESS,
+    '',
+    /* \u26a0 Said plainly, because a market letter that omits it implies sold prices are in
+       there somewhere. They are not. */
+    'These figures cover homes currently for sale. They do not include sale prices.',
+    '',
+    DISCLAIMER_GENERAL,
+    '',
+    `No longer want these? ${unsub}`,
+  ];
+  return lines.filter(l => l !== '').join('\n').replace(/\n\u2014\n/, '\n\n\u2014\n');
+}
+
+/* Who would get it, and what each of them would see. Changes nothing. */
+app.post('/api/market-letter/preview', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+
+  let rows;
+  try { rows = await marketRows(); }
+  catch (e) {
+    console.error('[letter] feed:', e.message);
+    return res.status(502).json({ error: 'Could not reach the MLS feed.' });
+  }
+
+  const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+  const all = (data || []).map(x => x.value).filter(Boolean);
+  const mine = all.filter(l => isStaff(sess) || l.assignedAgentId === sess.agentId);
+
+  const byTown = {};
+  let noTown = 0, noEmail = 0, unsubbed = 0;
+  for (const l of mine) {
+    if (!l.email) { noEmail++; continue; }
+    if (l.unsubscribed) { unsubbed++; continue; }
+    const town = leadTown(l);
+    if (!town) { noTown++; continue; }
+    (byTown[town] = byTown[town] || []).push(l);
+  }
+
+  const towns = Object.keys(byTown).sort().map(t => {
+    const s = letterTownStats(rows, t);
+    return { town: t, people: byTown[t].length, hasData: !!s,
+      count: s ? s.count : 0, median: s ? s.median : 0 };
+  });
+
+  res.json({ ok: true, towns,
+    skipped: { noTown, noEmail, unsubscribed: unsubbed },
+    reachable: towns.filter(t => t.hasData).reduce((a, t) => a + t.people, 0) });
+});
+
+app.post('/api/market-letter/send', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mailer) return res.status(503).json({ error: 'Email is not configured.' });
+
+  const b = req.body || {};
+  const towns = (Array.isArray(b.towns) ? b.towns : []).map(t => String(t).slice(0, 60));
+  if (!towns.length) return res.status(400).json({ error: 'Pick at least one town.' });
+  /* \u26a0 A ceiling, on purpose. The brokerage's sending domain is new and has no
+     reputation; the first months should be tens, not hundreds. Raise it deliberately
+     rather than discovering the limit through a spam folder. */
+  const cap = Math.min(Math.max(parseInt(b.cap, 10) || 30, 1), 400);
+
+  let rows;
+  try { rows = await marketRows(); }
+  catch (e) { return res.status(502).json({ error: 'Could not reach the MLS feed.' }); }
+
+  const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const month = new Date().toISOString().slice(0, 7);
+
+  const queue = [];
+  for (const row of (data || [])) {
+    const l = row.value;
+    if (!l || !l.email || l.unsubscribed) continue;
+    if (!isStaff(sess) && l.assignedAgentId !== sess.agentId) continue;
+    const town = leadTown(l);
+    if (!town || !towns.includes(town)) continue;
+    /* \u26a0 Once per person per month, whatever else happens. Pressing the button twice
+       must not send the same letter twice. */
+    if (l.lastLetter === month) continue;
+    const s = letterTownStats(rows, town);
+    if (!s) continue;
+    queue.push({ key: row.key, lead: l, stats: s });
+    if (queue.length >= cap) break;
+  }
+
+  if (!queue.length) {
+    return res.json({ ok: true, sent: 0, note: 'Nobody is due one this month.' });
+  }
+
+  let sent = 0, failed = 0;
+  for (let i = 0; i < queue.length; i += 8) {
+    const chunk = queue.slice(i, i + 8);
+    await Promise.all(chunk.map(async ({ key, lead, stats }) => {
+      const first = String(lead.name || '').trim().split(/\s+/)[0] || 'there';
+      const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+      try {
+        await mailer.sendMail({
+          to: lead.email,
+          marketing: true,
+          subject: `${stats.town} \u2014 ${stats.count} homes on the market right now`,
+          text: letterText(stats, first, sess, origin, unsub),
+        });
+        sent++;
+        lead.lastLetter = month;
+        lead.events = Array.isArray(lead.events) ? lead.events : [];
+        lead.events.push({ k: 'letter_sent', at: new Date().toISOString(), note: stats.town });
+        await setSetting(key, lead);
+      } catch (e) {
+        failed++;
+        console.error('[letter]', lead.email, e.message);
+      }
+    }));
+    if (i + 8 < queue.length) await new Promise(r => setTimeout(r, 900));
+  }
+
+  try {
+    const log = (await getSetting(LETTER_LOG)) || [];
+    log.unshift({ at: new Date().toISOString(), by: sess.name || sess.agentId,
+      month, towns, sent, failed });
+    await setSetting(LETTER_LOG, log.slice(0, 60));
+  } catch (e) {}
+
+  console.log(`[letter] ${month}: ${sent} sent, ${failed} failed, by ${sess.name || sess.agentId}`);
+  res.json({ ok: true, sent, failed });
 });
 
 app.get('/api/quick-links', async (req, res) => {
