@@ -4205,6 +4205,10 @@ function speedToLeadHtml(b, origin) {
   const phone = String(b.phone || '').replace(/[^0-9+]/g, '');
   const tone = u && u.rank >= 3 ? '#8A2C22' : u && u.rank === 2 ? '#C9971F' : '#3D456B';
 
+  /* \u26a0 The claim link is the whole point of this email on a phone: one tap, no
+     sign-in, no CRM. The token in the URL is the authorisation. */
+  const claimUrl = b.id ? `${origin}/claim/${encodeURIComponent(b.id)}/${claimToken(b.id)}` : '';
+
   const btn = (href, label, bg, fg) =>
     `<a href="${href}" style="display:inline-block;background:${bg};color:${fg};
       text-decoration:none;padding:14px 22px;border-radius:4px;font:700 15px/1 Arial,Helvetica,sans-serif;
@@ -4231,7 +4235,12 @@ function speedToLeadHtml(b, origin) {
   ${b.message ? `<tr><td style="padding:12px 18px 0;
     font:400 14px/1.6 Arial,Helvetica,sans-serif;color:#3D456B">
     &ldquo;${esc(String(b.message).slice(0, 400))}&rdquo;</td></tr>` : ''}
-  <tr><td style="padding:18px 18px 4px">
+  ${claimUrl ? `<tr><td style="padding:16px 18px 0">
+    ${btn(claimUrl, 'Claim this lead', '#171F63', '#ffffff')}
+    <div style="font:400 13px/1.6 Arial,Helvetica,sans-serif;color:#7A8199;margin-top:2px">
+      Claim within ${CLAIM_MINUTES} minutes or it goes back to the broker.</div>
+  </td></tr>` : ''}
+  <tr><td style="padding:14px 18px 4px">
     ${phone ? btn('tel:' + phone, 'Call ' + esc(b.phone), '#1F6B49', '#ffffff') : ''}
     ${b.email ? btn('mailto:' + esc(b.email), 'Email them', '#C89B4E', '#241A08') : ''}
   </td></tr>
@@ -4260,6 +4269,164 @@ function speedToLeadSms(b) {
   ].filter(Boolean).join(' - ').slice(0, 140);
 }
 
+
+/* ==================== CLAIMING A LEAD (server 130) ====================
+   A lead arrives, the assigned agent gets an email with a Claim button. Tap it and it
+   is theirs. Ignore it and after the window it comes back to the broker to decide.
+
+   \u26a0 The timer lives IN THIS PROCESS, not in a browser. The clocks on the CRM screen
+   \u2014 the timezone strip, the waiting badges \u2014 all tick in JavaScript on whoever has
+   the page open, and stop when the tab closes. They are displays, not schedulers.
+   This is setInterval on the server, which runs whether or not anybody is looking.
+
+   \u26a0 The DEADLINE IS STORED ON THE LEAD, never held in memory. A deploy, a crash or a
+   platform recycle kills an in-process timer; it must not kill the rule. On restart
+   the sweep reads deadlines off the records and carries on, having missed nothing but
+   the minute it was down.
+
+   \u26a0 Claiming is not contact. It means "I am on it", not "I have spoken to them", so
+   firstTouchAt is untouched and the waiting clock keeps running. Otherwise one tap
+   makes somebody vanish off the call list without anyone having rung them. */
+
+const CLAIM_MINUTES = 15;
+const CLAIM_START_HOUR = 8;    // Central
+const CLAIM_END_HOUR   = 20;
+
+function centralHour(d) {
+  /* \u26a0 Not the server's clock. This box could be anywhere; the rule is about whether
+     it is a reasonable hour on the Gulf Coast. */
+  return Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago', hour: 'numeric', hour12: false,
+  }).format(d));
+}
+
+/* When the window should end for a lead arriving now.
+   \u26a0 Outside working hours the clock does not run \u2014 it starts at 8am. A lead at 2am
+   is claimable from 8am, not lost at 2:15am while everyone is asleep. */
+function claimDeadline(from) {
+  const d = new Date(from);
+  const h = centralHour(d);
+  if (h >= CLAIM_START_HOUR && h < CLAIM_END_HOUR) {
+    return new Date(d.getTime() + CLAIM_MINUTES * 60000).toISOString();
+  }
+  /* Next 8am Central. Built by stepping forward an hour at a time rather than doing
+     offset arithmetic, so daylight saving cannot put it an hour out. */
+  const next = new Date(d.getTime());
+  let guard = 0;
+  do { next.setTime(next.getTime() + 3600000); guard++; }
+  while (centralHour(next) !== CLAIM_START_HOUR && guard < 48);
+  next.setMinutes(0, 0, 0);
+  return new Date(next.getTime() + CLAIM_MINUTES * 60000).toISOString();
+}
+
+function claimToken(leadId) {
+  return crypto.createHmac('sha256', HR_KEY || 'fallback')
+    .update('claim:' + leadId).digest('hex').slice(0, 20);
+}
+
+/* The page an agent lands on from the email. Deliberately a GET with no session:
+   they are on a phone, and making them sign in first defeats the point. The token
+   is the authorisation. */
+app.get('/claim/:id/:tok', async (req, res) => {
+  const id = String(req.params.id || '').slice(0, 80);
+  const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const page = (head, body, tone) => res.type('html').send(
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>${esc(head)}</title>
+<style>body{margin:0;background:#FBFAF7;color:#141A3C;font-family:system-ui,-apple-system,sans-serif;
+line-height:1.7}.w{max-width:420px;margin:0 auto;padding:64px 24px}
+h1{font-family:Georgia,serif;font-size:27px;font-weight:400;margin:0 0 10px;color:${tone}}
+p{font-size:16px;color:#3D456B;margin:0 0 20px}
+a{display:inline-block;background:#171F63;color:#fff;text-decoration:none;padding:13px 24px;
+border-radius:4px;font-weight:700;font-size:15px}</style></head><body><div class="w">
+<h1>${esc(head)}</h1>${body}</div></body></html>`);
+
+  if (claimToken(id) !== String(req.params.tok || '')) {
+    return page('That link is not valid', '<p>Check the most recent email.</p>', '#8A2C22');
+  }
+  const lead = await getSetting('lead:' + id);
+  if (!lead) return page('That lead is no longer there', '<p>It may have been removed.</p>', '#8A2C22');
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  if (lead.claimedBy) {
+    /* \u26a0 Says WHO has it. "Already claimed" with no name just leaves the person
+       wondering, and they will ask anyway. */
+    return page('Already claimed',
+      `<p>${esc(lead.claimedByName || 'Somebody')} took this one`
+      + `${lead.claimedAt ? ' at ' + new Date(lead.claimedAt).toLocaleTimeString('en-US',
+          { timeZone:'America/Chicago', hour:'numeric', minute:'2-digit' }) + ' Central' : ''}.</p>`
+      + `<a href="${origin}/#leads">Open the CRM</a>`, '#7A8199');
+  }
+
+  lead.claimedBy = lead.assignedAgentId || '';
+  lead.claimedByName = lead.assignedAgentName || '';
+  lead.claimedAt = new Date().toISOString();
+  lead.claimDue = '';
+  await setSetting('lead:' + id, lead);
+  console.log(`[claim] ${lead.name || id} claimed by ${lead.claimedByName || lead.claimedBy}`);
+  return page('Got it \u2014 this one is yours',
+    `<p>${esc(lead.name || 'This lead')} is assigned to you and will not go back to the broker.`
+    + ` They still need a call.</p><a href="${origin}/#leads">Open the CRM</a>`, '#1F6B49');
+});
+
+/* The sweep. Runs on a timer inside this process and reads deadlines off the records,
+   so a restart costs at most the minute it was down. */
+async function claimSweep() {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    if (error) { console.error('[claim sweep] read failed:', error.message); return; }
+    const now = Date.now();
+    let broker = null;
+    for (const row of (data || [])) {
+      const l = row.value;
+      if (!l || !l.claimDue || l.claimedBy) continue;
+      if (new Date(l.claimDue).getTime() > now) continue;
+
+      if (!broker) {
+        const { data: ags } = await supabase.from('agents')
+          .select('id,name,email,role,active').eq('role', 'broker');
+        broker = (ags || []).find(a => a.active !== false) || null;
+      }
+      if (!broker) { console.warn('[claim sweep] no broker on file \u2014 nothing to reassign to'); return; }
+
+      const wasId = l.assignedAgentId || '';
+      const wasName = l.assignedAgentName || '';
+      if (wasId === broker.id) { l.claimDue = ''; await setSetting(row.key, l); continue; }
+
+      l.assignedAgentId = broker.id;
+      l.assignedAgentName = broker.name || '';
+      l.claimDue = '';
+      l.unclaimedFrom = wasName;
+      l.events = Array.isArray(l.events) ? l.events : [];
+      l.events.push({ k: 'unclaimed', at: new Date().toISOString(), note: wasName });
+      await setSetting(row.key, l);
+      console.warn(`[claim] ${l.name || row.key} went unclaimed by ${wasName || wasId} \u2014 back to ${broker.name}`);
+
+      /* \u26a0 The agent is told. Silently taking a lead back is how resentment builds,
+         and being told is what changes the behaviour. */
+      try {
+        if (mailer && wasId) {
+          const { data: who } = await supabase.from('agents').select('email,name').eq('id', wasId).maybeSingle();
+          if (who && who.email) {
+            await mailer.sendMail({
+              to: who.email,
+              subject: `Unclaimed: ${l.name || 'a new lead'}`,
+              text: `${l.name || 'A lead'} came in and was not claimed within ${CLAIM_MINUTES} minutes, `
+                  + `so it has gone back to ${broker.name} to reassign.\n\n`
+                  + `Nothing is lost \u2014 ask and it can come straight back to you.\n`,
+            });
+          }
+        }
+      } catch (e) { console.error('[claim] could not notify:', e.message); }
+    }
+  } catch (e) { console.error('[claim sweep]', e.message); }
+}
+
+/* \u26a0 Every minute, in-process. Node's own scheduler, not a browser and not cron. */
+setInterval(() => { claimSweep().catch(() => {}); }, 60 * 1000);
+
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({ error: 'Email is not configured yet — set RESEND_API_KEY in the hosting environment variables.' });
@@ -4281,6 +4448,10 @@ app.post('/api/notify-lead', async (req, res) => {
         `Email: ${email || ''}`,
         `Phone: ${phone || ''}`,
         `Source: ${source || ''}`,
+        (req.body || {}).id
+          ? `Claim it: ${req.protocol}://${req.get('host')}/claim/`
+            + encodeURIComponent(req.body.id) + '/' + claimToken(req.body.id)
+          : '',
         camp ? `Came from: ${camp}` : null,
         listingLabel ? `Listing: ${listingLabel}` : null,
         `Message: ${message || ''}`,
@@ -4316,6 +4487,18 @@ app.post('/api/notify-lead', async (req, res) => {
                timeline belongs in it. "New lead: Dawn Whitfield" and "READY NOW
                — Dawn Whitfield" get opened at different speeds. */
             const _stlU = URGENCY[((req.body || {}).quiz || {}).timeline];
+            /* \u26a0 The window opens when the notification goes out, not when the record
+               was written \u2014 you cannot fail to answer something you were never told
+               about. Stored on the lead so the sweep survives a restart. */
+            try {
+              const _lk = 'lead:' + (req.body || {}).id;
+              const _l = await getSetting(_lk);
+              if (_l && !_l.claimedBy && !_l.claimDue) {
+                _l.claimDue = claimDeadline(new Date());
+                _l.assignedAgentName = ag.name || '';
+                await setSetting(_lk, _l);
+              }
+            } catch (e) { console.error('[claim] could not set the window:', e.message); }
             const extra = [ag.email];
             for (const to of extra) {
               await mailer.sendMail({
@@ -4977,7 +5160,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v129',
+    serverVersion: 'v130',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
