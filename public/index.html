@@ -2836,8 +2836,22 @@ body.in-crm #secnav{display:none}
 <button class="btn-sm" onclick="document.getElementById('csv-file-input').click()">Import CSV</button>
 <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="handleCSVImport(event)">
 <button class="btn-sm" onclick="exportCSV()">Export CSV</button>
+<button class="btn-sm" onclick="ldOpen()" title="Leads that were deleted — you can put them back">&#8630; Recently deleted</button>
 <button class="btn-sm primary" onclick="openLeadModal('manual')">+ Add lead</button>
 </div>
+</div>
+
+<!-- ⚠ Inside #crm-main, like the leads sheet: it is position:fixed so the DOM position
+     does not decide where it appears, but the styles are scoped to #crm-main and it
+     renders unstyled anywhere else. -->
+<div id="ld-arch">
+  <div class="ld-bar">
+    <span class="t">Recently deleted</span>
+    <button onclick="ldClose()" aria-label="Close">&times;</button>
+  </div>
+  <div class="ld-note">Deleting a lead keeps a full copy here. Putting one back restores
+    everything — score, history, saved criteria.</div>
+  <div id="ld-arch-body"></div>
 </div>
 
 <!-- Was a table with a sticky last column. Cards in a plain container instead:
@@ -4695,7 +4709,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v295';
+window.BUILD = 'index-v296';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5647,10 +5661,93 @@ if(!lead.firstTouchAt && String(notes||'').trim()){
 }
 await storeSet('lead:'+id, lead);
 }
+/* ⚠ This was two lines: storeDelete, then reload. One click on an × and a real lead
+   was gone from the database with nothing kept and nothing asked. It cost us a live
+   one. Two changes: it names the person before it does anything, and it goes through
+   /api/lead/:id/archive, which keeps the whole record so it can be brought back. */
 async function deleteLead(id){
-await storeDelete('lead:'+id);
-loadLeads();
+  const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
+  const who = (l && l.name) || 'this lead';
+  /* The name, not "this item". A confirmation you can dismiss without reading is not
+     a confirmation — it has to say something you would notice was wrong. */
+  if(!confirm(`Delete ${who}?\n\n`
+    + `${(l && l.email) ? l.email + '\n' : ''}`
+    + `\nThey move to Recently deleted on this screen, and you can put them back.`)) return;
+  try{
+    const res = await fetch('/api/lead/' + encodeURIComponent(id) + '/archive', { method:'POST' });
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'Could not delete that.');
+    showToast(`${who} deleted — see Recently deleted to put them back.`);
+    loadLeads();
+  }catch(e){ alert(e.message); }
 }
+
+/* ---------- Recently deleted ----------
+   ⚠ settings:leadArchive was named in the admin blocklist and in the reset groups and
+   written by nothing at all. Three references, zero writes — the same shape as
+   drip.campaignId. This is the screen that makes it real; without somewhere to look,
+   an archive is just a slower way of losing something. */
+let ldArch = null;
+
+async function ldOpen(){
+  const box = document.getElementById('ld-arch');
+  if(!box) return;
+  box.classList.add('on');
+  document.getElementById('ld-arch-body').innerHTML = '<div class="lt-empty">Loading…</div>';
+  try{
+    const res = await fetch('/api/lead/archive');
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'Could not read that.');
+    ldArch = d.deleted || [];
+    ldRender();
+  }catch(e){
+    document.getElementById('ld-arch-body').innerHTML =
+      '<div class="lt-empty">' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function ldClose(){
+  const box = document.getElementById('ld-arch');
+  if(box) box.classList.remove('on');
+}
+
+function ldRender(){
+  const host = document.getElementById('ld-arch-body');
+  if(!host) return;
+  if(!ldArch || !ldArch.length){
+    host.innerHTML = '<div class="lt-empty">Nothing has been deleted.</div>';
+    return;
+  }
+  host.innerHTML = ldArch.map(r => `
+    <div class="ld-row">
+      <div class="ld-who">
+        <b>${escapeHtml(r.name || '\u2014')}</b>
+        <div class="s">${escapeHtml(r.email || r.phone || '')}${
+          r.source ? ' \u00b7 ' + escapeHtml(r.source) : ''}</div>
+        <div class="s">Deleted ${escapeHtml(fmtDate(r.deletedAt))}${
+          r.deletedByName ? ' by ' + escapeHtml(r.deletedByName) : ''}</div>
+      </div>
+      <button class="btn-sm" onclick="ldRestore('${r.id}')">Put back</button>
+    </div>`).join('');
+}
+
+async function ldRestore(id){
+  try{
+    const res = await fetch('/api/lead/restore/' + encodeURIComponent(id), { method:'POST' });
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'Could not restore that.');
+    showToast('Back in the list.');
+    ldArch = (ldArch || []).filter(r => r.id !== id);
+    ldRender();
+    loadLeads();
+  }catch(e){ alert(e.message); }
+}
+
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape') return;
+  const box = document.getElementById('ld-arch');
+  if(box && box.classList.contains('on')){ e.preventDefault(); ldClose(); }
+});
 
 async function openClientActivityModal(clientId){
 document.getElementById('activity-modal-overlay').classList.add('active');
@@ -21406,6 +21503,23 @@ async function ntToggle(k){
 #crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:#8A2C22}
 #crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;overflow:auto}
 #crm-main .lt-empty{padding:20px 12px;font-size:13px;color:var(--mut)}
+/* ---------- Recently deleted ---------- */
+#crm-main #ld-arch{position:fixed;top:0;right:0;bottom:0;width:min(420px,100%);
+  background:var(--ivory,#FBFAF7);z-index:9450;display:none;flex-direction:column;
+  box-shadow:-14px 0 34px rgba(14,20,51,.2)}
+#crm-main #ld-arch.on{display:flex}
+#crm-main #ld-arch .ld-bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:13px 16px;background:#fff;border-bottom:1px solid var(--hair2)}
+#crm-main #ld-arch .ld-bar .t{font-weight:700;font-size:15px;margin-right:auto}
+#crm-main #ld-arch .ld-bar button{border:0;background:transparent;font-size:24px;
+  line-height:1;cursor:pointer;color:var(--mut);padding:0 2px}
+#crm-main #ld-arch .ld-note{flex:0 0 auto;padding:11px 16px;font-size:12px;line-height:1.55;
+  color:var(--mut);background:#FFF7E4;border-bottom:1px solid var(--hair2)}
+#crm-main #ld-arch-body{flex:1 1 auto;overflow:auto;padding:6px 0 40px}
+#crm-main .ld-row{display:flex;align-items:center;gap:10px;padding:11px 16px;
+  border-bottom:1px solid var(--hair2)}
+#crm-main .ld-who{flex:1 1 auto;min-width:0;font-size:14px}
+#crm-main .ld-who .s{font-size:12px;color:var(--mut);margin-top:2px}
 /* ⚠ Same box, same handler, same state as the table's — deliberately identical, so
    switching views does not feel like switching products. */
 #crm-main .lc-search{margin-bottom:12px}
