@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v274">
+<meta name="build" content="index-v275">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2477,6 +2477,7 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <!-- ============ CRM ============ -->
 <div id="referral-bar" style="display:none;"></div>
 <div id="transfer-overlay"><div class="box"><div id="transfer-body"></div></div></div>
+<div id="ae-overlay"><div class="box"><div id="ae-body"></div></div></div>
 <div id="vsend-overlay" onclick="if(event.target===this) vidSendClose()">
   <div class="box">
     <button class="cma-x" onclick="vidSendClose()" aria-label="Close">&times;</button>
@@ -3032,6 +3033,35 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-assist">
 <style>
 /* Scoped to #sec-assist. `.lead-card` taught us what unscoped class names do. */
+/* \u26a0 No click-outside-to-close on this one. Every other overlay here dismisses on a
+   backdrop click, and that is right for a picker \u2014 but a stray click while writing an
+   article should not be able to throw the writing away. \u00d7, Cancel and Escape only,
+   and all three ask first. */
+#ae-overlay{position:fixed;inset:0;background:rgba(10,14,35,.72);z-index:9300;
+  display:none;align-items:flex-start;justify-content:center;padding:24px 20px;overflow:auto}
+#ae-overlay.active{display:flex}
+#ae-overlay .box{background:var(--ivory,#FBFAF6);border-radius:7px;width:100%;
+  max-width:720px;padding:26px 30px 30px;position:relative;margin:auto}
+@media(max-width:620px){ #ae-overlay{padding:0} #ae-overlay .box{border-radius:0;padding:20px} }
+#ae-overlay .ae-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}
+#ae-overlay .ae-head h3{font-family:'Fraunces',Georgia,serif;font-size:24px;margin:0;
+  flex:1 1 auto;color:var(--ink,#171F63)}
+#ae-overlay .ae-x{border:0;background:transparent;font-size:30px;line-height:1;
+  cursor:pointer;color:var(--mut,#7A8199);padding:0 4px}
+#ae-overlay .ae-f{margin-bottom:16px}
+#ae-overlay .ae-f label{display:block;font-size:10.5px;letter-spacing:.11em;
+  text-transform:uppercase;font-weight:700;color:var(--mut,#7A8199);margin-bottom:5px}
+#ae-overlay input,#ae-overlay textarea,#ae-overlay select{width:100%;font:inherit;
+  font-size:14.5px;padding:10px 12px;border-radius:4px;
+  border:1px solid rgba(20,26,60,.14);background:#fff;color:var(--rl,#0E1433)}
+#ae-overlay input:disabled{background:#F0F1F8;color:rgba(27,32,67,.55)}
+#ae-overlay textarea{line-height:1.7;resize:vertical;font-family:inherit}
+#ae-overlay #ae-bodytext{font-size:15px}
+#ae-overlay .ae-hint{font-size:12px;line-height:1.55;color:var(--mut,#7A8199);margin-top:5px}
+#ae-overlay .ae-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:620px){ #ae-overlay .ae-two{grid-template-columns:1fr} }
+#ae-overlay .ae-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center}
+#ae-overlay .ae-fine{font-size:12.5px;color:var(--mut,#7A8199);margin:12px 0 0}
 #vsend-overlay{position:fixed;inset:0;background:rgba(10,14,35,.66);z-index:9200;
   display:none;align-items:center;justify-content:center;padding:20px}
 #vsend-overlay.active{display:flex}
@@ -4513,7 +4543,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v274';
+window.BUILD = 'index-v275';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -12039,23 +12069,15 @@ async function ctSave(){
   }catch(e){ showToast('Could not save that.'); }
 }
 
-function ctNewArticle(){
-  const title = prompt('Headline \u2014 write it the way somebody would ask the question:');
-  if(!title) return;
-  const teaser = prompt('One sentence, the version that appears in the email and in Google:') || '';
-  const body = prompt('The article. Leave a blank line between paragraphs:') || '';
-  ctArts.unshift({ id:'art_'+Date.now().toString(36), title, teaser, body,
-    slug: ctSlug(title), published: false });
-  ctSave();
-}
+/* \u26a0 Both of these were three stacked prompt() boxes. A prompt has no way back \u2014 one
+   Cancel and 500 words are gone with no draft anywhere \u2014 and it could not reach the
+   slug or the topic at all, so a headline edit silently changed the public URL. They
+   are doors into aeOpen() now; the editor itself is at the end of this file. */
+function ctNewArticle(){ if(typeof aeOpen === 'function') aeOpen(-1); }
 
 function ctEdit(i){
-  const a = ctArts[i]; if(!a) return;
-  const title = prompt('Headline:', a.title); if(title === null) return;
-  const teaser = prompt('One sentence:', a.teaser || ''); if(teaser === null) return;
-  const body = prompt('The article:', a.body || ''); if(body === null) return;
-  ctArts[i] = Object.assign({}, a, { title, teaser, body, slug: ctSlug(title) });
-  ctSave();
+  if(!ctArts[i]) return;
+  if(typeof aeOpen === 'function') aeOpen(i);
 }
 
 function ctDrop(i){
@@ -22699,6 +22721,180 @@ async function rsRun(){
   finally{
     rsBusy = false;
     rsSync();
+  }
+}
+
+/* ==================== THE ARTICLE EDITOR (index 275) ====================
+   Replaces three stacked prompt() boxes. Writing 500 words in a browser prompt is
+   bad enough; the real problem was that a prompt has no way back — one Cancel or one
+   stray Escape and the whole article is gone with no draft anywhere.
+
+   \u26a0 The prompts only ever exposed title, teaser and body. The record also carries
+   `slug` and `topic`, and both matter:
+     - slug is the public URL. Editing a headline used to silently regenerate it,
+       which breaks every link already published or emailed. It is editable here and
+       LOCKED once the article is live.
+     - topic decides whether the regulated-content disclaimer is attached. It was set
+       once by the drafting API and then invisible, so nobody could correct a
+       misclassification.
+
+   \u26a0 Nothing here publishes. Saving always leaves the article a draft; Publish is a
+   separate, broker-only button on the card. */
+
+let aeIdx = -1, aeDraft = null, aeBusy = false;
+
+function aeOpen(i){
+  const isNew = (i === -1);
+  aeIdx = i;
+  aeDraft = isNew
+    ? { id: 'art_' + Date.now().toString(36), title:'', teaser:'', body:'',
+        slug:'', topic:'general', published:false }
+    : JSON.parse(JSON.stringify(ctArts[i] || {}));
+  document.getElementById('ae-overlay').classList.add('active');
+  aeRender();
+}
+
+function aeClose(){
+  /* \\u26a0 Unlike a prompt, closing asks first when there is something to lose. */
+  if(aeDirty() && !confirm('Close without saving? What you have written goes.')) return;
+  document.getElementById('ae-overlay').classList.remove('active');
+  aeDraft = null; aeIdx = -1;
+}
+
+function aeDirty(){
+  if(!aeDraft) return false;
+  const orig = aeIdx === -1 ? { title:'', teaser:'', body:'' } : (ctArts[aeIdx] || {});
+  return (aeDraft.title || '') !== (orig.title || '')
+      || (aeDraft.teaser || '') !== (orig.teaser || '')
+      || (aeDraft.body || '') !== (orig.body || '')
+      || (aeDraft.slug || '') !== (orig.slug || '')
+      || (aeDraft.topic || '') !== (orig.topic || '');
+}
+
+document.addEventListener('keydown', e => {
+  const o = document.getElementById('ae-overlay');
+  if(!o || !o.classList.contains('active')) return;
+  if(e.key === 'Escape'){ e.preventDefault(); aeClose(); }
+  /* Ctrl/Cmd+S, because anybody who writes will try it. */
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); aeSave(); }
+});
+
+function aeSet(k, v){
+  if(!aeDraft) return;
+  aeDraft[k] = v;
+  if(k === 'title' && !aeDraft.published && !aeDraft._slugTouched){
+    aeDraft.slug = ctSlug(v);
+    const s = document.getElementById('ae-slug');
+    if(s) s.value = aeDraft.slug;
+  }
+  aeStats();
+}
+
+function aeSlugEdit(v){
+  aeDraft._slugTouched = true;
+  aeDraft.slug = ctSlug(v);
+  aeStats();
+}
+
+function aeStats(){
+  const el = document.getElementById('ae-stats');
+  if(!el || !aeDraft) return;
+  const words = String(aeDraft.body || '').trim().split(/\\s+/).filter(Boolean).length;
+  const mins = Math.max(1, Math.round(words / 220));
+  el.textContent = `${words} word${words===1?'':'s'} \\u00b7 about ${mins} minute${mins===1?'':'s'} to read`;
+  const u = document.getElementById('ae-url');
+  if(u) u.textContent = '/insights/' + (aeDraft.slug || ctSlug(aeDraft.title || '') || '\\u2026');
+}
+
+function aeRender(){
+  const b = document.getElementById('ae-body');
+  if(!b || !aeDraft) return;
+  const live = !!aeDraft.published;
+  b.innerHTML =
+    `<div class="ae-head">
+      <h3>${aeIdx === -1 ? 'Write an article' : 'Edit'}</h3>
+      <button class="ae-x" onclick="aeClose()" aria-label="Close">&times;</button>
+     </div>
+     <div class="ae-f">
+       <label>Headline</label>
+       <input id="ae-title" value="${escapeHtml(aeDraft.title||'')}"
+         placeholder="What home insurance actually costs on the Alabama Gulf Coast"
+         oninput="aeSet('title', this.value)">
+       <div class="ae-hint">Write it the way somebody would ask the question.</div>
+     </div>
+     <div class="ae-f">
+       <label>One sentence</label>
+       <textarea id="ae-teaser" rows="2"
+         placeholder="The version that shows in Google and in the email."
+         oninput="aeSet('teaser', this.value)">${escapeHtml(aeDraft.teaser||'')}</textarea>
+     </div>
+     <div class="ae-f">
+       <label>The article</label>
+       <textarea id="ae-bodytext" rows="18" spellcheck="true"
+         placeholder="Leave a blank line between paragraphs."
+         oninput="aeSet('body', this.value)">${escapeHtml(aeDraft.body||'')}</textarea>
+       <div class="ae-hint" id="ae-stats"></div>
+     </div>
+     <div class="ae-two">
+       <div class="ae-f">
+         <label>Web address</label>
+         <input id="ae-slug" value="${escapeHtml(aeDraft.slug||'')}" ${live?'disabled':''}
+           oninput="aeSlugEdit(this.value)">
+         <div class="ae-hint">
+           <span id="ae-url"></span>
+           ${live ? '<br><b>Locked while it is live.</b> Changing it would break every link already shared.' : ''}
+         </div>
+       </div>
+       <div class="ae-f">
+         <label>Subject</label>
+         <select id="ae-topic" onchange="aeSet('topic', this.value)">
+           <option value="general"${aeDraft.topic!=='regulated'?' selected':''}>General \\u2014 no extra disclaimer</option>
+           <option value="regulated"${aeDraft.topic==='regulated'?' selected':''}>Insurance, lending or tax</option>
+         </select>
+         <div class="ae-hint">Regulated subjects get the extra disclaimer on the page
+           automatically.</div>
+       </div>
+     </div>
+     <div class="ae-acts">
+       <button class="btn-sm primary" id="ae-save" onclick="aeSave()">Save as a draft</button>
+       <button class="btn-sm" onclick="aeClose()">Cancel</button>
+       ${aeIdx > -1 ? `<a class="btn-sm" target="_blank" rel="noopener"
+          href="${escapeHtml(aeDraft.published ? (ctArts[aeIdx]?.liveUrl||'') : (ctArts[aeIdx]?.previewUrl||''))}">Read it</a>` : ''}
+     </div>
+     <p class="ae-fine">Saving leaves it a draft. Nothing is public until you press
+       Publish on the card.</p>`;
+  aeStats();
+  setTimeout(() => { const t = document.getElementById('ae-title'); if(t && !aeDraft.title) t.focus(); }, 50);
+}
+
+async function aeSave(){
+  if(aeBusy || !aeDraft) return;
+  const title = String(aeDraft.title||'').trim();
+  if(!title){ showToast('It needs a headline.'); return; }
+  aeBusy = true;
+  const btn = document.getElementById('ae-save');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving\\u2026'; }
+
+  const rec = Object.assign({}, aeIdx === -1 ? {} : ctArts[aeIdx], {
+    id: aeDraft.id, title, teaser: String(aeDraft.teaser||'').trim(),
+    body: String(aeDraft.body||''),
+    slug: ctSlug(aeDraft.slug || title),
+    topic: aeDraft.topic === 'regulated' ? 'regulated' : 'general',
+  });
+  /* \\u26a0 published is carried from the existing record and never set here. A save must
+     not be able to publish something, and it must not quietly unpublish either. */
+  if(aeIdx === -1) rec.published = false;
+
+  if(aeIdx === -1) ctArts.unshift(rec); else ctArts[aeIdx] = rec;
+  try{
+    await ctSave();
+    document.getElementById('ae-overlay').classList.remove('active');
+    aeDraft = null; aeIdx = -1;
+  }catch(e){ showToast('Could not save that.'); }
+  finally{
+    aeBusy = false;
+    const s = document.getElementById('ae-save');
+    if(s){ s.disabled = false; s.textContent = 'Save as a draft'; }
   }
 }
 </script>
