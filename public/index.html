@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v275">
+<meta name="build" content="index-v277">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2859,6 +2859,13 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
         onclick="ctNewArticle()">+ Write an article</button>
     </div>
     <div class="setup-panel">
+      <h3 class="sx-h">The monthly market letter</h3>
+      <p class="sx-sub">One email a month to everyone whose town you know &mdash; what is on
+        the market there right now, counted at the moment you send. Built from live
+        listings, so it is never out of date and nobody has to write it.</p>
+      <div class="setup-body" id="ml-body">Loading&hellip;</div>
+    </div>
+    <div class="setup-panel">
       <h3 class="sx-h">Videos</h3>
       <p class="sx-sub">Listing walkthroughs and marketing pieces. The video stays on
         YouTube or Vimeo &mdash; paste the link and it becomes something you can send to
@@ -3076,6 +3083,20 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 #vsend-overlay .vs-pick:hover{border-color:var(--gold,#C89B4E)}
 #vsend-overlay .vs-pick .t{display:block;font-size:14.5px;font-weight:600;color:var(--rl,#0E1433)}
 #vsend-overlay .vs-pick .m{display:block;font-size:12.5px;color:var(--mut,#7A8199);margin-top:2px}
+#sec-content .ml-row{display:flex;align-items:center;gap:11px;padding:11px 13px;
+  background:#fff;border:1px solid rgba(20,26,60,.1);border-radius:5px;margin-bottom:7px;
+  cursor:pointer;font-size:14px}
+#sec-content .ml-row.off{opacity:.45;cursor:default}
+#sec-content .ml-row .l{flex:1 1 auto;font-weight:600}
+#sec-content .ml-row .n{font-size:12.5px;color:var(--mut,#7A8199)}
+#sec-content .ml-note{background:#FFFBF0;border-left:3px solid #C9971F;border-radius:4px;
+  padding:11px 14px;margin:12px 0;font-size:13px;line-height:1.6}
+#sec-content .ml-go{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#sec-content .ml-cap{font-size:13px;color:var(--mut,#7A8199);display:flex;gap:7px;
+  align-items:center}
+#sec-content .ml-cap input{width:74px;font:inherit;font-size:13.5px;padding:7px 9px;
+  border-radius:4px;border:1px solid rgba(20,26,60,.14);background:#fff}
+#sec-content .ml-none{font-size:13px;color:var(--mut,#7A8199);padding:8px 0;line-height:1.6}
 #sec-content .vid-add{display:grid;gap:8px;margin-bottom:16px}
 #sec-content .vid-add input,#sec-content .vid-add select{font:inherit;font-size:13.5px;
   padding:9px 11px;border-radius:4px;border:1px solid rgba(20,26,60,.14);background:#fff}
@@ -4543,7 +4564,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v275';
+window.BUILD = 'index-v277';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6695,22 +6716,52 @@ if(!file) return;
 const text = await file.text();
 const rows = parseCSV(text);
 if(rows.length < 2){ showToast("That CSV doesn't look like it has any rows to import."); event.target.value=''; return; }
-const header = rows[0].map(h => h.trim().toLowerCase());
+/* ⚠ Header matching used to be an exact lookup for 'name' or 'full name'. Three
+   separate reasons that failed, any one of them fatal:
+     1. Nearly every export — BoldTrail, Zillow, Google Contacts — splits the name into
+        First Name and Last Name. Neither matched, so every row was skipped.
+     2. Excel writes a UTF-8 BOM, so the first header arrives as "\ufeffName" and fails
+        an exact match even when the column really is called Name.
+     3. Spacing and punctuation vary: "E-mail", "Phone Number", "Cell".
+   Now: strip the BOM, reduce every header to letters and digits, match on that. */
+const norm = h => String(h||'').replace(/^\ufeff/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const header = rows[0].map(norm);
 const idx = (names) => { for(const n of names){ const i = header.indexOf(n); if(i !== -1) return i; } return -1; };
-const iName = idx(['name','full name']);
-const iEmail = idx(['email','email address']);
-const iPhone = idx(['phone','phone number']);
-const iStage = idx(['stage','status']);
-const iNotes = idx(['notes','note']);
-const iMessage = idx(['message']);
-const iSource = idx(['source']);
+const iName  = idx(['name','fullname','contactname','leadname','clientname','displayname']);
+const iFirst = idx(['firstname','first','givenname','fname']);
+const iLast  = idx(['lastname','last','surname','familyname','lname']);
+const iEmail = idx(['email','emailaddress','email1','primaryemail','emailaddress1']);
+const iPhone = idx(['phone','phonenumber','mobile','mobilephone','cell','cellphone',
+                    'primaryphone','homephone','phone1']);
+const iStage = idx(['stage','status','leadstatus']);
+const iNotes = idx(['notes','note','comments','comment']);
+const iMessage = idx(['message','inquiry','enquiry','request']);
+const iSource = idx(['source','leadsource','origin']);
+/* ⚠ Worth taking: it is what the monthly market letter needs to know which town
+   somebody cares about. An import with no city is a lead nobody can send anything to. */
+const iCity  = idx(['city','town','location','area','preferredcity']);
 
-let count = 0;
+/* Nothing usable — say what WAS found. "Check your CSV has a Name column" with no
+   list of the columns we actually saw is not something anybody can act on. */
+if(iName < 0 && iFirst < 0 && iLast < 0){
+  const seen = rows[0].map(h => String(h||'').replace(/^\ufeff/,'').trim())
+    .filter(Boolean).slice(0, 12).join(', ');
+  showToast('No name column found. This file has: ' + (seen || '(no headers)')
+    + ' — rename one to Name, or to First Name and Last Name.');
+  event.target.value = '';
+  return;
+}
+
+let count = 0, skipped = 0;
 for(let r=1; r<rows.length; r++){
 const row = rows[r];
 if(!row || row.every(c => !c || !c.trim())) continue;
-const name = iName>=0 ? row[iName]?.trim() : '';
-if(!name) continue;
+/* First and Last joined when there is no single Name column. */
+const name = (iName >= 0 && (row[iName]||'').trim())
+  ? row[iName].trim()
+  : [iFirst >= 0 ? (row[iFirst]||'').trim() : '',
+     iLast  >= 0 ? (row[iLast] ||'').trim() : ''].filter(Boolean).join(' ');
+if(!name){ skipped++; continue; }
 const lead = {
 id: 'lead_' + Date.now() + '_' + Math.floor(Math.random()*1000) + '_' + r,
 name,
@@ -6723,11 +6774,17 @@ stage: iStage>=0 && row[iStage]?.trim() ? row[iStage].trim() : 'New',
 notes: iNotes>=0 ? (row[iNotes]||'').trim() : '',
 createdAt: new Date().toISOString(),
 };
+/* Stored the same shape the quiz uses, so the market letter and the alert matching
+   both find it without caring where the lead came from. */
+const city = iCity>=0 ? (row[iCity]||'').trim() : '';
+if(city) lead.criteria = { cities: [city], city };
 const ok = await storeSet('lead:'+lead.id, stampLead(lead));
 if(ok) count++;
 }
 event.target.value = '';
-showToast(count > 0 ? `Imported ${count} lead${count===1?'':'s'}.` : "No leads were imported — check your CSV has a Name column.");
+showToast(count > 0
+  ? `Imported ${count} lead${count===1?'':'s'}.${skipped ? ` ${skipped} row${skipped===1?'':'s'} had no name and ${skipped===1?'was':'were'} skipped.` : ''}`
+  : `Nothing imported — all ${skipped} row${skipped===1?'':'s'} had an empty name.`);
 loadLeads();
 }
 
@@ -8073,6 +8130,7 @@ const FIND_INDEX = [
   ['sec-setup','The questions people are asked','quiz questions edit wording buyer seller funnel form screens ask'],
   ['sec-setup','Outside tools','showingtime redex paragon gcmls perchwell mls links shortcuts tabs external tools'],
   ['sec-setup','Clear the test data','reset wipe clear test dummy fake seeded sample start fresh empty delete demo data'],
+  ['sec-content','The monthly market letter','market letter monthly newsletter report stats send town inventory reach out touch'],
   ['sec-assist','Assistant','assistant ai claude draft write follow up followup listing description copy ask my leads'],
   ['sec-agents','Agents','agents team roster add agent commission plan preview as'],
   ['sec-agents','Award tiers','awards tiers bronze silver gold platinum volume recognition where the bar sits'],
@@ -8367,6 +8425,7 @@ function showCrmSection(id){
        section open, so it would have sat on "Loading\u2026" forever \u2014 the exact bug
        the two-panel-convention note warns about. */
     if(id === 'sec-content' && typeof renderVideos === 'function') renderVideos();
+    if(id === 'sec-content' && typeof renderLetter === 'function') renderLetter();
     if(id === 'sec-assist'  && typeof renderAssist  === 'function') renderAssist();
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
@@ -22896,6 +22955,92 @@ async function aeSave(){
     const s = document.getElementById('ae-save');
     if(s){ s.disabled = false; s.textContent = 'Save as a draft'; }
   }
+}
+
+/* ==================== THE MONTHLY MARKET LETTER (index 276) ====================
+   ⚠ Preview before send, always. It shows the real number of people per town and the
+   real listing count behind each one, so nobody presses send on a letter that would
+   have gone to four people, or that quotes a town with no inventory in it. */
+let mlTowns = [], mlPick = [], mlBusy = false, mlSkip = {};
+
+async function renderLetter(){
+  const host = document.getElementById('ml-body');
+  if(!host) return;
+  host.innerHTML = '<div class="ml-none">Checking the market\u2026</div>';
+  try{
+    const r = await fetch('/api/market-letter/preview', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not check that.');
+    mlTowns = d.towns || [];
+    mlSkip  = d.skipped || {};
+  }catch(e){ host.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`; return; }
+
+  if(!mlTowns.length){
+    host.innerHTML = '<div class="ml-none">Nobody on your list has a town on their record '
+      + 'yet, so there is nothing to send. The quiz asks for it, so this fills up on its '
+      + 'own as leads come in.</div>';
+    return;
+  }
+  host.innerHTML =
+    mlTowns.map(t => `<label class="ml-row${t.hasData ? '' : ' off'}">
+      <input type="checkbox" ${t.hasData ? '' : 'disabled'}
+        ${mlPick.includes(t.town) ? 'checked' : ''}
+        onchange="mlToggle('${escapeHtml(t.town).replace(/'/g,"\\'")}', this.checked)">
+      <span class="l">${escapeHtml(t.town)}</span>
+      <span class="n">${t.people} ${t.people===1?'person':'people'}${
+        t.hasData ? ` \u00b7 ${t.count} listing${t.count===1?'':'s'}`
+                  : ' \u00b7 nothing on the market there'}</span>
+    </label>`).join('')
+    + `<div class="ml-note"><b>Nobody gets the same letter twice in a month.</b>
+        Press it again later and only people who have not had one will receive it.</div>`
+    + ((mlSkip.noTown||0) ? `<div class="ml-none">${mlSkip.noTown} ${
+        mlSkip.noTown===1?'person has':'people have'} no town on record and will not get one.</div>` : '')
+    + `<div class="ml-go">
+         <label class="ml-cap">Send at most
+           <input id="ml-cap" type="number" min="1" max="400" value="30"></label>
+         <button class="btn-sm primary" id="ml-btn" onclick="mlSend()" disabled>Send it</button>
+       </div>
+       <p class="sx-sub" style="margin-top:10px">Start small. The sending domain is new,
+         and a first run of hundreds is how a new domain lands in spam folders.</p>`;
+  mlSync();
+}
+
+function mlToggle(t, on){
+  const i = mlPick.indexOf(t);
+  if(on && i < 0) mlPick.push(t);
+  if(!on && i >= 0) mlPick.splice(i, 1);
+  mlSync();
+}
+
+function mlSync(){
+  const b = document.getElementById('ml-btn');
+  if(!b) return;
+  const n = mlTowns.filter(t => mlPick.includes(t.town)).reduce((a,t) => a + t.people, 0);
+  b.disabled = !mlPick.length;
+  b.textContent = n ? `Send to ${n}` : 'Send it';
+}
+
+async function mlSend(){
+  if(mlBusy || !mlPick.length) return;
+  const cap = parseInt(document.getElementById('ml-cap')?.value, 10) || 30;
+  if(!confirm(`Send this month's letter to up to ${cap} ${cap===1?'person':'people'} across `
+    + `${mlPick.length} town${mlPick.length===1?'':'s'}?`)) return;
+  mlBusy = true;
+  const b = document.getElementById('ml-btn');
+  if(b){ b.disabled = true; b.textContent = 'Sending\u2026'; }
+  try{
+    const r = await fetch('/api/market-letter/send', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ towns: mlPick, cap }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not send those.');
+    showToast(d.sent ? `Sent ${d.sent}${d.failed?`, ${d.failed} failed`:''}.`
+                     : (d.note || 'Nobody was due one.'));
+    mlPick = [];
+    renderLetter();
+  }catch(e){ showToast(e.message); }
+  finally{ mlBusy = false; mlSync(); }
 }
 </script>
 
