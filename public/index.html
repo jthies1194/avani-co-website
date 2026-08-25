@@ -2615,7 +2615,21 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
   display:flex;flex-wrap:wrap;align-items:center;gap:0 16px}
 body.in-crm #hdr{display:none}
 body.in-crm .topbar{display:none}
-#crm-rail .mk{padding:0;border:none;flex:0 0 auto;margin-right:6px}
+/* ⚠ v293. #secnav was the one piece of the marketing chrome nobody hid. It is
+   position:fixed, top:0, z-index:96 — above the rail's 60 — and its .on class is
+   turned on by an IntersectionObserver watching the hero, which never turns it back
+   off when the view changes. So the public site's section nav sat pinned across the
+   top of the CRM, and its links point at #listings, #coast and the rest: sections
+   living inside #view-site, which is display:none while the CRM is open. It became
+   the only visible way out of the CRM, which is why it looked like the escape
+   hatch. It is chrome from the other view; it does not belong here. */
+body.in-crm #secnav{display:none}
+#crm-rail .mk{padding:0;border:none;flex:0 0 auto;margin-right:6px;cursor:pointer;
+  border-radius:4px}
+/* ⚠ Visible focus, because it is a div pretending to be a link. A control you can
+   tab to and cannot see is worse than one you cannot tab to. */
+#crm-rail .mk:hover .n{color:var(--gd,#C89B4E)}
+#crm-rail .mk:focus-visible{outline:2px solid var(--gd,#C89B4E);outline-offset:3px}
 #crm-rail .mk .n{font-family:'Fraunces',Georgia,serif;font-size:17px;color:#fff;
   letter-spacing:-.02em;line-height:1.1;font-weight:400}
 #crm-rail .mk .s{font-size:8px;letter-spacing:.18em;text-transform:uppercase;
@@ -2707,7 +2721,15 @@ body.in-crm .topbar{display:none}
 </style>
 
 <aside id="crm-rail">
-  <div class="mk">
+  <!-- ⚠ The brand is the thing everybody clicks to get home, and it was inert — a
+       plain div with no handler and no pointer cursor. Meanwhile switchView('site')
+       was reachable from exactly three places, none of them obvious: the marketing
+       header's logo (hidden in the CRM), "Search the MLS" on Today, and a "← Back to
+       Website" button at the very bottom of the Agents screen, under + Add agent.
+       Rule 8 again — the button to look for is rarely the nearest one. -->
+  <div class="mk" onclick="switchView('site')" role="link" tabindex="0"
+       title="Back to the public site"
+       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchView('site');}">
     <div class="n">Avani &amp; Co.</div>
     <div class="s">Real Estate &middot; Southern Sands</div>
   </div>
@@ -4638,7 +4660,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v293';
+window.BUILD = 'index-v294';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5141,12 +5163,37 @@ function initStageFilters(){
 const wrap = document.getElementById('stage-filters');
 wrap.innerHTML = ['all',...STAGES].map(s=>`<button class="${currentFilterStage===s?'active':''}" onclick="setStageFilter('${s}')">${s==='all'?'All':s}</button>`).join('');
 }
-function setStageFilter(s){ currentFilterStage=s; initStageFilters(); loadLeads(); }
+/* ⚠ A repaint of data already in hand, not a reload. */
+function setStageFilter(s){ currentFilterStage=s; initStageFilters(); loadLeads({ reuse: true }); }
 
-async function loadLeads(){
+/* ⚠ v293. `opts.reuse` repaints from what is already in memory instead of going
+   back to the server. Switching Table/Cards, typing in the search box and closing
+   the panel all called plain loadLeads(), which re-fetched EVERYTHING: a key list,
+   then a separate storeGet per lead awaited ONE AT A TIME, then /api/agent/list.
+   Nineteen leads meant twenty-one sequential round trips to change a CSS class.
+   That is the multi-second pause on the view switch.
+
+   The per-lead fetches are also now issued together rather than in a queue, which
+   helps the genuine loads too — they never depended on each other. */
+async function loadLeads(opts){
+  const reuse = !!(opts && opts.reuse) && Array.isArray(window.__leadsRaw);
+  /* ⚠ v294. Instrumented, because "it is still slow" and "the fix did not land" look
+     identical from the outside and we have now guessed twice. This says which path
+     ran and where the milliseconds went. Rule 1: the thing that reports what is
+     running is worth more than the feature. */
+  const ltT0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+  let ltT1 = ltT0;
+  window.__ltTime = (where) => {
+    try{
+      const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      console.log('[leads] ' + where + ' — ' + Math.round(now - ltT0) + 'ms total ('
+        + (reuse ? 'reuse, no fetch' : 'fetched ' + Math.round(ltT1 - ltT0) + 'ms')
+        + ', render ' + Math.round(now - ltT1) + 'ms)');
+    }catch(e){}
+  };
   /* The cards report what is running for each person, so those two lists have to
      be in hand first. Cheap, and only on the leads tab. */
-  try{
+  if(!reuse) try{
     if(typeof ssList !== 'undefined' && !ssList.length){
       const r = await fetch('/api/search/mine');
       if(r.ok) ssList = (await r.json()).searches || [];
@@ -5157,12 +5204,19 @@ async function loadLeads(){
   }catch(e){}
 
 if(!canSeeLeads()){ DASH_LEADS = []; window.__leadCount = 0; return; }
-const keys = await storeListKeys('lead:');
+
 let leads = [];
-for(const k of keys){
-const l = await storeGet(k);
-if(l) leads.push(l);
-}
+let agents = [];
+if(reuse){
+  leads = window.__leadsRaw;
+  agents = (typeof window !== 'undefined' && Array.isArray(window.__agents)) ? window.__agents : [];
+} else {
+const keys = await storeListKeys('lead:');
+/* ⚠ Promise.all, not a for-await. These reads are independent; queueing them made
+   the wait the SUM of nineteen round trips instead of the longest one. */
+const got = await Promise.all((keys || []).map(k =>
+  Promise.resolve(storeGet(k)).catch(() => null)));
+leads = got.filter(Boolean);
 leads.sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
 
 // Agents only see leads assigned to them; brokers see everything.
@@ -5170,7 +5224,6 @@ if(!isAdminOrOwner()){
 leads = leads.filter(l => l.assignedAgentId === currentAgent.id);
 }
 
-let agents = [];
 if(isAdminOrOwner()){
 try{
 const res = await fetch('/api/agent/list');
@@ -5178,6 +5231,11 @@ const data = await res.json();
 agents = data.agents || [];
 }catch(e){}
 }
+/* ⚠ The copy the reuse path reads back. Kept separate from DASH_LEADS, which is
+   the published, already-filtered view other screens read. */
+try{ window.__leadsRaw = leads; }catch(e){}
+}
+try{ ltT1 = (typeof performance !== 'undefined') ? performance.now() : Date.now(); }catch(e){}
 /* ⚠ Published for code outside this function. `agents` is declared EIGHT times in this
    file and every one of them is inside a function, and `agentName` below is a const in
    here — so the leads table, which lives in a later script block, threw
@@ -5243,13 +5301,37 @@ if(window.__wnFilter){
     bar.style.display = '';
     bar.innerHTML = `Showing <b>${escapeHtml(LABEL[window.__wnFilter]||'')}</b>
       \u2014 ${shown.length} of ${leads.length}
-      <button onclick="window.__wnFilter=null;loadLeads()">Show everyone</button>`;
+      <button onclick="window.__wnFilter=null;loadLeads({reuse:true})">Show everyone</button>`;
   }
 } else {
   const bar = document.getElementById('wn-active');
   if(bar) bar.style.display = 'none';
 }
 const tbody = document.getElementById('lead-tbody');
+
+/* ⚠ v293. The search lived INSIDE the table branch, so it filtered the table and
+   the cards never saw it — switch to Cards and the box vanished along with any
+   filtering it had done. One search, applied here, before either view is chosen.
+   The cards get the same box below.
+
+   ⚠ Read through a try and held in a `var`. ltQuery is a `let` in the last script
+   block and this function is in an early one; a bare read from the temporal dead
+   zone throws rather than returning undefined, and the cards path has no try around
+   it. That is the exact shape that killed this render once already. */
+var ltQSafe = '';
+try{ ltQSafe = String(ltQuery || ''); }catch(e){ ltQSafe = ''; }
+try{
+  const ltq = ltQSafe.trim().toLowerCase();
+  if(ltq){
+    shown = shown.filter(l => {
+      const wants = (typeof ltWants === 'function') ? ltWants(l) : '';
+      return (String(l.name||'') + ' ' + String(l.email||'') + ' ' +
+              String(l.phone||'') + ' ' + String(l.listingLabel||'') + ' ' +
+              wants).toLowerCase().includes(ltq);
+    });
+  }
+}catch(e){}
+
 document.getElementById('empty-state').style.display = shown.length===0 ? 'block':'none';
 
 /* \u26a0 The one seam. Cards were the only option; now the table paints here instead and
@@ -5294,10 +5376,8 @@ if(ltWant === 'table' && typeof ltRows !== 'function'){
 }
 if(ltWant === 'table' && typeof ltRows === 'function'){
  try{
-  const q = String(ltQuery||'').toLowerCase();
-  const list = q ? shown.filter(l =>
-    (String(l.name||'')+' '+String(l.email||'')+' '+String(l.phone||'')+' '+
-     String(l.listingLabel||'')+' '+ltWants(l)).toLowerCase().includes(q)) : shown;
+  /* ⚠ Already filtered above, for both views. */
+  const list = shown;
   try{ ltView = 'table'; }catch(e){}
   /* \u26a0 v293: this line used to run unconditionally, which made the \u00d7 useless. Closing
      the panel sets ltSel=null and repaints \u2014 and the repaint immediately re-selected
@@ -5336,6 +5416,7 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
   if(ltSel && !phone) ltPanel(ltSel);
   if(phone && ltSheet) ltPanel(ltSel);
   try{ if(typeof ltAfterPaint === 'function') ltAfterPaint('table'); }catch(e){}
+  try{ window.__ltTime('table view'); }catch(e){}
   return;
  }catch(err){
    ltFailed = (err && err.message) ? err.message : String(err);
@@ -5347,7 +5428,11 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
  }
 }
 
-tbody.innerHTML = shown.map(l=>{
+tbody.innerHTML =
+  `<div class="lc-search"><input placeholder="Name, email, phone, address"
+     value="${escapeHtml(ltQSafe)}" oninput="ltFilter(this.value)"></div>` +
+  (shown.length ? '' : '<div class="lt-empty">Nobody matches that.</div>') +
+  shown.map(l=>{
   const sc = l.score || 0;
   const B = (typeof LS_BANDS !== 'undefined' && LS_BANDS[l.band||'nurture']) || { label:'New', color:'#8C93AD' };
   const why = (l.whyText || '').trim();
@@ -5411,6 +5496,7 @@ tbody.innerHTML = shown.map(l=>{
      has to say it fell back, on the screen, to the person holding the mouse — not
      into a console nobody has open. */
   try{ if(typeof ltAfterPaint === 'function') ltAfterPaint('cards'); }catch(e){}
+  try{ window.__ltTime('cards view'); }catch(e){}
   if(ltFailed){
     const msg = (typeof ltFailed === 'string')
       ? ltFailed : 'no reason was recorded';
@@ -21132,6 +21218,11 @@ async function ntToggle(k){
 #crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:#8A2C22}
 #crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;overflow:auto}
 #crm-main .lt-empty{padding:20px 12px;font-size:13px;color:var(--mut)}
+/* ⚠ Same box, same handler, same state as the table's — deliberately identical, so
+   switching views does not feel like switching products. */
+#crm-main .lc-search{margin-bottom:12px}
+#crm-main .lc-search input{width:100%;max-width:420px;font:inherit;font-size:13.5px;
+  padding:9px 12px;border-radius:4px;border:1px solid var(--hair2);background:#fff}
 /* ⚠ Not styled as an error box. It is not the broker's fault and there is nothing for
    him to do about it — it exists so that "why am I looking at cards" has an answer on
    the screen instead of in a console. */
@@ -23441,7 +23532,8 @@ function ltAfterPaint(rendered){
 function ltSetView(v){
   ltView = v;
   try{ localStorage.setItem('leadView', v); }catch(e){}
-  loadLeads();
+  /* ⚠ reuse: switching views is a repaint, not a reload. */
+  loadLeads({ reuse: true });
 }
 
 /* What a person is after, in one line. The quiz collects all of it. */
@@ -23542,7 +23634,7 @@ function ltToggleMore(){
 }
 try{
   window.matchMedia('(min-width: 1040px)').addEventListener('change', () => {
-    if(ltView === 'table' && typeof loadLeads === 'function') loadLeads();
+    if(ltView === 'table' && typeof loadLeads === 'function') loadLeads({ reuse: true });
   });
 }catch(e){}
 
@@ -23580,14 +23672,29 @@ function ltPick(id){
     ltPanel(id);
     return;
   }
-  if(!ltIsWide()){ if(typeof loadLeads === 'function') loadLeads(); return; }
+  if(!ltIsWide()){ if(typeof loadLeads === 'function') loadLeads({ reuse: true }); return; }
   document.querySelectorAll('.lt-row').forEach(r => r.classList.remove('on'));
   const row = document.querySelector(`.lt-row[onclick*="${id}"]`);
   if(row) row.classList.add('on');
   ltPanel(id);
 }
 
-function ltFilter(v){ ltQuery = v; loadLeads(); }
+/* ⚠ Fires on every keystroke, so it must not touch the network. It also has to put
+   the caret back: the repaint replaces the input element the person is typing in,
+   and without this the cursor jumps to the start on the second character. */
+function ltFilter(v){
+  ltQuery = v;
+  const pos = (document.activeElement && typeof document.activeElement.selectionStart === 'number')
+    ? document.activeElement.selectionStart : null;
+  Promise.resolve(loadLeads({ reuse: true })).then(() => {
+    try{
+      const box = document.querySelector('#lead-tbody .lt-search input, #lead-tbody .lc-search input');
+      if(!box) return;
+      box.focus();
+      if(pos !== null) box.setSelectionRange(pos, pos);
+    }catch(e){}
+  });
+}
 
 /* ⚠ Closes whichever form the detail is in. There was no way out of the inline panel
    at all — the only escape was leaving the screen entirely. */
@@ -23599,7 +23706,7 @@ function ltDeselect(){
      repainting put the first lead straight back on screen. This tells that one repaint
      the empty selection was deliberate. It clears itself. */
   try{ window.__ltNoAuto = true; }catch(e){}
-  if(typeof loadLeads === 'function') loadLeads();
+  if(typeof loadLeads === 'function') loadLeads({ reuse: true });
 }
 
 /* ⚠ The sheet had exactly one way out: the Back button. Escape did nothing, because
