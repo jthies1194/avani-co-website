@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="build" content="index-v277">
+<meta name="build" content="index-v278">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Avani & Co. Real Estate | Gulf Shores, Orange Beach & Baldwin County AL Homes</title>
 <meta name="description" content="Avani & Co. Real Estate — a boutique brokerage serving Gulf Shores, Orange Beach, Fairhope, Foley, Daphne & Mobile, Alabama. Search homes, condos, and coastal properties along the Southern Sands. Licensed real estate broker in Alabama and Florida.">
@@ -2859,6 +2859,13 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
         onclick="ctNewArticle()">+ Write an article</button>
     </div>
     <div class="setup-panel">
+      <h3 class="sx-h">Say hello</h3>
+      <p class="sx-sub">A one-off introduction for people already on your list who have
+        never heard from the site &mdash; imports, an old spreadsheet, anyone added by hand.
+        Sent once per person, ever.</p>
+      <div class="setup-body" id="wc-body">Loading&hellip;</div>
+    </div>
+    <div class="setup-panel">
       <h3 class="sx-h">The monthly market letter</h3>
       <p class="sx-sub">One email a month to everyone whose town you know &mdash; what is on
         the market there right now, counted at the moment you send. Built from live
@@ -4564,7 +4571,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v277';
+window.BUILD = 'index-v278';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -8131,6 +8138,7 @@ const FIND_INDEX = [
   ['sec-setup','Outside tools','showingtime redex paragon gcmls perchwell mls links shortcuts tabs external tools'],
   ['sec-setup','Clear the test data','reset wipe clear test dummy fake seeded sample start fresh empty delete demo data'],
   ['sec-content','The monthly market letter','market letter monthly newsletter report stats send town inventory reach out touch'],
+  ['sec-content','Say hello','welcome intro introduce imported leads first email new list say hello greeting'],
   ['sec-assist','Assistant','assistant ai claude draft write follow up followup listing description copy ask my leads'],
   ['sec-agents','Agents','agents team roster add agent commission plan preview as'],
   ['sec-agents','Award tiers','awards tiers bronze silver gold platinum volume recognition where the bar sits'],
@@ -8426,6 +8434,7 @@ function showCrmSection(id){
        the two-panel-convention note warns about. */
     if(id === 'sec-content' && typeof renderVideos === 'function') renderVideos();
     if(id === 'sec-content' && typeof renderLetter === 'function') renderLetter();
+    if(id === 'sec-content' && typeof renderWelcome === 'function') renderWelcome();
     if(id === 'sec-assist'  && typeof renderAssist  === 'function') renderAssist();
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
@@ -23041,6 +23050,70 @@ async function mlSend(){
     renderLetter();
   }catch(e){ showToast(e.message); }
   finally{ mlBusy = false; mlSync(); }
+}
+
+/* ==================== SAY HELLO (index 278) ====================
+   \u26a0 Counts come from the server first. An intro email is the one send where the
+   number matters most \u2014 it is very often the first real thing a new domain sends, and
+   nobody should press it without knowing whether it reaches 3 people or 300. */
+let wcInfo = null, wcBusy = false;
+
+async function renderWelcome(){
+  const host = document.getElementById('wc-body');
+  if(!host) return;
+  host.innerHTML = '<div class="ml-none">Checking your list\u2026</div>';
+  try{
+    const r = await fetch('/api/welcome/preview', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not check that.');
+    wcInfo = d;
+  }catch(e){ host.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`; return; }
+
+  if(!wcInfo.eligible){
+    host.innerHTML = `<div class="ml-none">Nobody is waiting for one.${
+      wcInfo.already ? ` ${wcInfo.already} ${wcInfo.already===1?'person has':'people have'} already had theirs.` : ''}${
+      wcInfo.noEmail ? ` ${wcInfo.noEmail} ${wcInfo.noEmail===1?'has':'have'} no email address.` : ''}</div>`;
+    return;
+  }
+  host.innerHTML =
+    `<div class="ml-row" style="cursor:default">
+       <span class="l">Never introduced</span>
+       <span class="n">${wcInfo.eligible} ${wcInfo.eligible===1?'person':'people'}</span>
+     </div>
+     ${wcInfo.sample.length ? `<div class="ml-none">${
+       wcInfo.sample.map(s => escapeHtml(s.name)).join(', ')}${
+       wcInfo.eligible > wcInfo.sample.length ? ' and ' + (wcInfo.eligible - wcInfo.sample.length) + ' more' : ''}</div>` : ''}
+     <div class="ml-note">They get one short email with the address of the site and an
+       invitation to look around. <b>Nobody is sent it twice.</b> It carries your name,
+       your number and a working unsubscribe.</div>
+     ${(wcInfo.noEmail||0) ? `<div class="ml-none">${wcInfo.noEmail} ${
+       wcInfo.noEmail===1?'person has':'people have'} no email address and will not get one.</div>` : ''}
+     <div class="ml-go">
+       <label class="ml-cap">Send at most
+         <input id="wc-cap" type="number" min="1" max="200" value="${Math.min(wcInfo.eligible, 25)}"></label>
+       <button class="btn-sm primary" id="wc-btn" onclick="wcSend()">Say hello</button>
+     </div>`;
+}
+
+async function wcSend(){
+  if(wcBusy) return;
+  const cap = parseInt(document.getElementById('wc-cap')?.value, 10) || 25;
+  if(!confirm(`Introduce yourself to up to ${cap} ${cap===1?'person':'people'}?\n\n`
+    + `They have never had an email from this site before.`)) return;
+  wcBusy = true;
+  const b = document.getElementById('wc-btn');
+  if(b){ b.disabled = true; b.textContent = 'Sending\u2026'; }
+  try{
+    const r = await fetch('/api/welcome/send', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ cap }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not send those.');
+    showToast(d.sent ? `Said hello to ${d.sent}${d.failed?`, ${d.failed} failed`:''}.`
+                     : (d.note || 'Nobody was waiting.'));
+    renderWelcome();
+  }catch(e){ showToast(e.message); }
+  finally{ wcBusy = false; }
 }
 </script>
 
