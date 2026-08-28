@@ -4709,7 +4709,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v296';
+window.BUILD = 'index-v297';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5505,6 +5505,24 @@ tbody.innerHTML =
     ${typeof lcVideo === 'function' ? lcVideo(l) : ''}
     ${l.referredBy ? `<div class="lc-flag">via ${escapeHtml(l.referredBy)}</div>` : ''}
     ${l.transferredFrom ? `<div class="lc-flag">passed on by ${escapeHtml(l.transferredFrom)}</div>` : ''}
+    <!-- ⚠ v297. These four lived ONLY in the table's detail panel, which needs the table
+         view AND a browser over 1040px wide. On a card, or on a laptop, or on a phone,
+         there was no way to send anybody anything — and the one that matters most, the
+         introduction, was the one being hunted for. An action that exists in one view
+         and not the other is a trap: the broker reasonably assumes a missing button
+         means a missing feature. Same handlers, same names as the panel. -->
+    <div class="lc-send">
+      <div class="lc-send-h">Send them</div>
+      <div class="lc-send-row">
+        <button onclick="ltAssist('${l.id}')">A follow-up</button>
+        <button onclick="ltSendListings('${l.id}')">Some listings</button>
+        ${l.welcomedAt ? '' :
+          `<button class="go" onclick="ltWelcome('${l.id}')">Say hello</button>`}
+      </div>
+      ${l.welcomedAt ? `<div class="lc-sent-note">Said hello ${escapeHtml(
+        new Date(l.welcomedAt).toLocaleDateString('en-US',
+          { month:'short', day:'numeric' }))}</div>` : ''}
+    </div>
     <div class="lc-quick">
       ${(typeof LS_QUICK !== 'undefined' ? LS_QUICK : []).map(q =>
         `<button onclick="lsLog('${l.id}','${q[0]}')">+ ${q[1]}</button>`).join('')}
@@ -21591,6 +21609,20 @@ async function ntToggle(k){
 #crm-main .lc-why{background:var(--gd-pale);border-left:3px solid var(--gd);
   padding:10px 14px;border-radius:0 3px 3px 0;margin-top:10px;
   font-size:13px;line-height:1.55;color:#5C4718}
+#crm-main .lc-send{margin-top:12px;padding-top:12px;border-top:1px solid var(--hair2)}
+#crm-main .lc-send-h{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mut);font-weight:700;margin-bottom:7px}
+#crm-main .lc-send-row{display:flex;flex-wrap:wrap;gap:7px}
+#crm-main .lc-send-row button{border:1px solid var(--hair);background:#fff;border-radius:3px;
+  font:inherit;font-size:12.5px;font-weight:600;color:var(--rl);padding:7px 12px;cursor:pointer}
+#crm-main .lc-send-row button:hover{border-color:var(--rl);background:var(--pp)}
+/* ⚠ The introduction is the one that is sent once and never again, so it is the one
+   worth finding. Filled, not outlined — but it disappears entirely once used, which is
+   the real signal. */
+#crm-main .lc-send-row button.go{background:var(--gd,#C89B4E);border-color:var(--gd,#C89B4E);
+  color:#fff}
+#crm-main .lc-send-row button.go:hover{filter:brightness(1.06);background:var(--gd,#C89B4E)}
+#crm-main .lc-sent-note{margin-top:7px;font-size:11.5px;color:var(--mut)}
 #crm-main .lc-quick{margin-top:12px;padding-top:12px;border-top:1px solid var(--hair2)}
 #crm-main .lc-quick button{border:1px solid var(--hair);background:#fff;border-radius:3px;
   padding:6px 12px;font-size:11.5px;font-weight:600;color:var(--mut)}
@@ -24112,7 +24144,7 @@ async function ltPanelInner(id){
        <button class="btn-sm" onclick="vidSendOpen('${l.id}','${escapeHtml(String(l.name||'').replace(/'/g,"\\'"))}','${escapeHtml(String(l.email||'').replace(/'/g,"\\'"))}')">A video</button>
        <button class="btn-sm" onclick="ltSendListings('${l.id}')">Some listings</button>
        ${l.welcomedAt ? '' :
-         `<button class="btn-sm" onclick="ltWelcome('${l.id}')">An introduction to the site</button>`}
+         `<button class="btn-sm" onclick="ltWelcome('${l.id}')">Say hello</button>`}
      </div>
      ${l.welcomedAt ? `<div class="lt-hist" style="margin-top:6px">Introduced ${
         escapeHtml(new Date(l.welcomedAt).toLocaleDateString('en-US',
