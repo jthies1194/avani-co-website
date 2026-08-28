@@ -3002,9 +3002,36 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
    elsewhere produces a headerless "Loading…" and no way to reach the content.
    Titles go in the panel, not in a head. */
 .crm-sec .setup-panel + .setup-panel{margin-top:32px}
+#probe-out .probe-wait{font-size:13px;color:var(--driftwood)}
+#probe-out .probe-good{background:#EDF7F1;border:1px solid #9FC9B2;border-radius:5px;
+  padding:13px 15px;font-size:13.5px;line-height:1.55;color:#22563C}
+#probe-out .probe-bad{background:#FDF1EF;border:1px solid #E2B0A8;border-radius:5px;
+  padding:13px 15px;font-size:13.5px;line-height:1.55;color:#7A3227}
+#probe-out .probe-raw{margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;
+  color:#8A5A50;word-break:break-word}
 .sx-h{font-size:20px;margin:0 0 5px}
 .sx-sub{font-size:13px;color:var(--driftwood);margin:0 0 14px;max-width:620px;line-height:1.55}
 </style>
+<div class="setup-panel broker-only" id="probe-panel">
+  <h3 class="sx-h">Check an MLS feed</h3>
+  <p class="sx-sub">Type a feed code and press Check. This asks the MLS directly whether
+    our key can read that feed &mdash; which is the only thing that actually decides it.
+    Nothing is saved and nothing changes. Wrong codes are harmless.</p>
+  <!-- ⚠ A button, not a URL. This route needs the signed-in token, which the app holds
+       in memory and adds to every request itself. Typing the address into the bar sends
+       no token at all, so it answers "Sign in to access this" no matter who you are. -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+    <input id="probe-ds" placeholder="feed code, e.g. gcmls2" value="gcmls2"
+      style="font:inherit;font-size:14px;padding:9px 12px;border:1px solid var(--hair2);
+             border-radius:4px;min-width:240px;">
+    <button class="btn-sm primary" onclick="probeRun()">Check</button>
+  </div>
+  <div style="margin-top:8px;font-size:12px;color:var(--driftwood);">
+    Try: <b>gcmls2</b> first &mdash; that is the one already working, so it proves the
+    check itself is fine. Then try <b>bcar</b>, <b>bcmls</b>, <b>baldwin</b>, <b>bcarmls</b>.
+  </div>
+  <div id="probe-out" style="margin-top:14px;"></div>
+</div>
 <div class="setup-panel" id="nt-panel">
   <h3 class="sx-h">What reaches you</h3>
   <p class="sx-sub">Yours alone &mdash; nobody else sees or changes these, including
@@ -4709,7 +4736,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v297';
+window.BUILD = 'index-v298';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -24220,6 +24247,49 @@ async function ltStartSeq(id, campaignId){
 /* \u26a0 The bulk version under Content already existed and its route already accepted a
    leadIds array \u2014 nothing had ever called it with one. This is the individual door to
    a thing that was built and unreachable from where you would look for it. */
+/* ⚠ Reports in words, not JSON. The person running this is the broker, not a developer,
+   and "403" on its own tells him nothing about who to ring. Each status maps to the
+   next actual step. */
+async function probeRun(){
+  const ds = (document.getElementById('probe-ds')?.value || '').trim();
+  const out = document.getElementById('probe-out');
+  if(!out) return;
+  if(!ds){ out.innerHTML = '<div class="probe-bad">Type a feed code first.</div>'; return; }
+  out.innerHTML = '<div class="probe-wait">Asking the MLS\u2026</div>';
+  try{
+    const r = await fetch('/api/mls-probe?dataset=' + encodeURIComponent(ds));
+    const d = await r.json();
+    if(d.ok){
+      const s = d.sample || {};
+      out.innerHTML =
+        `<div class="probe-good"><b>Yes \u2014 "${escapeHtml(ds)}" works.</b>
+          <div>${escapeHtml(String(d.totalRecords))} listings available.</div>
+          ${s.UnparsedAddress ? `<div style="margin-top:7px;">For example:
+            ${escapeHtml(s.UnparsedAddress)}${s.City ? ', ' + escapeHtml(s.City) : ''}
+            ${s.ListPrice ? ' \u2014 $' + Number(s.ListPrice).toLocaleString() : ''}</div>` : ''}
+          <div style="margin-top:9px;">Send this to whoever is building the site.</div>
+        </div>`;
+      return;
+    }
+    const why = d.status === 404
+      ? 'There is no feed with that code. The code is wrong \u2014 try another spelling.'
+      : d.status === 403
+      ? 'The feed exists, but our key has not been given access to it. That is a call '
+        + 'to the MLS, not something we can fix in the code.'
+      : d.status === 401
+      ? 'Our key was refused. That would break the existing listings too, so check the '
+        + 'key itself before anything else.'
+      : 'Something else went wrong \u2014 the detail is below.';
+    out.innerHTML =
+      `<div class="probe-bad"><b>No \u2014 "${escapeHtml(ds)}" did not work.</b>
+        <div style="margin-top:5px;">${escapeHtml(why)}</div>
+        ${d.detail ? `<div class="probe-raw">${escapeHtml(String(d.detail).slice(0,300))}</div>` : ''}
+      </div>`;
+  }catch(e){
+    out.innerHTML = `<div class="probe-bad">Could not run the check: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
 async function ltWelcome(id){
   const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === id);
   if(!l) return;
