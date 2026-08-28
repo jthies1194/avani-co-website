@@ -2775,8 +2775,27 @@ app.get('/api/mls-probe', async (req, res) => {
   if (!dataset) {
     return res.status(400).json({ error: 'Give me a dataset code, e.g. ?dataset=gcmls2' });
   }
-  const token = process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN;
-  if (!token) return res.status(503).json({ error: 'No Bridge token is set on this server.' });
+  /* ⚠ TWO ACCOUNTS, TWO KEYS. Bridge confirmed (server 136) that Baldwin is a separate
+     Bridge account from Gulf Coast — separate login, separate credentials, and they
+     cannot be merged, because the Baldwin account is tied to the member record in
+     Baldwin's own system. So this is NOT one key opening several datasets, which is
+     what an earlier note in this project assumed and got wrong. The 404s on 'baldwin'
+     were the Gulf Coast key being asked about a dataset it has no account for.
+
+     When Baldwin approves direct access, set BRIDGE_BALDWIN_TOKEN to the token from
+     the Baldwin dashboard. Until then this simply reports that it is not set. */
+  const which = String(req.query.key || 'gulf');
+  const token = which === 'baldwin'
+    ? process.env.BRIDGE_BALDWIN_TOKEN
+    : (process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN);
+  if (!token) {
+    return res.status(503).json({
+      error: which === 'baldwin'
+        ? 'No Baldwin key is set on this server yet. Add BRIDGE_BALDWIN_TOKEN once '
+          + 'Baldwin approves direct access and you can log into their Bridge dashboard.'
+        : 'No Bridge token is set on this server.',
+    });
+  }
 
   const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
     + `?access_token=${encodeURIComponent(token)}`
@@ -5341,7 +5360,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v135',
+    serverVersion: 'v136',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
