@@ -2749,6 +2749,81 @@ app.get('/unsub/:pair', async (req, res) => {
     will put you back.</p>`, 'ok'));
 });
 
+/* ==================== DATASET PROBE (server 135) ====================
+   ⚠ Built because the Bridge dashboard's status column does not answer the only
+   question that matters. `gcmls2` has never shown as granted there and has been
+   serving this site's listings for months. So "pending" next to Baldwin says nothing
+   about whether the token can actually read it — the only way to find out is to ask.
+
+   This asks. It takes a dataset code, makes one small request with the live server
+   token, and reports exactly what came back: the HTTP status, the error body if there
+   is one, the total record count, and one sample listing. It changes NO configuration
+   and writes nothing. Run it against a code before putting that code anywhere near
+   the environment variables.
+
+   ⚠ Broker only, and the token never leaves the server — which is the point of doing
+   this here rather than pasting an access_token into a browser address bar, where it
+   would land in history, in any sync, and in the referrer of whatever loads next. */
+app.get('/api/mls-probe', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  /* ⚠ `sess.role === 'broker'` directly. The notes refer to an isOwner() helper; it is
+     not in this file. isStaff() would let admins through, and `broker-only` meaning
+     "broker or admin" is a bug this project has already shipped once. */
+  if (!sess || sess.role !== 'broker') return res.status(403).json({ error: 'Broker only.' });
+
+  const dataset = String(req.query.dataset || '').trim().slice(0, 60);
+  if (!dataset) {
+    return res.status(400).json({ error: 'Give me a dataset code, e.g. ?dataset=gcmls2' });
+  }
+  const token = process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN;
+  if (!token) return res.status(503).json({ error: 'No Bridge token is set on this server.' });
+
+  const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
+    + `?access_token=${encodeURIComponent(token)}`
+    + `&$top=1&$count=true`;
+
+  const started = Date.now();
+  try {
+    const r = await fetch(url);
+    const ms = Date.now() - started;
+    const text = await r.text().catch(() => '');
+
+    if (!r.ok) {
+      /* ⚠ The body verbatim, truncated. Bridge distinguishes "this dataset does not
+         exist", "your token cannot read it" and "you have no licence" in the message,
+         and those three mean very different things to whoever you call next. */
+      console.error(`[mls-probe] ${dataset} -> ${r.status} in ${ms}ms: ${text.slice(0, 300)}`);
+      return res.json({
+        ok: false, dataset, status: r.status, ms,
+        detail: text.slice(0, 600),
+        reading: r.status === 401 ? 'The token was refused outright.'
+              : r.status === 403 ? 'The token is valid but has no access to this dataset.'
+              : r.status === 404 ? 'No dataset by that code. Check the short code, not the UUID.'
+              : 'See the detail below.',
+      });
+    }
+
+    let json = {};
+    try { json = JSON.parse(text); } catch (e) {}
+    const rows = json.value || [];
+    const one = rows[0] || null;
+    console.log(`[mls-probe] ${dataset} -> 200 in ${ms}ms, ${json['@odata.count']} records`);
+    res.json({
+      ok: true, dataset, status: 200, ms,
+      totalRecords: json['@odata.count'] != null ? json['@odata.count'] : '(not reported)',
+      sample: one ? {
+        ListingKey: one.ListingKey, StandardStatus: one.StandardStatus,
+        City: one.City, UnparsedAddress: one.UnparsedAddress,
+        ListPrice: one.ListPrice, ListOfficeName: one.ListOfficeName,
+        ModificationTimestamp: one.ModificationTimestamp,
+      } : null,
+    });
+  } catch (e) {
+    console.error(`[mls-probe] ${dataset} threw:`, e.message);
+    res.status(502).json({ ok: false, dataset, error: e.message });
+  }
+});
+
 app.post('/api/broadcast', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
@@ -5266,7 +5341,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v134',
+    serverVersion: 'v135',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
