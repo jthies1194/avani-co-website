@@ -2643,6 +2643,112 @@ app.get('/c/:leadId/:artId/:tok', async (req, res) => {
   res.redirect(dest);
 });
 
+/* ==================== UNSUBSCRIBE, THE PAGE (server 134) ====================
+   ⚠ Every marketing email built its opt-out as `/?unsub=<id>.<token>` — the SPA
+   homepage with a query string — and NOTHING in the client has ever read that
+   parameter. The app parses `listing`, `agent`, `leaveReview`, `oh` and `ohf`. Not
+   `unsub`. So the link loaded the homepage and silently did nothing, on the welcome,
+   the market letter and every drip message. Three places built the same wrong URL.
+
+   The working handler existed the whole time at /api/unsub/:pair. Nothing pointed at
+   it. Grep for the write, then grep for the READ — a live route nobody links to is the
+   same dead feature as a field nobody sets.
+
+   ⚠ This is the one link that has to work. A broken opt-out is what turns a complaint
+   into a penalty, and it is also simply what we told the person we would do.
+
+   ⚠ Server-rendered, not the app shell. It must work with JavaScript off, in a preview
+   pane, in whatever a mail client wraps links in. Same reasoning as the listing share
+   pages: if it matters outside the app, the server renders it.
+
+   ⚠ GET unsubscribes. Some scanners pre-fetch links, so a scanner could opt somebody
+   out — but the alternative is a person clicking Unsubscribe, seeing a button, not
+   pressing it, and staying on the list. Being wrongly removed is recoverable and
+   harmless; failing to remove somebody who asked is neither. */
+app.get('/unsub/:pair', async (req, res) => {
+  const raw = String(req.params.pair || '');
+  const [leadId, token] = raw.split('.');
+
+  const page = (heading, body, tone) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>${heading} — ${esc(BROKERAGE_NAME)}</title>
+<style>
+  body{margin:0;background:#FBFAF7;color:#171F63;
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
+  .w{max-width:540px;margin:0 auto;padding:56px 22px}
+  .b{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#8C93AD;
+    font-weight:700;margin-bottom:26px}
+  h1{font-size:25px;line-height:1.25;margin:0 0 14px;font-weight:600}
+  p{margin:0 0 14px;color:#3C4472}
+  .ok{color:#2F7A55;font-weight:600}
+  .f{margin-top:34px;padding-top:18px;border-top:1px solid #E4E1D9;
+    font-size:13px;color:#8C93AD;line-height:1.55}
+  a{color:#171F63}
+</style></head><body><div class="w">
+  <div class="b">${esc(BROKERAGE_NAME)}</div>
+  <h1 class="${tone === 'ok' ? 'ok' : ''}">${heading}</h1>
+  ${body}
+  <div class="f">${esc(BROKERAGE_NAME)}<br>${esc(BROKERAGE_ADDRESS)}<br>
+    ${esc(BROKERAGE_PHONE)}</div>
+</div></body></html>`;
+
+  /* ⚠ A bad or expired link still gets a human answer and a phone number, never a 404
+     or raw JSON. Somebody trying to get off a list and hitting an error page is exactly
+     who ends up pressing "report spam" instead. */
+  if (!leadId || token !== unsubToken(leadId)) {
+    res.status(404).set('Cache-Control', 'no-store');
+    return res.send(page('That link did not work',
+      `<p>It may have been broken by your email program, or it may be an old one.</p>
+       <p>Reply to any email from us, or call ${esc(BROKERAGE_PHONE)}, and we will take
+       you off the list by hand. You do not need this link for that.</p>`));
+  }
+
+  const lead = await getSetting('lead:' + leadId);
+  if (!lead) {
+    res.status(404).set('Cache-Control', 'no-store');
+    return res.send(page('You are not on our list',
+      `<p>We could not find that record, which most likely means you have already been
+       removed. Nothing further will come from us.</p>`));
+  }
+
+  const already = !!lead.unsubscribed;
+  if (!already) {
+    lead.unsubscribed = true;
+    lead.unsubscribedAt = new Date().toISOString();
+    /* ⚠ Stop the sequence too. Unsubscribing from "emails" while a drip carries on is
+       the same failure from the recipient's side. */
+    if (lead.drip) lead.drip.stopped = true;
+    lead.events = Array.isArray(lead.events) ? lead.events : [];
+    lead.events.push({ k: 'unsubscribed', at: lead.unsubscribedAt });
+    const ok = await setSetting('lead:' + leadId, lead);
+    if (!ok) {
+      /* ⚠ Never tell somebody they are unsubscribed when the write failed. That is the
+         one lie with a statutory penalty attached. */
+      console.error(`[unsub] WRITE FAILED for ${lead.email || leadId} — still subscribed`);
+      res.status(500).set('Cache-Control', 'no-store');
+      return res.send(page('Something went wrong',
+        `<p>We could not record that just now, and we will not tell you it worked when
+         it did not.</p>
+         <p>Please reply to the email, or call ${esc(BROKERAGE_PHONE)}, and we will
+         remove you by hand today.</p>`));
+    }
+    console.log(`[unsub] ${lead.email || leadId} unsubscribed via the page`);
+  }
+
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.send(page(already ? 'You were already unsubscribed' : 'You are unsubscribed', `
+    <p>${esc(lead.email || 'That address')} will not receive any more marketing email
+    from us — no market letters, no listing alerts, no introductions.</p>
+    <p>If you are working with one of our agents, they can still reply to you directly
+    about your own sale or purchase. That is not marketing and it is not affected by
+    this.</p>
+    <p>Removed by mistake, or changed your mind? Call ${esc(BROKERAGE_PHONE)} and we
+    will put you back.</p>`, 'ok'));
+});
+
 app.post('/api/broadcast', async (req, res) => {
   if (!requireSupabase(res)) return;
   const sess = await requireSession(req, res); if (!sess) return;
@@ -2692,7 +2798,7 @@ app.post('/api/broadcast', async (req, res) => {
           + (senderSlug ? `?a=${encodeURIComponent(senderSlug)}` : '');
         return `${a.title}\n${a.teaser}\n${link}`;
       }).join('\n\n');
-      const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+      const unsub = `${origin}/unsub/${lead.id}.${unsubToken(lead.id)}`;
       try {
         await mailer.sendMail({
           to: lead.email,
@@ -2702,7 +2808,7 @@ app.post('/api/broadcast', async (req, res) => {
               + `\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
               + `${BROKERAGE_ADDRESS}\n\n`
               + `${arts.some(articleRegulated) ? DISCLAIMER_REGULATED + '\n\n' : ''}`
-              + `${DISCLAIMER_GENERAL}\n\nNo longer want these? ${unsub}`,
+              + `${DISCLAIMER_EMAIL}\n\nNo longer want these? ${unsub}`,
         });
         sent++;
         lead.broadcasts = Array.isArray(lead.broadcasts) ? lead.broadcasts : [];
@@ -2867,7 +2973,7 @@ app.post('/api/drip/tick', async (req, res) => {
     for (const step of due) {
       if (step.type === 'email') {
         if (!lead.email || !mailer) { continue; }
-        const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+        const unsub = `${origin}/unsub/${lead.id}.${unsubToken(lead.id)}`;
         try {
           await mailer.sendMail({
             to: lead.email,
@@ -5160,7 +5266,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v133',
+    serverVersion: 'v134',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6257,7 +6363,7 @@ function letterText(s, first, sender, origin, unsub) {
        there somewhere. They are not. */
     'These figures cover homes currently for sale. They do not include sale prices.',
     '',
-    DISCLAIMER_GENERAL,
+    DISCLAIMER_EMAIL,
     '',
     `No longer want these? ${unsub}`,
   ];
@@ -6319,10 +6425,39 @@ function welcomeText(lead, sender, origin, slug, unsub) {
     BROKERAGE_PHONE,
     BROKERAGE_ADDRESS,
     '',
-    DISCLAIMER_GENERAL,
+    DISCLAIMER_EMAIL,
     '',
     `Not interested in emails from us? ${unsub}`,
   ].join('\n');
+}
+
+/* ⚠ An HTML twin of welcomeText. The plain-text-only version arrived with the URL
+   swallowing the first word of the next paragraph — `?agent=jimmythies\u2063\u2063You` — because a
+   mail client left to guess where a bare URL ends will sometimes guess past the line
+   break. An explicit <a href> removes the guess. `text` still goes with it as the
+   fallback, so nothing is lost for anyone reading in plain text. */
+function welcomeHtml(lead, sender, origin, slug, unsub) {
+  const first = esc(String(lead.name || '').trim().split(/\s+/)[0] || 'there');
+  const link = origin + (slug ? '/?agent=' + encodeURIComponent(slug) : '/');
+  const town = (typeof leadTown === 'function') ? leadTown(lead) : '';
+  return `<div style="font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#171F63;max-width:560px">
+<p>Hi ${first},</p>
+<p>I have put our listings online in one place, and I wanted you to have the address
+before anybody else does.</p>
+<p><a href="${esc(link)}" style="color:#171F63;font-weight:600">${esc(link)}</a></p>
+<p>You can search every active listing on the coast${town ? ', including ' + esc(town) : ''}
+&mdash; no sign-in needed to look around. If you make a free account it will remember
+your favourites and email you when something new comes up that fits.</p>
+<p>No obligation and nothing automated at you. If you would rather I just called when
+something good turns up, reply and say so and I will.</p>
+<p style="margin-top:26px;padding-top:16px;border-top:1px solid #E4E1D9">
+${esc(sender.name || '')}<br>${esc(BROKERAGE_NAME)}<br>
+${esc(BROKERAGE_PHONE)}<br>${esc(BROKERAGE_ADDRESS)}</p>
+<p style="font-size:12.5px;color:#8C93AD;line-height:1.55">${esc(DISCLAIMER_EMAIL)}</p>
+<p style="font-size:12.5px;color:#8C93AD">
+Not interested in emails from us?
+<a href="${esc(unsub)}" style="color:#8C93AD">Unsubscribe</a>.</p>
+</div>`;
 }
 
 app.post('/api/welcome/send', async (req, res) => {
@@ -6353,13 +6488,14 @@ app.post('/api/welcome/send', async (req, res) => {
   let sent = 0, failed = 0;
   for (let i = 0; i < queue.length; i += 8) {
     await Promise.all(queue.slice(i, i + 8).map(async ({ key, lead }) => {
-      const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+      const unsub = `${origin}/unsub/${lead.id}.${unsubToken(lead.id)}`;
       try {
         await mailer.sendMail({
           to: lead.email,
           marketing: true,
           subject: `Every listing on the coast, in one place`,
           text: welcomeText(lead, sess, origin, slug, unsub),
+          html: welcomeHtml(lead, sess, origin, slug, unsub),
         });
         sent++;
         lead.welcomedAt = new Date().toISOString();
@@ -6456,7 +6592,7 @@ app.post('/api/market-letter/send', async (req, res) => {
     const chunk = queue.slice(i, i + 8);
     await Promise.all(chunk.map(async ({ key, lead, stats }) => {
       const first = String(lead.name || '').trim().split(/\s+/)[0] || 'there';
-      const unsub = `${origin}/?unsub=${lead.id}.${unsubToken(lead.id)}`;
+      const unsub = `${origin}/unsub/${lead.id}.${unsubToken(lead.id)}`;
       try {
         await mailer.sendMail({
           to: lead.email,
@@ -7348,6 +7484,16 @@ app.get('/:slug', async (req, res, next) => {
    to be legal advice, and it is the kind of thing worth getting signed off. */
 const DISCLAIMER_GENERAL =
   'This article is general information about the Alabama Gulf Coast market and is '
+  + 'not advice about any specific property or situation. Market conditions change. '
+  + 'Nothing here creates an agency relationship.';
+
+/* \u26a0 The same disclaimer, minus the word "article". DISCLAIMER_GENERAL was written
+   for blog posts and then pasted onto the welcome email and the market letter, neither
+   of which is an article \u2014 so an introduction to the site arrived describing itself as
+   one, and the broker read it and reasonably asked where the article was. A disclaimer
+   that misnames the thing it is attached to undermines the disclaimer. */
+const DISCLAIMER_EMAIL =
+  'This email is general information about the Alabama Gulf Coast market and is '
   + 'not advice about any specific property or situation. Market conditions change. '
   + 'Nothing here creates an agency relationship.';
 
