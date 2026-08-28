@@ -3024,11 +3024,22 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
     <input id="probe-ds" placeholder="feed code, e.g. gcmls2" value="gcmls2"
       style="font:inherit;font-size:14px;padding:9px 12px;border:1px solid var(--hair2);
              border-radius:4px;min-width:240px;">
+    <!-- ⚠ Baldwin is a SEPARATE Bridge account with its own login and its own key,
+         confirmed by Bridge support. It is not one key opening two feeds. Asking about
+         'baldwin' with the Gulf Coast key returns "Dataset not found", which reads like
+         a wrong code and is really a wrong keyring. -->
+    <select id="probe-key" style="font:inherit;font-size:14px;padding:9px 12px;
+      border:1px solid var(--hair2);border-radius:4px;">
+      <option value="gulf">Gulf Coast key</option>
+      <option value="baldwin">Baldwin key</option>
+    </select>
     <button class="btn-sm primary" onclick="probeRun()">Check</button>
   </div>
   <div style="margin-top:8px;font-size:12px;color:var(--driftwood);">
-    Try: <b>gcmls2</b> first &mdash; that is the one already working, so it proves the
-    check itself is fine. Then try <b>bcar</b>, <b>bcmls</b>, <b>baldwin</b>, <b>bcarmls</b>.
+    <b>gcmls2</b> with the Gulf Coast key is the one already working &mdash; check that
+    first to prove the test itself is fine. Baldwin's code is <b>baldwin</b>, and it
+    needs the <b>Baldwin key</b>, which is a separate account. It will not work until
+    Baldwin approves direct access for a broker not using an outside vendor.
   </div>
   <div id="probe-out" style="margin-top:14px;"></div>
 </div>
@@ -4736,7 +4747,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v298';
+window.BUILD = 'index-v299';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -24257,8 +24268,15 @@ async function probeRun(){
   if(!ds){ out.innerHTML = '<div class="probe-bad">Type a feed code first.</div>'; return; }
   out.innerHTML = '<div class="probe-wait">Asking the MLS\u2026</div>';
   try{
-    const r = await fetch('/api/mls-probe?dataset=' + encodeURIComponent(ds));
+    const key = document.getElementById('probe-key')?.value || 'gulf';
+    const r = await fetch('/api/mls-probe?dataset=' + encodeURIComponent(ds)
+      + '&key=' + encodeURIComponent(key));
     const d = await r.json();
+    /* ⚠ A missing key is not a failed lookup and must not read like one. */
+    if(!d.ok && d.error && d.status === undefined){
+      out.innerHTML = `<div class="probe-bad">${escapeHtml(d.error)}</div>`;
+      return;
+    }
     if(d.ok){
       const s = d.sample || {};
       out.innerHTML =
