@@ -2527,6 +2527,17 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <div id="referral-bar" style="display:none;"></div>
 <div id="transfer-overlay"><div class="box"><div id="transfer-body"></div></div></div>
 <div id="ae-overlay"><div class="box"><div id="ae-body"></div></div></div>
+<div id="cq-overlay" onclick="if(event.target===this) cqClose()">
+  <div class="box" id="cq-panel">
+    <button class="cma-x" onclick="cqClose()" aria-label="Close">&times;</button>
+    <h3 style="margin:0 0 3px;font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:21px">Who to call now</h3>
+    <p style="font-size:13px;color:var(--driftwood);margin:0 0 14px;line-height:1.55">
+      Worst first &mdash; never contacted before anyone else, then whoever has waited longest.
+      <b>The call goes through your own phone</b>, not through this system.</p>
+    <div id="cq-body"></div>
+  </div>
+</div>
+
 <div id="vsend-overlay" onclick="if(event.target===this) vidSendClose()">
   <div class="box">
     <button class="cma-x" onclick="vidSendClose()" aria-label="Close">&times;</button>
@@ -2958,6 +2969,13 @@ html,body{overflow-x:hidden;overflow-x:clip}
 <div class="crm-toolbar">
 <div class="stage-filters" id="stage-filters"></div>
 <div class="toolbar-actions">
+<!-- \u26a0 The call list lives HERE, in the toolbar above the leads, not in a panel below
+     them. It was at the bottom of the screen under the setup panels, where the broker
+     could not see it and reasonably said so. Calling is the daily job; it belongs with
+     the leads, not with the configuration. It opens over the list rather than taking
+     permanent space, so it costs nothing when nobody is calling. -->
+<button class="btn-sm primary" onclick="cqOpen()" title="Work through who needs a call">
+  &#9742; Call list</button>
 <span class="lt-switch">
   <button class="btn-sm" id="lt-v-table" onclick="ltSetView('table')">Table</button>
   <button class="btn-sm" id="lt-v-cards" onclick="ltSetView('cards')">Cards</button>
@@ -3007,15 +3025,6 @@ html,body{overflow-x:hidden;overflow-x:clip}
      The heading exists because the broker's words were "I don't understand how to
      use this or the purpose" — the three panels never said what they were for, what
      order to do them in, or that two of them are the same machine. -->
-<div class="setup-panel" id="cq-panel">
-  <h3 class="sx-h">Who to call now</h3>
-  <p class="sx-sub">One person at a time, worst first &mdash; never contacted before anyone
-    else, then whoever has waited longest. It shows you whether they gave written consent,
-    checks it is a reasonable hour where they are, and logs the outcome in a tap.
-    <b>The call goes through your own phone or your own dialer</b>, not through this system.</p>
-  <div id="cq-body"><button class="btn-sm primary" onclick="cqOpen()">Start calling</button></div>
-</div>
-
 <div class="setup-panel" id="en-panel">
   <h3 class="sx-h">Put existing people on a follow-up</h3>
   <p class="sx-sub">New leads go onto a follow-up by themselves the moment they arrive.
@@ -3478,6 +3487,13 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 @media(max-width:620px){ #ae-overlay .ae-two{grid-template-columns:1fr} }
 #ae-overlay .ae-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center}
 #ae-overlay .ae-fine{font-size:12.5px;color:var(--mut,#7A8199);margin:12px 0 0}
+/* \u26a0 The call list uses `.on`, not `.active`, because `.active` is already used by
+   .view and .crm-sec elsewhere and a stray match would show it over the public site. */
+#cq-overlay{position:fixed;inset:0;background:rgba(10,14,35,.66);z-index:9200;
+  display:none;align-items:center;justify-content:center;padding:20px}
+#cq-overlay.on{display:flex}
+#cq-overlay .box{background:var(--ivory,#FBFAF6);border-radius:7px;width:100%;
+  max-width:560px;max-height:92vh;overflow:auto;padding:26px 28px;position:relative}
 #vsend-overlay{position:fixed;inset:0;background:rgba(10,14,35,.66);z-index:9200;
   display:none;align-items:center;justify-content:center;padding:20px}
 #vsend-overlay.active{display:flex}
@@ -5024,7 +5040,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v321';
+window.BUILD = 'index-v322';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -25508,7 +25524,7 @@ async function enGo(){
    ⚠ Every attempt is written to the lead's own event log. That log is the defence if
    anybody ever complains, so nothing here may place a call without recording it. */
 
-let cqList = [], cqIdx = 0, cqBusy = false;
+let cqList = [], cqIdx = 0, cqBusy = false, cqSkipped = null;
 
 /* Rough zone from the phone's area code. Not perfect, and deliberately conservative:
    an unknown area code is treated as the strictest plausible zone rather than assumed
@@ -25553,11 +25569,29 @@ function cqConsent(l){
        + 'Dial it yourself from your phone. Do not put it through an auto or power dialer.' };
 }
 
+function cqClose(){
+  const o = document.getElementById('cq-overlay');
+  if(o) o.classList.remove('on');
+}
+
 async function cqOpen(){
+  const o = document.getElementById('cq-overlay');
+  if(o) o.classList.add('on');
   const host = document.getElementById('cq-body');
   if(!host) return;
   host.innerHTML = '<div class="probe-wait">Building your list…</div>';
   const all = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []);
+  /* \u26a0 Counted separately so the empty state can say WHY it is empty. "Nobody is
+     waiting" and "none of your leads have a phone number" are completely different
+     problems and must never render the same. */
+  cqSkipped = { noPhone:0, dnc:0, closed:0, unsub:0 };
+  all.forEach(l => {
+    if(!l) return;
+    if(!l.phone) cqSkipped.noPhone++;
+    else if(l.doNotCall) cqSkipped.dnc++;
+    else if((l.stage||'New') === 'Closed') cqSkipped.closed++;
+    else if(l.unsubscribed) cqSkipped.unsub++;
+  });
   cqList = all.filter(l => l && l.phone && !l.doNotCall && (l.stage||'New') !== 'Closed'
                         && !l.unsubscribed)
     /* Worst first: never contacted, then longest since anybody spoke to them, then score. */
@@ -25577,8 +25611,19 @@ function cqRender(){
   const host = document.getElementById('cq-body');
   if(!host) return;
   if(!cqList.length){
-    host.innerHTML = '<div class="cq-none">Nobody with a phone number is waiting on a call. '
-      + 'Leads with no number, or marked do not call, are left out of this list.</div>';
+    const sk = cqSkipped || {};
+    const total = (sk.noPhone||0)+(sk.dnc||0)+(sk.closed||0)+(sk.unsub||0);
+    host.innerHTML = '<div class="cq-none">'
+      + (sk.noPhone
+          ? '<b>' + sk.noPhone + ' of your ' + total + ' leads have no phone number</b>, so there '
+            + 'is nobody to call.<br><br>Phone numbers come in three ways: somebody fills in the '
+            + 'quiz and gives one, you type one on their card, or a CSV import has a phone column. '
+            + 'If you imported a list that had numbers in it, the column may not have been picked '
+            + 'up &mdash; worth checking the file and importing again.'
+          : 'Nobody is waiting on a call right now.')
+      + (sk.dnc ? '<br><br>' + sk.dnc + ' marked do not call.' : '')
+      + (sk.closed ? '<br>' + sk.closed + ' closed.' : '')
+      + '</div>';
     return;
   }
   if(cqIdx >= cqList.length){
