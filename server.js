@@ -4346,10 +4346,22 @@ app.post('/api/agent/:id/alerts', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (sess.agentId !== req.params.id && !isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });
   const b = req.body || {};
-  await setSetting('agentAlerts:' + req.params.id, {
+  /* \u26a0 The agent's OWN dialer, not the brokerage's. Stored as a URL template with
+     {number} in it; blank means a plain tel: link. Validated to http(s) or a custom
+     scheme with no spaces, so a paste of something odd cannot become a javascript:
+     URL rendered into an href on the call screen. */
+  let dialer = String(b.dialerUrl || '').trim().slice(0, 300);
+  if (dialer && !/^(https?:\/\/|[a-z][a-z0-9+.-]*:)[^\s"'<>]+$/i.test(dialer)) dialer = '';
+  if (/^javascript:/i.test(dialer) || /^data:/i.test(dialer)) dialer = '';
+  const prev = (await getSetting('agentAlerts:' + req.params.id)) || {};
+  const ok = await setSetting('agentAlerts:' + req.params.id, {
     emailAlerts: b.emailAlerts !== false,
     smsAddress: String(b.smsAddress || '').trim().slice(0, 120),
+    dialerUrl: dialer,
   });
+  /* \u26a0 setSetting returns false on a failed write. Telling the agent "saved" when it
+     was not is how a setting silently reverts and nobody knows why. */
+  if (ok === false) return res.status(500).json({ error: 'That did not save. Try again.' });
   res.json({ ok: true });
 });
 
@@ -5980,7 +5992,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v153',
+    serverVersion: 'v154',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
