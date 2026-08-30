@@ -33,6 +33,11 @@ const BROKERAGE_LEGAL_ENTITY = 'Avani & Co Real Estate LLC';
 /* CAN-SPAM requires a real postal address in every commercial email. This is not
    decoration — an email without it is a violation on its own. */
 const BROKERAGE_ADDRESS = '191 Northshore Circle, Suite 100-D, Gulf Shores, AL 36542';
+/* \u26a0 A background sweep has no req, so it cannot build an origin the way every route
+   does. Set PUBLIC_ORIGIN in the host environment if the domain ever changes; the
+   fallback is the live site. An origin that is wrong here breaks the unsubscribe
+   link, which is the one link with a statutory penalty behind it. */
+const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || 'https://bamacoast.com').replace(/\/+$/, '');
 const BROKERAGE_PHONE = '251-229-3216';
 
 const app = express();
@@ -3032,7 +3037,30 @@ function dripFill(text, lead, agent){
     .replace(/\{agent\}/g, agent.name || '')
     .replace(/\{brokerage\}/g, BROKERAGE_NAME)
     .replace(/\{phone\}/g, BROKERAGE_PHONE)
-    .replace(/\{address\}/g, lead.listingLabel || 'the property');
+    .replace(/\{address\}/g, lead.listingLabel || 'the property')
+    /* \u26a0 {city} is used by the default openers and had NO replacement here, so an
+       automated message would have gone out reading "Staying around {city}, or open
+       to nearby?" \u2014 to a client, under the brokerage's name. leadTown() is declared
+       further down the file; function declarations hoist, so this is safe.
+       \u26a0 The fallback is deliberately a phrase that reads as English in the sentence
+       rather than an empty string, which would leave "Staying around , or open to". */
+    .replace(/\{city\}/g, (function(){
+      try { return leadTown(lead) || 'the area'; } catch (e) { return 'the area'; }
+    })());
+}
+
+/* \u26a0 Any token the copy uses and dripFill does not know about would be delivered
+   literally. Belt and braces: strip anything left over rather than mail a curly
+   brace to a buyer. Logged, because a token going missing is a content bug worth
+   seeing rather than silently swallowing. */
+function dripClean(text, where){
+  const out = String(text || '');
+  const left = out.match(/\{[a-zA-Z_]+\}/g);
+  if (left && left.length) {
+    console.warn('[drip] unresolved token(s) ' + left.join(',') + ' in ' + (where || 'a step'));
+    return out.replace(/\{[a-zA-Z_]+\}/g, '');
+  }
+  return out;
 }
 
 /* Called when the CRM loads. Sends what is due, records what was sent. */
@@ -4489,6 +4517,15 @@ function speedToLeadSms(b) {
    makes somebody vanish off the call list without anyone having rung them. */
 
 const CLAIM_MINUTES = 15;
+/* ⚠ The SECOND deadline, added server 137 at the broker's instruction. Claiming is
+   not contact — deliberately — which left a free move: claim the lead, never ring
+   anybody, and nothing ever happened again. There was a deadline on claiming and
+   none on contacting. This is that deadline.
+
+   Set when a lead is claimed, cleared the moment firstTouchAt appears. If it passes
+   with the lead still untouched, the lead goes back to the broker exactly the way an
+   unclaimed one does. */
+const CONTACT_MINUTES = 60;
 const CLAIM_START_HOUR = 8;    // Central
 const CLAIM_END_HOUR   = 20;
 
@@ -4504,10 +4541,17 @@ function centralHour(d) {
    \u26a0 Outside working hours the clock does not run \u2014 it starts at 8am. A lead at 2am
    is claimable from 8am, not lost at 2:15am while everyone is asleep. */
 function claimDeadline(from) {
+  return afterBusinessMinutes(from, CLAIM_MINUTES);
+}
+
+/* ⚠ Both deadlines go through here, so the out-of-hours rule can never drift apart
+   between them. A lead claimed at 7pm must not be "overdue for a call" at 8pm when
+   the office is shut — the hour is served from 8am the next morning instead. */
+function afterBusinessMinutes(from, minutes) {
   const d = new Date(from);
   const h = centralHour(d);
   if (h >= CLAIM_START_HOUR && h < CLAIM_END_HOUR) {
-    return new Date(d.getTime() + CLAIM_MINUTES * 60000).toISOString();
+    return new Date(d.getTime() + minutes * 60000).toISOString();
   }
   /* Next 8am Central. Built by stepping forward an hour at a time rather than doing
      offset arithmetic, so daylight saving cannot put it an hour out. */
@@ -4516,7 +4560,11 @@ function claimDeadline(from) {
   do { next.setTime(next.getTime() + 3600000); guard++; }
   while (centralHour(next) !== CLAIM_START_HOUR && guard < 48);
   next.setMinutes(0, 0, 0);
-  return new Date(next.getTime() + CLAIM_MINUTES * 60000).toISOString();
+  return new Date(next.getTime() + minutes * 60000).toISOString();
+}
+
+function contactDeadline(from) {
+  return afterBusinessMinutes(from, CONTACT_MINUTES);
 }
 
 function claimToken(leadId) {
@@ -4563,11 +4611,23 @@ border-radius:4px;font-weight:700;font-size:15px}</style></head><body><div class
   lead.claimedByName = lead.assignedAgentName || '';
   lead.claimedAt = new Date().toISOString();
   lead.claimDue = '';
+  /* ⚠ The contact clock starts HERE, on the claim, not on the lead's arrival. Taking
+     it is the promise; this is the deadline on keeping it. Cleared by the sweep the
+     moment firstTouchAt appears. */
+  lead.contactDue = lead.firstTouchAt ? '' : contactDeadline(lead.claimedAt);
   await setSetting('lead:' + id, lead);
   console.log(`[claim] ${lead.name || id} claimed by ${lead.claimedByName || lead.claimedBy}`);
   return page('Got it \u2014 this one is yours',
-    `<p>${esc(lead.name || 'This lead')} is assigned to you and will not go back to the broker.`
-    + ` They still need a call.</p><a href="${origin}/#leads">Open the CRM</a>`, '#1F6B49');
+    `<p>${esc(lead.name || 'This lead')} is assigned to you and will not go back to the broker.</p>`
+    /* ⚠ Said plainly, at the only moment they are certain to read it. Nothing in this
+       system contacts a new lead for them, and an agent who assumes otherwise costs
+       the brokerage the lead. */
+    + `<p><strong>You make the first contact.</strong> Nothing is sent to this person`
+    + ` automatically \u2014 call or message them yourself within the hour, or this goes`
+    + ` back to the broker.</p>`
+    + `<p>Once you have spoken to them, log it in the CRM and the follow-up sequence`
+    + ` takes over from there.</p>`
+    + `<a href="${origin}/#leads">Open the CRM</a>`, '#1F6B49');
 });
 
 /* The sweep. Runs on a timer inside this process and reads deadlines off the records,
@@ -4581,7 +4641,76 @@ async function claimSweep() {
     let broker = null;
     for (const row of (data || [])) {
       const l = row.value;
-      if (!l || !l.claimDue || l.claimedBy) continue;
+      if (!l) continue;
+
+      /* ---- deadline 2: claimed, and still nobody has spoken to them ----
+         ⚠ Checked BEFORE the claim branch, because these are mutually exclusive
+         states: claimDue only exists while unclaimed, contactDue only while claimed.
+         ⚠ firstTouchAt is written by the CRM, not here, so the sweep is where a met
+         deadline gets cleared. Clearing it is not optional — leave it set and the
+         lead is dragged back from an agent who did ring them. */
+      if (l.contactDue && l.claimedBy) {
+        if (l.firstTouchAt) {
+          l.contactDue = '';
+          await setSetting(row.key, l);
+          continue;
+        }
+        if (new Date(l.contactDue).getTime() > now) continue;
+
+        if (!broker) {
+          const { data: ags } = await supabase.from('agents')
+            .select('id,name,email,role,active').eq('role', 'broker');
+          broker = (ags || []).find(a => a.active !== false) || null;
+        }
+        if (!broker) { console.warn('[contact sweep] no broker on file'); return; }
+
+        const heldById = l.claimedBy || l.assignedAgentId || '';
+        const heldByName = l.claimedByName || l.assignedAgentName || '';
+        l.contactDue = '';
+        if (heldById === broker.id) { await setSetting(row.key, l); continue; }
+
+        l.assignedAgentId = broker.id;
+        l.assignedAgentName = broker.name || '';
+        /* ⚠ The claim is released too. Left set, the lead would sit with the broker
+           still marked as claimed by the agent who never rang, and could never be
+           claimed again by anybody. */
+        l.claimedBy = '';
+        l.claimedByName = '';
+        l.claimedAt = '';
+        l.uncontactedFrom = heldByName;
+        l.events = Array.isArray(l.events) ? l.events : [];
+        l.events.push({ k: 'uncontacted', at: new Date().toISOString(), note: heldByName });
+        await setSetting(row.key, l);
+        console.warn(`[contact] ${l.name || row.key} claimed by ${heldByName || heldById} `
+          + `but never contacted \u2014 back to ${broker.name}`);
+
+        /* ⚠ Told, and told why. This one is sharper than the unclaimed note because
+           they did take it on: the difference between missing an email and breaking
+           a promise. Still no blame in the wording — the point is the behaviour
+           changing, not the agent feeling got at. */
+        try {
+          if (mailer && heldById) {
+            const { data: who } = await supabase.from('agents').select('email,name').eq('id', heldById).maybeSingle();
+            if (who && who.email) {
+              await mailer.sendMail({
+                to: who.email,
+                subject: `Back to the broker: ${l.name || 'a lead'}`,
+                text: `You claimed ${l.name || 'a lead'}, but there is still nothing logged to show `
+                    + `they have been contacted, so after ${CONTACT_MINUTES} minutes it has gone back `
+                    + `to ${broker.name}.\n\n`
+                    + `First contact is always the agent's own \u2014 nothing in the system reaches out `
+                    + `to a new lead for you. Once you have spoken to somebody, log it on their card `
+                    + `and the follow-up runs by itself from there.\n\n`
+                    + `Nothing is lost \u2014 ask and it can come straight back to you.\n`,
+              });
+            }
+          }
+        } catch (e) { console.error('[contact] could not notify:', e.message); }
+        continue;
+      }
+
+      /* ---- deadline 1: never claimed at all ---- */
+      if (!l.claimDue || l.claimedBy) continue;
       if (new Date(l.claimDue).getTime() > now) continue;
 
       if (!broker) {
@@ -4626,6 +4755,209 @@ async function claimSweep() {
 
 /* \u26a0 Every minute, in-process. Node's own scheduler, not a browser and not cron. */
 setInterval(() => { claimSweep().catch(() => {}); }, 60 * 1000);
+
+/* ---------- picking the sequence a lead belongs on ----------
+   Matches the campaign's `trigger` to how the person actually came in, falling back to
+   any "Every new lead" catch-all. A sequence written for open-house sign-ins must not
+   go to somebody who asked what their house is worth - that is worse than sending
+   nothing, because it proves nobody read it. */
+/* ---------- the built-in openers, as live sequences ----------
+   \u26a0 The broker's instruction: it has to work without anybody building anything
+   first. PLAYBOOK_DEFAULTS already holds real, written copy for every way a person
+   comes in - it was only ever a gallery to copy from, so a brokerage that never
+   opened that screen got no follow-up at all. These are live now.
+
+   \u26a0 Anything the broker builds himself WINS. This is the floor, not the ceiling:
+   the moment a real campaign matches, the default steps out of the way, so editing
+   an opener still does exactly what it looks like it does.
+
+   Shape differs and has to be converted: playbook steps are {d, ch, t, s}; the drip
+   engine wants {id, day, type, subject, body}. Same conversion the CRM does when you
+   press "Use this one", so a default and an edited copy behave identically. */
+function playbookToCampaign(pb) {
+  if (!pb || !Array.isArray(pb.steps)) return null;
+  return {
+    id: 'pbdef:' + pb.id,
+    name: pb.name || 'Follow-up',
+    /* \u26a0 'manual', NOT 'new', when a playbook has no source to match on. Four of the
+       built-ins (monthly nurture, snowbird, past client, seller-not-ready) match on
+       lane or tag instead and run for a YEAR. Defaulting them to "every new lead"
+       made a brand-new buyer eligible for a 365-day monthly drip and nothing but
+       list order stopped it happening. Manual means available, never auto-assigned. */
+    trigger: (pb.match && pb.match.source) || 'manual',
+    paused: false,
+    isDefault: true,
+    steps: pbSteps(pb),
+  };
+}
+
+/* \u26a0 Subjects for the instant opener below. The playbook's day-0 step is written as a
+   TEXT, so it has no subject line - and an email with no subject is a spam filter's
+   easiest decision. Short, human, and about them rather than about us. */
+const PB_SUBJECT = {
+  pb_prop:  'About the place you were looking at',
+  pb_buyer: 'Your search on the Gulf Coast',
+  pb_seller:'What your home is worth',
+  pb_oh:    'Thanks for coming by today',
+  pb_quiet: 'New listings, nothing else',
+  pb_back:  'Good to see you back',
+};
+
+function pbSteps(pb) {
+  const out = [];
+  const mk = (st, i, suffix, type, subject, body) => ({
+    /* \u26a0 The id must be STABLE across restarts. drip.done stores these, so anything
+       built from Date.now() would come back different after a deploy and every
+       message would send a second time. Index into a fixed list is stable. */
+    id: 'pbdef:' + pb.id + ':' + i + (suffix || ''),
+    day: Number(st.d) || 0,
+    type, subject, body,
+  });
+
+  /* \u26a0 THE INSTANT OPENER. Nine of the ten built-in sequences open with a TEXT step,
+     and texting is never automated here - so out of the box the day-0 send was
+     nothing at all, on every funnel that matters. Speed to lead was the entire point
+     and it would have shipped doing nothing.
+
+     So when a sequence opens with a text, the same words also go out immediately as
+     an email, and the agent STILL gets the reminder to text or call. The person hears
+     something within the minute; the human contact still happens on top. The copy is
+     short and question-led, which is how a first email should read anyway. */
+  const first = pb.steps && pb.steps[0];
+  if (first && first.ch === 'sms' && Number(first.d || 0) === 0) {
+    out.push(mk(first, 0, 'e', 'email',
+      PB_SUBJECT[pb.id] || 'Thanks for getting in touch',
+      first.t || ''));
+  }
+
+  (pb.steps || []).forEach((st, i) => {
+    out.push(mk(st, i, '',
+      st.ch === 'email' ? 'email' : 'task',
+      st.s || (st.ch === 'email' ? 'Following up' : 'Reach out'),
+      /* \u26a0 sms stays a TASK, never an automated send. Texting without prior written
+         consent carries a penalty per message. Same rule the CRM applies. */
+      st.ch === 'sms' ? 'Text them: ' + (st.t || '') : (st.t || '')));
+  });
+  return out;
+}
+
+/* Every default, keyed the way pickSequenceFor wants them. Built once. */
+let PB_LIVE = null;
+function livePlaybooks() {
+  if (PB_LIVE) return PB_LIVE;
+  PB_LIVE = (PLAYBOOK_DEFAULTS || []).map(playbookToCampaign).filter(Boolean);
+  return PB_LIVE;
+}
+
+/* Resolves a campaign id to a campaign, checking the broker's own first and then the
+   built-ins. \u26a0 The sweep needs this too - a lead enrolled on a default would
+   otherwise find no campaign and quietly stall forever. */
+async function campaignById(id, list) {
+  if (!id) return null;
+  const own = (list || []).find(c => c && c.id === id);
+  if (own) return own;
+  return livePlaybooks().find(c => c.id === id) || null;
+}
+
+async function pickSequenceFor(lead) {
+  if (!lead || lead.unsubscribed) return null;
+  if (lead.drip && lead.drip.campaignId && !lead.drip.stopped) return null;
+  let list = [];
+  try { list = (await getSetting('settings:dripCampaigns')) || []; } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  const src = String(lead.source || '').toLowerCase().trim();
+
+  const match = pool => pool.find(c => c && !c.paused && c.trigger && c.trigger !== 'manual'
+                                    && String(c.trigger).toLowerCase() === src)
+                     || pool.find(c => c && !c.paused && c.trigger === 'new');
+
+  /* the broker's own, then the built-in floor */
+  return match(list) || match(livePlaybooks()) || null;
+}
+
+/* ---------- the drip sweep (server 137) ----------
+   \u26a0 THIS IS WHAT MAKES FIVE MINUTES POSSIBLE. Until now the only thing that advanced
+   a sequence was POST /api/drip/tick, which the CRM calls when an agent loads it. So a
+   lead arriving at 2am - or at 2pm while everyone is out showing houses - got nothing
+   until somebody happened to open a browser. A speed-to-lead promise that depends on a
+   tab being open is not a promise.
+
+   Same shape as claimSweep: in-process setInterval, deadlines read off the record, no
+   session. \u26a0 It deliberately does NOT filter by agent. The session-bound route had to,
+   because it was acting as somebody; this is the house acting on its own behalf. */
+async function dripSweep() {
+  if (!supabase || !mailer) return;
+  try {
+    let campaigns = [];
+    try { campaigns = (await getSetting('settings:dripCampaigns')) || []; } catch (e) { campaigns = []; }
+    if (!Array.isArray(campaigns)) campaigns = [];
+    /* \u26a0 Do NOT bail when the broker has built nothing. The built-in openers are live
+       sequences now, so an empty list is the normal state, not an idle one. This
+       early return is what would have made "works out of the box" ship inert. */
+    const { data, error } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    if (error) { console.error('[drip sweep] read failed:', error.message); return; }
+    const now = Date.now();
+    let sent = 0;
+
+    for (const row of (data || [])) {
+      const lead = row.value;
+      if (!lead || !lead.drip || !lead.drip.campaignId || lead.drip.stopped) continue;
+      if (lead.unsubscribed) continue;
+      /* \u26a0 Through the resolver, not a plain find(): a lead enrolled on a built-in
+         opener is not in the broker's own list and would otherwise stall forever
+         with no error anywhere. */
+      const camp = await campaignById(lead.drip.campaignId, campaigns);
+      if (!camp || camp.paused) continue;
+
+      const due = dripDue(lead, camp, now);
+      if (!due.length) continue;
+
+      let changed = false;
+      for (const step of due) {
+        /* \u26a0 A task step is a reminder for the AGENT and must never be mailed to the
+           lead. The session route pushes it to a task list; here there is nobody to
+           hand it to, so it is marked done and left for the CRM to surface. Sending
+           it would post "Call them. Six days, no reply" to the client. */
+        if (step.type !== 'email') {
+          lead.drip.done = (lead.drip.done || []).concat(step.id);
+          changed = true;
+          continue;
+        }
+        if (!lead.email) continue;
+        {
+          /* \u26a0 Same footer the session route sends: real address and a working
+             unsubscribe. This one has a statutory penalty attached to getting it
+             wrong, and an automated sender is exactly where it would get forgotten. */
+          const unsub = PUBLIC_ORIGIN + '/unsub/' + lead.id + '.' + unsubToken(lead.id);
+          const agent = { name: lead.assignedAgentName || BROKERAGE_NAME };
+          try {
+            await mailer.sendMail({
+              to: lead.email,
+              subject: dripClean(dripFill(step.subject, lead, agent), 'subject'),
+              text: dripClean(dripFill(step.body, lead, agent), 'body')
+                  + '\n\n-\n' + BROKERAGE_NAME + '\n' + BROKERAGE_ADDRESS + '\n'
+                  + 'Unsubscribe: ' + unsub + '\n',
+            });
+            sent++;
+          } catch (e) { console.error('[drip sweep] send failed:', e.message); continue; }
+        }
+        /* \u26a0 dripDue decides what is outstanding from lead.drip.done - an array of
+           step IDS - and ignores lead.drip.step entirely. Advancing `step` marks
+           nothing as done, so the same message would go out again on the next tick,
+           and the next, once a minute forever. Record the id. */
+        lead.drip.done = (lead.drip.done || []).concat(step.id);
+        lead.drip.lastAt = new Date().toISOString();
+        changed = true;
+      }
+      if (changed) await setSetting(row.key, lead);
+    }
+    if (sent) console.log('[drip sweep] sent ' + sent + ' message(s)');
+  } catch (e) { console.error('[drip sweep]', e.message); }
+}
+
+/* \u26a0 Every minute, so the day-0 message lands inside the five-minute window rather
+   than whenever somebody next happens to sign in. */
+setInterval(() => { dripSweep().catch(() => {}); }, 60 * 1000);
 
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
@@ -4696,6 +5028,25 @@ app.post('/api/notify-lead', async (req, res) => {
               if (_l && !_l.claimedBy && !_l.claimDue) {
                 _l.claimDue = claimDeadline(new Date());
                 _l.assignedAgentName = ag.name || '';
+                /* ⚠ SPEED TO LEAD. The sequence is attached HERE, on arrival, not on
+                   first contact. MIT/InsideSales: contacting at 5 minutes rather than
+                   30 raises the odds of contact ~100x and of qualifying ~21x, and most
+                   people online have messaged several agents at once. A lead sitting
+                   untouched overnight is a lead that already picked somebody else.
+
+                   ⚠ This does NOT set firstTouchAt, and must never be changed to. The
+                   automated email is an opener, not a conversation — the agent's own
+                   call is still owed within the hour, and firstTouchAt is what proves
+                   it happened. Wire this to firstTouchAt and the contact deadline
+                   silently stops meaning anything. */
+                try {
+                  const camp = await pickSequenceFor(_l);
+                  if (camp) {
+                    _l.drip = { campaignId: camp.id, step: 0,
+                                startedAt: new Date().toISOString(), stopped: false };
+                    console.log(`[drip] ${_l.name || _lk} auto-enrolled on "${camp.name}" at arrival`);
+                  }
+                } catch (e) { console.error('[drip] auto-enrol failed:', e.message); }
                 await setSetting(_lk, _l);
               }
             } catch (e) { console.error('[claim] could not set the window:', e.message); }
@@ -5360,7 +5711,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v136',
+    serverVersion: 'v139',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
