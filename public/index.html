@@ -2987,22 +2987,50 @@ html,body{overflow-x:hidden;overflow-x:clip}
      use this or the purpose" — the three panels never said what they were for, what
      order to do them in, or that two of them are the same machine. -->
 <div class="lt-setup-intro">
-  <h3>Automatic follow-up</h3>
-  <p>Everything below runs on its own once it is set up, so nobody has to remember.
-     You do not need any of it to work your leads &mdash; the list above works without
-     it. Set it up when you want the chasing to happen while you are busy.</p>
-  <ol>
-    <li><strong>Openers by situation</strong> are ready-made sequences. Start here
-        &mdash; pick the one that matches how somebody came in and edit the wording
-        to sound like you.</li>
-    <li><strong>Follow-up sequences</strong> are the messages themselves: a handful
-        spaced over days or weeks. An opener becomes one of these the moment you
-        edit it.</li>
-    <li><strong>Listing alerts</strong> are separate. They email a person new
-        listings that match what they asked for, at whatever pace they choose.</li>
-  </ol>
-  <p class="lt-setup-note">⚠ Building a sequence does not start it. You start one on
-     a person, from the panel beside their name in the list above.</p>
+  <h3>Automatic follow-up &mdash; already on</h3>
+  <p>Nothing below needs setting up before it works. It is running now, on the wording
+     that comes as standard. Everything here is about changing that wording to sound
+     like you.</p>
+
+  <div class="lt-steps">
+    <div class="lt-step"><span class="n">1</span><div>
+      <b>Pick an opener</b>
+      <p>In <strong>Openers by situation</strong> below, find the card that matches how
+         the person came to you. Press <strong>Use this one</strong>.</p></div></div>
+    <div class="lt-step"><span class="n">2</span><div>
+      <b>Make it sound like you</b>
+      <p>The messages open for editing. Change any wording you would not say out loud,
+         then press <strong>Save</strong>. It is now yours and lives under
+         <strong>Follow-up sequences</strong>.</p></div></div>
+    <div class="lt-step"><span class="n">3</span><div>
+      <b>Set “Starts when”</b>
+      <p>Pick how the person came in &mdash; asked about a listing, asked what their home
+         is worth, and so on &mdash; or <strong>“Every new lead”</strong> as a catch-all.
+         Your version then replaces the standard wording for those leads.</p></div></div>
+    <div class="lt-step"><span class="n">4</span><div>
+      <b>Still call them</b>
+      <p>The automated email opens the conversation and asks the qualifying questions.
+         It is not a substitute for you ringing them, and the hour clock runs
+         regardless. You can also put anyone on a sequence by hand from
+         <strong>“Put them on a sequence…”</strong> on their card.</p></div></div>
+  </div>
+
+  <p class="lt-setup-note">✓ <strong>This is already running. You do not have to set
+     anything up.</strong> Every lead is put on the matching follow-up the moment they
+     arrive, and the first email goes out within a minute &mdash; day or night, whether or
+     not anybody is signed in. It uses what they told you on the quiz: their name, the
+     property they asked about, and their town.
+     <br><br>Speed is the whole game: contacting someone within five minutes rather than
+     thirty makes you roughly 21 times more likely to qualify them, and most people online
+     have messaged several agents at once.
+     <br><br>⚠ That email does not replace your call. Claim a lead and you still have
+     <strong>one hour</strong> to speak to them yourself and log it, or it goes back to the
+     broker. The openers below are the wording it uses &mdash; edit any of them and your
+     version is used instead.</p>
+
+  <p style="margin-top:12px"><strong>Listing alerts</strong> are a separate thing and do
+     not need any of the above. They email one person new listings that match what they
+     asked for, at whatever pace they choose.</p>
 </div>
 
 <!-- ⚠ The .setup-head elements below are LOAD-BEARING and must not be simplified away.
@@ -3178,6 +3206,18 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 #crm-main .lt-setup-intro strong{color:var(--rl)}
 #crm-main .lt-setup-note{font-size:12.5px;color:#7A5B32;background:#FDF3E9;
   border:1px solid #EBD5B8;border-radius:5px;padding:9px 12px;margin:0!important}
+#crm-main .lt-steps{display:grid;gap:9px;margin:12px 0 13px;max-width:700px}
+#crm-main .lt-step{display:flex;gap:11px;align-items:flex-start}
+#crm-main .lt-step .n{flex:0 0 auto;width:22px;height:22px;border-radius:50%;
+  background:var(--gd);color:#241A08;font-size:12px;font-weight:700;
+  display:grid;place-items:center;margin-top:1px}
+#crm-main .lt-step b{display:block;font-size:13.5px;color:var(--rl);margin-bottom:1px}
+#crm-main .lt-step p{font-size:13px;line-height:1.55;color:var(--driftwood);margin:0}
+/* the trigger label, when it names something that does not actually fire */
+#crm-main .dc-camp .trig.live{color:#1F6B49;font-weight:700}
+#crm-main .dc-live{font-size:12.5px;line-height:1.5;color:#22563C;background:#EDF7F1;
+  border:1px solid #9FC9B2;border-radius:5px;padding:8px 11px;margin:7px 0 2px}
+#crm-main .dc-hint{font-size:12px;line-height:1.5;color:#7A5B32;margin-top:5px}
 #probe-out .probe-wait{font-size:13px;color:var(--driftwood)}
 #probe-out .probe-good{background:#EDF7F1;border:1px solid #9FC9B2;border-radius:5px;
   padding:13px 15px;font-size:13.5px;line-height:1.55;color:#22563C}
@@ -4923,7 +4963,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v306';
+window.BUILD = 'index-v311';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5897,19 +5937,61 @@ loadLeads();
    \u26a0 Only real outbound contact sets this. Opening a lead, tapping through the list
    or previewing somebody must never count \u2014 a status color that goes green because
    you looked at the screen is worse than no color, because it lies quietly. */
+/* ---------- what happens the first time somebody is contacted (index 309) ----------
+   ⚠ The division the broker set: the AGENT makes first contact, and the machine takes
+   over everything after it. So the sequence starts on firstTouchAt, never on the
+   lead's arrival — nothing in this system ever emails a person nobody has spoken to.
+
+   That also makes it an incentive rather than a rule. Make the call and the chasing
+   runs itself; do not make it and you keep doing it by hand, and the lead goes back
+   to the broker after an hour.
+
+   ⚠ A campaign's `trigger` was DEAD before this — written, saved, printed on the card,
+   and read by nothing. This is the first code anywhere that acts on it. */
+async function ltAutoSequence(lead){
+  try{
+    if(!lead || !lead.id) return null;
+    if(lead.drip && lead.drip.campaignId && !lead.drip.stopped) return null;  // already on one
+    if(lead.unsubscribed) return null;
+    let list = [];
+    try{ list = (await storeGet('settings:dripCampaigns')) || []; }catch(e){ return null; }
+    if(!Array.isArray(list) || !list.length) return null;
+
+    const src = String(lead.source || '').toLowerCase().trim();
+    /* Exact source first, then a general "every new lead" one as the fallback. A
+       sequence written for open-house sign-ins should not go to somebody who asked
+       what their house is worth. */
+    const pick = list.find(c => c && !c.paused && c.trigger && c.trigger !== 'manual'
+                             && String(c.trigger).toLowerCase() === src)
+              || list.find(c => c && !c.paused && c.trigger === 'new');
+    if(!pick) return null;
+    lead.drip = { campaignId: pick.id, step: 0,
+                  startedAt: new Date().toISOString(), stopped: false };
+    return pick;
+  }catch(e){ console.error('[ltAutoSequence]', e); return null; }
+}
+
 async function ltTouch(id, how){
   try{
     const lead = await storeGet('lead:'+id);
     if(!lead) return false;
     const now = new Date().toISOString();
+    const wasFirst = !lead.firstTouchAt;
     lead.lastTouchAt = now;
     lead.lastTouchHow = how || '';
     if(!lead.firstTouchAt) lead.firstTouchAt = now;
+    /* ⚠ Only on the FIRST contact, and the object is mutated before the single write
+       below — not saved separately. Two writes would mean a failure could record the
+       contact without the sequence, or the sequence without the contact. */
+    const started = wasFirst ? await ltAutoSequence(lead) : null;
     /* \u26a0 storeSet goes through setSetting, which swallowed failures until server 134
        and still returns false rather than throwing. Check it. Reporting a contact
        that was never recorded is how the color goes green on a lead nobody called. */
     const ok = await storeSet('lead:'+id, lead);
     if(ok === false){ console.error('[ltTouch] write failed for', id); return false; }
+    /* ⚠ Announced only after the write came back clean. Saying "follow-up started"
+       for a save that failed is the lie this project keeps having to fix. */
+    if(started) showToast('Follow-up started \u2014 "' + (started.name || 'sequence') + '" is running now.');
     return true;
   }catch(e){ console.error('[ltTouch]', e); return false; }
 }
@@ -5925,6 +6007,7 @@ lead.stage = stage;
 /* \u26a0 Moving somebody off New is the first act that proves a human dealt with them,
    so it is what stops the clock. Recorded once and never overwritten \u2014 the number
    that matters is time to FIRST contact, not to the most recent one. */
+const wasFirst = !lead.firstTouchAt && stage && stage !== 'New';
 if(!lead.firstTouchAt && stage && stage !== 'New'){
   lead.firstTouchAt = new Date().toISOString();
 }
@@ -5935,7 +6018,13 @@ if(stage && stage !== 'New' && stage !== 'Closed'){
   lead.lastTouchAt = new Date().toISOString();
   lead.lastTouchHow = 'moved to ' + stage;
 }
+/* \u26a0 Same hook as ltTouch. firstTouchAt is written in three places and the reward
+   has to fire from all three, or whether the follow-up starts depends on which
+   control the agent happened to use. */
+const started = (wasFirst && stage !== 'Closed' && typeof ltAutoSequence === 'function')
+  ? await ltAutoSequence(lead) : null;
 await storeSet('lead:'+id, lead);
+if(started) showToast('Follow-up started \u2014 "' + (started.name || 'sequence') + '" is running now.');
 loadLeads();
 }
 async function updateNotes(id, notes){
@@ -5943,6 +6032,7 @@ const lead = await storeGet('lead:'+id);
 if(!lead) return;
 lead.notes = notes;
 // writing a note about somebody is also having dealt with them
+const wasFirst = !lead.firstTouchAt && !!String(notes||'').trim();
 if(!lead.firstTouchAt && String(notes||'').trim()){
   lead.firstTouchAt = new Date().toISOString();
 }
@@ -5950,7 +6040,10 @@ if(String(notes||'').trim()){
   lead.lastTouchAt = new Date().toISOString();
   lead.lastTouchHow = 'logged a note';
 }
+const started = (wasFirst && typeof ltAutoSequence === 'function')
+  ? await ltAutoSequence(lead) : null;
 await storeSet('lead:'+id, lead);
+if(started) showToast('Follow-up started \u2014 "' + (started.name || 'sequence') + '" is running now.');
 }
 /* ⚠ This was two lines: storeDelete, then reload. One click on an × and a real lead
    was gone from the database with nothing kept and nothing asked. It cost us a live
@@ -20927,13 +21020,28 @@ async function renderDrip(){
 
 function dcCampHtml(c){
   const trig = (DC_TRIGGERS.find(t => t[0] === c.trigger) || ['','Manual'])[1];
+  /* ⚠ THE TRIGGER DOES NOT FIRE. `trigger` is written here, saved into
+     settings:dripCampaigns, and read back only to print this label. Nothing acts on
+     it: the server's /api/drip/tick skips every lead without lead.drip.campaignId,
+     and the ONLY writer of that field in the whole app is the dropdown on the lead
+     panel. So "Every new lead" starts on nobody.
+
+     Fifth instance of write-with-no-reader in this project, and the worst of them,
+     because the other four were silent — this one prints a promise on screen. Until
+     an auto-start is actually built the label has to say what is true. Do not remove
+     this warning without making the trigger real. */
+  const auto = c.trigger && c.trigger !== 'manual';
   return `<div class="dc-camp ${c.paused?'paused':''}">
     <div class="dc-h">
       <b>${escapeHtml(c.name)}</b>
-      <span class="trig">${escapeHtml(trig)}</span>
+      <span class="trig${auto?' live':''}">${escapeHtml(auto ? trig + ' — automatic' : trig)}</span>
       <span class="n">${(c.steps||[]).length} step${(c.steps||[]).length===1?'':'s'}${
         c.paused ? ' \u00b7 paused' : ''}</span>
     </div>
+    ${auto ? `<div class="dc-live">Live. Every matching lead goes on this automatically the
+      moment they arrive, and the first message leaves within a minute &mdash; day or night,
+      whether or not anybody is signed in. You can also start it on anyone by hand from
+      <strong>“Put them on a sequence…”</strong> on their card.</div>` : ''}
     <div class="dc-steps">
       ${(c.steps||[]).map(s => `
         <div class="dc-step">
@@ -21153,7 +21261,12 @@ async function dripTick(){
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
   <div class="field"><label>Call it</label>
     <input id="dc-name" placeholder="New inquiry &mdash; first two weeks"></div>
-  <div class="field"><label>Starts when</label><select id="dc-trigger"></select></div>
+  <div class="field"><label>Starts when</label><select id="dc-trigger"></select>
+    <div class="dc-hint">Matching leads go on this <strong>the moment they arrive</strong>,
+      and the first message leaves within a minute. Pick the source this sequence is
+      written for, or “Every new lead” as a catch-all. ⚠ Text steps become reminders on
+      your Today list &mdash; texting without written consent is the one thing this will
+      not automate.</div></div>
   <div class="field" style="grid-column:1/-1"><label>Start from a playbook</label>
     <select id="dc-from-pb" onchange="dcLoadPlaybook(this.value)"></select></div>
 </div>
@@ -21749,8 +21862,12 @@ async function renderPlaybooks(){
       <div class="pb-hero-t">
         <div class="k">Openers</div>
         <h3>A different first line for every situation</h3>
-        <p>Someone who asked about one property should not get the same message as
-          someone who filled in a form and left. Pick one, or edit any of them.</p>
+        <p><strong>These are live.</strong> Whichever one matches how a person came in is
+          already being sent to them automatically, starting within a minute of them
+          arriving. You do not have to switch anything on.</p>
+        <p style="margin-top:6px"><strong>“See it”</strong> shows you exactly what is
+          going out. <strong>“Use this one”</strong> makes your own editable copy &mdash;
+          change the wording, save it, and yours is sent instead of the standard one.</p>
       </div>
       <div class="pb-hero-n"><b>${pbList.length}</b><span>ready to use</span></div>
     </div>
@@ -21772,7 +21889,10 @@ async function renderPlaybooks(){
             ${tasks ? `<span>${tasks} for you</span>` : ''}
           </div>
           <div class="foot"><span>${(p.steps||[]).length} steps over ${days} days</span>
-            <button onclick="pbOpen('${p.id}')">See it</button></div>
+            <span class="acts">
+              <button onclick="pbOpen('${p.id}')">See it</button>
+              <button class="use" onclick="pbUse('${p.id}')">Use this one</button>
+            </span></div>
         </div>`;
       }).join('')}
     </div>
@@ -21780,6 +21900,31 @@ async function renderPlaybooks(){
     <div id="pb-detail"></div>
     ${pbDefaults ? `<div style="font-size:12.5px;color:var(--driftwood);margin-top:14px">
       These are the starting versions. Edit any of them and they become yours.</div>` : ''}`;
+}
+
+/* ⚠ THE CARDS HAD NO WAY TO USE THEM. "See it" opened the steps and offered Close,
+   and that was the entire screen — a read-only gallery. To actually use one you had
+   to leave it, scroll to Follow-up sequences, press + New sequence, and find a
+   dropdown called "Start from a playbook". The broker's words were "I still don't
+   understand what this is or how to use it", and the honest answer was that you
+   could not use it from here at all.
+
+   Rule 8 of this project: the button to look for is rarely the nearest one. Here it
+   was two panels away inside a select. Both functions already existed; only the
+   button was missing. */
+function pbUse(id){
+  const p = (pbList || []).find(x => x.id === id);
+  if(!p) return;
+  /* dcNew() seeds dcEditing with one blank step, so dcLoadPlaybook's "replace the
+     steps below?" confirm would fire on a sequence the person never typed. Blank the
+     steps first so it loads silently \u2014 there is nothing of theirs to protect yet. */
+  if(typeof dcNew !== 'function' || typeof dcLoadPlaybook !== 'function'){
+    showToast('Open Follow-up sequences below to use this one.');
+    return;
+  }
+  dcNew();
+  try{ if(dcEditing) dcEditing.steps = []; }catch(e){}
+  dcLoadPlaybook(id);
 }
 
 /* The steps themselves, once someone wants to look. */
@@ -21791,7 +21936,10 @@ function pbOpen(id){
   const host = document.getElementById('pb-detail');
   host.innerHTML = `<div class="pb-open" style="--tint:${art.tint}">
     <div class="h"><b>${escapeHtml(p.name)}</b>
-      <button onclick="document.getElementById('pb-detail').innerHTML=''">Close</button></div>
+      <span class="acts">
+        <button class="use" onclick="pbUse('${p.id}')">Use this one</button>
+        <button onclick="document.getElementById('pb-detail').innerHTML=''">Close</button>
+      </span></div>
     ${(p.steps||[]).map(s => `
       <div class="pb-step">
         <span class="d">${s.d === 0 ? 'Same day' : 'Day ' + s.d}</span>
@@ -22297,6 +22445,16 @@ body.crm-dark .lc-setup{background:#232A44;border-color:#4A57B8}
   color:var(--tint);border-radius:7px;padding:5px 13px;font:inherit;font-size:12px;
   font-weight:600;cursor:pointer}
 .pb-card2 .foot button:hover{background:var(--tint);color:#fff}
+/* ⚠ Two buttons now, so margin-left:auto has to move to the group — left on the
+   buttons themselves it pushes them apart and strands "See it" mid-row. */
+.pb-card2 .foot .acts{margin-left:auto;display:flex;gap:7px;flex:0 0 auto}
+.pb-card2 .foot .acts button{margin-left:0}
+.pb-card2 .foot button.use{background:var(--tint);color:#fff}
+.pb-card2 .foot button.use:hover{filter:brightness(1.12)}
+.pb-open .h .acts{margin-left:auto;display:flex;gap:7px;flex:0 0 auto}
+.pb-open .h .acts button{margin-left:0}
+.pb-open .h button.use{border-color:var(--tint);background:var(--tint);color:#fff;
+  font-weight:600}
 
 .pb-open{border:1px solid var(--line);border-top:3px solid var(--tint);border-radius:13px;
   padding:16px 18px;margin-top:14px;background:var(--paper)}
