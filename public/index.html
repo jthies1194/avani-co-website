@@ -5007,7 +5007,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v317';
+window.BUILD = 'index-v318';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -23020,6 +23020,22 @@ const QZ_BUY = [
            {v:'soon',l:'In the next few months'},
            {v:'later',l:'Sometime this year'},
            {v:'looking',l:'Just watching the market for now',d:'No pressure, we will keep you posted'} ] },
+  /* \u26a0 The buyer quiz never asked how somebody was paying. It asked where, what type,
+     budget, bedrooms, must-haves and timeline \u2014 six questions, none of which tell you
+     whether this person can actually transact. On the coast a cash buyer and a buyer
+     who has not spoken to a lender are two completely different jobs, and knowing
+     which one you have decides how fast you move and how an offer gets written.
+     \u26a0 Deliberately last: it is the most personal question here, and asking it before
+     the easy ones is how a quiz gets abandoned halfway. */
+  { key:'financing', kind:'one', title:'How would you be paying?',
+    sub:'No wrong answer \u2014 it just changes how quickly we can move when the right one comes up.',
+    two:true,
+    opts:[ {v:'cash',l:'Cash',d:'That is a real advantage here \u2014 we will use it'},
+           {v:'approved',l:'Financing, already pre-approved',d:'Good \u2014 that puts you ahead of most'},
+           {v:'lender',l:'Financing, talking to a lender now'},
+           {v:'need-lender',l:'Financing, not started yet',d:'We can point you at a few good local ones'},
+           {v:'selling-first',l:'I need to sell something first'},
+           {v:'',l:'Still working that out'} ] },
 ];
 
 /* ---------- seller ---------- */
@@ -23210,8 +23226,23 @@ function qzSummary(){
            c.maxPrice ? 'Up to $' + Number(c.maxPrice).toLocaleString() : '',
            c.beds ? c.beds + '+ beds' : '',
            (qzA.musts||[]).length ? 'Must have: ' + qzA.musts.join(', ') : '',
-           qzA.timeline ? 'Timeline: ' + qzA.timeline : '' ].filter(Boolean).join('\n');
+           qzA.timeline ? 'Timeline: ' + qzA.timeline : '',
+           /* \u26a0 Without this line the answer is written to the quiz object and read by
+              nothing \u2014 it would never reach the alert email or the lead card, which is
+              this project's oldest failure mode. Plain words, because the agent reads
+              this on a phone lock screen, not a database. */
+           qzA.financing ? 'Paying: ' + (QZ_FIN_WORDS[qzA.financing] || qzA.financing) : '' ]
+         .filter(Boolean).join('\n');
 }
+
+/* The stored code is short so it can be filtered on; the alert needs English. */
+const QZ_FIN_WORDS = {
+  'cash':          'CASH BUYER',
+  'approved':      'financing \u2014 already pre-approved',
+  'lender':        'financing \u2014 talking to a lender now',
+  'need-lender':   'financing \u2014 not started yet, needs a lender',
+  'selling-first': 'needs to sell something first',
+};
 
 async function qzSend(){
   const btn = document.getElementById('qz-send');
