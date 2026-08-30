@@ -3007,6 +3007,14 @@ html,body{overflow-x:hidden;overflow-x:clip}
      The heading exists because the broker's words were "I don't understand how to
      use this or the purpose" — the three panels never said what they were for, what
      order to do them in, or that two of them are the same machine. -->
+<div class="setup-panel" id="en-panel">
+  <h3 class="sx-h">Put existing people on a follow-up</h3>
+  <p class="sx-sub">New leads go onto a follow-up by themselves the moment they arrive.
+    Anyone already in your list when that started &mdash; imports, anyone added by hand
+    &mdash; never got picked up, so this is how you reach them.</p>
+  <div id="en-body"><button class="btn-sm primary" onclick="enRender()">Check who is waiting</button></div>
+</div>
+
 <div class="lt-setup-intro">
   <h3>Automatic follow-up &mdash; already on</h3>
   <p>Nothing below needs setting up before it works. It is running now, on the wording
@@ -5007,7 +5015,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v319';
+window.BUILD = 'index-v320';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -25312,6 +25320,117 @@ async function dripProbe(){
         + '" style="margin-bottom:7px">' + r[1] + '</div>'; }).join('')
     + '<h4 style="margin:15px 0 7px;font-size:14px">Your five most recent leads</h4>'
     + (leads || '<div class="probe-wait">No leads yet.</div>');
+}
+</script>
+<style>
+#en-panel .en-row{display:flex;align-items:center;gap:12px;padding:10px 0;
+  border-bottom:1px solid var(--hair2)}
+#en-panel .en-row .l{flex:1;font-size:13.5px}
+#en-panel .en-row .n{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+#en-panel .en-note{font-size:12.5px;color:#7A5B32;background:#FDF3E9;
+  border:1px solid #EBD5B8;border-radius:5px;padding:9px 12px;margin:11px 0;line-height:1.55}
+#en-panel .en-go{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+#en-panel select,#en-panel input[type=number]{font:inherit;font-size:13.5px;padding:8px 10px;
+  border:1px solid var(--hair2);border-radius:5px;background:#fff}
+#en-panel input[type=number]{width:74px}
+#en-panel .en-names{font-size:12.5px;color:var(--driftwood);line-height:1.5;margin-top:4px}
+</style>
+<script>
+/* ---------- Leads > put existing people on a follow-up ----------
+   ⚠ Enrolment happens when a lead ARRIVES, so anybody already in the book when that
+   was built can never be picked up by it — the CSV imports especially. Eighteen real
+   people sat uncontacted for exactly that reason. This is the way to reach them.
+
+   ⚠ This is the first control in the CRM that deliberately starts automated email to
+   a list of real people. It previews before it acts, the confirmation names the
+   count and the sequence, and the server caps the batch at 25 no matter what is
+   asked for. Do not add a "select all" without reading that cap first. */
+let enInfo = null, enBusy = false;
+
+async function enRender(){
+  const host = document.getElementById('en-body');
+  if(!host) return;
+  host.innerHTML = '<div class="probe-wait">Checking your list…</div>';
+  try{
+    const r = await fetch('/api/drip/enrol/preview', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not check that.');
+    enInfo = d;
+  }catch(e){
+    host.innerHTML = '<div class="probe-bad">' + escapeHtml(e.message) + '</div>';
+    return;
+  }
+
+  if(!enInfo.eligible){
+    host.innerHTML = '<div class="en-names">Everybody who can be on a follow-up already is.'
+      + (enInfo.running ? ' <b>' + enInfo.running + '</b> currently running.' : '')
+      + (enInfo.noEmail ? ' ' + enInfo.noEmail + ' have no email address.' : '')
+      + (enInfo.unsubscribed ? ' ' + enInfo.unsubscribed + ' have unsubscribed.' : '')
+      + '</div>';
+    return;
+  }
+
+  host.innerHTML =
+    '<div class="en-row"><span class="l">Not on any follow-up</span>'
+      + '<span class="n">' + enInfo.eligible + '</span></div>'
+    + (enInfo.running ? '<div class="en-row"><span class="l">Already running</span>'
+      + '<span class="n">' + enInfo.running + '</span></div>' : '')
+    + (enInfo.noEmail ? '<div class="en-row"><span class="l">No email address</span>'
+      + '<span class="n">' + enInfo.noEmail + '</span></div>' : '')
+    + (enInfo.unsubscribed ? '<div class="en-row"><span class="l">Unsubscribed</span>'
+      + '<span class="n">' + enInfo.unsubscribed + '</span></div>' : '')
+    + (enInfo.sample.length ? '<div class="en-names">' + enInfo.sample.map(x =>
+        escapeHtml(x.name)).join(', ')
+        + (enInfo.eligible > enInfo.sample.length
+            ? ' and ' + (enInfo.eligible - enInfo.sample.length) + ' more' : '') + '</div>' : '')
+    + '<div class="en-note">⚠ These are real people and the first message goes out within a '
+      + 'minute. Start with three or four, check they land in inboxes rather than spam, and '
+      + 'come back tomorrow for the rest. A new sending domain that suddenly mails a whole '
+      + 'list looks like a spammer to every filter there is.</div>'
+    + '<div class="en-go">'
+      + '<select id="en-seq">'
+        + enInfo.sequences.map(c => '<option value="' + escapeHtml(c.id) + '">'
+            + escapeHtml(c.name) + '</option>').join('')
+      + '</select>'
+      + '<label style="font-size:13px;color:var(--driftwood)">Start at most '
+        + '<input id="en-cap" type="number" min="1" max="25" value="'
+        + Math.min(enInfo.eligible, 4) + '"></label>'
+      + '<button class="btn-sm primary" id="en-btn" onclick="enGo()">Start the follow-up</button>'
+    + '</div>';
+}
+
+async function enGo(){
+  if(enBusy) return;
+  const sel = document.getElementById('en-seq');
+  const capEl = document.getElementById('en-cap');
+  const campaignId = sel ? sel.value : '';
+  const name = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : 'that follow-up';
+  const cap = Math.max(1, Math.min(25, parseInt(capEl && capEl.value, 10) || 4));
+  if(!campaignId){ showToast('Pick a follow-up first.'); return; }
+
+  /* ⚠ Names the count, the sequence and the fact it is real email to real people.
+     A confirmation you can dismiss without reading is not a confirmation. */
+  if(!confirm('Start "' + name + '" on ' + cap + ' ' + (cap === 1 ? 'person' : 'people') + '?\n\n'
+    + 'This is real email to real people. The first message goes out within a minute '
+    + 'and you cannot unsend it.')) return;
+
+  enBusy = true;
+  const btn = document.getElementById('en-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Starting…'; }
+  try{
+    const r = await fetch('/api/drip/enrol', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ campaignId, cap }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not start it.');
+    /* ⚠ Reports what actually saved, and says so when some did not. */
+    showToast(d.enrolled + ' started on ' + d.sequence
+      + (d.failed ? ' — ' + d.failed + ' could not be saved' : ''));
+    enRender();
+    if(typeof loadLeads === 'function') loadLeads();
+  }catch(e){ showToast(e.message); }
+  enBusy = false;
 }
 </script>
 </body>
