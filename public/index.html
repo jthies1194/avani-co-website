@@ -2663,6 +2663,20 @@ body.in-crm #secnav{display:none}
    offered "Work with someone else", which from in here reads like a CRM control and
    is not one. Same family as #secnav above: marketing chrome that nobody hid. */
 body.in-crm #referral-bar{display:none!important}
+
+/* ⚠ THIS IS WHY THE RAIL SCROLLED AWAY. Line ~30 sets `html,body{overflow-x:hidden}`.
+   Per spec, when one overflow axis is not `visible` the other axis is forced from
+   `visible` to `auto` — so overflow-y became auto and <body> quietly turned into a
+   scroll container. A position:sticky child then sticks to BODY's scrollport, which
+   is not the box actually scrolling, so it never sticks: it just scrolls off the top.
+   The tab bar had this the whole time, on top and on the left both.
+
+   `clip` clips exactly like `hidden` but does NOT create a scroll container, so
+   sticky works and nothing else changes. Both declarations are here on purpose:
+   a browser too old for `clip` drops that line and keeps `hidden`, landing exactly
+   where it was rather than gaining a horizontal scrollbar.
+   ⚠ Do not put `overflow-x:hidden` back on html or body. */
+html,body{overflow-x:hidden;overflow-x:clip}
 #crm-rail .mk{padding:0 0 12px;border:none;flex:0 0 auto;margin:0 0 11px;cursor:pointer;
   border-radius:4px;border-bottom:1px solid rgba(255,255,255,.10)}
 /* ⚠ Visible focus, because it is a div pretending to be a link. A control you can
@@ -4909,7 +4923,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v305';
+window.BUILD = 'index-v306';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
