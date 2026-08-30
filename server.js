@@ -1561,20 +1561,20 @@ app.get('/api/track/:token', async (req, res) => {
 const PLAYBOOK_DEFAULTS = [
   { id:'pb_prop', name:'Asked about one property', match:{ source:'listing' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} \u2014 glad you spotted {address}, that's a good one to be looking at.\n\nWhat caught your eye about it, and what else are you weighing it against? Tell me what you liked and I'll give you my honest read on whether it's the right fit, or whether there's something out there that suits you better." },
-    { d:1,  ch:'email', s:'{address}', t:"Hi {first},\n\nA few things about {address} aren't in the listing \u2014 what the building's actually like, what the fees cover, and what's sold nearby lately.\n\nWhich of those matters most to you? And what else are you comparing it to?\n\nOne more so I know how to help: how are you planning to pay for it \u2014 cash, or financing? If you're financing, has a lender already put a number on it, or is that still to come? No judgment either way, it just changes how we'd write an offer and how fast we'd need to move." },
-    { d:3,  ch:'sms',   t:"{first} \u2014 so I don't send you stuff you don't want: which areas are you considering, and which ones have you already ruled out?" },
-    { d:6,  ch:'task',  t:'Call them. Six days, no reply \u2014 a call gets through where texts do not. Ask what they have looked at since, not whether they are still looking.' },
-    { d:10, ch:'sms',   t:"What's the one thing a place has to have for you \u2014 and why's that the dealbreaker?" },
-    { d:18, ch:'email', s:'A few that are not just what came up first', t:"Hi {first},\n\nI've pulled a few that aren't just whatever came up first in the search.\n\nBefore I send them \u2014 what would you change about the ones you've seen so far?" },
-    { d:30, ch:'sms',   t:"{first} \u2014 I've been sending these about a month now. What works better from here: as soon as one hits the market, a weekly summary, or just the standouts?" },
+    { d:1,  ch:'email', s:'{address}', t:"Hi {first},\n\nThere's a fair bit about {address} that never makes the listing \u2014 what the building's actually like to live in, what those fees really cover, and what's sold nearby lately. We're happy to walk you through any of it.\n\nWhich of those would help most? And what else are you comparing it to?\n\nOne more so we know how best to help: how are you thinking of paying \u2014 cash, or financing? If financing, has a lender already put a number on it, or is that still to come? No judgment at all either way. It just changes how we'd write an offer and how quickly we'd need to move for you." },
+    { d:3,  ch:'sms',   t:"{first} \u2014 so we only send you places worth your time: which areas are you considering, and which have you already ruled out? Happy to tell you what each stretch is actually like to live in if that helps." },
+    { d:6,  ch:'task',  t:"Call them. Six days, no reply \u2014 a call gets through where texts don't. Open with what they've looked at since, not whether they're still looking." },
+    { d:10, ch:'sms',   t:"{first} \u2014 what's the one thing a place absolutely has to have for you, and what makes that the dealbreaker? Knowing it saves us both a lot of wasted looking." },
+    { d:18, ch:'email', s:'A few that are not just what came up first', t:"Hi {first},\n\nWe've pulled a few that aren't just whatever happened to come up first in the search \u2014 these are ones we'd actually point a friend at.\n\nBefore we send them over: what would you change about the ones you've seen so far? Tell us what's been missing and we'll aim better." },
+    { d:30, ch:'sms',   t:"{first} \u2014 we've been sending these about a month now and we don't want to be the ones cluttering your inbox. What works better from here: as soon as one hits the market, a weekly summary, or only the real standouts?" },
   ]},
   { id:'pb_buyer', name:'New buyer, no property named', match:{ source:'new' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} with {brokerage}.\n\nWe're glad you're considering a move down to our slice of the coast \u2014 it's a good one, and we'd love to help you land in the right spot.\n\nWhat's bringing you this way: work, family, retirement, or just ready for a change? And where are you coming from? Whatever the reason, there's usually more we can help with than just finding the house." },
-    { d:1,  ch:'sms',   t:"Also \u2014 where's the budget landing? Under $400k, $400\u2013500k, or $500k plus. And how are you paying \u2014 cash, or financing? If financing, has a lender already confirmed that number or is that still to come?" },
-    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nThe stretch from Fort Morgan to Perdido Key is really five or six different markets, and the difference matters more than people expect.\n\nTell me roughly what you're after and I'll tell you which part fits." },
-    { d:8,  ch:'task',  t:'Call them. Open with what they are struggling to find, not whether they are still in the market.' },
-    { d:15, ch:'sms',   t:"{first} \u2014 what would have to happen for you to pull the trigger on something? This year or someday, both are fine, it just changes what I send you." },
-    { d:30, ch:'sms',   t:"{first}, we're about a month in \u2014 how often do you want to hear from me? As they come up, once a week, or only when something really fits?" },
+    { d:1,  ch:'sms',   t:"{first} \u2014 one more and then we'll get out of your way. Where's the budget landing: under $400k, $400\u2013500k, or $500k plus? And how are you thinking of paying \u2014 cash, or financing? If financing, has a lender already confirmed that number, or is that still on the list? Whichever it is, we can help." },
+    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nOne thing worth knowing early: the stretch from Fort Morgan to Perdido Key is really five or six different markets, and the difference between them matters far more than people expect \u2014 price, crowds, rental rules, how it feels in February.\n\nTell us roughly what you're after and we'll tell you honestly which part fits. It's the sort of thing that's hard to work out from photos." },
+    { d:8,  ch:'task',  t:"Call them. Open with what they're struggling to find, not whether they're still in the market." },
+    { d:15, ch:'sms',   t:"{first} \u2014 what would have to line up for you to move on something? This year or someday, both are completely fine. It just changes what we send you, and how often." },
+    { d:30, ch:'sms',   t:"{first}, we're about a month in \u2014 how often would you like to hear from us? As they come up, once a week, or only when something really fits? We'd rather get the pace right than have you tune us out." },
   ]},
   { id:'pb_seller', name:'Asked what their home is worth', match:{ source:'value' }, steps:[
     /* \u26a0 Rewritten at the broker's instruction after he read it as a customer.
@@ -1585,30 +1585,30 @@ const PLAYBOOK_DEFAULTS = [
        though the enquiry were an interruption. The first line a seller reads should
        sound glad they asked. */
     { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} \u2014 thanks for asking about {address}, happy to help.\n\nI work these up myself instead of running them through a calculator, so you'll get a number based on your place, not an average of the street.\n\nTwo things that'd help me get it right:\n\nWhat's the plan \u2014 are you thinking about selling, or mostly curious what it'd bring?\n\nAnd do you already have a number in your head for it? Tell me what you're thinking and I'll tell you straight whether I agree, or where I'd come out different and why." },
-    { d:1,  ch:'email', s:'About {address}', t:"Hi {first},\n\nI can give you a proper number, but an accurate one needs three things a computer doesn't know: what you've done to the place, when you'd want to move, and what you think it's worth.\n\nThat last one matters more than people expect. If you're already at a figure, tell me and I'll show you what's behind mine \u2014 whether we land in the same place or not." },
+    { d:1,  ch:'email', s:'About {address}', t:"Hi {first},\n\nHappy to put a proper number together for you. An accurate one needs three things a computer has no way of knowing: what you've done to the place, when you'd want to move, and what you think it's worth.\n\nThat last one matters more than people expect. If you already have a figure in mind, tell us and we'll show you exactly what's behind ours \u2014 whether we land in the same place or not. Either way you'll know how the number was reached." },
     /* \u26a0 Shouty capitals removed. It read as a sales gimmick in the middle of an
        otherwise plain conversation. */
-    { d:4,  ch:'sms',   t:"{first} \u2014 would it help more to know what you'd actually walk away with after everything, instead of just a sale price? I can run that for you." },
-    { d:9,  ch:'task',  t:'Call them. Sellers convert on the phone far more than by email.' },
-    { d:16, ch:'sms',   t:"{first}, is selling still on your mind, or has it moved to a someday thing? Either's fine \u2014 I just don't want to keep sending you stuff you're not looking for." },
-    { d:30, ch:'email', s:'What has sold near you', t:"Hi {first},\n\nHere's what's actually sold near {address} recently \u2014 useful whether you sell this year or in five.\n\nAnything changed on your end?" },
+    { d:4,  ch:'sms',   t:"{first} \u2014 would it help more to know what you'd actually walk away with after everything, rather than just a sale price? Happy to run that for you, no obligation." },
+    { d:9,  ch:'task',  t:'Call them. Sellers convert on the phone far more than by email \u2014 and a valuation is an easy reason to ring.' },
+    { d:16, ch:'sms',   t:"{first}, is selling still on your mind, or has it moved to a someday thing? Either is completely fine \u2014 we just don't want to keep sending you things you're not looking for." },
+    { d:30, ch:'email', s:'What has sold near you', t:"Hi {first},\n\nHere's what has actually sold near {address} recently \u2014 worth having whether you sell this year or in five.\n\nWhat's changed on your end since we last spoke? Happy to update the number for you any time, no strings." },
   ]},
   { id:'pb_oh', name:'Signed in at an open house', match:{ source:'open-house' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, {agent} here \u2014 really glad you came by {address} today, thanks for taking the time.\n\nWhat'd you think of it? What worked for you, and what didn't? That tells us more about what to look for next than anything else, so be blunt \u2014 we won't take it personally." },
-    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through. A few questions and I'll get out of your way.\n\nWhat would you change about it? And what else have you seen that it's up against?\n\nAlso, if something did come up that was right \u2014 would you be paying cash or financing it? And if financing, is a lender already lined up? Worth knowing now rather than when we're trying to move quickly." },
-    { d:7,  ch:'sms',   t:"{first} \u2014 a couple more came up in that range. What did {address} get right that I should match, and what should I steer clear of?" },
-    { d:14, ch:'task',  t:'Call them. Ask what they have seen since the open house and how it compared.' },
-    { d:30, ch:'sms',   t:"{first} \u2014 what's most useful from here: everything in that range as it comes up, a weekly summary, or just the ones close to what you saw?" },
+    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through \u2014 it was good to have you.\n\nA couple of things and then we'll leave you to it. What would you change about the place? And what else have you seen that it's up against?\n\nAlso, if the right one did come up \u2014 would you be paying cash, or financing? And if financing, is a lender already lined up? Much better to sort that out now than when we're trying to move fast on something you love." },
+    { d:7,  ch:'sms',   t:"{first} \u2014 a couple more have come up in that range and we thought of you. What did {address} get right that we should be matching, and what should we steer clear of?" },
+    { d:14, ch:'task',  t:"Call them. Ask what they've seen since the open house and how it compared." },
+    { d:30, ch:'sms',   t:"{first} \u2014 what would be most useful from here: everything in that range as it comes up, a weekly summary, or only the ones close to what you saw? Happy to go at whatever pace suits you." },
   ]},
   { id:'pb_quiet', name:'Registered, then nothing', match:{ source:'exit-intent' }, steps:[
     { d:0,  ch:'email', s:'Nothing to sign up for', t:"Hi {first},\n\nWelcome \u2014 glad to have you looking with us.\n\nYou asked to hear about new listings, so that's all we'll send. Nothing else, and you can stop them any time with one click.\n\nOne question so they're actually worth opening: what does the right place look like for you, and when would you like to be in it?" },
-    { d:5,  ch:'sms',   t:"{first} \u2014 house or condo, and what makes that the right fit? Helps me send the right stuff instead of everything." },
-    { d:12, ch:'sms',   t:"What's the plan looking like \u2014 this year, or doing your homework for later? And if the right one showed up next week, how would you be paying for it \u2014 cash, or would you need financing lined up first?" },
-    { d:28, ch:'sms',   t:"{first} \u2014 I've been sending these a few weeks now. What works better: as soon as they hit the market, a daily digest, or one summary a week?" },
+    { d:5,  ch:'sms',   t:"{first} \u2014 house or condo, and what makes that the right fit for you? Helps us send things worth opening instead of everything." },
+    { d:12, ch:'sms',   t:"{first} \u2014 what's the plan looking like: this year, or doing your homework for later? Both are good reasons to be looking. And if the right one turned up next week, would you be paying cash, or would we want to get financing lined up first? Happy to point you at a couple of good local lenders either way." },
+    { d:28, ch:'sms',   t:"{first} \u2014 we've been sending these a few weeks now. What works better for you: as soon as they hit the market, a daily digest, or one summary a week? We'd rather get it right than have you mute us." },
   ]},
   { id:'pb_back', name:'Went quiet, then came back', match:{ source:'reactivated' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first} \u2014 good to see you back on the site.\n\nWhat's changed since we last talked, or are you picking up where you left off? Either way we're glad you're still looking, and happy to help wherever you're at with it." },
-    { d:2,  ch:'task',  t:'Call them. Somebody who comes back after months is worth a call the same week.' },
+    { d:2,  ch:'task',  t:'Call them. Somebody who comes back after months is worth a call the same week \u2014 something has changed on their end.' },
   ]},
   /* ---------- past day 30 ----------
      Everything above stops at day 30, which left the long-term nurture lane with
@@ -5907,7 +5907,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v151',
+    serverVersion: 'v152',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
