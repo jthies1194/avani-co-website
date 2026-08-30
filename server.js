@@ -5992,7 +5992,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v154',
+    serverVersion: 'v155',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -8121,6 +8121,386 @@ ${e(DISCLAIMER_GENERAL).slice(0, 400)}</div>
 </div></body></html>`);
 });
 
+/* ================= GRANT AND ASSISTANCE PROGRAMS (server 155) =================
+   Server-rendered, indexable pages for the two local money programs that decide
+   whether somebody can buy or can afford to insure what they own.
+
+   ⚠ Why these exist. Without the Baldwin feed there are no listings to rank for, and
+   competing on "homes for sale in Gulf Shores" against the portals is a losing game.
+   These pages compete on something the portals cannot touch: specific, dated, local
+   facts that a person urgently needs and nobody else has written down properly.
+
+   ⚠ FAQPage schema is the point, not decoration. AI answer engines quote structured
+   question-and-answer content, and AI results currently appear in a small share of
+   real estate searches - so the competition for those citations is unusually thin
+   right now. Every fact here is attributed and linked to the official source.
+
+   ⚠ FAIR HOUSING. HAP is income-qualified. The eligibility wording is taken from the
+   county's own page rather than paraphrased, and the page never suggests who should
+   or should not live anywhere. Do not rewrite these bullets into friendlier language
+   without the attorney seeing it - "who may qualify" is a legal statement, not copy.
+
+   ⚠ Dates go stale. Every date on these pages is also in PROGRAM_DATES below so there
+   is one place to update, and the page says when it was last checked. A grant page
+   showing last year's deadline is worse than no page. */
+
+const PROGRAM_DATES = {
+  checkedOn: '2026-08-30',
+  hap: {
+    portalOpens: '2026-09-21',
+    meetings: [
+      { when: 'Tuesday 15 September 2026, 5:00 pm',
+        where: 'Baldwin County Foley Satellite Courthouse, Large Meeting Hall, 201 E Section Ave, Foley, AL 36535' },
+      { when: 'Wednesday 16 September 2026, 10:00 am',
+        where: 'Baldwin County Fairhope Satellite Courthouse, Commission Chambers, 1100 Fairhope Avenue, Fairhope, AL 36532' },
+    ],
+    source: 'https://baldwincountyal.gov/departments/grants/cdbg-dr/hap',
+  },
+  fortified: {
+    /* Baldwin County windows open quarterly at 9:00 am and are first come, first
+       served. Funds have been reported gone within minutes of opening. */
+    windows: ['9 October 2026'],
+    grantMax: '$10,000',
+    source: 'https://strengthenalabamahomes.com/',
+  },
+};
+
+function progEsc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* One shell for both pages so they cannot drift apart in look or in markup. */
+function programPage(opts) {
+  const origin = PUBLIC_ORIGIN;
+  const url = origin + opts.path;
+  const esc = progEsc;
+  const faqLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: opts.faq.map(f => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a.replace(/<[^>]+>/g, '') },
+    })),
+  };
+  const pageLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: opts.title,
+    description: opts.desc,
+    url,
+    dateModified: PROGRAM_DATES.checkedOn,
+    publisher: {
+      '@type': 'RealEstateAgent', name: BROKERAGE_NAME, url: origin,
+      telephone: BROKERAGE_PHONE, address: BROKERAGE_ADDRESS,
+      areaServed: ['Gulf Shores', 'Orange Beach', 'Foley', 'Fairhope', 'Baldwin County']
+        .map(x => ({ '@type': 'Place', name: x })),
+    },
+  };
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(opts.title)} | ${esc(BROKERAGE_NAME)}</title>
+<meta name="description" content="${esc(opts.desc)}">
+<link rel="canonical" href="${url}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="${esc(opts.title)}">
+<meta property="og:description" content="${esc(opts.desc)}">
+<meta property="og:url" content="${url}">
+<script type="application/ld+json">${JSON.stringify(pageLd)}</script>
+<script type="application/ld+json">${JSON.stringify(faqLd)}</script>
+<style>
+body{margin:0;background:#FBFAF7;color:#141A3C;
+  font-family:'Public Sans',system-ui,-apple-system,sans-serif;line-height:1.7}
+.w{max-width:740px;margin:0 auto;padding:34px 22px 70px}
+a{color:#8A6A12}
+.eb{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#C89B4E;font-weight:700}
+h1{font-family:Georgia,serif;font-size:33px;line-height:1.15;font-weight:400;margin:12px 0 10px}
+h2{font-family:Georgia,serif;font-size:23px;font-weight:400;margin:34px 0 10px}
+h3{font-size:16px;margin:22px 0 6px}
+p,li{font-size:16px;margin:0 0 14px}
+ul{padding-left:22px}
+.lede{font-size:18px;color:#3D456B;margin:0 0 26px}
+.key{background:#fff;border:1px solid rgba(20,26,60,.12);border-left:4px solid #A32B22;
+  border-radius:5px;padding:18px 20px;margin:0 0 26px}
+.key .d{font-size:26px;font-family:Georgia,serif;color:#A32B22;line-height:1.1}
+.key .s{font-size:13.5px;color:#3D456B;margin-top:4px}
+.meet{background:#fff;border:1px solid rgba(20,26,60,.12);border-radius:5px;
+  padding:14px 16px;margin:0 0 12px}
+.meet b{display:block;font-size:15px}
+.meet span{font-size:14px;color:#3D456B}
+.cta{margin-top:34px;padding:24px;background:#fff;border:1px solid rgba(20,26,60,.1);
+  border-left:3px solid #C89B4E;border-radius:4px}
+.cta h3{margin-top:0;font-size:19px;font-family:Georgia,serif;font-weight:400}
+.cta input{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:11px 12px;
+  border:1px solid rgba(20,26,60,.2);border-radius:4px;margin:0 0 9px;background:#FBFAF7}
+.cta button{background:#171F63;color:#fff;border:none;border-radius:4px;padding:12px 22px;
+  font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.cta .fine{font-size:12.5px;color:#5A6288;margin:10px 0 0;line-height:1.5}
+.src{font-size:13.5px;color:#5A6288;border-top:1px solid rgba(20,26,60,.1);
+  margin-top:34px;padding-top:16px;line-height:1.6}
+.q{font-weight:700;margin:22px 0 4px;font-size:16.5px}
+</style></head><body><div class="w">
+<div class="eb">${esc(opts.eyebrow)}</div>
+<h1>${esc(opts.h1)}</h1>
+<p class="lede">${opts.lede}</p>
+${opts.body}
+<h2>Questions people ask</h2>
+${opts.faq.map(f => `<div class="q">${esc(f.q)}</div><p>${f.a}</p>`).join('\n')}
+<div class="cta">
+  <h3>${esc(opts.ctaHead)}</h3>
+  <p style="font-size:15px">${opts.ctaBody}</p>
+  <input id="p-name" placeholder="Your name" autocomplete="name">
+  <input id="p-email" type="email" placeholder="Email" autocomplete="email">
+  <input id="p-phone" type="tel" placeholder="Phone (optional)" autocomplete="tel">
+  <button onclick="pSend()">${esc(opts.ctaBtn)}</button>
+  <div id="p-out" style="font-size:14px;margin-top:10px"></div>
+  <p class="fine">${opts.ctaFine}</p>
+</div>
+<div class="src">
+  Details on this page come from ${opts.sourceName}: <a href="${opts.source}" rel="nofollow noopener"
+  target="_blank">${esc(opts.source)}</a>.<br>
+  Last checked ${esc(PROGRAM_DATES.checkedOn)}. Programs change and funds run out &mdash; always
+  confirm current details with the program administrator before relying on them.
+  ${esc(BROKERAGE_NAME)} does not administer this program and cannot decide who qualifies.
+</div>
+<p style="margin-top:26px"><a href="${origin}/">&larr; ${esc(BROKERAGE_NAME)}</a></p>
+</div>
+<script>
+async function pSend(){
+  var out = document.getElementById('p-out');
+  var name = (document.getElementById('p-name').value || '').trim();
+  var email = (document.getElementById('p-email').value || '').trim();
+  var phone = (document.getElementById('p-phone').value || '').trim();
+  if(!email || email.indexOf('@') < 1){ out.textContent = 'A working email address, please.'; return; }
+  out.textContent = 'One moment\\u2026';
+  try{
+    var r = await fetch('/api/program/remind', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ program: ${JSON.stringify(opts.program)}, name: name, email: email, phone: phone }) });
+    var d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'That did not go through.');
+    out.textContent = ${JSON.stringify(opts.ctaDone)};
+    document.getElementById('p-name').value = '';
+    document.getElementById('p-email').value = '';
+    document.getElementById('p-phone').value = '';
+  }catch(e){ out.textContent = e.message; }
+}
+</script>
+</body></html>`;
+}
+
+/* ---------- Homeownership Assistance Program ---------- */
+app.get('/help/down-payment-assistance', async (req, res) => {
+  const d = PROGRAM_DATES.hap;
+  res.type('html').send(programPage({
+    program: 'hap',
+    path: '/help/down-payment-assistance',
+    eyebrow: 'Baldwin County',
+    title: 'Baldwin County down payment help — HAP opens 21 September 2026',
+    h1: 'Baldwin County is opening down payment help on 21 September',
+    desc: 'Baldwin County\u2019s CDBG-DR Homeownership Assistance Program helps income-qualified '
+        + 'buyers cover the gap between what they can afford and what a home costs. The application '
+        + 'portal opens 21 September 2026. Public meetings 15 and 16 September.',
+    lede: 'Baldwin County has money set aside to help people buy a home here who cannot quite '
+        + 'close the gap on their own. The application portal opens on <b>21 September 2026</b>, '
+        + 'and there are two public meetings before it where you can get help with the application.',
+    body: `
+<div class="key">
+  <div class="d">21 September 2026</div>
+  <div class="s">The HAP application portal opens. Assistance programs like this one are usually
+    limited &mdash; being ready on the day matters.</div>
+</div>
+
+<h2>What it actually does</h2>
+<p>It is down payment assistance. The county describes it as helping low- to moderate-income
+families afford a home by covering the gap between what they can afford and the actual cost of
+a home. In practice that is the difference between being told no by a lender and getting keys.</p>
+<ul>
+  <li>Financial assistance for down payments, to help close the affordability gap</li>
+  <li>Support for first-time and income-qualified buyers</li>
+  <li>Guidance through the homebuying process</li>
+</ul>
+
+<h2>Who may qualify</h2>
+<p>The county sets the rules, not us. Households earning <b>80% or less of Area Median Income</b>
+who also meet one of the following:</p>
+<ul>
+  <li>Baldwin County residents during the storm events who remained in the County</li>
+  <li>Residents who relocated after the storms and wish to return</li>
+  <li>Individuals who were in the process of purchasing a storm-impacted home at the time of
+      the disaster</li>
+</ul>
+<p>Income limits are set against HUD figures and depend on household size. The county publishes
+the table, and the application asks the questions that decide it &mdash; we cannot tell you
+whether you qualify and would not try to.</p>
+
+<h2>The two public meetings</h2>
+<p>Both are open to the public, and both are specifically to help people submit applications.</p>
+${d.meetings.map(m => `<div class="meet"><b>${progEsc(m.when)}</b><span>${progEsc(m.where)}</span></div>`).join('\n')}
+
+<h2>What to do before the portal opens</h2>
+<p>The single most useful thing is to start a mortgage pre-approval now rather than on the day.
+The county publishes a preferred vendor list for pre-approval, and going through a lender who
+already knows the program saves a great deal of back and forth.</p>
+<p>Gather what any lender will ask for: identification, income for everyone in the household,
+recent tax returns, and anything documenting where you were living at the time of the storms.</p>`,
+    faq: [
+      { q: 'When does the Baldwin County HAP application portal open?',
+        a: 'The portal is set to open on <b>21 September 2026</b>. Two public meetings are held '
+          + 'before it, on 15 September in Foley and 16 September in Fairhope.' },
+      { q: 'What is the income limit for Baldwin County HAP?',
+        a: 'Households earning 80% or less of Area Median Income may qualify, and the exact figure '
+          + 'depends on household size. Baldwin County publishes the HUD income limit table on the '
+          + 'program page.' },
+      { q: 'Do I have to be a first-time buyer?',
+        a: 'The program supports first-time and income-qualified buyers, but the qualifying routes '
+          + 'are tied to the storm events \u2014 having remained in the county, having relocated and '
+          + 'wanting to return, or having been mid-purchase on a storm-impacted home. Check the '
+          + 'county\u2019s own eligibility wording before assuming either way.' },
+      { q: 'How much assistance does HAP provide?',
+        a: 'It covers the gap between what a household can afford and the cost of the home, so the '
+          + 'amount depends on the buyer and the property rather than being one fixed figure. The '
+          + 'county\u2019s policies and procedures document sets out how it is calculated.' },
+      { q: 'Can I use HAP on any house in Baldwin County?',
+        a: 'The program has its own property and purchase requirements, and a home has to pass '
+          + 'them as well as the buyer qualifying. That is worth knowing before you fall in love '
+          + 'with something \u2014 it is one of the things we can check with you early.' },
+      { q: 'Does it cost anything to apply?',
+        a: 'Applying to the county program is not something we charge for and we are not paid by '
+          + 'the county. We help because a buyer who can complete a purchase is a client.' },
+    ],
+    ctaHead: 'Get a reminder before the portal opens',
+    ctaBody: 'We will email you a few days before 21 September, and again the morning it opens, '
+           + 'with the link and what to have ready. Nothing else.',
+    ctaBtn: 'Remind me',
+    ctaDone: 'Done \u2014 we will be in touch before the portal opens.',
+    ctaFine: 'We are a real estate brokerage, not the county. We do not administer this program, '
+           + 'we cannot decide who qualifies, and we are not paid by it. By sending this you agree '
+           + 'we may contact you about the program and about buying a home here. Every email has a '
+           + 'one-click unsubscribe.',
+    sourceName: 'Baldwin County Commission',
+    source: d.source,
+  }));
+});
+
+/* ---------- Strengthen Alabama Homes ---------- */
+app.get('/help/fortified-roof-grant', async (req, res) => {
+  const f = PROGRAM_DATES.fortified;
+  res.type('html').send(programPage({
+    program: 'fortified',
+    path: '/help/fortified-roof-grant',
+    eyebrow: 'Coastal Alabama',
+    title: 'Strengthen Alabama Homes: up to $10,000 toward a FORTIFIED roof',
+    h1: 'There is up to $10,000 for a FORTIFIED roof, and it goes in minutes',
+    desc: 'Strengthen Alabama Homes gives coastal homeowners up to $10,000 toward a FORTIFIED '
+        + 'roof retrofit. Baldwin County windows open quarterly at 9:00 am and funds are first '
+        + 'come, first served.',
+    lede: 'Alabama will pay up to <b>$10,000</b> toward retrofitting your roof to the FORTIFIED '
+        + 'standard. Insurers here are required by law to discount windstorm cover for FORTIFIED '
+        + 'homes, so the grant pays for something that then keeps paying you back every year.',
+    body: `
+<div class="key">
+  <div class="d">9:00 am, on the day</div>
+  <div class="s">Baldwin County windows open quarterly and funds are first come, first served.
+    They have been reported gone within minutes. Being logged in and ready before 9:00 is the
+    whole game.</div>
+</div>
+
+<h2>Why a FORTIFIED roof is worth more here than almost anywhere</h2>
+<p>Most standard homeowners policies on this coast exclude wind altogether, so wind is bought
+separately &mdash; often through the Alabama Insurance Underwriting Association when private
+carriers will not write it. Wind is usually the largest single line on a coastal premium.</p>
+<p>Alabama is unusual: insurers are legally required to offer discounts for homes built or
+retrofitted to the FORTIFIED standard. Reported discounts run to 20&ndash;30% off windstorm
+coverage. On a coastal premium that is real money every year, not a one-off.</p>
+<p>It is also about the house standing up. Homes built to FORTIFIED standards came through
+Hurricane Sally markedly better than those that were not.</p>
+
+<h2>What to do before the window opens</h2>
+<ul>
+  <li>Get an evaluation and a quote from a contractor who has done FORTIFIED work before &mdash;
+      not every roofer has</li>
+  <li>Have your documents together in advance, not on the morning</li>
+  <li>Be logged in and ready before 9:00 am on opening day</li>
+  <li>If you miss it, the next window is a quarter away &mdash; put it in the calendar now</li>
+</ul>
+
+<h2>If you are buying rather than owning</h2>
+<p>Ask whether a property already has a FORTIFIED designation before you make an offer. It
+changes what you will pay to insure it, and a certificate that transfers is worth money to you
+on day one. It is one of the first things we check on a coastal property.</p>`,
+    faq: [
+      { q: 'How much is the Strengthen Alabama Homes grant?',
+        a: 'Up to <b>$10,000</b> toward a FORTIFIED roof retrofit for an eligible coastal home.' },
+      { q: 'When can I apply in Baldwin County?',
+        a: 'Windows open quarterly at 9:00 am and are first come, first served. Funds have been '
+          + 'reported to run out within minutes of opening, so being ready before the hour matters '
+          + 'more than anything else.' },
+      { q: 'Does a FORTIFIED roof actually lower my insurance in Alabama?',
+        a: 'Alabama requires insurers to offer discounts for FORTIFIED homes. Reported discounts '
+          + 'run around 20\u201330% off windstorm coverage, which on this coast is usually the '
+          + 'biggest part of the premium. Your own figure depends on your carrier and your home.' },
+      { q: 'Does a metal roof count as FORTIFIED?',
+        a: 'Not by itself. The roof has to be installed to the specific standard and certified '
+          + 'through the FORTIFIED programme \u2014 the material alone does not qualify it.' },
+      { q: 'Does the FORTIFIED certificate transfer when the house is sold?',
+        a: 'A designation is attached to the home and is worth asking about when you buy, because '
+          + 'it affects what you will pay to insure it. Confirm the certificate and its date as '
+          + 'part of your due diligence rather than assuming.' },
+      { q: 'What if I miss the window?',
+        a: 'The next one is a quarter away. That is time enough to line up a contractor and your '
+          + 'paperwork so you are ready at 9:00 am rather than starting then.' },
+    ],
+    ctaHead: 'Get a reminder before the next window',
+    ctaBody: 'We will email you a few days before the next Baldwin County window opens, and again '
+           + 'the morning of, so you are not finding out afterwards.',
+    ctaBtn: 'Remind me',
+    ctaDone: 'Done \u2014 we will warn you before the next one.',
+    ctaFine: 'We are a real estate brokerage. We do not administer this grant, we do not decide '
+           + 'who receives it, and we are not paid by it or by any contractor. By sending this you '
+           + 'agree we may contact you about the programme and about property here. Every email '
+           + 'has a one-click unsubscribe.',
+    sourceName: 'Strengthen Alabama Homes',
+    source: f.source,
+  }));
+});
+
+/* ⚠ The reminder itself is a LEAD, written the same way every other lead is, so it lands in the
+   CRM, gets a source, gets an owner and gets followed up. A capture form that writes somewhere
+   nobody looks is the oldest failure in this codebase. */
+app.post('/api/program/remind', async (req, res) => {
+  const b = req.body || {};
+  const program = String(b.program || '').slice(0, 24);
+  const email = String(b.email || '').trim().slice(0, 160);
+  if (!email || email.indexOf('@') < 1) return res.status(400).json({ error: 'A working email address, please.' });
+  const label = program === 'hap' ? 'Down payment help (HAP)' : 'FORTIFIED roof grant';
+  const id = 'lead_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  const lead = {
+    id,
+    name: String(b.name || '').trim().slice(0, 120) || '(no name)',
+    email,
+    phone: String(b.phone || '').trim().slice(0, 40),
+    /* ⚠ Its own source, so these never get mixed in with buyer or seller enquiries and can be
+       mailed as a group when the date comes round. */
+    source: program === 'hap' ? 'grant-hap' : 'grant-fortified',
+    message: 'Asked to be reminded about ' + label + '.',
+    stage: 'New', notes: '', lane: 'steady',
+    createdAt: new Date().toISOString(),
+    consentAt: new Date().toISOString(),
+    assignedAgentId: '',
+  };
+  const ok = await setSetting('lead:' + id, lead);
+  if (ok === false) {
+    console.error('[program] reminder did not save for', email);
+    return res.status(500).json({ error: 'That did not save. Please try again.' });
+  }
+  console.log('[program] reminder signup:', label, email);
+  res.json({ ok: true });
+});
+
 app.get('/homes/:slug', async (req, res, next) => {
   const a = AREAS.find(x => x.slug === String(req.params.slug || '').toLowerCase());
   if (!a) return next();
@@ -8803,6 +9183,10 @@ app.get('/sitemap.xml', async (req, res) => {
       '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n');
   }
   try {
+    /* \u26a0 The grant pages are the only pages on this site that carry a hard date, so they
+       are the ones most worth crawling promptly. Listed high, and above the articles. */
+    urls.push({ loc: origin + '/help/down-payment-assistance', pri: '0.9' });
+    urls.push({ loc: origin + '/help/fortified-roof-grant', pri: '0.9' });
     urls.push({ loc: origin + '/insights', pri: '0.7' });
     (await articlesPublic()).forEach(a => {
       urls.push({ loc: origin + '/insights/' + a.slug, pri: '0.7' });
