@@ -5007,7 +5007,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v318';
+window.BUILD = 'index-v319';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -22985,10 +22985,31 @@ function qzClose(){
   document.body.style.overflow = '';
 }
 
+/* \u26a0 QZ_CFG is the broker's SAVED quiz, and it wins over the built-ins below. That
+   means any question added to QZ_BUY or QZ_SELL in a new build is dead on any site
+   where somebody has ever opened the quiz editor and pressed save \u2014 the new question
+   is in the file and never appears. The financing question shipped exactly like that
+   and was only caught because the broker counted the screens.
+
+   So: a built-in step marked `always:true` is merged in when the saved quiz has no
+   question with that key. Wording the broker has changed is untouched; a question he
+   has never seen gets added.
+
+   \u26a0 Only `always:true` steps are merged. Without that flag this would resurrect any
+   question the broker had deliberately deleted, which is a worse bug than the one it
+   fixes. Set it deliberately, on questions the system depends on. */
+function qzMergeMissing(saved, builtins){
+  if(!Array.isArray(saved) || !saved.length) return builtins;
+  const have = new Set(saved.map(q => q && q.key).filter(Boolean));
+  const add = (builtins || []).filter(q => q && q.always && !have.has(q.key));
+  return add.length ? saved.concat(add) : saved;
+}
+
 function qzSteps(){
   const c = QZ_CFG || { buy: QZ_BUY, sell: QZ_SELL };
   const s = qzPath === 'sell' ? c.sell : c.buy;
-  return (Array.isArray(s) && s.length) ? s : (qzPath === 'sell' ? QZ_SELL : QZ_BUY);
+  const builtins = qzPath === 'sell' ? QZ_SELL : QZ_BUY;
+  return (Array.isArray(s) && s.length) ? qzMergeMissing(s, builtins) : builtins;
 }
 
 /* ---------- buyer ---------- */
@@ -23027,7 +23048,7 @@ const QZ_BUY = [
      which one you have decides how fast you move and how an offer gets written.
      \u26a0 Deliberately last: it is the most personal question here, and asking it before
      the easy ones is how a quiz gets abandoned halfway. */
-  { key:'financing', kind:'one', title:'How would you be paying?',
+  { key:'financing', always:true, kind:'one', title:'How would you be paying?',
     sub:'No wrong answer \u2014 it just changes how quickly we can move when the right one comes up.',
     two:true,
     opts:[ {v:'cash',l:'Cash',d:'That is a real advantage here \u2014 we will use it'},
@@ -23062,6 +23083,12 @@ const QZ_SELL = [
        get chased or left alone, and getting it wrong loses them either way. */
     sub:'None of this is a problem \u2014 it just changes the advice. Pick any, or none.',
     two:true,
+    /* \u26a0 A saved quiz overrides these OPTIONS too, not just the questions. The merge
+       above only restores whole missing questions, so this option will not appear on
+       a site with a saved seller quiz. It is belt and braces rather than the only
+       route: the curious branch also triggers on timeline === 'looking', which is an
+       option the saved quiz already has. If the broker wants this option visible he
+       adds it in Content > the quiz editor. */
     opts:[ {v:'nothing',l:'Nothing unusual'},
            {v:'just curious',l:'Just curious \u2014 not selling yet'},
            {v:'needs work',l:'It needs work'}, {v:'inherited',l:'Inherited property'},
