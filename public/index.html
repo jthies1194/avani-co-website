@@ -2657,6 +2657,12 @@ body.in-crm .topbar{display:none}
    the only visible way out of the CRM, which is why it looked like the escape
    hatch. It is chrome from the other view; it does not belong here. */
 body.in-crm #secnav{display:none}
+/* ⚠ The referral bar is fixed to the bottom of the window and belongs to the PUBLIC
+   site — it tells a visitor which agent their enquiries reach. Inside the CRM it was
+   telling Jimmy that Jimmy gets his own enquiries, sat on top of the leads list, and
+   offered "Work with someone else", which from in here reads like a CRM control and
+   is not one. Same family as #secnav above: marketing chrome that nobody hid. */
+body.in-crm #referral-bar{display:none!important}
 #crm-rail .mk{padding:0 0 12px;border:none;flex:0 0 auto;margin:0 0 11px;cursor:pointer;
   border-radius:4px;border-bottom:1px solid rgba(255,255,255,.10)}
 /* ⚠ Visible focus, because it is a div pretending to be a link. A control you can
@@ -2901,30 +2907,16 @@ body.in-crm #secnav{display:none}
 
 <div id="sec-today" class="crm-sec"></div>
 <div id="sec-leads" class="crm-sec">
-<div class="setup-panel">
-  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
-    b.style.display = b.style.display==='none' ? '' : 'none';
-    if(b.style.display !== 'none' && typeof renderDrip === 'function') renderDrip();">
-    <h3>&#9993; Follow-up sequences</h3><span>&#9662;</span>
-  </div>
-  <div class="setup-body" id="dc-body" style="display:none">Loading&hellip;</div>
-</div>
-<div class="setup-panel">
-  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
-    b.style.display = b.style.display==='none' ? '' : 'none';
-    if(b.style.display !== 'none' && typeof renderSearches === 'function') renderSearches();">
-    <h3>&#128269; Listing alerts</h3><span>&#9662;</span>
-  </div>
-  <div class="setup-body" id="ss-body" style="display:none">Loading&hellip;</div>
-</div>
-<div class="setup-panel">
-  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
-    b.style.display = b.style.display==='none' ? '' : 'none';
-    if(b.style.display !== 'none' && typeof renderPlaybooks === 'function') renderPlaybooks();">
-    <h3>&#9758; Openers by situation</h3><span>&#9662;</span>
-  </div>
-  <div class="setup-body" id="pb-body" style="display:none">Loading&hellip;</div>
-</div>
+<!-- ⚠ THE LIST COMES FIRST. Follow-up sequences, Listing alerts and Openers used to
+     sit above it, so opening Leads meant scrolling past three setup panels — one of
+     them ten large cards — before reaching a single lead. Leads is the screen an
+     agent opens twenty times a day to answer somebody; setup is a thing you do once.
+     The daily job goes at the top, the one-off configuration goes underneath.
+
+     ⚠ They cannot be collapsed instead. `.crm-sec .setup-head{display:none}` and
+     `.crm-sec .setup-body{display:block!important}` force every panel inside a CRM
+     section open and hide its header — the accordion pattern does not exist in here,
+     deliberately. Order is the only lever. Do not re-add a .setup-head. -->
 <div class="wn-active" id="wn-active" style="display:none"></div>
 <div class="stats-row" id="stats-row"></div>
 
@@ -2973,6 +2965,61 @@ body.in-crm #secnav{display:none}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12 C3 12 7 4 12 4 C17 4 21 12 21 12 C21 12 17 20 12 20 C7 20 3 12 3 12 Z"/><circle cx="12" cy="12" r="3"/></svg>
 <div style="font-size:16px;">No leads in this view yet.<br><span style="font-size:14px;color:var(--driftwood);">Anything submitted from bamacoast.com lands here the moment it arrives.</span></div>
 </div>
+</div>
+
+<!-- ⚠ Everything below here is SET UP ONCE and then runs by itself. It was above the
+     list, which made a daily working screen open onto three configuration panels.
+     The heading exists because the broker's words were "I don't understand how to
+     use this or the purpose" — the three panels never said what they were for, what
+     order to do them in, or that two of them are the same machine. -->
+<div class="lt-setup-intro">
+  <h3>Automatic follow-up</h3>
+  <p>Everything below runs on its own once it is set up, so nobody has to remember.
+     You do not need any of it to work your leads &mdash; the list above works without
+     it. Set it up when you want the chasing to happen while you are busy.</p>
+  <ol>
+    <li><strong>Openers by situation</strong> are ready-made sequences. Start here
+        &mdash; pick the one that matches how somebody came in and edit the wording
+        to sound like you.</li>
+    <li><strong>Follow-up sequences</strong> are the messages themselves: a handful
+        spaced over days or weeks. An opener becomes one of these the moment you
+        edit it.</li>
+    <li><strong>Listing alerts</strong> are separate. They email a person new
+        listings that match what they asked for, at whatever pace they choose.</li>
+  </ol>
+  <p class="lt-setup-note">⚠ Building a sequence does not start it. You start one on
+     a person, from the panel beside their name in the list above.</p>
+</div>
+
+<!-- ⚠ The .setup-head elements below are LOAD-BEARING and must not be simplified away.
+     sxLiftPanels() reads each one's heading element to build the visible title, and scrapes the
+     render*() call out of its onclick attribute into data-sx-render so sxRenderPanels()
+     can fire it when the section opens. Delete the head and the panel loses its title
+     AND never renders — it sits on "Loading…" forever. The head is hidden by CSS, not
+     unused. Moving these panels is fine; gutting them is not. -->
+<div class="setup-panel">
+  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
+    b.style.display = b.style.display==='none' ? '' : 'none';
+    if(b.style.display !== 'none' && typeof renderPlaybooks === 'function') renderPlaybooks();">
+    <h3>&#9758; Openers by situation</h3><span>&#9662;</span>
+  </div>
+  <div class="setup-body" id="pb-body" style="display:none">Loading&hellip;</div>
+</div>
+<div class="setup-panel">
+  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
+    b.style.display = b.style.display==='none' ? '' : 'none';
+    if(b.style.display !== 'none' && typeof renderDrip === 'function') renderDrip();">
+    <h3>&#9993; Follow-up sequences</h3><span>&#9662;</span>
+  </div>
+  <div class="setup-body" id="dc-body" style="display:none">Loading&hellip;</div>
+</div>
+<div class="setup-panel">
+  <div class="setup-head" onclick="var b=this.parentNode.querySelector('.setup-body');
+    b.style.display = b.style.display==='none' ? '' : 'none';
+    if(b.style.display !== 'none' && typeof renderSearches === 'function') renderSearches();">
+    <h3>&#128269; Listing alerts</h3><span>&#9662;</span>
+  </div>
+  <div class="setup-body" id="ss-body" style="display:none">Loading&hellip;</div>
 </div>
 </div>
 
@@ -3104,6 +3151,19 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
    elsewhere produces a headerless "Loading…" and no way to reach the content.
    Titles go in the panel, not in a head. */
 .crm-sec .setup-panel + .setup-panel{margin-top:32px}
+/* ---------- the "what is all this for" block above the setup panels ---------- */
+#crm-main .lt-setup-intro{margin:44px 0 4px;padding:18px 20px;border-radius:6px;
+  background:#FCFBF7;border:1px solid var(--hair);border-left:3px solid var(--gd)}
+#crm-main .lt-setup-intro h3{font-family:'Fraunces',Georgia,serif;font-size:20px;
+  font-weight:400;margin:0 0 6px;color:var(--rl)}
+#crm-main .lt-setup-intro p{font-size:13.5px;line-height:1.6;color:var(--driftwood);
+  margin:0 0 10px;max-width:680px}
+#crm-main .lt-setup-intro ol{margin:0 0 10px;padding-left:20px;max-width:680px}
+#crm-main .lt-setup-intro li{font-size:13.5px;line-height:1.6;color:var(--driftwood);
+  margin-bottom:7px}
+#crm-main .lt-setup-intro strong{color:var(--rl)}
+#crm-main .lt-setup-note{font-size:12.5px;color:#7A5B32;background:#FDF3E9;
+  border:1px solid #EBD5B8;border-radius:5px;padding:9px 12px;margin:0!important}
 #probe-out .probe-wait{font-size:13px;color:var(--driftwood)}
 #probe-out .probe-good{background:#EDF7F1;border:1px solid #9FC9B2;border-radius:5px;
   padding:13px 15px;font-size:13.5px;line-height:1.55;color:#22563C}
@@ -4849,7 +4909,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v304';
+window.BUILD = 'index-v305';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
