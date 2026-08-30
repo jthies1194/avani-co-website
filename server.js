@@ -4859,13 +4859,43 @@ async function campaignById(id, list) {
   return livePlaybooks().find(c => c.id === id) || null;
 }
 
+/* ---------- what the site calls a source vs what a playbook matches on ----------
+   \u26a0 THESE DID NOT LINE UP AND IT PUT A SELLER ON A BUYER SEQUENCE. The quiz writes
+   source 'quiz-seller'; the seller playbook matches on 'value'. No exact match, so it
+   fell through to the "every new lead" catch-all - which is the BUYER opener. A seller
+   asking what their home is worth was emailed "are you already local, or would this be
+   a move down here?".
+
+   Caught by the broker on the first live test, not by me. Anything added to LT_SRC in
+   the client belongs here too. */
+const SOURCE_TO_TRIGGER = {
+  'quiz-seller':  'value',
+  'cash-offer':   'value',       // still a seller, just a different doorway
+  'quiz-buyer':   'new',
+  'quiz':         'new',
+  'listing':      'listing',
+  'open-house':   'open-house',
+  'exit-intent':  'exit-intent',
+  'alerts':       'exit-intent', // asked to hear about new listings
+  'reactivated':  'reactivated',
+};
+
+function triggerForSource(src) {
+  const k = String(src || '').toLowerCase().trim();
+  if (SOURCE_TO_TRIGGER[k]) return SOURCE_TO_TRIGGER[k];
+  /* \u26a0 Imported and referral sources - 'remax.com', 'propertyboost', 'manual add',
+     'organic website' - have no funnel behind them. They fall to the catch-all
+     deliberately rather than being force-fitted to a story we do not know. */
+  return k;
+}
+
 async function pickSequenceFor(lead) {
   if (!lead || lead.unsubscribed) return null;
   if (lead.drip && lead.drip.campaignId && !lead.drip.stopped) return null;
   let list = [];
   try { list = (await getSetting('settings:dripCampaigns')) || []; } catch (e) { list = []; }
   if (!Array.isArray(list)) list = [];
-  const src = String(lead.source || '').toLowerCase().trim();
+  const src = triggerForSource(lead.source);
 
   const match = pool => pool.find(c => c && !c.paused && c.trigger && c.trigger !== 'manual'
                                     && String(c.trigger).toLowerCase() === src)
@@ -4932,6 +4962,11 @@ async function dripSweep() {
           const agent = { name: lead.assignedAgentName || BROKERAGE_NAME };
           try {
             await mailer.sendMail({
+              /* \u26a0 marketing:true, or this goes out from the TRANSACTIONAL sender -
+                 the same address password resets and claim alerts use. Automated
+                 follow-up burning that domain's reputation is how the mail that HAS
+                 to arrive stops arriving. */
+              marketing: true,
               to: lead.email,
               subject: dripClean(dripFill(step.subject, lead, agent), 'subject'),
               text: dripClean(dripFill(step.body, lead, agent), 'body')
@@ -5711,7 +5746,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v139',
+    serverVersion: 'v140',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
