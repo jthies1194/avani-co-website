@@ -1577,11 +1577,20 @@ const PLAYBOOK_DEFAULTS = [
     { d:30, ch:'sms',   t:"Want me to keep looking for you, or should I leave you alone for now?" },
   ]},
   { id:'pb_seller', name:'Asked what their home is worth', match:{ source:'value' }, steps:[
-    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent}. Got your request about {address}. Before I send you automated numbers that may or may not be right \u2014 are you actually thinking of selling, or mostly curious what it'd fetch?" },
+    /* \u26a0 Rewritten at the broker's instruction after he read it as a customer.
+       The old line was: "Before I send you automated numbers that may or may not be
+       right…". Two things wrong with it. It told the seller this brokerage sends
+       automated numbers — he does not, he works every valuation by hand, and that is
+       the single thing separating him from a Zestimate. And it read as put-upon, as
+       though the enquiry were an interruption. The first line a seller reads should
+       sound glad they asked. */
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} \u2014 thanks for asking about {address}.\n\nI'll work the number out myself rather than run it through a calculator, so it reflects what is actually there rather than an average of the street.\n\nOne question so I get it right: are you thinking of selling, or mostly curious what it would fetch? Either is a good reason to ask \u2014 it just changes how I put it together." },
     { d:1,  ch:'email', s:'About {address}', t:"Hi {first},\n\nI can give you a proper number, but an accurate one needs two things a computer doesn't know: what you've done to it, and when you'd want to move.\n\nTell me those and I'll do it properly rather than guessing." },
-    { d:4,  ch:'sms',   t:"{first} \u2014 would knowing what you'd actually WALK AWAY WITH after everything be more use than a sale price?" },
+    /* \u26a0 Shouty capitals removed. It read as a sales gimmick in the middle of an
+       otherwise plain conversation. */
+    { d:4,  ch:'sms',   t:"{first} \u2014 would it be more use to know what you'd actually walk away with after everything, rather than just a sale price? I can work that out for you." },
     { d:9,  ch:'task',  t:'Call them. Sellers convert on the phone far more than by email.' },
-    { d:16, ch:'sms',   t:"If the number made sense, would you actually move? Or is it more of a maybe-someday?" },
+    { d:16, ch:'sms',   t:"{first}, is selling still on your mind, or has it moved to a someday thing? Either is fine \u2014 I just do not want to keep sending you things you are not looking for." },
     { d:30, ch:'email', s:'What has sold near you', t:"Hi {first},\n\nHere's what's actually sold near {address} recently \u2014 useful whether you sell this year or in five.\n\nAnything changed on your end?" },
   ]},
   { id:'pb_oh', name:'Signed in at an open house', match:{ source:'open-house' }, steps:[
@@ -1636,7 +1645,7 @@ const PLAYBOOK_DEFAULTS = [
        fastest way to look like a machine that ignored them. Answer today, no pitch,
        then leave them alone. */
     { d:0, ch:'email', s:'Your home\u2019s value \u2014 no pitch',
-      t:"Hi {first},\n\nThanks for asking about {address}. You said you are mostly curious rather than ready to sell, so I will keep this simple and leave you alone after it.\n\nI will put a proper number together \u2014 not an automated estimate, but one that accounts for what you have actually done to the place. Reply with anything a computer would not know: work you have had done, how the outlook is, anything unusual about the lot.\n\nNo timeline, no pressure. Curious is a perfectly good reason to ask.\n\n{agent}" },
+      t:"Hi {first},\n\nThanks for asking about {address}. You mentioned you are mostly curious rather than ready to sell, so I will keep this short.\n\nI work these out by hand, so it will reflect your place rather than an average of the street. If you want to tell me anything a calculator would miss \u2014 work you have had done, the outlook, anything unusual about the lot \u2014 reply and I will factor it in. If not, that is fine too.\n\nNo timeline and no pressure. Curious is a perfectly good reason to ask.\n\n{agent}" },
     { d:30, ch:'email', s:'No rush \u2014 but here is what your street is doing',
       t:"Hi {first},\n\nNo pitch. You asked what the place was worth, and things have moved since.\n\nHere is what has sold near you and how long each took. If you are still a year out, that is fine \u2014 this is just so the number in your head stays roughly right.\n\n{agent}" },
     { d:90, ch:'email', s:'The three things that move the number most',
@@ -5898,7 +5907,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v144',
+    serverVersion: 'v145',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
