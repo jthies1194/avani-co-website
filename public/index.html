@@ -5007,7 +5007,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v316';
+window.BUILD = 'index-v317';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -18746,6 +18746,18 @@ async function renderPipelineSection(){
   const el = document.getElementById('sec-pipeline');
   if(!el || !currentAgent) return;
   await loadPipeline();
+  /* \u26a0 This function rewrites #sec-pipeline wholesale, which recreates
+     <div id="sr-body">Loading&hellip;</div> every time. Seller reports is filled by
+     renderSellerReports(), which was called from ONE place only \u2014 the section-open
+     hook. So opening Pipeline worked, and then tapping any stage chip, or saving,
+     deleting or advancing any deal, blanked Seller reports back to "Loading..." for
+     the rest of the session. Six callers, none of them repainting it.
+     Repainting from inside the render that destroys it is the only place that cannot
+     be forgotten by a future caller. */
+  const repaintSellerReports = () => {
+    try{ if(typeof renderSellerReports === 'function') renderSellerReports(); }
+    catch(e){ console.error('[sellerReports]', e); }
+  };
 
   const counts = {};
   PL_STAGES.forEach(s => { counts[s.k] = plDeals.filter(d => (d.stage||'open') === s.k).length; });
@@ -18784,6 +18796,10 @@ async function renderPipelineSection(){
             : 'Nothing at this stage.'}
         </div></div>`}
     </div>`;
+
+  /* \u26a0 Immediately after the innerHTML that just destroyed it. Every caller gets the
+     repaint for free, including the five that never knew they needed it. */
+  repaintSellerReports();
 }
 
 function plDealHtml(d){
