@@ -2633,7 +2633,14 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
    in the CRM entirely (body.in-crm #hdr), which is what gives the rail the full
    height of the window rather than starting below a banner. */
 #crm-rail{background:var(--rl);position:sticky;top:0;z-index:60;
-  flex:0 0 224px;width:224px;height:100dvh;
+  flex:0 0 224px;width:224px;
+  /* \u26a0 NOT a flat 100dvh. body.in-crm hides #hdr, .topbar and #secnav but deliberately
+     leaves the .utility strip (world clocks, Client login) in place as position:static.
+     So at the top of the page the rail starts ~52px down, and a flat 100dvh ran its
+     last 52px \u2014 the finder and Suggest an improvement \u2014 off the bottom of the window.
+     --railtop is whatever is still above it right now, measured live, and goes to 0 as
+     the utility strip scrolls away. */
+  height:calc(100dvh - var(--railtop, 0px));
   padding:15px 11px 0;
   border-right:1px solid rgba(200,155,78,.5);
   box-shadow:2px 0 14px rgba(14,20,51,.16);
@@ -4842,7 +4849,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v303';
+window.BUILD = 'index-v304';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5156,7 +5163,16 @@ function unlockCRM(){
 if(!brokerIdentity) saveAgentSession(currentAgent);
 resetIdleTimer();
 document.getElementById('crm-gate').style.display='none';
-document.getElementById('crm-main').style.display='block';
+/* \u26a0 Cleared, NOT set to 'block'. An inline style beats the stylesheet, so
+   `style.display='block'` overrode `#crm-main.crm-wrap{display:flex}` and the rail and
+   the content stacked in normal flow instead of sitting side by side. The rail is a
+   full viewport tall, so the content landed exactly one screen below the fold and the
+   CRM looked empty. Clearing it hands the decision back to CSS, which is what picks
+   flex above 1000px and block below it.
+   \u26a0 Safe for the one place that READS this (applyCrmBackground: `el.style.display
+   !== 'none'`) \u2014 hiding still writes 'none' explicitly, so open/closed still resolves
+   correctly. Do not put a literal display back here. */
+document.getElementById('crm-main').style.display='';
 if(typeof applyCrmBackground === 'function') applyCrmBackground();
 // visibility of the Agents tab is handled by renderCrmNav()
 document.getElementById('crm-signed-in-as').textContent = brokerIdentity
@@ -9077,7 +9093,46 @@ function crmMeasureNav(){
   try{ vertical = window.matchMedia('(min-width: 1001px)').matches; }catch(e){}
   document.documentElement.style.setProperty(
     '--navh', (vertical ? 0 : bar.offsetHeight) + 'px');
+
+  /* \u26a0 How much chrome is still sitting above the rail RIGHT NOW. The utility strip
+     is position:static in the CRM, so this starts around 52 and reaches 0 once it has
+     scrolled away. Without it the bottom of the rail \u2014 the finder, the stamp and
+     Suggest an improvement \u2014 hangs below the fold until you scroll.
+     Clamped at 0: sticky can report a small negative during rubber-band scrolling on
+     iOS, and a negative here would make the rail taller than the window. */
+  if(vertical){
+    let top = 0;
+    try{ top = Math.max(0, Math.round(bar.getBoundingClientRect().top)); }catch(e){}
+    document.documentElement.style.setProperty('--railtop', top + 'px');
+  } else {
+    document.documentElement.style.setProperty('--railtop', '0px');
+  }
 }
+/* \u26a0 Passive, and it only writes when the value actually changes \u2014 a setProperty on
+   every scroll frame invalidates style for the whole document and makes the leads
+   table stutter on a long list. */
+(function(){
+  let last = -1, queued = false;
+  function sync(){
+    queued = false;
+    const bar = document.getElementById('crm-rail');
+    if(!bar || !document.body.classList.contains('in-crm')) return;
+    let vertical = false;
+    try{ vertical = window.matchMedia('(min-width: 1001px)').matches; }catch(e){}
+    let top = 0;
+    if(vertical){
+      try{ top = Math.max(0, Math.round(bar.getBoundingClientRect().top)); }catch(e){}
+    }
+    if(top === last) return;
+    last = top;
+    document.documentElement.style.setProperty('--railtop', top + 'px');
+  }
+  window.addEventListener('scroll', () => {
+    if(queued) return;
+    queued = true;
+    requestAnimationFrame(sync);
+  }, { passive:true });
+})();
 window.addEventListener('resize', () => { try{ crmMeasureNav(); }catch(e){} });
 
 function renderCrmNav(){
@@ -21826,7 +21881,10 @@ async function ntToggle(k){
 #crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:var(--driftwood)}
 
 /* ---------- contact-recency status (index 303) ---------- */
-#crm-main .lt-flag{width:4px;min-width:4px;padding:0;border-radius:0}
+/* ⚠ 5px, and it must stay a real cell. .lt-tbl is table-layout:fixed, so this column's
+   width is taken from the first row — every row therefore has to render the cell, even
+   an empty one, or the columns after it shift by 5px on that row. */
+#crm-main .lt-flag{width:5px;min-width:5px;padding:0;border-radius:0}
 #crm-main .lt-t{width:74px;padding:9px 6px 9px 4px;font-size:11.5px;font-weight:600;
   white-space:nowrap;font-variant-numeric:tabular-nums}
 #crm-main .lt-touch{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;
