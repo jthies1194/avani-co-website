@@ -3007,6 +3007,15 @@ html,body{overflow-x:hidden;overflow-x:clip}
      The heading exists because the broker's words were "I don't understand how to
      use this or the purpose" — the three panels never said what they were for, what
      order to do them in, or that two of them are the same machine. -->
+<div class="setup-panel" id="cq-panel">
+  <h3 class="sx-h">Who to call now</h3>
+  <p class="sx-sub">One person at a time, worst first &mdash; never contacted before anyone
+    else, then whoever has waited longest. It shows you whether they gave written consent,
+    checks it is a reasonable hour where they are, and logs the outcome in a tap.
+    <b>The call goes through your own phone or your own dialer</b>, not through this system.</p>
+  <div id="cq-body"><button class="btn-sm primary" onclick="cqOpen()">Start calling</button></div>
+</div>
+
 <div class="setup-panel" id="en-panel">
   <h3 class="sx-h">Put existing people on a follow-up</h3>
   <p class="sx-sub">New leads go onto a follow-up by themselves the moment they arrive.
@@ -5015,7 +5024,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v320';
+window.BUILD = 'index-v321';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -11221,6 +11230,15 @@ async function renderMyPageSection(){
           <strong>@vtext.com</strong> (Verizon), <strong>@txt.att.net</strong> (AT&amp;T),
           <strong>@tmomail.net</strong> (T-Mobile). Leave blank for email only.</p>
       </div>
+      <div style="margin-top:16px">
+        <div class="field-label">Your dialer (optional)</div>
+        <input id="mp-dialer" placeholder="leave blank to use your phone">
+        <p style="font-size:12.5px;color:var(--driftwood);margin:6px 0 0;line-height:1.55;">
+          <b>Leave this blank and calls go through your phone as normal &mdash; free, nothing to set up.</b>
+          If you pay for a dialer of your own, paste its click-to-call web address here and put
+          <strong>{number}</strong> where the phone number goes. The brokerage does not place your
+          calls and does not pay for your dialer &mdash; your account, your number, your choice.</p>
+      </div>
       <button class="btn-sm" style="margin-top:12px;" onclick="saveMyAlerts()">Save alert settings</button>
     </div>
     <button class="btn-sm primary" style="margin-top:14px;" onclick="saveMyPage()">Save my page</button>
@@ -11437,6 +11455,10 @@ async function loadMyAlerts(){
     const sms = document.getElementById('mp-sms');
     if(cb) cb.checked = d.emailAlerts !== false;
     if(sms) sms.value = d.smsAddress || '';
+    const dl = document.getElementById('mp-dialer');
+    if(dl) dl.value = d.dialerUrl || '';
+    /* \u26a0 Held on currentAgent so the call queue can read it without a fetch per call. */
+    try{ if(currentAgent) currentAgent.dialerUrl = d.dialerUrl || ''; }catch(e){}
   }catch(e){}
 }
 async function saveMyAlerts(){
@@ -11445,9 +11467,14 @@ async function saveMyAlerts(){
   try{
     const res = await fetch('/api/agent/' + currentAgent.id + '/alerts', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ emailAlerts: !!(cb && cb.checked), smsAddress: (sms && sms.value) || '' })
+      body: JSON.stringify({ emailAlerts: !!(cb && cb.checked), smsAddress: (sms && sms.value) || '',
+        dialerUrl: (document.getElementById('mp-dialer') || {}).value || '' })
     });
-    if(res.ok) showToast("Alert settings saved.");
+    if(res.ok){
+      try{ if(currentAgent) currentAgent.dialerUrl =
+        (document.getElementById('mp-dialer') || {}).value || ''; }catch(e){}
+      showToast("Alert settings saved.");
+    }
     else showToast("Couldn't save alerts.");
   }catch(e){ showToast("Couldn't reach the server."); }
 }
@@ -25431,6 +25458,249 @@ async function enGo(){
     if(typeof loadLeads === 'function') loadLeads();
   }catch(e){ showToast(e.message); }
   enBusy = false;
+}
+</script>
+<style>
+#cq-panel .cq-hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+#cq-panel .cq-count{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+#cq-panel .cq-card{border:1px solid var(--hair2);border-left:4px solid var(--cqt,#8C93AD);
+  border-radius:7px;padding:14px 16px;background:#fff;margin-bottom:10px}
+#cq-panel .cq-card .nm{font-size:17px;font-weight:600;color:var(--rl,#0E1433)}
+#cq-panel .cq-card .mt{font-size:12.5px;color:var(--driftwood);margin-top:2px}
+#cq-panel .cq-why{font-size:13px;line-height:1.5;margin:9px 0 0;color:var(--ink)}
+#cq-panel .cq-acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+#cq-panel .cq-dial{background:#1F6B49;color:#fff;border:none;border-radius:6px;
+  padding:10px 20px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;
+  display:inline-flex;align-items:center;gap:7px}
+#cq-panel .cq-dial.blocked{background:#8C93AD;cursor:not-allowed}
+#cq-panel .cq-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
+  letter-spacing:.05em;text-transform:uppercase;border-radius:3px;padding:2px 8px}
+#cq-panel .cq-tag.ok{color:#22563C;background:#EDF7F1;border:1px solid #9FC9B2}
+#cq-panel .cq-tag.no{color:#7A3227;background:#FDF1EF;border:1px solid #E2B0A8}
+#cq-panel .cq-tag.dnc{color:#fff;background:#A32B22}
+#cq-panel .cq-warn{font-size:12.5px;line-height:1.55;color:#7A5B32;background:#FDF3E9;
+  border:1px solid #EBD5B8;border-radius:5px;padding:9px 12px;margin-top:10px}
+#cq-panel .cq-out{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+#cq-panel .cq-out button{border:1px solid var(--hair2);background:#FAFAF7;border-radius:20px;
+  padding:6px 13px;font:inherit;font-size:12.5px;cursor:pointer}
+#cq-panel .cq-out button:hover{background:var(--gd-pale,#F6EEDC)}
+#cq-panel .cq-none{font-size:13.5px;color:var(--driftwood);line-height:1.6;padding:6px 0}
+</style>
+<script>
+/* ================= THE CALL QUEUE (index 321) =================
+   Built because "call them" was a task on a list and nothing made it easy. This puts
+   one person on screen at a time with everything needed to ring them, and logs the
+   outcome in one tap.
+
+   ⚠ THE DIALER IS NOT IN THIS SYSTEM, ON PURPOSE. Each agent brings their own account
+   and their own number. The brokerage does not place the call, does not hold the
+   telephony, and does not take on the liability of an automatic dialing system. All
+   this does is hand a number to whatever the agent already uses. Default is a plain
+   tel: link, which is free and works on every phone.
+
+   ⚠ CONSENT IS THE WHOLE DESIGN. Autodialed marketing calls to a cell phone need prior
+   express written consent — $500 to $1,500 per call, no class action cap. The quiz
+   captures real consent and stores consentAt. An imported lead has none: buying or
+   importing a record transfers the data, NOT the consent. So imports are marked and
+   held to manual dial only, and the card says why.
+
+   ⚠ Calling hours are enforced at 8am–9pm in the LEAD's local time, not the agent's.
+   ⚠ Every attempt is written to the lead's own event log. That log is the defence if
+   anybody ever complains, so nothing here may place a call without recording it. */
+
+let cqList = [], cqIdx = 0, cqBusy = false;
+
+/* Rough zone from the phone's area code. Not perfect, and deliberately conservative:
+   an unknown area code is treated as the strictest plausible zone rather than assumed
+   safe, because the penalty for calling at 7am is not worth the convenience. */
+const CQ_AREA_TZ = {
+  '205':-6,'251':-6,'256':-6,'334':-6,'938':-6,           // Alabama
+  '850':-6,'305':-5,'321':-5,'352':-5,'386':-5,'407':-5,   // Florida
+  '561':-5,'727':-5,'754':-5,'772':-5,'786':-5,'813':-5,
+  '863':-5,'904':-5,'941':-5,'954':-5,
+  '601':-6,'662':-6,'769':-6,                              // Mississippi
+  '615':-6,'901':-6,'931':-6,                              // Tennessee
+  '404':-5,'678':-5,'706':-5,'770':-5,'912':-5,            // Georgia
+};
+
+function cqLocalHour(phone){
+  const digits = String(phone||'').replace(/[^0-9]/g,'').replace(/^1/,'');
+  const off = CQ_AREA_TZ[digits.slice(0,3)];
+  /* ⚠ Unknown area code: fall back to Central, which is where this brokerage is and
+     the zone most of its people are in. Returns null only when there is no number. */
+  if(!digits) return null;
+  const useOff = (typeof off === 'number') ? off : -6;
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset()*60000;
+  return new Date(utc + useOff*3600000).getHours();
+}
+
+function cqCallable(l){
+  const phone = String(l.phone||'').replace(/[^0-9+]/g,'');
+  if(!phone) return { ok:false, why:'No phone number on this one.' };
+  if(l.doNotCall) return { ok:false, dnc:true, why:'Marked do not call. Do not ring them.' };
+  const h = cqLocalHour(l.phone);
+  if(h !== null && (h < 8 || h >= 21))
+    return { ok:false, why:'It is ' + h + ':00 where they are. Calling hours are 8am to 9pm their time.' };
+  return { ok:true };
+}
+
+function cqConsent(l){
+  if(l.consentAt) return { level:'ok', label:'Consent on file',
+    note:'They gave written consent on ' + fmtDate(l.consentAt) + ' — this one is fine to dial with anything.' };
+  return { level:'no', label:'No consent record',
+    note:'This one came from an import or was added by hand, so there is no written consent on file. '
+       + 'Dial it yourself from your phone. Do not put it through an auto or power dialer.' };
+}
+
+async function cqOpen(){
+  const host = document.getElementById('cq-body');
+  if(!host) return;
+  host.innerHTML = '<div class="probe-wait">Building your list…</div>';
+  const all = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []);
+  cqList = all.filter(l => l && l.phone && !l.doNotCall && (l.stage||'New') !== 'Closed'
+                        && !l.unsubscribed)
+    /* Worst first: never contacted, then longest since anybody spoke to them, then score. */
+    .sort((a,b) => {
+      const at = a.firstTouchAt ? 1 : 0, bt = b.firstTouchAt ? 1 : 0;
+      if(at !== bt) return at - bt;
+      const al = a.lastTouchAt ? new Date(a.lastTouchAt).getTime() : 0;
+      const bl = b.lastTouchAt ? new Date(b.lastTouchAt).getTime() : 0;
+      if(al !== bl) return al - bl;
+      return (b.score||0) - (a.score||0);
+    });
+  cqIdx = 0;
+  cqRender();
+}
+
+function cqRender(){
+  const host = document.getElementById('cq-body');
+  if(!host) return;
+  if(!cqList.length){
+    host.innerHTML = '<div class="cq-none">Nobody with a phone number is waiting on a call. '
+      + 'Leads with no number, or marked do not call, are left out of this list.</div>';
+    return;
+  }
+  if(cqIdx >= cqList.length){
+    host.innerHTML = '<div class="cq-none"><b>That is the list.</b> '
+      + cqList.length + ' ' + (cqList.length===1?'person':'people') + ' worked through. '
+      + '<button class="btn-sm" onclick="cqOpen()">Start again</button></div>';
+    return;
+  }
+
+  const l = cqList[cqIdx];
+  const can = cqCallable(l);
+  const con = cqConsent(l);
+  const phone = String(l.phone||'').replace(/[^0-9+]/g,'');
+  const wants = (typeof ltWants === 'function' ? ltWants(l) : '') || l.email || '';
+  const waited = (typeof lcWaitingText === 'function') ? lcWaitingText(l) : '';
+  const tone = con.level === 'ok' ? '#1F6B49' : '#C2661C';
+
+  host.innerHTML =
+    '<div class="cq-hd"><span class="cq-count">' + (cqIdx+1) + '</span>'
+      + '<span style="font-size:13px;color:var(--driftwood)">of ' + cqList.length + ' to call</span></div>'
+    + '<div class="cq-card" style="--cqt:' + tone + '">'
+      + '<div class="nm">' + escapeHtml(l.name || '(no name)') + '</div>'
+      + '<div class="mt">' + escapeHtml(l.phone || '') + (wants ? ' · ' + escapeHtml(wants) : '')
+        + (waited ? ' · waiting ' + escapeHtml(waited) : '') + '</div>'
+      + '<div style="margin-top:8px"><span class="cq-tag ' + con.level + '">' + con.label + '</span></div>'
+      + (l.message ? '<div class="cq-why">' + escapeHtml(String(l.message).slice(0,240)) + '</div>' : '')
+      + (l.notes ? '<div class="cq-why"><b>Your note:</b> ' + escapeHtml(String(l.notes).slice(0,200)) + '</div>' : '')
+      + '<div class="cq-warn">' + con.note + '</div>'
+      + (can.ok
+          ? '<div class="cq-acts"><a class="cq-dial" href="' + cqDialHref(phone) + '" '
+            + 'onclick="cqDialled(\'' + l.id + '\')">Call ' + escapeHtml(l.phone||'') + '</a>'
+            + '<button class="btn-sm" onclick="cqSkip()">Skip</button></div>'
+          : '<div class="cq-acts"><span class="cq-dial blocked">Cannot call</span>'
+            + '<button class="btn-sm" onclick="cqSkip()">Skip</button></div>'
+            + '<div class="cq-warn">' + escapeHtml(can.why) + '</div>')
+      + '<div class="cq-out">'
+        + '<button onclick="cqLog(\'' + l.id + '\',\'reached\')">Reached them</button>'
+        + '<button onclick="cqLog(\'' + l.id + '\',\'voicemail\')">Left a voicemail</button>'
+        + '<button onclick="cqLog(\'' + l.id + '\',\'noanswer\')">No answer</button>'
+        + '<button onclick="cqLog(\'' + l.id + '\',\'callback\')">Call back later</button>'
+        + '<button onclick="cqLog(\'' + l.id + '\',\'notinterested\')">Not interested</button>'
+        + '<button onclick="cqLog(\'' + l.id + '\',\'dnc\')">Do not call again</button>'
+      + '</div>'
+    + '</div>';
+}
+
+/* ⚠ The agent's own dialer, not ours. Stored per agent as a template with {number} in
+   it. Empty means a plain tel: link, which is free, needs no account and works on
+   every phone — so this feature has no setup cost for anyone who does not want one. */
+function cqDialHref(phone){
+  let tpl = '';
+  try{ tpl = (currentAgent && currentAgent.dialerUrl) || ''; }catch(e){}
+  if(!tpl) return 'tel:' + phone;
+  return tpl.replace(/\{number\}/g, encodeURIComponent(phone));
+}
+
+/* Pressing Call records the attempt straight away. The outcome buttons refine it, but
+   an attempt that is never logged is the one the audit trail is missing. */
+async function cqDialled(id){
+  try{ await cqWrite(id, 'call_attempt', 'Dialled from the call list'); }catch(e){}
+}
+
+function cqSkip(){ cqIdx++; cqRender(); }
+
+const CQ_WORDS = {
+  reached:      ['Spoke to them',        'reached'],
+  voicemail:    ['Left a voicemail',     'voicemail'],
+  noanswer:     ['No answer',            'no answer'],
+  callback:     ['Asked to call back',   'call back'],
+  notinterested:['Not interested',       'not interested'],
+  dnc:          ['Asked not to be called','do not call'],
+};
+
+async function cqLog(id, outcome){
+  if(cqBusy) return;
+  cqBusy = true;
+  const w = CQ_WORDS[outcome] || ['Called', outcome];
+  try{
+    if(outcome === 'dnc'){
+      if(!confirm('Mark them do not call?\n\nThey will be taken off every call list and no '
+        + 'automated follow-up will reach them. This is not easily undone.')){ cqBusy=false; return; }
+    }
+    await cqWrite(id, 'call_' + outcome, w[0], outcome);
+    showToast(w[0] + ' — logged.');
+  }catch(e){ showToast('Could not log that: ' + e.message); }
+  cqBusy = false;
+  cqIdx++;
+  cqRender();
+}
+
+/* One writer, so nothing can log a call without also updating the contact clock. */
+async function cqWrite(id, kind, note, outcome){
+  const lead = await storeGet('lead:'+id);
+  if(!lead) throw new Error('that lead is no longer there');
+  const now = new Date().toISOString();
+  lead.events = Array.isArray(lead.events) ? lead.events : [];
+  lead.events.push({ k: kind, at: now, note: note });
+  if(lead.events.length > 200) lead.events = lead.events.slice(-200);
+
+  /* ⚠ Only an answered call counts as contact. A voicemail or a ring-out is an
+     attempt, not a conversation — treating them as contact would clear the waiting
+     clock and the one-hour deadline on somebody nobody has actually spoken to. */
+  if(outcome === 'reached'){
+    if(!lead.firstTouchAt) lead.firstTouchAt = now;
+    lead.lastTouchAt = now;
+    lead.lastTouchHow = 'spoke to them on the phone';
+    if(typeof ltAutoSequence === 'function'){
+      try{ await ltAutoSequence(lead); }catch(e){}
+    }
+  }
+  if(outcome === 'dnc'){
+    lead.doNotCall = true;
+    lead.doNotCallAt = now;
+    /* ⚠ Asking not to be called is not the same as unsubscribing from email, and the
+       two are recorded separately on purpose. Somebody may be happy to get listings
+       and not want the phone ringing. */
+  }
+  if(outcome === 'notinterested') lead.stage = 'Closed';
+
+  const ok = await storeSet('lead:'+id, lead);
+  if(ok === false) throw new Error('the write did not save');
+  if(typeof loadLeads === 'function') loadLeads({ reuse:true });
 }
 </script>
 </body>
