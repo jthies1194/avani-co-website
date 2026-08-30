@@ -2587,6 +2587,20 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 
 <div id="crm-gate" class="crm-gate">
 <div id="gate-content"></div>
+<!-- \u26a0 OUTSIDE #gate-content on purpose. renderGateContent(), renderGateForgot() and
+     the password-reset screen each replace that div's innerHTML wholesale, so an exit
+     put inside it exists on one screen and vanishes on the next two. Out here it
+     survives every one of them.
+
+     Why it exists at all: the marketing header, topbar and section nav are all hidden
+     by body.in-crm, and the rail that carries the brand only renders AFTER sign-in
+     (#crm-main is display:none until unlockCRM). So the sign-in page had no route back
+     to the website whatsoever - the only ways out were the browser Back button or
+     editing the address bar. Third time this project has hidden every exit from a
+     screen; the rule is the same each time: never hide an escape hatch. -->
+<div class="gate-out">
+  <button onclick="switchView('site')">&larr; Back to the website</button>
+</div>
 </div>
 
 <div id="profile-gate-overlay"><div class="box"><div id="profile-gate-body"></div></div></div>
@@ -2663,6 +2677,13 @@ body.in-crm #secnav{display:none}
    offered "Work with someone else", which from in here reads like a CRM control and
    is not one. Same family as #secnav above: marketing chrome that nobody hid. */
 body.in-crm #referral-bar{display:none!important}
+
+/* the way out of the sign-in page */
+.gate-out{text-align:center;margin:22px auto 0;max-width:420px}
+.gate-out button{background:none;border:none;padding:8px 12px;cursor:pointer;
+  font:inherit;font-size:13px;color:var(--driftwood);border-radius:4px}
+.gate-out button:hover{color:var(--marsh);background:rgba(21,65,196,.06)}
+.gate-out button:focus-visible{outline:2px solid var(--gold,#C9971F);outline-offset:2px}
 
 /* ⚠ THIS IS WHY THE RAIL SCROLLED AWAY. Line ~30 sets `html,body{overflow-x:hidden}`.
    Per spec, when one overflow axis is not `visible` the other axis is forced from
@@ -3228,6 +3249,18 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 .sx-h{font-size:20px;margin:0 0 5px}
 .sx-sub{font-size:13px;color:var(--driftwood);margin:0 0 14px;max-width:620px;line-height:1.55}
 </style>
+<div class="setup-panel broker-only" id="drip-probe-panel">
+  <h3 class="sx-h">Check the follow-up system</h3>
+  <p class="sx-sub">Asks the system what is actually happening to your most recent leads
+    &mdash; whether each one was put on a follow-up, which one, and what it is waiting to
+    send. Nothing is saved and nothing is sent. Use this instead of guessing when an
+    email does not turn up.</p>
+  <!-- \u26a0 A button, not a URL. This route needs the signed-in token the app holds in
+       memory; typing the address into the bar sends none. -->
+  <button class="btn-sm primary" onclick="dripProbe()">Check it now</button>
+  <div id="drip-probe-out" style="margin-top:12px"></div>
+</div>
+
 <div class="setup-panel broker-only" id="probe-panel">
   <h3 class="sx-h">Check an MLS feed</h3>
   <p class="sx-sub">Type a feed code and press Check. This asks the MLS directly whether
@@ -4894,9 +4927,20 @@ async function sendLeadNotification(lead){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
+        /* \u26a0 id was NOT being sent, and the server needs it to find the record it just
+           saved. Without it the server looked up 'lead:undefined', found nothing, and
+           silently skipped BOTH the claim window and the follow-up enrolment - the
+           lead arrived, the alert went out, and nothing was ever attached. It read as
+           a working feature from every angle because the alert email still landed.
+           Anything the server does with the lead record depends on this line. */
+        id: lead.id,
         name: lead.name, email: lead.email, phone: lead.phone,
         message: lead.message, source: lead.source, listingLabel: lead.listingLabel,
         assignedAgentId: lead.assignedAgentId || '',
+        /* the server reads quiz.timeline and quiz.situation to tell a ready seller
+           from a curious one, and type to pick the right run */
+        type: lead.type || '',
+        quiz: lead.quiz || null,
         campaign: lead.campaign || null,
       }),
     });
@@ -4963,7 +5007,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v312';
+window.BUILD = 'index-v316';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -22978,9 +23022,16 @@ const QZ_SELL = [
            {v:'later',l:'Later this year'},
            {v:'looking',l:'Just curious what it is worth',d:'That is a perfectly good reason'} ] },
   { key:'situation', kind:'multi', title:'Anything we should know?',
+    /* \u26a0 Every option here used to assume the person had decided to sell - the
+       neutral one read "Nothing unusual, I just want to sell", which somebody who
+       only wants the number cannot honestly tick. So the one group most likely to
+       be early in the process had to either mis-answer or skip.
+       That matters beyond politeness: it is the answer that decides whether they
+       get chased or left alone, and getting it wrong loses them either way. */
     sub:'None of this is a problem \u2014 it just changes the advice. Pick any, or none.',
     two:true,
-    opts:[ {v:'nothing',l:'Nothing unusual, I just want to sell'},
+    opts:[ {v:'nothing',l:'Nothing unusual'},
+           {v:'just curious',l:'Just curious \u2014 not selling yet'},
            {v:'needs work',l:'It needs work'}, {v:'inherited',l:'Inherited property'},
            {v:'tenants',l:'Tenants in place'}, {v:'relocating',l:'Relocating'},
            {v:'buying too',l:'Buying another at the same time'},
@@ -25116,5 +25167,78 @@ function ltPickListing(key, leadId){
 body.crm-dark .wn-active{background:#232A44;border-color:#4A57B8;color:#EEF0F8}
 </style>
 
+<style>
+.dp-lead{border:1px solid var(--hair2);border-left:3px solid var(--driftwood);
+  border-radius:5px;padding:9px 12px;margin-bottom:7px;font-size:13px;line-height:1.5}
+.dp-lead.good{border-left-color:#1F6B49}
+.dp-lead.warn{border-left-color:#C9971F}
+.dp-lead.bad{border-left-color:#A32B22}
+.dp-lead > div{color:var(--driftwood);margin-top:2px}
+</style>
+<script>
+/* Settings > Check the follow-up system.
+   Reports in plain English, not JSON. The broker is not a programmer and a raw dump is
+   the same as no answer, so every line says what it means and what to do about it.
+
+   Built because three rounds went into guessing why no follow-up arrived: from the
+   outside, a lead that never enrolled, one enrolled with nothing due, and one whose
+   send was refused all look identical. Ask the system rather than reasoning about it. */
+async function dripProbe(){
+  const out = document.getElementById('drip-probe-out');
+  if(!out) return;
+  out.innerHTML = '<div class="probe-wait">Asking the system\u2026</div>';
+  let d;
+  try{
+    const r = await fetch('/api/drip/status');
+    d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not check.');
+  }catch(e){
+    out.innerHTML = '<div class="probe-bad"><b>Could not check.</b><br>'
+      + escapeHtml(e.message) + '</div>';
+    return;
+  }
+
+  const rows = [];
+  rows.push(d.mailer ? ['good','Email sending is switched on.']
+    : ['bad','<b>Email is not configured.</b> Nothing can send until RESEND_API_KEY is set.']);
+  rows.push(d.marketingReady
+    ? ['good','Follow-ups send from <b>' + escapeHtml(d.marketingFrom) + '</b>.']
+    : ['bad','<b>The marketing sender is not set up.</b> Follow-ups would go from '
+        + escapeHtml(d.marketingFrom) + ' \u2014 the same address as password resets. '
+        + 'Set RESEND_MARKETING_FROM in the hosting environment variables.']);
+  rows.push(d.sweepRuns > 0
+    ? ['good','The sender has run <b>' + d.sweepRuns + '</b> time(s), last at '
+        + escapeHtml(new Date(d.sweepLastAt).toLocaleTimeString('en-US',
+            {timeZone:'America/Chicago',hour:'numeric',minute:'2-digit'})) + ' Central.']
+    : ['bad','<b>The sender has never run.</b> The server was probably not restarted '
+        + 'after the last upload \u2014 the timer only starts when the app starts.']);
+  if(d.sweepLastError) rows.push(['bad','Last run reported: ' + escapeHtml(d.sweepLastError)]);
+  rows.push(['good','<b>' + d.builtInSequences + '</b> standard sequences available'
+    + (d.ownSequences ? ', plus <b>' + d.ownSequences + '</b> of your own.' : '.')]);
+
+  const leads = (d.leads || []).map(function(l){
+    var tone, verdict;
+    if(l.unsubscribed){ tone='bad'; verdict='Unsubscribed \u2014 nothing will ever be sent to them.'; }
+    else if(!l.hasEmail){ tone='bad'; verdict='No email address on the record.'; }
+    else if(!l.enrolled){ tone='bad';
+      verdict='<b>Not on any follow-up.</b> Based on their source they should be on: <b>'
+        + escapeHtml(l.wouldMatch || 'nothing') + '</b>.'; }
+    else if(l.stopped){ tone='warn'; verdict='On <b>' + escapeHtml(l.sequence) + '</b>, but stopped.'; }
+    else if(l.lane === 'conversation'){ tone='warn';
+      verdict='On <b>' + escapeHtml(l.sequence) + '</b>, held because an agent is mid-conversation.'; }
+    else { tone='good'; verdict='On <b>' + escapeHtml(l.sequence) + '</b> \u00b7 '
+        + l.sentSoFar + ' sent so far \u00b7 '
+        + (l.dueNow ? '<b>' + l.dueNow + ' due on the next run.</b>' : 'nothing due right now.'); }
+    return '<div class="dp-lead ' + tone + '"><b>' + escapeHtml(l.name) + '</b> \u00b7 '
+      + escapeHtml(l.source || 'no source') + '<div>' + verdict + '</div></div>';
+  }).join('');
+
+  out.innerHTML = rows.map(function(r){
+      return '<div class="probe-' + (r[0]==='good'?'good':'bad')
+        + '" style="margin-bottom:7px">' + r[1] + '</div>'; }).join('')
+    + '<h4 style="margin:15px 0 7px;font-size:14px">Your five most recent leads</h4>'
+    + (leads || '<div class="probe-wait">No leads yet.</div>');
+}
+</script>
 </body>
 </html>
