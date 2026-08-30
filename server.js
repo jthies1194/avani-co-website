@@ -3044,7 +3044,15 @@ function dripFill(text, lead, agent){
     .replace(/\{agent\}/g, agent.name || '')
     .replace(/\{brokerage\}/g, BROKERAGE_NAME)
     .replace(/\{phone\}/g, BROKERAGE_PHONE)
-    .replace(/\{address\}/g, lead.listingLabel || 'the property')
+    /* \u26a0 A SELLER never has listingLabel - that is set when somebody enquires about one
+       of OUR listings. Their address is what they typed on the quiz, at quiz.address.
+       Without this fallback a valuation email said "Thanks for asking about the
+       property", which is the one thing it must not be vague about: they gave you an
+       address and it read like a form letter that lost it. */
+    .replace(/\{address\}/g, lead.listingLabel
+      || (lead.quiz && lead.quiz.address)
+      || (lead.criteria && lead.criteria.address)
+      || 'the property')
     /* \u26a0 {city} is used by the default openers and had NO replacement here, so an
        automated message would have gone out reading "Staying around {city}, or open
        to nearby?" \u2014 to a client, under the brokerage's name. leadTown() is declared
@@ -4965,6 +4973,17 @@ async function dripSweep() {
     const now = Date.now();
     let sent = 0;
 
+    /* \u26a0 Resolved ONCE per sweep, not per lead - a lookup inside the loop would hit the
+       database once for every lead every minute. Used only when a lead has no assigned
+       agent name, so the email is still signed by a human. */
+    let sweepBrokerName = '';
+    try {
+      const { data: ags } = await supabase.from('agents')
+        .select('name,role,active').eq('role', 'broker');
+      const b = (ags || []).find(a => a.active !== false);
+      sweepBrokerName = (b && b.name) || '';
+    } catch (e) {}
+
     for (const row of (data || [])) {
       const lead = row.value;
       if (!lead || !lead.drip || !lead.drip.campaignId || lead.drip.stopped) continue;
@@ -4995,7 +5014,12 @@ async function dripSweep() {
              unsubscribe. This one has a statutory penalty attached to getting it
              wrong, and an automated sender is exactly where it would get forgotten. */
           const unsub = PUBLIC_ORIGIN + '/unsub/' + lead.id + '.' + unsubToken(lead.id);
-          const agent = { name: lead.assignedAgentName || BROKERAGE_NAME };
+          /* \u26a0 {agent} is a PERSON. Falling back to the brokerage name signed the email
+             "Avani & Co Real Estate Southern Sands" and opened it "it's Avani & Co
+             Real Estate Southern Sands" - which reads as a machine, in the one message
+             whose whole job is to sound like somebody wrote it. Assigned agent first,
+             then the broker, and only then the company. */
+          const agent = { name: lead.assignedAgentName || sweepBrokerName || BROKERAGE_NAME };
           try {
             await mailer.sendMail({
               /* \u26a0 marketing:true, or this goes out from the TRANSACTIONAL sender -
@@ -5005,8 +5029,16 @@ async function dripSweep() {
               marketing: true,
               to: lead.email,
               subject: dripClean(dripFill(step.subject, lead, agent), 'subject'),
+              /* \u26a0 The phone number is not optional. Alabama requires real estate
+                 advertising to identify the brokerage, and the broker's instruction is
+                 that a contact number goes on anything that goes out. The session-side
+                 drip already carried it; this one did not, so the automated sends were
+                 the only mail leaving without a way to phone back. */
               text: dripClean(dripFill(step.body, lead, agent), 'body')
-                  + '\n\n-\n' + BROKERAGE_NAME + '\n' + BROKERAGE_ADDRESS + '\n'
+                  + '\n\n\u2014\n' + (agent.name ? agent.name + '\n' : '')
+                  + BROKERAGE_NAME + '\n'
+                  + BROKERAGE_PHONE + '\n'
+                  + BROKERAGE_ADDRESS + '\n\n'
                   + 'Unsubscribe: ' + unsub + '\n',
             });
             sent++;
@@ -5866,7 +5898,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v143',
+    serverVersion: 'v144',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
