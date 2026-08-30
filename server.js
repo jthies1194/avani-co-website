@@ -5078,6 +5078,79 @@ setInterval(() => { dripSweep().catch(() => {}); }, 60 * 1000);
    enrolled, one that enrolled but has nothing due, and one that tried to send and was
    refused all look identical - silence. This asks the system instead of reasoning
    about it. A dashboard is not a source of truth. */
+/* ---------- putting EXISTING leads on a follow-up (server 153) ----------
+   \u26a0 Enrolment happens at arrival, which means every lead already in the book when
+   that was built - the CSV imports, anyone added by hand, anyone from before - can
+   never be enrolled by it. They did not come through the intake route and never will
+   again. Eighteen real people sat in this system uncontacted for exactly that reason.
+
+   \u26a0 This is the first thing in the CRM that starts an automated send to a list of
+   real people on purpose. It is capped, it previews before it acts, and it refuses
+   anyone unsubscribed, without an email, or already running. */
+app.post('/api/drip/enrol/preview', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  let own = [];
+  try { own = (await getSetting('settings:dripCampaigns')) || []; } catch (e) {}
+  if (!Array.isArray(own)) own = [];
+
+  const out = { ok: true, eligible: 0, noEmail: 0, running: 0, unsubscribed: 0, sample: [],
+                sequences: own.filter(c => c && !c.paused).map(c => ({ id: c.id, name: c.name }))
+                  .concat(livePlaybooks().map(c => ({ id: c.id, name: c.name + ' \u00b7 standard' }))) };
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    for (const row of (data || [])) {
+      const l = row.value; if (!l) continue;
+      if (!isStaff(sess) && l.assignedAgentId !== sess.agentId) continue;
+      if (l.unsubscribed) { out.unsubscribed++; continue; }
+      if (!l.email) { out.noEmail++; continue; }
+      if (l.drip && l.drip.campaignId && !l.drip.stopped) { out.running++; continue; }
+      out.eligible++;
+      if (out.sample.length < 8) out.sample.push({ name: l.name || '(no name)', source: l.source || '' });
+    }
+  } catch (e) { return res.status(500).json({ error: 'Could not read the leads.' }); }
+  res.json(out);
+});
+
+app.post('/api/drip/enrol', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const campaignId = String((req.body || {}).campaignId || '');
+  /* \u26a0 Hard ceiling of 25 regardless of what the client asks for. A new sending domain
+     that suddenly mails a stale list looks like a spammer to every filter there is,
+     and the client is not the right place to enforce that. */
+  const cap = Math.max(1, Math.min(25, parseInt((req.body || {}).cap, 10) || 5));
+  if (!campaignId) return res.status(400).json({ error: 'Pick a follow-up first.' });
+
+  let own = [];
+  try { own = (await getSetting('settings:dripCampaigns')) || []; } catch (e) {}
+  if (!Array.isArray(own)) own = [];
+  const camp = await campaignById(campaignId, own);
+  if (!camp) return res.status(400).json({ error: 'That follow-up no longer exists.' });
+  if (camp.paused) return res.status(400).json({ error: 'That follow-up is paused.' });
+
+  let enrolled = 0, failed = 0; const names = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    for (const row of (data || [])) {
+      if (enrolled >= cap) break;
+      const l = row.value; if (!l) continue;
+      if (!isStaff(sess) && l.assignedAgentId !== sess.agentId) continue;
+      if (l.unsubscribed || !l.email) continue;
+      if (l.drip && l.drip.campaignId && !l.drip.stopped) continue;
+      l.drip = { campaignId: camp.id, step: 0,
+                 startedAt: new Date().toISOString(), stopped: false, enrolledBy: sess.name || '' };
+      /* \u26a0 setSetting returns false on a failed write rather than throwing. Counting an
+         enrolment that never saved is how the screen says 5 and the sweep sends 3. */
+      const ok = await setSetting(row.key, l);
+      if (ok === false) { failed++; continue; }
+      enrolled++; if (names.length < 8) names.push(l.name || '(no name)');
+    }
+  } catch (e) { return res.status(500).json({ error: 'Could not read the leads.' }); }
+
+  console.log(`[drip] ${sess.name} enrolled ${enrolled} lead(s) on "${camp.name}"`
+    + (failed ? ` (${failed} failed to save)` : ''));
+  res.json({ ok: true, enrolled, failed, names, sequence: camp.name });
+});
+
 app.get('/api/drip/status', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
@@ -5907,7 +5980,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v152',
+    serverVersion: 'v153',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
