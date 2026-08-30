@@ -4747,7 +4747,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v299';
+window.BUILD = 'index-v302';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -12019,19 +12019,41 @@ async function mkSaveProject(){
     const ok = await storeSet(mkProjectKey(currentAgent.id, id), rec);
     if(!ok) throw new Error('the server refused the save');
     mkState.projectId = id;
+    /* \u26a0 Read it straight back. "Saved" that has not been verified is the same claim
+       setSetting used to make on the server before it started checking, and this
+       project has been bitten by it twice. One extra request, and it turns "it did not
+       save" into a sentence that says which half failed. */
+    let back = null;
+    try{ back = await storeGet(mkProjectKey(currentAgent.id, id)); }catch(e){}
+    if(!back){
+      alert('The save was accepted but the project could not be read back.\n\n'
+        + 'Do not close the studio \u2014 download the PNG or PDF first so the work is not '
+        + 'lost, then tell whoever maintains the site.');
+      return;
+    }
     if(typeof showToast === 'function') showToast('Project saved.'); else alert('Project saved.');
   }catch(e){ alert('Could not save: ' + e.message); }
 }
 
 async function mkLoadProjects(agentId){
+  /* \u26a0 This used to swallow every failure and return an empty array, which the screen
+     drew as "no saved projects" \u2014 identical to never having saved one. Save reports
+     success, you go back, and your work appears to be gone. It was not gone; the list
+     could not be read. A load that fails has to say so.
+
+     window.__mkLoadError is read by the projects list so it can tell the two apart. */
+  window.__mkLoadError = null;
   const out = [];
   try{
     const keys = await storeListKeys('marketing:' + agentId + ':');
-    for(const k of (keys || [])){
-      const v = await storeGet(k);
-      if(v) out.push(v);
-    }
-  }catch(e){ console.error('marketing project load failed', e); }
+    /* Together, not one at a time \u2014 these reads do not depend on each other. */
+    const got = await Promise.all((keys || []).map(k =>
+      Promise.resolve(storeGet(k)).catch(() => null)));
+    got.forEach(v => { if(v) out.push(v); });
+  }catch(e){
+    console.error('[marketing] could not load saved projects', e);
+    window.__mkLoadError = e.message || 'the list could not be read';
+  }
   return out.sort((a,b) => String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
 }
 
@@ -12253,6 +12275,11 @@ function mkPostTo(where){
   const cv = window.__mkCanvas;
   if(!cv) return;
   const name = mkFileBase() + '.png';
+  /* \u26a0 Fired HERE, at the top, not in the toBlob callback. Writing to the clipboard
+     needs the user's click still to be "live", and by the time an async canvas encode
+     comes back the browser no longer counts it as a gesture \u2014 Safari refuses outright.
+     The promise is handed to the callback so the panel can say whether it worked. */
+  const copying = mkCopyCaption(true);
   cv.toBlob(b => {
     mkSaveBlob(b, name);
     const box = window.__mkSheet && window.__mkSheet.querySelector('.box');
@@ -12262,27 +12289,38 @@ function mkPostTo(where){
       ? 'Click <strong>Create</strong> (the + in the sidebar), then <strong>Select from computer</strong>.'
       : 'Click <strong>Photo/video</strong> in the composer.';
     if(box){
-      box.innerHTML = `<h4>Saved \u2014 now post it</h4>
+      /* The caption result decides the wording, so the panel is drawn once the copy
+         has settled rather than promising something that may not have happened. */
+      copying.then(ok => {
+        box.innerHTML = `<h4>Saved \u2014 now post it</h4>
         <div style="font-size:13px;line-height:1.6;color:rgba(27,32,67,.75)">
-          <p style="margin:8px 0"><strong>${escapeHtml(name)}</strong> is in your Downloads folder.</p>
-          <p style="margin:8px 0">${how} Pick that file.</p>
+          <p style="margin:8px 0"><strong>1.</strong> <strong>${escapeHtml(name)}</strong>
+            is in your Downloads folder.</p>
+          <p style="margin:8px 0"><strong>2.</strong> ${how} Pick that file.</p>
+          <p style="margin:8px 0"><strong>3.</strong> ${ok
+            ? 'The caption is already on your clipboard \u2014 paste it into the post.'
+            : 'Press <em>Copy a caption</em> below, then paste it into the post.'}</p>
           <p style="margin:8px 0;font-size:12.5px;color:rgba(27,32,67,.6)">
-            Neither platform lets a website attach a picture for you, so this last step
-            is always by hand on a computer. On a phone it is one tap \u2014 use
+            Neither platform lets a website attach a picture for you, so step 2 is
+            always by hand on a computer. On a phone it is one tap \u2014 use
             <em>Share to an app</em> there instead.</p>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-          <button class="btn ghost" onclick="mkCopyCaption()">Copy a caption</button>
+          <button class="btn ghost" onclick="mkCopyCaption()">${ok
+            ? 'Copy it again' : 'Copy a caption'}</button>
           <button class="btn" onclick="window.open('${site}','_blank');mkCloseSheet()">Open ${label}</button>
         </div>`;
+      });
     } else {
       window.open(site, '_blank');
     }
   }, 'image/png');
 }
 
-/* A caption with the link already in it, so the post is one paste away. */
-async function mkCopyCaption(){
+/* A caption with the link already in it, so the post is one paste away.
+   \u26a0 Returns true/false and takes a quiet flag, because mkPostTo needs to know
+   whether it actually landed before telling somebody it is on their clipboard. */
+async function mkCopyCaption(quiet){
   const f = mkState.fields;
   const bits = [];
   if(f.banner) bits.push(f.banner.replace(/\b\w/g, c => c.toUpperCase()));
@@ -12297,9 +12335,13 @@ async function mkCopyCaption(){
     + AvaniTemplates.BROKERAGE_NAME;
   try{
     await navigator.clipboard.writeText(caption);
-    showToast('Caption copied.');
+    if(!quiet) showToast('Caption copied.');
+    return true;
   }catch(e){
-    prompt('Copy this caption:', caption);
+    /* \u26a0 No prompt() when this ran on its own behalf \u2014 a dialog nobody asked for,
+       appearing behind a download, is worse than the panel simply offering the button. */
+    if(!quiet) prompt('Copy this caption:', caption);
+    return false;
   }
 }
 
@@ -13055,7 +13097,18 @@ async function renderMarketingSection(){
     </div>`;
   }).join('');
 
-  list.innerHTML = rows || '<div style="color:rgba(27,32,67,.55);font-size:13.5px">Nothing saved yet.</div>';
+  /* \u26a0 "Nothing saved yet" and "the list would not load" are opposite facts and looked
+     identical. Only say the first one when the read actually succeeded. */
+  list.innerHTML = rows || (window.__mkLoadError
+    ? `<div style="background:#FDF1EF;border:1px solid #E2B0A8;border-radius:5px;
+         padding:12px 14px;font-size:13px;line-height:1.55;color:#7A3227">
+         <b>Your saved projects could not be loaded.</b>
+         <div style="margin-top:4px">This does not mean they are gone \u2014 the list could
+         not be read. Reload the page and try again.</div>
+         <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:11px">
+         ${escapeHtml(String(window.__mkLoadError))}</div>
+       </div>`
+    : '<div style="color:rgba(27,32,67,.55);font-size:13.5px">Nothing saved yet.</div>');
 
   if(staff){
     const note = document.createElement('div');
@@ -18558,7 +18611,61 @@ function plTrackerBlock(d){
     <div class="lk">${escapeHtml(link)}
       <button class="btn-sm" style="padding:2px 8px;font-size:11px;margin-left:6px"
         onclick="tkCopyLink('${escapeHtml(link)}')">Copy</button></div>
+    <!-- \u26a0 "Email them the link" existed, but only on the Trackers screen. From the
+         deal itself \u2014 which is where the agent actually is once a contract is live \u2014
+         there was Copy and nothing else, so sharing the timeline meant copying a URL
+         and finding your own way to send it. Everything needed was already on the
+         deal record; only the button was missing. -->
+    <div style="margin-top:8px;display:flex;gap:7px;flex-wrap:wrap">
+      ${d.clientEmail
+        ? `<button class="btn-sm" onclick="plSendTracker('${d.id}')">Email them the link</button>`
+        : `<span style="font-size:11.5px;color:rgba(27,32,67,.55)">
+             No email on file for them &mdash; add one with Edit to send this.</span>`}
+    </div>
   </div>`;
+}
+
+/* Sends from the deal, using what the deal already knows. Deliberately does NOT go
+   through tkSendLink: that reads tkList, which only exists once the Trackers screen
+   has been opened, so calling it from here would work or not depending on which
+   screens you had visited. Presence is not use. */
+async function plSendTracker(id){
+  const d = plDeals.find(x => x.id === id);
+  if(!d || !d.tracker) return;
+  const to = String(d.clientEmail || '').trim();
+  if(!to){ showToast('No email on file for them.'); return; }
+  const link = location.origin + '/?track=' + d.tracker.token;
+  const first = String(d.client || '').trim().split(/\s+/)[0] || 'there';
+  if(!confirm(`Email the timeline link to ${to}?`)) return;
+  showToast('Sending\u2026');
+  try{
+    const r = await fetch('/api/marketing/email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to,
+        subject: `Following your ${d.side === 'sell' ? 'sale' : 'purchase'}`
+          + (d.address ? ' \u2014 ' + d.address : ''),
+        message: `Hi ${first},\n\n`
+          + `You can see exactly where things stand any time, here:\n${link}\n\n`
+          + `I'll update it as each step happens, so you won't have to wonder.\n\n`
+          + `${currentAgent ? currentAgent.name : ''}\n${AvaniTemplates.BROKERAGE_NAME}`,
+        attachments: [],
+      }),
+    });
+    if(!r.ok){
+      /* \u26a0 The route may refuse a message with no attachment. Falling back to the mail
+         client keeps the link reaching the person, but say which happened \u2014 "Sent"
+         when it went to your own Outlook instead is the lie that wastes an afternoon. */
+      let why = 'the server would not send it';
+      try{ why = (await r.json()).error || why; }catch(e){}
+      showToast('Opening your email instead \u2014 ' + why);
+      window.location.href = 'mailto:' + to
+        + '?subject=' + encodeURIComponent('Following your move')
+        + '&body=' + encodeURIComponent(link);
+      return;
+    }
+    showToast('Sent to ' + to);
+  }catch(e){ showToast("Couldn't send that."); }
 }
 
 /* Turning a deal into something the client can follow. */
