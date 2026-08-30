@@ -4963,7 +4963,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v311';
+window.BUILD = 'index-v312';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10103,7 +10103,15 @@ async function renderDashboard(){
       </div>` : `<div class="dash-panel">
         <h4>Needs a call</h4>`}
         ${(newLeads.concat(stale)).slice(0,6).map(l => `
-          <div class="dash-lead" onclick="openLeadDetail && openLeadDetail('${l.id}')">
+          <!-- \u26a0 Was openLeadDetail(), which is defined NOWHERE in this file. An
+               x && x() guard does not save it: referencing an undeclared identifier
+               throws a ReferenceError before the && is even evaluated, so the click
+               died silently and the card looked dead. bfOpenLead is the one that
+               exists and already handles clearing a stage filter that would otherwise
+               hide the very lead being opened.
+               NOTE: no backticks in this comment - it sits inside a template literal
+               and a stray backtick ends the string. The gate caught exactly that. -->
+          <div class="dash-lead" onclick="bfOpenLead('${l.id}')">
             <div>
               <div class="dl-name">${escapeHtml(l.name || 'Unnamed')}</div>
               <div class="dl-meta">${escapeHtml(l.email || l.phone || '')} &middot; ${escapeHtml(l.source || '')}
@@ -24803,6 +24811,13 @@ async function ltPanelInner(id){
      </div>
      <div class="lt-stack" style="margin-top:8px">
        <button class="btn-sm" onclick="openTransferLead('${l.id}')">Pass to another agent</button>
+       <!-- \u26a0 Delete existed on the CARD and not in the table, so switching to Table
+            silently removed the ability to remove anybody. Rule 1 of this project: a
+            control that lives in one view and not the other reads as a missing
+            feature. Same deleteLead() the card calls \u2014 it names the person, archives
+            the whole record, and Recently deleted puts it back. -->
+       <button class="btn-sm" style="color:#C0483C;border-color:rgba(192,72,60,.45)"
+         onclick="deleteLead('${l.id}')">Delete this lead</button>
      </div>`;
 
   ltFillSequences(l);
@@ -24816,10 +24831,27 @@ async function ltFillSequences(l){
   if(!sel) return;
   let list = [];
   try{ list = (await storeGet('settings:dripCampaigns')) || []; }catch(e){}
-  if(!list.length){ sel.innerHTML = '<option value="">No sequences built yet</option>'; return; }
+  if(!Array.isArray(list)) list = [];
+  /* \u26a0 The standard openers are LIVE sequences on the server, so this said "No
+     sequences built yet" while a lead was actually enrolled on one and being emailed.
+     The dropdown was reading only the broker's own list. That is worse than a cosmetic
+     gap: with nothing listed there was no way to see what was running or to stop it. */
+  let built = [];
+  try{
+    const r = await fetch('/api/playbooks');
+    if(r.ok){ const d = await r.json();
+      built = (d.playbooks || []).map(p => ({ id: 'pbdef:' + p.id,
+        name: (p.name || 'Follow-up') + ' \u00b7 standard' })); }
+  }catch(e){}
+  const all = list.concat(built);
+  if(!all.length){ sel.innerHTML = '<option value="">No sequences available</option>'; return; }
   const on = l.drip && l.drip.campaignId && !l.drip.stopped ? l.drip.campaignId : '';
+  /* \u26a0 If a lead is on a sequence this list does not know about, say so rather than
+     showing "Put them on a sequence..." over a running one. */
+  const known = all.some(c => c.id === on);
   sel.innerHTML = `<option value="">${on ? 'Change sequence\u2026' : 'Put them on a sequence\u2026'}</option>`
-    + list.map(c => `<option value="${escapeHtml(c.id)}" ${c.id===on?'selected':''}>${escapeHtml(c.name||'Untitled')}</option>`).join('')
+    + (on && !known ? `<option value="${escapeHtml(on)}" selected>Running \u2014 ${escapeHtml(on)}</option>` : '')
+    + all.map(c => `<option value="${escapeHtml(c.id)}" ${c.id===on?'selected':''}>${escapeHtml(c.name||'Untitled')}</option>`).join('')
     + (on ? '<option value="__stop">Stop the sequence</option>' : '');
 }
 
