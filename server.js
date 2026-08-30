@@ -1630,6 +1630,13 @@ const PLAYBOOK_DEFAULTS = [
   ]},
 
   { id:'pb_seller_slow', name:'Seller who is not ready yet', match:{ type:'seller' }, steps:[
+    /* \u26a0 Day 0 added so this can be used for somebody who has JUST asked what their
+       home is worth and said they are only curious. Without it the sequence opened at
+       day 30 and they heard nothing for a month after asking a direct question - the
+       fastest way to look like a machine that ignored them. Answer today, no pitch,
+       then leave them alone. */
+    { d:0, ch:'email', s:'Your home\u2019s value \u2014 no pitch',
+      t:"Hi {first},\n\nThanks for asking about {address}. You said you are mostly curious rather than ready to sell, so I will keep this simple and leave you alone after it.\n\nI will put a proper number together \u2014 not an automated estimate, but one that accounts for what you have actually done to the place. Reply with anything a computer would not know: work you have had done, how the outlook is, anything unusual about the lot.\n\nNo timeline, no pressure. Curious is a perfectly good reason to ask.\n\n{agent}" },
     { d:30, ch:'email', s:'No rush \u2014 but here is what your street is doing',
       t:"Hi {first},\n\nNo pitch. You asked what the place was worth, and things have moved since.\n\nHere is what has sold near you and how long each took. If you are still a year out, that is fine \u2014 this is just so the number in your head stays roughly right.\n\n{agent}" },
     { d:90, ch:'email', s:'The three things that move the number most',
@@ -4897,6 +4904,23 @@ async function pickSequenceFor(lead) {
   if (!Array.isArray(list)) list = [];
   const src = triggerForSource(lead.source);
 
+  /* \u26a0 A seller who says they are only curious must not get the same run as one who
+     says "I am ready now". Same doorway, completely different person: chase the
+     curious one and you lose them, and they are the group most likely to be early
+     enough to actually win. The built-ins already contain the right sequence for
+     them - "Seller who is not ready yet", which opens at day 30 with "No pitch. You
+     asked what the place was worth." It was unreachable because it matches on type
+     rather than source. This is what reaches it. */
+  const q = lead.quiz || {};
+  const sit = Array.isArray(q.situation) ? q.situation.map(x => String(x).toLowerCase()) : [];
+  const curious = q.timeline === 'looking' || sit.includes('just curious');
+  if (curious && (lead.type === 'seller' || src === 'value')) {
+    const slow = livePlaybooks().find(c => c.id === 'pbdef:pb_seller_slow');
+    /* \u26a0 The broker's own beats the built-in here too, if he has written one. */
+    const own = list.find(c => c && !c.paused && String(c.trigger).toLowerCase() === 'value-curious');
+    if (own || slow) return own || slow;
+  }
+
   const match = pool => pool.find(c => c && !c.paused && c.trigger && c.trigger !== 'manual'
                                     && String(c.trigger).toLowerCase() === src)
                      || pool.find(c => c && !c.paused && c.trigger === 'new');
@@ -4915,8 +4939,20 @@ async function pickSequenceFor(lead) {
    Same shape as claimSweep: in-process setInterval, deadlines read off the record, no
    session. \u26a0 It deliberately does NOT filter by agent. The session-bound route had to,
    because it was acting as somebody; this is the house acting on its own behalf. */
+/* \u26a0 Proof the timer is alive. Without this the only way to tell a sweep that is not
+   running from a sweep that ran and found nothing was to read the host logs, which is
+   not something the broker can do. */
+let DRIP_RUNS = 0, DRIP_LAST_AT = null, DRIP_LAST_SENT = 0, DRIP_LAST_ERR = '';
+
 async function dripSweep() {
-  if (!supabase || !mailer) return;
+  DRIP_RUNS++;
+  DRIP_LAST_AT = new Date().toISOString();
+  DRIP_LAST_SENT = 0;
+  if (!supabase || !mailer) {
+    DRIP_LAST_ERR = !supabase ? 'no database connection' : 'no mail sender configured';
+    return;
+  }
+  DRIP_LAST_ERR = '';
   try {
     let campaigns = [];
     try { campaigns = (await getSetting('settings:dripCampaigns')) || []; } catch (e) { campaigns = []; }
@@ -4986,13 +5022,73 @@ async function dripSweep() {
       }
       if (changed) await setSetting(row.key, lead);
     }
+    DRIP_LAST_SENT = sent;
     if (sent) console.log('[drip sweep] sent ' + sent + ' message(s)');
-  } catch (e) { console.error('[drip sweep]', e.message); }
+  } catch (e) { DRIP_LAST_ERR = e.message; console.error('[drip sweep]', e.message); }
 }
 
 /* \u26a0 Every minute, so the day-0 message lands inside the five-minute window rather
    than whenever somebody next happens to sign in. */
 setInterval(() => { dripSweep().catch(() => {}); }, 60 * 1000);
+
+/* ---------- Settings > Check the follow-up system ----------
+   \u26a0 Built for the same reason as the MLS feed prober: three rounds were spent
+   guessing why no follow-up arrived, because from the outside a sequence that never
+   enrolled, one that enrolled but has nothing due, and one that tried to send and was
+   refused all look identical - silence. This asks the system instead of reasoning
+   about it. A dashboard is not a source of truth. */
+app.get('/api/drip/status', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+
+  let own = [];
+  try { own = (await getSetting('settings:dripCampaigns')) || []; } catch (e) {}
+  if (!Array.isArray(own)) own = [];
+  const built = livePlaybooks();
+
+  const out = {
+    ok: true,
+    mailer: !!mailer,
+    marketingReady: MARKETING_READY,
+    marketingFrom: MARKETING_READY ? RESEND_MARKETING_FROM : RESEND_FROM,
+    sweepRuns: DRIP_RUNS,
+    sweepLastAt: DRIP_LAST_AT,
+    sweepLastSent: DRIP_LAST_SENT,
+    sweepLastError: DRIP_LAST_ERR,
+    ownSequences: own.length,
+    builtInSequences: built.length,
+    leads: [],
+  };
+
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    const rows = (data || []).map(r => r.value).filter(Boolean)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 5);
+    const now = Date.now();
+    for (const l of rows) {
+      const campId = l.drip && l.drip.campaignId;
+      const camp = campId ? await campaignById(campId, own) : null;
+      let due = 0;
+      try { due = camp ? dripDue(l, camp, now).length : 0; } catch (e) {}
+      out.leads.push({
+        name: l.name || '(no name)',
+        source: l.source || '',
+        hasEmail: !!l.email,
+        unsubscribed: !!l.unsubscribed,
+        lane: l.lane || 'steady',
+        enrolled: !!campId,
+        sequence: camp ? camp.name : (campId ? 'UNKNOWN id ' + campId : null),
+        stopped: !!(l.drip && l.drip.stopped),
+        sentSoFar: (l.drip && Array.isArray(l.drip.done)) ? l.drip.done.length : 0,
+        dueNow: due,
+        wouldMatch: campId ? null : ((await pickSequenceFor(l)) || {}).name || 'nothing',
+      });
+    }
+  } catch (e) { out.leadsError = e.message; }
+
+  res.json(out);
+});
 
 app.post('/api/notify-lead', async (req, res) => {
   if (!mailer) {
@@ -5004,8 +5100,44 @@ app.post('/api/notify-lead', async (req, res) => {
     return res.status(500).json({ error: 'No notification address configured.' });
   }
   const { name, email, phone, message, source, listingLabel, campaign } = req.body || {};
-  // where they came from belongs in the alert — it is the first thing worth knowing
+  // where they came from belongs in the alert - it is the first thing worth knowing
   const camp = campaignLabel(cleanCampaign(campaign));
+
+  /* ---------- SPEED TO LEAD: attach the follow-up, unconditionally ----------
+     \u26a0 This runs for EVERY new lead. It used to sit inside the agent-notification
+     branch, gated on there being an assigned agent with alerts enabled whose address
+     differed from the notification address - so an unassigned lead, or one belonging
+     to the broker himself, was never enrolled. It looked correct in review and did
+     nothing on the first live test.
+
+     Enrolment is not a notification concern. Nothing below this may gate it.
+
+     \u26a0 It does NOT set firstTouchAt, and must never be changed to. The automated email
+     is an opener, not a conversation - the agent's own call is still owed within the
+     hour, and firstTouchAt is what proves it happened. Wire this to firstTouchAt and
+     the contact deadline silently stops meaning anything. */
+  try {
+    const leadKey = 'lead:' + (req.body || {}).id;
+    const rec = await getSetting(leadKey);
+    if (rec && !(rec.drip && rec.drip.campaignId && !rec.drip.stopped)) {
+      const seq = await pickSequenceFor(rec);
+      if (seq) {
+        rec.drip = { campaignId: seq.id, step: 0,
+                     startedAt: new Date().toISOString(), stopped: false };
+        const ok = await setSetting(leadKey, rec);
+        /* \u26a0 setSetting returns false on failure rather than throwing. An enrolment
+           reported to the log but never written is exactly the class of bug this
+           project keeps paying for. */
+        if (ok === false) console.error('[drip] enrolment WRITE FAILED for ' + leadKey);
+        else console.log('[drip] ' + (rec.name || leadKey) + ' enrolled on "' + seq.name + '" at arrival');
+      } else {
+        console.warn('[drip] no sequence matched source "' + (rec.source || '') + '" - nothing will be sent');
+      }
+    } else if (!rec) {
+      console.warn('[drip] no lead record at ' + leadKey + ' - cannot enrol');
+    }
+  } catch (e) { console.error('[drip] enrolment failed:', e.message); }
+
   try {
     await mailer.sendMail({
       to: notifyTo,
@@ -5063,25 +5195,13 @@ app.post('/api/notify-lead', async (req, res) => {
               if (_l && !_l.claimedBy && !_l.claimDue) {
                 _l.claimDue = claimDeadline(new Date());
                 _l.assignedAgentName = ag.name || '';
-                /* ⚠ SPEED TO LEAD. The sequence is attached HERE, on arrival, not on
-                   first contact. MIT/InsideSales: contacting at 5 minutes rather than
-                   30 raises the odds of contact ~100x and of qualifying ~21x, and most
-                   people online have messaged several agents at once. A lead sitting
-                   untouched overnight is a lead that already picked somebody else.
-
-                   ⚠ This does NOT set firstTouchAt, and must never be changed to. The
-                   automated email is an opener, not a conversation — the agent's own
-                   call is still owed within the hour, and firstTouchAt is what proves
-                   it happened. Wire this to firstTouchAt and the contact deadline
-                   silently stops meaning anything. */
-                try {
-                  const camp = await pickSequenceFor(_l);
-                  if (camp) {
-                    _l.drip = { campaignId: camp.id, step: 0,
-                                startedAt: new Date().toISOString(), stopped: false };
-                    console.log(`[drip] ${_l.name || _lk} auto-enrolled on "${camp.name}" at arrival`);
-                  }
-                } catch (e) { console.error('[drip] auto-enrol failed:', e.message); }
+                /* \u26a0 Enrolment used to live HERE and it was wrong. This block sits four
+                   conditions deep - there must be an assigned agent, the agent must be
+                   active with an email, email alerts must be on, AND the agent's address
+                   must differ from the notification address. That last one alone excludes
+                   the broker, who is usually both. So on a real test the lead arrived, the
+                   alert sent, and no sequence was ever attached. Enrolment has nothing to
+                   do with notifying an agent; it is now done unconditionally further up. */
                 await setSetting(_lk, _l);
               }
             } catch (e) { console.error('[claim] could not set the window:', e.message); }
@@ -5746,7 +5866,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v140',
+    serverVersion: 'v143',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
