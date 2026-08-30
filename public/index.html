@@ -2592,27 +2592,53 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 <div id="profile-gate-overlay"><div class="box"><div id="profile-gate-body"></div></div></div>
 <div id="crm-main" class="crm-wrap" style="display:none;">
 <style>
-/* ================= CRM SHELL — tabs on top, navy and gold =================
-   The vertical rail was wrong for this CRM: fifteen ungrouped tabs in a column
-   ran off the screen and scrolled out of reach. Tabs live across the top now and
-   stay put while the content moves. renderCrmNav() is still untouched — same
-   buttons, same --tab colors, badges, arrange mode — this only lays them out. */
+/* ================= CRM SHELL — tabs down the left, navy and gold =================
+   ⚠ READ THIS BEFORE MOVING THEM AGAIN. The tabs have now been in three places.
+   A left rail was built, failed, and was replaced by a top bar with this note:
+   "fifteen ungrouped tabs in a column ran off the screen and scrolled out of
+   reach." That was a real failure and the reason was specific, not aesthetic.
+
+   They are back on the left because seventeen tabs across the top wrap to two or
+   three rows on a laptop and the labels are unreadable at 12.5px. What is
+   different this time is the one thing that broke it before:
+
+     ⚠ .crm-nav is its own scroll container — flex:1 1 auto with overflow-y:auto
+       inside a rail that is exactly 100dvh. The brand, the signed-in agent and
+       Log out are pinned above it; the finder, the version stamp and Suggest an
+       improvement are pinned below it. However many tabs exist, and however short
+       the screen, every one of them is reachable by scrolling the tab list
+       itself. Nothing can run off the bottom into nowhere again.
+
+   ⚠ 100dvh, not 100vh. On iOS Safari 100vh is the height with the URL bar
+   RETRACTED, so the bottom of the rail — which is where Suggest an improvement
+   lives — sits under the browser chrome until you scroll.
+
+   ⚠ Below 1000px it goes back to the horizontal bar. A 224px column on a phone
+   eats a third of the screen. The horizontal rules are all still here, in the
+   media query at the end of this block; nothing was deleted.
+
+   renderCrmNav() is untouched — same buttons, same --tab colors, badges, arrange
+   mode, drag-to-reorder, outside tools. This only lays them out. */
 :root{
   --rl:#0E1433; --rl2:#161D45;
   --gd:#C89B4E; --gd-lt:#E8D2A0; --gd-pale:#F6EEDC;
   --pp:#FBFAF7;
   --mut:#7A8199; --hair:rgba(20,26,60,.10); --hair2:rgba(20,26,60,.06);
 }
-#crm-main.crm-wrap{max-width:none;padding:0;display:block;background:var(--pp)}
+#crm-main.crm-wrap{max-width:none;padding:0;display:flex;align-items:flex-start;
+  background:var(--pp)}
 
-/* ---- the bar ---- */
-/* z-index 60 clears the site header (.topbar is 50) — below that the tabs slid
-   under the banner on every scroll. The marketing header is hidden in the CRM
-   entirely (body.in-crm #hdr), which is what finally gives the tabs the top. */
-#crm-rail{background:var(--rl);position:sticky;top:0;z-index:60;padding:9px 22px 0;
-  border-bottom:1px solid rgba(200,155,78,.55);
-  box-shadow:0 2px 14px rgba(14,20,51,.18);
-  display:flex;flex-wrap:wrap;align-items:center;gap:0 16px}
+/* ---- the rail ---- */
+/* z-index 60 clears the site header (.topbar is 50). The marketing header is hidden
+   in the CRM entirely (body.in-crm #hdr), which is what gives the rail the full
+   height of the window rather than starting below a banner. */
+#crm-rail{background:var(--rl);position:sticky;top:0;z-index:60;
+  flex:0 0 224px;width:224px;height:100dvh;
+  padding:15px 11px 0;
+  border-right:1px solid rgba(200,155,78,.5);
+  box-shadow:2px 0 14px rgba(14,20,51,.16);
+  display:flex;flex-direction:column;align-items:stretch;gap:0;
+  overflow:hidden}
 body.in-crm #hdr{display:none}
 body.in-crm .topbar{display:none}
 /* ⚠ v293. #secnav was the one piece of the marketing chrome nobody hid. It is
@@ -2624,8 +2650,8 @@ body.in-crm .topbar{display:none}
    the only visible way out of the CRM, which is why it looked like the escape
    hatch. It is chrome from the other view; it does not belong here. */
 body.in-crm #secnav{display:none}
-#crm-rail .mk{padding:0;border:none;flex:0 0 auto;margin-right:6px;cursor:pointer;
-  border-radius:4px}
+#crm-rail .mk{padding:0 0 12px;border:none;flex:0 0 auto;margin:0 0 11px;cursor:pointer;
+  border-radius:4px;border-bottom:1px solid rgba(255,255,255,.10)}
 /* ⚠ Visible focus, because it is a div pretending to be a link. A control you can
    tab to and cannot see is worse than one you cannot tab to. */
 #crm-rail .mk:hover .n{color:var(--gd,#C89B4E)}
@@ -2640,43 +2666,71 @@ body.in-crm #secnav{display:none}
 #crm-rail .me .t{font-size:12.5px;font-weight:600;color:#fff;line-height:1.2;white-space:nowrap}
 #crm-rail .me .r{font-size:9px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--gd-lt);opacity:.85}
-#crm-rail #agent-switcher{flex:0 0 auto}
-#crm-rail .out{margin:0 0 0 auto;width:auto;border:1px solid rgba(255,255,255,.22);
+#crm-rail #agent-switcher{flex:0 0 auto;margin:9px 0 0}
+#crm-rail #agent-switcher select{max-width:100%}
+#crm-rail .out{margin:10px 0 0;width:100%;border:1px solid rgba(255,255,255,.22);
   background:transparent;color:rgba(231,233,242,.85);border-radius:3px;padding:6px 13px;
   font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;flex:0 0 auto}
 #crm-rail .out:hover{border-color:var(--gd);color:#fff}
 
-/* ---- tabs, on their own line, always reachable ---- */
-#crm-main .crm-nav{display:flex;flex-wrap:wrap;gap:2px;width:100%;order:9;
-  border-bottom:none;margin:9px 0 0;padding:0}
-#crm-main .crm-nav button{display:inline-flex;align-items:center;gap:7px;width:auto;
-  padding:8px 13px;margin:0;border:none;border-radius:5px 5px 0 0;background:transparent;
-  color:rgba(233,236,246,.88);font-size:12.5px;font-weight:600;letter-spacing:0;
-  text-transform:none;position:relative;transform:none;box-shadow:none;transition:.14s}
-#crm-main .crm-nav button:hover{background:rgba(255,255,255,.07);color:#fff;transform:none}
+/* ---- tabs: a column that scrolls itself, so none can ever be out of reach ---- */
+/* ⚠ flex:1 1 auto + min-height:0 + overflow-y:auto is the whole fix. min-height:0 is
+   not optional — a flex child defaults to min-height:auto, refuses to shrink below
+   its content, and pushes the footer off the bottom instead of scrolling. That is
+   precisely how the first left rail lost its tabs. */
+#crm-main .crm-nav{display:flex;flex-direction:column;flex-wrap:nowrap;gap:1px;
+  width:auto;order:0;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  border-bottom:none;margin:11px -4px 0;padding:0 4px;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent}
+#crm-main .crm-nav::-webkit-scrollbar{width:7px}
+#crm-main .crm-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px}
+#crm-main .crm-nav::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.34)}
+#crm-main .crm-nav button{display:flex;align-items:center;gap:10px;width:100%;
+  justify-content:flex-start;text-align:left;
+  padding:8px 10px;margin:0;border:none;border-radius:5px;background:transparent;
+  color:rgba(233,236,246,.88);font-size:13px;font-weight:600;letter-spacing:0;
+  text-transform:none;position:relative;transform:none;box-shadow:none;transition:.13s;
+  flex:0 0 auto}
+#crm-main .crm-nav button:hover{background:rgba(255,255,255,.08);color:#fff;transform:none}
 #crm-main .crm-nav button.on{background:var(--pp);color:var(--rl)}
-#crm-main .crm-nav button.on:before{content:'';position:absolute;left:0;right:0;top:0;
-  height:2.5px;background:var(--gd);border-radius:2px 2px 0 0}
-#crm-main .crm-nav button .ti{width:16px;height:16px;flex:0 0 auto;background:transparent;
+/* ⚠ The active marker moved from the top edge to the left edge. A 2.5px line across
+   the top of a full-width row reads as a divider between two tabs, not as "you are
+   here" — it points at the gap rather than at the row. */
+#crm-main .crm-nav button.on:before{content:'';position:absolute;left:0;top:4px;bottom:4px;
+  right:auto;width:3px;height:auto;background:var(--gd);border-radius:0 2px 2px 0}
+#crm-main .crm-nav button .ti{width:17px;height:17px;flex:0 0 auto;background:transparent;
   color:var(--tab,#C89B4E);display:inline-flex;align-items:center;justify-content:center;
   border-radius:0}
-#crm-main .crm-nav button .ti svg{width:14px;height:14px;stroke-width:1.8}
-#crm-main .crm-nav button.on .ti{color:var(--gd)}
-#crm-main .crm-nav button .tl{font-size:12.5px;font-weight:500;line-height:1.2;
-  letter-spacing:0;white-space:nowrap}
-#crm-main .crm-nav button .pill{position:static;margin-left:2px;background:var(--gd);
+#crm-main .crm-nav button .ti svg{width:15px;height:15px;stroke-width:1.8}
+#crm-main .crm-nav button.on .ti{color:var(--tab,#C89B4E)}
+/* ⚠ Each tab keeps its own color when active. On the top bar the icon went gold on
+   the selected tab, which threw away the one thing the palette was for: learning the
+   color instead of reading the word. In a column you see all seventeen at once, so
+   the colors do more work here than they ever did across the top. */
+#crm-main .crm-nav button .tl{font-size:13px;font-weight:500;line-height:1.25;
+  letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto}
+#crm-main .crm-nav button .pill{position:static;margin-left:auto;background:var(--gd);
   color:var(--rl);border-radius:20px;padding:0 6px;line-height:16px;min-width:17px;
-  text-align:center;font-size:10.5px;font-weight:700;box-shadow:none}
-#crm-main .crm-nav .crm-arrange,#crm-main .crm-nav .tile-arr{display:inline-flex;
-  align-items:center;gap:7px;width:auto;padding:8px 13px;margin:0;border-radius:5px 5px 0 0;
-  background:rgba(255,255,255,.08);color:#fff;cursor:grab;border:none}
+  text-align:center;font-size:10.5px;font-weight:700;box-shadow:none;flex:0 0 auto}
+#crm-main .crm-nav button.on .pill{background:var(--tab,var(--gd));color:#fff}
+#crm-main .crm-nav .crm-arrange,#crm-main .crm-nav .tile-arr{display:flex;
+  align-items:center;gap:10px;width:100%;justify-content:flex-start;text-align:left;
+  padding:8px 10px;margin:0;border-radius:5px;
+  background:rgba(255,255,255,.08);color:#fff;cursor:grab;border:none;flex:0 0 auto}
+#crm-main .crm-nav .crm-arrange{margin-top:6px}
 
-/* stamp + suggest sit in the bar, so they never scroll away */
-#crm-main .idea-row{order:10;width:100%;display:flex;align-items:center;gap:12px;
-  padding:0 0 8px;margin:0;background:transparent}
+/* finder, stamp and suggest pinned under the tab list, never scrolling away */
+#crm-main .idea-row{order:0;width:auto;display:flex;flex-direction:column;
+  align-items:stretch;gap:8px;flex:0 0 auto;
+  padding:10px 0 12px;margin:0;background:transparent;
+  border-top:1px solid rgba(255,255,255,.10)}
 #crm-main #crm-version{font-size:10.5px;letter-spacing:.05em;
   color:rgba(233,236,246,.6)!important;font-variant-numeric:tabular-nums}
-#crm-main .find-wrap{position:relative;flex:0 1 210px;min-width:150px}
+#crm-main .find-wrap{position:relative;flex:0 0 auto;width:100%;min-width:0}
+/* ⚠ The results panel opens to the RIGHT of the rail, not underneath it. A 250px
+   dropdown inside a 224px column is clipped by the rail's own overflow:hidden, so
+   the finder would silently return nothing you could read. */
+#crm-main #find-res{left:0;min-width:262px;max-width:none}
 #crm-main #find-q{width:100%;border:1px solid rgba(255,255,255,.22);border-radius:3px;
   background:rgba(255,255,255,.08);color:#fff;font-size:12px;padding:6px 10px}
 #crm-main #find-q::placeholder{color:rgba(233,236,246,.55)}
@@ -2695,7 +2749,8 @@ body.in-crm #secnav{display:none}
 #crm-main .find-h{font-size:10px;letter-spacing:.13em;text-transform:uppercase;font-weight:700;
   color:rgba(255,255,255,.42);padding:9px 13px 4px}
 .find-none{padding:11px 13px;font-size:12.5px;color:var(--mut);line-height:1.5}
-#crm-main .idea-btn{margin-left:auto;border-radius:3px;padding:5px 12px;font-size:11.5px;
+#crm-main .idea-btn{margin-left:0;width:100%;justify-content:center;
+  border-radius:3px;padding:6px 12px;font-size:11.5px;
   font-weight:600;letter-spacing:0;text-transform:none;box-shadow:none;
   background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);
   color:rgba(231,233,242,.9);white-space:nowrap}
@@ -2704,17 +2759,57 @@ body.in-crm #secnav{display:none}
 #crm-main .idea-btn svg{width:12px;height:12px}
 
 #crm-top{display:none}
-#crm-body{min-width:0;background:var(--pp)}
-#crm-inner{padding:26px 24px 70px;max-width:1280px;width:100%;margin:0 auto}
+/* ⚠ min-width:0 on the flex child. Without it a wide table inside — the leads table,
+   the commission ledger — sets the child's minimum to its own content width and
+   shoves the rail off the left of the screen instead of scrolling itself. */
+#crm-body{flex:1 1 auto;min-width:0;width:100%;background:var(--pp)}
+#crm-inner{padding:26px 30px 70px;max-width:1280px;width:100%;margin:0 auto}
 
 #crm-main h1,#crm-main h2,#crm-main h3{font-family:'Fraunces',Georgia,serif;font-weight:400;
   letter-spacing:-.015em}
 #crm-main .sx-h{font-size:21px}
 #crm-main .card,#crm-main .setup-panel,#crm-main .panel{border-radius:4px}
 
+/* ---- under 1000px: back to the horizontal bar ----
+   ⚠ A 224px column on a laptop at 900px leaves 676px of content, and on a phone it
+   eats a third of the screen. Everything below restores the top-bar layout exactly
+   as it was before index 303 — this is a fallback, not a leftover. */
+@media(max-width:1000px){
+  #crm-main.crm-wrap{display:block}
+  #crm-rail{flex:none;width:auto;height:auto;overflow:visible;
+    padding:9px 22px 0;gap:0 16px;
+    flex-direction:row;flex-wrap:wrap;align-items:center;
+    border-right:none;border-bottom:1px solid rgba(200,155,78,.55);
+    box-shadow:0 2px 14px rgba(14,20,51,.18)}
+  #crm-rail .mk{padding:0;margin:0 6px 0 0;border-bottom:none;flex:0 0 auto}
+  #crm-rail #agent-switcher{margin:0}
+  #crm-rail .out{margin:0 0 0 auto;width:auto}
+  #crm-main .crm-nav{flex-direction:row;flex-wrap:wrap;gap:2px;width:100%;order:9;
+    flex:none;min-height:0;overflow:visible;margin:9px 0 0;padding:0}
+  #crm-main .crm-nav button{width:auto;border-radius:5px 5px 0 0;padding:8px 13px;
+    font-size:12.5px}
+  #crm-main .crm-nav button .tl{flex:0 0 auto;font-size:12.5px}
+  #crm-main .crm-nav button .pill{margin-left:2px}
+  #crm-main .crm-nav button.on:before{left:0;right:0;top:0;bottom:auto;
+    width:auto;height:2.5px;border-radius:2px 2px 0 0}
+  #crm-main .crm-nav .crm-arrange,#crm-main .crm-nav .tile-arr{width:auto;
+    border-radius:5px 5px 0 0}
+  #crm-main .crm-nav .crm-arrange{margin-top:0}
+  #crm-main .idea-row{order:10;width:100%;flex-direction:row;align-items:center;
+    gap:12px;padding:0 0 8px;border-top:none}
+  #crm-main .find-wrap{flex:0 1 210px;width:auto;min-width:150px}
+  #crm-main .idea-btn{margin-left:auto;width:auto}
+  #crm-body{width:auto}
+  #crm-inner{padding:26px 24px 70px}
+}
 @media(max-width:700px){
   #crm-rail{padding:9px 14px 0;gap:0 10px}
-  #crm-rail .mk{display:none}
+  /* ⚠ This was `#crm-rail .mk{display:none}`, which hid the brand — the thing you tap
+     to get back to the public site. On a phone that left "Search the MLS" on Today as
+     the only route out of the CRM, which is listed in the handoff as designed-but-not-
+     built. It is not hidden now; it is shrunk. Never hide an escape hatch. */
+  #crm-rail .mk .n{font-size:14px}
+  #crm-rail .mk .s{display:none}
   #crm-main .crm-nav button{padding:7px 10px;font-size:12px}
   #crm-inner{padding:18px 14px 60px}
 }
@@ -4747,7 +4842,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v302';
+window.BUILD = 'index-v303';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5486,6 +5581,7 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
             value="${escapeHtml(ltQuery)}" oninput="ltFilter(this.value)"></div>
           <table class="lt-tbl"><tbody>${ltRows(list)}</tbody></table>
           ${list.length ? '' : '<div class="lt-empty">Nobody matches that.</div>'}
+          ${typeof ltLegend === 'function' ? ltLegend() : ''}
         </div>
         <div class="lt-panel" id="lt-panel"></div>
        </div>`
@@ -5495,6 +5591,7 @@ if(ltWant === 'table' && typeof ltRows === 'function'){
             value="${escapeHtml(ltQuery)}" oninput="ltFilter(this.value)"></div>
           <table class="lt-tbl"><tbody>${ltRows(list, !phone)}</tbody></table>
           ${list.length ? '' : '<div class="lt-empty">Nobody matches that.</div>'}
+          ${typeof ltLegend === 'function' ? ltLegend() : ''}
         </div>
        </div>`;
   /* \u26a0 On a phone the detail is a sheet over the list, the way a phone app does it \u2014
@@ -5533,6 +5630,7 @@ tbody.innerHTML =
       <span class="lc-src">${escapeHtml(l.source||'')}</span>
       ${l.humanTakeover ? '<span class="lc-take">yours now</span>' : ''}
       <span class="lc-when">${escapeHtml(fmtDate(l.createdAt))}</span>
+      ${typeof ltTouchBadge === 'function' ? ltTouchBadge(l) : ''}
       ${typeof lcWaiting === 'function' ? lcWaiting(l) : ''}
     </div>
     <div class="lc-contact">${escapeHtml(l.email||'')}${l.phone?' \u00b7 '+escapeHtml(l.phone):''}</div>
@@ -5694,6 +5792,42 @@ console.error('[assign notify] failed:', e);
 loadLeads();
 }
 
+/* ---------- lastTouchAt: when WE last spoke to them (index 303) ----------
+   \u26a0 The field already existed and was read once \u2014 server line ~5246 feeds it to the
+   Assistant as daysSinceTouch \u2014 and was written NOWHERE. So every lead reported
+   null and "who have I not spoken to lately" was answered from nothing. Fourth
+   instance of this project's signature bug, after drip.campaignId, ?unsub= and
+   settings:leadArchive. Grep for the write, not the read.
+
+   Distinct from the two neighbouring fields, and the distinction is the point:
+     firstTouchAt \u2014 written ONCE, never overwritten. Speed to first contact.
+     lastActivity \u2014 what THEY did: opens, clicks, views. Drives score decay.
+     lastTouchAt  \u2014 what WE did, updated every time. Drives the row color.
+
+   \u26a0 Only real outbound contact sets this. Opening a lead, tapping through the list
+   or previewing somebody must never count \u2014 a status color that goes green because
+   you looked at the screen is worse than no color, because it lies quietly. */
+async function ltTouch(id, how){
+  try{
+    const lead = await storeGet('lead:'+id);
+    if(!lead) return false;
+    const now = new Date().toISOString();
+    lead.lastTouchAt = now;
+    lead.lastTouchHow = how || '';
+    if(!lead.firstTouchAt) lead.firstTouchAt = now;
+    /* \u26a0 storeSet goes through setSetting, which swallowed failures until server 134
+       and still returns false rather than throwing. Check it. Reporting a contact
+       that was never recorded is how the color goes green on a lead nobody called. */
+    const ok = await storeSet('lead:'+id, lead);
+    if(ok === false){ console.error('[ltTouch] write failed for', id); return false; }
+    return true;
+  }catch(e){ console.error('[ltTouch]', e); return false; }
+}
+/* Declared in this block, used from the last one. A function on window is safe to
+   reach across blocks; a bare `let` is not \u2014 that is a temporal-dead-zone
+   ReferenceError, and typeof does not protect against it. */
+window.ltTouch = ltTouch;
+
 async function updateStage(id, stage){
 const lead = await storeGet('lead:'+id);
 if(!lead) return;
@@ -5703,6 +5837,13 @@ lead.stage = stage;
    that matters is time to FIRST contact, not to the most recent one. */
 if(!lead.firstTouchAt && stage && stage !== 'New'){
   lead.firstTouchAt = new Date().toISOString();
+}
+/* ...but the LAST-contact clock restarts every time, which is the whole difference
+   between the two fields. Closed is excluded: a closed deal is not somebody you are
+   behind on ringing, and coloring it green would put it back on the call list. */
+if(stage && stage !== 'New' && stage !== 'Closed'){
+  lead.lastTouchAt = new Date().toISOString();
+  lead.lastTouchHow = 'moved to ' + stage;
 }
 await storeSet('lead:'+id, lead);
 loadLeads();
@@ -5714,6 +5855,10 @@ lead.notes = notes;
 // writing a note about somebody is also having dealt with them
 if(!lead.firstTouchAt && String(notes||'').trim()){
   lead.firstTouchAt = new Date().toISOString();
+}
+if(String(notes||'').trim()){
+  lead.lastTouchAt = new Date().toISOString();
+  lead.lastTouchHow = 'logged a note';
 }
 await storeSet('lead:'+id, lead);
 }
@@ -5862,7 +6007,10 @@ if(res.ok && data.draft){
 document.getElementById('draft-sub').textContent = `Suggested reply to ${lead.name} — review and edit before sending.`;
 document.getElementById('draft-textarea').value = data.draft;
 const mailto = document.getElementById('draft-mailto');
-mailto.href = lead.email ? `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent('Re: your inquiry with Avani & Co.')}&body=${encodeURIComponent(data.draft)}` : '#';
+/* \u26a0 The address goes in RAW. encodeURIComponent escapes @ to %40, which is invalid in
+   a mailto: and enough to make some handlers open with an empty To field. Subject and
+   body still need encoding; the recipient does not. */
+mailto.href = lead.email ? `mailto:${String(lead.email).trim()}?subject=${encodeURIComponent('Re: your inquiry with Avani & Co.')}&body=${encodeURIComponent(data.draft)}` : '#';
 } else {
 document.getElementById('draft-sub').textContent = data.error || "AI drafting isn't set up yet.";
 }
@@ -8919,7 +9067,16 @@ function findRun(){
 function crmMeasureNav(){
   const bar = document.getElementById('crm-rail');
   if(!bar) return;
-  document.documentElement.style.setProperty('--navh', bar.offsetHeight + 'px');
+  /* \u26a0 --navh is how far down the sticky impersonation banner sits, and it exists to
+     clear a bar ACROSS the top. With the rail on the left the rail's offsetHeight is
+     the whole window, so measuring it blindly would park the banner one screen below
+     the fold \u2014 the "you are previewing someone else" warning would be invisible,
+     which is the one banner that must never be. Vertical rail means nothing overhead
+     to clear, so the offset is zero. */
+  let vertical = false;
+  try{ vertical = window.matchMedia('(min-width: 1001px)').matches; }catch(e){}
+  document.documentElement.style.setProperty(
+    '--navh', (vertical ? 0 : bar.offsetHeight) + 'px');
 }
 window.addEventListener('resize', () => { try{ crmMeasureNav(); }catch(e){} });
 
@@ -17631,7 +17788,7 @@ async function tkSendLink(id){
     });
     // no attachment on this one, so the route may refuse — fall back to the mail client
     if(!r.ok){
-      window.location.href = 'mailto:' + encodeURIComponent(t.clientEmail)
+      window.location.href = 'mailto:' + String(t.clientEmail || '').trim()
         + '?subject=' + encodeURIComponent('Following your move')
         + '&body=' + encodeURIComponent(location.origin + '/?track=' + t.token);
       return;
@@ -21663,7 +21820,28 @@ async function ntToggle(k){
 #crm-main .lt-src{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;
   margin-left:5px;vertical-align:1px}
 #crm-main .lt-sc{width:42px;padding:9px 4px;font-size:14px;font-weight:600;text-align:left}
-#crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:#8A2C22}
+/* \u26a0 This column used to be hard-coded #8A2C22, so a lead waiting 5 minutes and one
+   waiting 5 days were the identical shade of red. One color for every state is the
+   same as no color. It takes the clock's own tone now. */
+#crm-main .lt-w{width:70px;padding:9px 8px 9px 4px;font-size:12px;color:var(--driftwood)}
+
+/* ---------- contact-recency status (index 303) ---------- */
+#crm-main .lt-flag{width:4px;min-width:4px;padding:0;border-radius:0}
+#crm-main .lt-t{width:74px;padding:9px 6px 9px 4px;font-size:11.5px;font-weight:600;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+#crm-main .lt-touch{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;
+  font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--tc);
+  background:var(--tbg);border-radius:3px;padding:2px 7px;white-space:nowrap}
+#crm-main .lt-touch i{width:6px;height:6px;border-radius:50%;background:var(--tc);
+  flex:0 0 auto}
+/* \u26a0 Color is never the only signal. A dot plus a word survives a monochrome print,
+   a bad screen, and the ~8% of men who cannot separate the green from the orange. */
+#crm-main .lt-touch.never i,#crm-main .lt-touch.cold i{box-shadow:0 0 0 2px var(--tbg),0 0 0 3px var(--tc)}
+#crm-main .lt-legend{display:flex;flex-wrap:wrap;gap:4px 13px;padding:7px 11px;
+  border-top:1px solid var(--hair2);font-size:10.5px;color:var(--driftwood);
+  letter-spacing:.03em;background:#FCFCFA}
+#crm-main .lt-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#crm-main .lt-legend i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
 #crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;overflow:auto}
 #crm-main .lt-empty{padding:20px 12px;font-size:13px;color:var(--mut)}
 /* ---------- Recently deleted ---------- */
@@ -22399,7 +22577,9 @@ function asMail(){
   const t = document.getElementById('as-text');
   if(!t || !asOut || !asOut.lead) return;
   const body = encodeURIComponent(t.value);
-  const to = encodeURIComponent(asOut.lead.email || '');
+  /* \u26a0 Raw recipient \u2014 encodeURIComponent turns @ into %40, which breaks a mailto:.
+     The body above still needs encoding; the address does not. */
+  const to = String((asOut.lead && asOut.lead.email) || '').trim();
   window.location.href = `mailto:${to}?body=${body}`;
 }
 
@@ -23227,7 +23407,7 @@ function cmaShowLink(url, addr){
      so "Your home's value" put a raw ' inside onclick="...href='mailto:...'", closed
      the JS string early, and the button silently did nothing. Anything encoded is
      unsafe as an inline attribute; keep it in JS. */
-  window.__cmaMailto = 'mailto:' + encodeURIComponent(cmaFor.email || '')
+  window.__cmaMailto = 'mailto:' + String(cmaFor.email || '').trim()
     + '?subject=' + encodeURIComponent(`Your home's value \u2014 ${addr}`)
     + '&body=' + encodeURIComponent(
         `Hi${cmaFor.name ? ' ' + String(cmaFor.name).split(' ')[0] : ''},\n\n`
@@ -23470,7 +23650,7 @@ async function vidSendPick(id){
     const v = vidList.find(x => x.id === id) || { title: 'this' };
     /* \u26a0 Built here, not in an inline onclick. encodeURIComponent leaves apostrophes
        alone, and one in a title would otherwise close the JS string. */
-    window.__vidMailto = 'mailto:' + encodeURIComponent(d.lead.email || '')
+    window.__vidMailto = 'mailto:' + String(d.lead.email || '').trim()
       + '?subject=' + encodeURIComponent(v.title)
       + '&body=' + encodeURIComponent(
           `Hi${d.lead.name ? ' ' + String(d.lead.name).split(' ')[0] : ''},\n\n`
@@ -24123,16 +24303,22 @@ function ltRows(list, inline){
     const sc = l.score || 0;
     const B = (typeof LS_BANDS !== 'undefined' && LS_BANDS[l.band||'nurture']) || { color:'#8C93AD' };
     const wait = (typeof lcWaitingText === 'function') ? lcWaitingText(l) : '';
+    /* \u26a0 The color bar is a real cell, not a border on the row. A border-left set on a
+       table ROW is ignored under border-collapse in Safari and Firefox, which is how
+       you ship a status color that only exists on your own machine. */
+    const T = (typeof ltTouchTone === 'function') ? ltTouchTone(l) : { color:'#8C93AD', k:'never', text:'' };
     return `<tr class="lt-row${ltSel===l.id?' on':''}" onclick="ltPick('${l.id}')">
+      <td class="lt-flag" style="background:${T.color}"></td>
       <td class="lt-nm">
         <span class="n">${escapeHtml(l.name || '\u2014')}</span> ${ltSrcTag(l.source)}
         <div class="s">${escapeHtml(ltWants(l) || l.email || '')}${
           l.assignedAgentId ? ' · ' + escapeHtml(ltAgentName(l.assignedAgentId)) : ''}</div>
       </td>
       <td class="lt-sc" style="color:${B.color}">${sc}</td>
+      <td class="lt-t" style="color:${T.color}">${escapeHtml(T.text)}</td>
       <td class="lt-w">${wait}</td>
     </tr>${inline && ltSel === l.id
-      ? `<tr class="lt-inline"><td colspan="3"><div class="lt-panel narrow" id="lt-panel"></div></td></tr>`
+      ? `<tr class="lt-inline"><td colspan="5"><div class="lt-panel narrow" id="lt-panel"></div></td></tr>`
       : ''}`;
   }).join('');
 }
@@ -24262,6 +24448,8 @@ async function ltPanelInner(id){
       <button class="lt-x" onclick="ltDeselect()" aria-label="Close">&times;</button>
      </div>
      <div class="lt-contact">${escapeHtml(l.email||'')}${l.phone?'<br>'+escapeHtml(l.phone):''}</div>
+     <div style="margin:7px 0 0">${typeof ltTouchBadge === 'function' ? ltTouchBadge(l) : ''}${
+       l.lastTouchHow ? `<span style="font-size:11px;color:var(--driftwood);margin-left:7px">${escapeHtml(l.lastTouchHow)}</span>` : ''}</div>
      <div class="lt-btns">
        ${phone?`<a class="btn-sm" href="tel:${phone}">Call</a>`:''}
        ${l.email?`<a class="btn-sm" href="mailto:${escapeHtml(l.email)}">Email</a>`:''}
@@ -24427,6 +24615,10 @@ async function ltWelcome(id){
       body: JSON.stringify({ leadIds: [id], cap: 1 }) });
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || 'Could not send that.');
+    /* \u26a0 Only on a real send. d.sent false means they had already had one and nothing
+       went out \u2014 turning the status green there would record a contact that did not
+       happen, which is exactly the lie this whole feature exists to stop telling. */
+    if(d.sent && window.ltTouch) await window.ltTouch(id, 'sent the introduction');
     showToast(d.sent ? 'Sent.' : (d.note || 'They have already had one.'));
     loadLeads();
   }catch(e){ showToast(e.message); }
@@ -24446,6 +24638,75 @@ function ltAssist(id){
     if(typeof asGo === 'function') asGo('followup');
     setTimeout(() => { if(typeof asPickOne === 'function') asPickOne(id); }, 250);
   }, 120);
+}
+
+/* ---------- how long since WE spoke to them (index 303) ----------
+   \u26a0 There were two color systems on this screen before and neither said this.
+   LS_BANDS colors the score digit \u2014 how interested THEY are. The waiting clock
+   colors untouched new leads and vanishes permanently the moment anyone touches
+   one. Neither answers "who am I behind on", which is the question you actually
+   scan a lead list to answer.
+
+   \u26a0 Everything starts red, and that is correct rather than broken. lastTouchAt has
+   never been written, so nobody in the book has a contact history. Backfilling it
+   from createdAt would paint a plausible history the brokerage does not have, and
+   an invented green is far worse than an honest red. It goes true the first time
+   somebody is actually contacted. */
+const LT_TOUCH = [
+  { max:7,        k:'fresh', color:'#1F6B49', bg:'#E7F3EC', label:'This week' },
+  { max:21,       k:'aging', color:'#B08414', bg:'#FCF3DC', label:'2\u20133 weeks' },
+  { max:45,       k:'stale', color:'#C2661C', bg:'#FCEDE0', label:'Over a month' },
+  { max:Infinity, k:'cold',  color:'#A32B22', bg:'#FBE9E7', label:'Long overdue' },
+];
+const LT_NEVER = { k:'never', color:'#A32B22', bg:'#FBE9E7', label:'Never contacted' };
+const LT_DONE  = { k:'done',  color:'#6A7290', bg:'#F1F1F4', label:'Closed' };
+
+/* One place decides the color, so the table, the cards and the panel can never
+   disagree about what a lead's status is. Two views showing different colors for
+   the same person is the same bug as no color at all. */
+function ltTouchTone(l){
+  if(!l) return LT_NEVER;
+  if((l.stage||'New') === 'Closed') return Object.assign({ days:null, text:'Closed' }, LT_DONE);
+  const t = l.lastTouchAt ? new Date(l.lastTouchAt).getTime() : NaN;
+  if(!isFinite(t)) return Object.assign({ days:null, text:'Never' }, LT_NEVER);
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if(days < 0) return Object.assign({ days:0, text:'Today' }, LT_TOUCH[0]);
+  const band = LT_TOUCH.find(b => days <= b.max) || LT_TOUCH[LT_TOUCH.length-1];
+  /* \u26a0 Days, not weeks, right up to 60. Rounding to weeks put 21d and 22d on screen
+     as the same "3w ago" in two different colors, and 45d and 46d as the same
+     "6w ago" in two more. Two rows reading identically in different colors looks
+     like the color is broken, and the broker would have been right to say so. The
+     number has to be able to explain the color it is sitting next to. */
+  const text = days === 0 ? 'Today' : days === 1 ? 'Yesterday'
+             : days < 60  ? days + 'd ago'
+             : Math.floor(days/30) + 'mo ago';
+  return Object.assign({ days, text }, band);
+}
+
+/* The dot + words, for the cards and the panel where there is room to read. */
+function ltTouchBadge(l){
+  const T = ltTouchTone(l);
+  const title = T.days === null
+    ? (T.k === 'done' ? 'This one is closed' : 'Nobody has recorded contact with them')
+    : 'Last contacted ' + T.text + (l.lastTouchHow ? ' \u2014 ' + l.lastTouchHow : '');
+  return `<span class="lt-touch ${T.k}" style="--tc:${T.color};--tbg:${T.bg}"
+    title="${escapeHtml(title)}"><i></i>${escapeHtml(T.text)}</span>`;
+}
+
+/* \u26a0 A color scale nobody explained is a color scale nobody trusts. The broker asked
+   for this feature because he thought it already existed \u2014 the score digit had been
+   tinted for months and read as decoration. Five words under the list costs nothing
+   and stops the first "what does orange mean". */
+function ltLegend(){
+  const items = [
+    ['#1F6B49','Talked this week'],
+    ['#B08414','2\u20133 weeks'],
+    ['#C2661C','Over a month'],
+    ['#A32B22','Overdue or never'],
+    ['#6A7290','Closed'],
+  ];
+  return `<div class="lt-legend">${items.map(([c,t]) =>
+    `<span><i style="background:${c}"></i>${t}</span>`).join('')}</div>`;
 }
 
 /* Plain text version of the waiting badge, for use where markup would be wrong. */
@@ -24500,7 +24761,11 @@ async function ltSendListings(id){
 function ltPickListing(key, leadId){
   const url = location.origin + '/listing/' + encodeURIComponent(key);
   const l = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []).find(x => x.id === leadId) || {};
-  window.__ltMailto = 'mailto:' + encodeURIComponent(l.email || '')
+  /* \u26a0 The recipient goes in RAW. encodeURIComponent escapes @ to %40, which is wrong
+     in a mailto: and enough to make some handlers open with an empty To field.
+     Subject and body still need encoding; the address does not. */
+  if(window.ltTouch && leadId) window.ltTouch(leadId, 'sent a listing');
+  window.__ltMailto = 'mailto:' + String(l.email || '').trim()
     + '?subject=' + encodeURIComponent('One I thought you would want to see')
     + '&body=' + encodeURIComponent(`Hi${l.name ? ' ' + String(l.name).split(' ')[0] : ''},\n\n`
         + `Have a look at this one:\n\n${url}\n\n`);
