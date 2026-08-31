@@ -5151,7 +5151,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v336';
+window.BUILD = 'index-v337';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10402,10 +10402,17 @@ async function renderDashboard(){
       <div class="dc-s">${sub}</div>
     </button>`;
 
+  /* \u26a0 Fetched BEFORE the innerHTML below, because that write destroys everything in
+     the section \u2014 painting the card afterwards would need a second render and would
+     be forgotten by the next person to touch this function. */
+  const goalData = await goalLoad();
+  if(gen !== __dashGen) return;   // a newer render started while we waited
+
   el.innerHTML = `
     <div id="ce-nudge-slot"></div>
     <div id="wn-slot"></div>
     <div id="bf-slot"></div>
+    ${goalCardHtml(goalData)}
     <div class="dash-hero">
       <div>
         <div class="eyebrow-sm">${new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})}</div>
@@ -26019,7 +26026,11 @@ async function cqWrite(id, kind, note, outcome){
   if(!lead) throw new Error('that lead is no longer there');
   const now = new Date().toISOString();
   lead.events = Array.isArray(lead.events) ? lead.events : [];
-  lead.events.push({ k: kind, at: now, note: note });
+  /* \u26a0 `by` is who made the call. Without it the weekly goal has nothing to attribute,
+     because every event in this system was anonymous. Older events fall back to the
+     lead's assigned agent when counting, which is a guess and is treated as one. */
+  lead.events.push({ k: kind, at: now, note: note,
+    by: (typeof currentAgent !== 'undefined' && currentAgent) ? currentAgent.id : '' });
   if(lead.events.length > 200) lead.events = lead.events.slice(-200);
 
   /* ⚠ Only an answered call counts as contact. A voicemail or a ring-out is an
@@ -26411,6 +26422,109 @@ async function dlSave(){
   dlRows = dlRows.filter(r => !r.keep);
   dlRender();
   if(typeof loadLeads === 'function') loadLeads();
+}
+</script>
+<style>
+#goal-card{border:1px solid var(--hair2);border-radius:8px;background:#fff;
+  padding:16px 18px;margin:0 0 16px}
+#goal-card .gc-top{display:flex;align-items:baseline;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;margin-bottom:12px}
+#goal-card .gc-t{font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:400;
+  color:var(--rl,#0E1433)}
+#goal-card .gc-sub{font-size:12.5px;color:var(--driftwood)}
+#goal-card .gc-rows{display:grid;gap:11px}
+#goal-card .gc-row{display:grid;grid-template-columns:96px 1fr auto;gap:11px;align-items:center}
+#goal-card .gc-lbl{font-size:13.5px;color:var(--ink)}
+#goal-card .gc-bar{height:9px;border-radius:99px;background:#EEEDE6;overflow:hidden}
+#goal-card .gc-fill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
+#goal-card .gc-n{font-size:13px;font-variant-numeric:tabular-nums;color:var(--driftwood);
+  min-width:56px;text-align:right}
+#goal-card .gc-n b{color:var(--rl,#0E1433);font-weight:600}
+#goal-card .gc-edit{margin-top:13px;display:none;gap:9px;flex-wrap:wrap;align-items:flex-end}
+#goal-card .gc-edit.on{display:flex}
+#goal-card .gc-edit label{font-size:12px;color:var(--driftwood);display:block}
+#goal-card .gc-edit input{width:74px;font:inherit;font-size:14px;padding:7px 9px;
+  border:1px solid var(--hair2);border-radius:5px;background:#FBFAF7}
+#goal-card .gc-note{font-size:12px;color:var(--driftwood);margin-top:10px;line-height:1.5}
+</style>
+<script>
+/* ---------- the weekly goal (index 337) ----------
+   ⚠ Set by the agent, not by the broker. The numbers arrive as a starting point and are
+   meant to be argued with — a target somebody chose is one they keep looking at.
+
+   ⚠ WHAT IT COUNTS HAS TO BE HONEST. Automated follow-up is NOT counted as the agent's
+   email; the machine sent that. Only calls logged from the call list and emails the
+   agent actually sent count. An agent who works hard and sees 3 of 25 stops looking at
+   this by Thursday, and then it is worse than not having it. */
+
+let GOAL_STATE = null;
+
+async function goalLoad(){
+  try{
+    const r = await fetch('/api/goals');
+    if(!r.ok) return null;
+    GOAL_STATE = await r.json();
+    return GOAL_STATE;
+  }catch(e){ return null; }
+}
+
+function goalCardHtml(g){
+  if(!g) return '';
+  const row = (key, label, tone) => {
+    const done = g.done[key] || 0, target = g.goal[key] || 0;
+    /* A target of 0 means "not tracking this", so it shows as done rather than
+       dividing by zero and rendering NaN. */
+    const pct = target ? Math.min(100, Math.round((done / target) * 100)) : 100;
+    return `<div class="gc-row">
+      <div class="gc-lbl">${label}</div>
+      <div class="gc-bar"><div class="gc-fill" style="width:${pct}%;background:${tone}"></div></div>
+      <div class="gc-n"><b>${done}</b> / ${target}</div>
+    </div>`;
+  };
+  const left = g.daysLeft;
+  return `<div id="goal-card">
+    <div class="gc-top">
+      <div class="gc-t">My week</div>
+      <div class="gc-sub">${left === 0 ? 'Last day of the week'
+        : left === 1 ? '1 day left' : left + ' days left'}
+        &middot; <a href="#" onclick="goalEdit();return false;">change my targets</a></div>
+    </div>
+    <div class="gc-rows">
+      ${row('calls',  'Calls',     '#1F6B49')}
+      ${row('emails', 'Emails',    '#2E3CB0')}
+      ${row('leads',  'New leads', '#C89B4E')}
+    </div>
+    <div class="gc-edit" id="gc-edit">
+      <div><label>Calls</label><input id="gc-calls" type="number" min="0" max="500" value="${g.goal.calls}"></div>
+      <div><label>Emails</label><input id="gc-emails" type="number" min="0" max="500" value="${g.goal.emails}"></div>
+      <div><label>New leads</label><input id="gc-leads" type="number" min="0" max="500" value="${g.goal.leads}"></div>
+      <button class="btn-sm primary" onclick="goalSave()">Save</button>
+      <button class="btn-sm" onclick="goalEdit(false)">Cancel</button>
+    </div>
+    <div class="gc-note">Counts calls you logged from the call list and emails you sent
+      yourself. Automatic follow-up is not counted &mdash; that one is not your work.
+      Resets Monday morning.</div>
+  </div>`;
+}
+
+function goalEdit(on){
+  const box = document.getElementById('gc-edit');
+  if(box) box.classList.toggle('on', on !== false);
+}
+
+async function goalSave(){
+  const n = id => (document.getElementById(id) || {}).value;
+  try{
+    const r = await fetch('/api/goals', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ calls:n('gc-calls'), emails:n('gc-emails'), leads:n('gc-leads') }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'could not save that');
+    showToast('Targets saved.');
+    /* ⚠ Re-render from the server rather than from the boxes, so what is on screen is
+       what was actually stored \\u2014 the server clamps, and the agent should see that. */
+    if(typeof renderDashboard === 'function') renderDashboard();
+  }catch(e){ showToast('Did not save: ' + e.message); }
 }
 </script>
 </body>
