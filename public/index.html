@@ -5195,7 +5195,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v340';
+window.BUILD = 'index-v341';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -25743,8 +25743,17 @@ async function dripProbe(){
     else { tone='good'; verdict='On <b>' + escapeHtml(l.sequence) + '</b> \u00b7 '
         + l.sentSoFar + ' sent so far \u00b7 '
         + (l.dueNow ? '<b>' + l.dueNow + ' due on the next run.</b>' : 'nothing due right now.'); }
+    /* \u26a0 Said out loud, because a missing call reminder looks like a broken sequence.
+       It is not: the lead has no phone number, so those steps are skipped rather than
+       parked on the Today list where nobody can action them. Emails still go. */
+    var phoneNote = l.noPhone
+      ? '<div style="font-size:12.5px;opacity:.8;margin-top:3px">No phone number, so the '
+        + 'call and text reminders in this sequence are skipped. The emails still go. '
+        + 'Add a number and the reminders start appearing.</div>'
+      : '';
     return '<div class="dp-lead ' + tone + '"><b>' + escapeHtml(l.name) + '</b> \u00b7 '
-      + escapeHtml(l.source || 'no source') + '<div>' + verdict + '</div></div>';
+      + escapeHtml(l.source || 'no source') + '<div>' + verdict + '</div>'
+      + phoneNote + '</div>';
   }).join('');
 
   out.innerHTML = rows.map(function(r){
