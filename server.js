@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v167',
+    serverVersion: 'v168',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9069,6 +9069,26 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  /* ⚠ Facility names and locations checked August 2026. South Baldwin Regional Medical
+     Center rebranded to Baldwin Health and both names are still in local use, which is
+     why the article gives both. The Thomas Hospital tower was due fall 2026 — CHECK
+     WHETHER IT HAS OPENED before this is re-published. */
+  art_healthcare: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A medical cross beside a road and a building">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M420 42 C520 28, 610 32, 690 44"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M84 212 V116 H236 V212"/><path d="M120 146 H140"/><path d="M130 136 V156"/>
+<path d="M172 146 H192"/><path d="M182 136 V156"/><path d="M120 180 H140"/><path d="M172 180 H192"/></g>
+<g stroke="#C89B4E" stroke-width="6" fill="none" stroke-linecap="round">
+<path d="M298 212 C330 168, 380 160, 430 168 C482 176, 520 168, 556 140"/></g>
+<g stroke="#0E1433" stroke-width="4" fill="none" stroke-linecap="round" opacity=".5">
+<path d="M318 196 H344"/><path d="M372 178 H398"/><path d="M428 174 H454"/><path d="M486 168 H512"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M572 212 V128 H676 V212"/><path d="M604 158 H644"/><path d="M624 138 V178"/></g>
+</svg>`,
+
   /* ⚠ Rates and phone numbers checked August 2026 against Baldwin County, Baldwin EMC and
      the city utilities. The kWh figures are averages and move; the article says so and
      gives no monthly bill estimate, because that depends entirely on the house. */
@@ -9378,6 +9398,62 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_healthcare', published: false, deliver: true,
+    title: 'Healthcare on the coast: where the hospitals actually are',
+    teaser: 'There is no full hospital in Gulf Shores or Orange Beach. There is a 24-hour emergency department, which is not the same thing, and the difference matters if you are moving here in retirement.',
+    body: `This is the question that comes up most from people moving here later in life, and it usually comes up too late \u2014 after the house, rather than before it.
+
+Here is the honest picture, checked in August 2026.
+
+THE THING NOBODY TELLS YOU FIRST
+
+There is no full hospital in Gulf Shores or Orange Beach.
+
+What there is, and it matters, is a freestanding emergency department in Gulf Shores at 3590 Gulf Shores Parkway, next to Jack Edwards Airport. It runs twenty-four hours a day, seven days a week, with private treatment rooms, a trauma room, an on-site lab and blood bank, and imaging including CT, MRI, ultrasound, X-ray and mammography.
+
+For an emergency that is a genuinely good facility and it is close. But a freestanding emergency department is not a hospital. If you need to be admitted, you are being transferred.
+
+The nearest full hospital is in Foley.
+
+WHERE THE HOSPITALS ARE
+
+Baldwin Health, in Foley, is the main hospital for south Baldwin County. It was previously called South Baldwin Regional Medical Center and you will still hear both names locally. It runs a twenty-four hour emergency department, an extended-hours urgent care and imaging center, wound care and hyperbaric medicine, and it opened a new Specialty Surgical Center in February 2026. Its medical staff covers more than thirty specialties.
+
+Thomas Hospital, in Fairhope, serves the Eastern Shore. It is part of Infirmary Health, the largest not-for-profit non-governmental health system in Alabama, and it has a new tower expected to open in fall 2026. Thomas also runs a freestanding emergency department at Malbis with lab, pharmacy and imaging.
+
+Mobile, across the bay, is where you go for the largest specialist and academic medicine in the region. From the Eastern Shore that is a straightforward drive. From Gulf Shores it is not a short one.
+
+WHAT THAT MEANS BY WHERE YOU LIVE
+
+From Gulf Shores or Orange Beach you have emergency care close by and a hospital in Foley, roughly twenty to thirty minutes depending on the season and Highway 59.
+
+Say that out loud: depending on the season. In July, Highway 59 is not a road you want to be depending on. Orange Beach runs and staffs its own ambulance service, which exists precisely because of that.
+
+From Fairhope, Daphne or Spanish Fort you are close to Thomas Hospital and much closer to Mobile. If regular specialist care is part of your life, the Eastern Shore is materially easier than the beach towns, and that is worth weighing against everything else you like about being on the water.
+
+From Fort Morgan you are furthest from everything. That is part of the appeal of the peninsula and it is also a real consideration.
+
+OTHER THINGS WORTH KNOWING
+
+Primary care and urgent care exist in both Gulf Shores and Orange Beach, so routine medicine does not mean driving to Foley.
+
+EastPointe Hospital in Daphne is a twenty-four hour mental health facility and the only freestanding adult psychiatric hospital in the Mobile Bay area. Worth knowing it exists, because people rarely go looking for that information until they need it quickly.
+
+USA Health has an OB-GYN and pediatrics practice at the Eastern Shore Centre in Spanish Fort.
+
+Baldwin Health earned a five-star rating from the Centers for Medicare and Medicaid Services in July 2024. Ratings move, so check the current one rather than taking that as permanent, but it is a reasonable starting point.
+
+THE PRACTICAL ADVICE
+
+If you or your spouse have an ongoing condition that means regular appointments, work out where those appointments will physically be before you choose a town. Twenty-five minutes each way is nothing once a year and a great deal every other week.
+
+Ask whether your specific plan is accepted by the practices you would actually use here. Coverage that worked in another state does not automatically travel, and this is a heavily Medicare and Medicare Advantage market, which is not the same thing as every plan being taken everywhere.
+
+If you are a snowbird splitting the year, sort out a local primary care physician early rather than in an urgent situation. Practices here fill up in season.
+
+And if healthcare access is genuinely one of your top three considerations, tell us that at the start. It changes which towns we show you, and it is a much better conversation to have before you have fallen for a house.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_utilities', published: false, deliver: true,
     title: 'What it actually costs to run a house here',
     teaser: 'Who supplies your power depends on your address rather than your city, you do not get to choose, and electricity on this coast is well below the national average. Here is the whole picture before you set anything up.',
