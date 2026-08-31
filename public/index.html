@@ -5079,7 +5079,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v328';
+window.BUILD = 'index-v329';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5516,13 +5516,17 @@ const list = document.getElementById('agent-list');
 list.innerHTML = agents.map(a => `
 <div class="agent-row">
 <div class="info">
-<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}${isLive(a.id) ? '' : '<span class="agent-role-tag" style="color:#8A6A12; border-color:#C89B4E;">No public page</span>'}</div>
+<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}${isLive(a.id) ? '' : '<span class="agent-role-tag" style="color:#8A6A12; border-color:#C89B4E;">Hidden</span>'}</div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
 <div class="meta" style="margin-top:5px">
   <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
     <input type="checkbox" ${isLive(a.id) ? 'checked' : ''}
       onchange="agSetLive('${a.id}', this.checked, this)">
-    <span>${isLive(a.id) ? 'Profile is live on the website' : 'Hidden \u2014 can use the CRM, no public page'}</span>
+    <!-- \u26a0 The label must describe what TICKING does, and must not change with state.
+         It previously read "Hidden \u2014 can use the CRM, no public page" next to an empty
+         box, so ticking the box labelled Hidden made them live. Current state is shown
+         by the tick and by the tag next to their name; the words describe the action. -->
+    <span>Show their profile on the website</span>
   </label>
 </div>
 </div>
