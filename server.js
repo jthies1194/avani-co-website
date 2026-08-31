@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v168',
+    serverVersion: 'v170',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9069,6 +9069,100 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  art_fishing: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A fishing rod and line over water with a fish below">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 196 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".5" stroke-linecap="round">
+<path d="M0 216 C90 204, 190 224, 300 212"/><path d="M340 232 C440 220, 560 238, 700 224"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M104 196 L262 66"/><path d="M132 172 L142 190"/><path d="M164 146 L176 164"/></g>
+<path d="M262 66 C316 92, 356 128, 372 172" stroke="#0E1433" stroke-width="2.5" fill="none" opacity=".7"/>
+<g stroke="#C89B4E" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M372 172 L366 186 L378 190 Z"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M470 152 C512 122, 588 122, 624 152 C588 182, 512 182, 470 152 Z"/>
+<path d="M624 152 L664 130 L664 174 Z"/><circle cx="504" cy="146" r="3.5"/></g>
+</svg>`,
+
+  art_jobs: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A bridge between a house and an office tower">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M46 166 L104 118 L162 166"/><path d="M62 154 V212"/><path d="M146 154 V212"/>
+<path d="M90 212 V184 H118 V212"/></g>
+<g stroke="#C89B4E" stroke-width="5" fill="none" stroke-linecap="round">
+<path d="M186 176 C280 108, 428 108, 522 176"/></g>
+<g stroke="#0E1433" stroke-width="3" fill="none" stroke-linecap="round" opacity=".55">
+<path d="M240 138 V176"/><path d="M300 120 V176"/><path d="M354 116 V176"/>
+<path d="M408 120 V176"/><path d="M468 138 V176"/></g>
+<path d="M186 176 H522" stroke="#0E1433" stroke-width="4" stroke-linecap="round"/>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M566 212 V96 H660 V212"/></g>
+<g stroke="#0E1433" stroke-width="3.5" fill="none" opacity=".6" stroke-linecap="round">
+<path d="M588 122 H638"/><path d="M588 150 H638"/><path d="M588 178 H638"/></g>
+</svg>`,
+
+  art_nightlife: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="String lights over a low skyline with a moon">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<path d="M40 56 C180 104, 320 104, 460 60 C560 30, 640 46, 690 62"
+  stroke="#0E1433" stroke-width="3" fill="none" stroke-linecap="round"/>
+<g stroke="#C89B4E" stroke-width="3.5" fill="none" stroke-linecap="round">
+<path d="M108 82 V96"/><path d="M176 96 V110"/><path d="M248 100 V114"/><path d="M320 96 V110"/>
+<path d="M392 82 V96"/><path d="M456 66 V80"/><path d="M528 48 V62"/><path d="M604 46 V60"/></g>
+<g fill="#C89B4E" opacity=".85">
+<circle cx="108" cy="102" r="5"/><circle cx="176" cy="116" r="5"/><circle cx="248" cy="120" r="5"/>
+<circle cx="320" cy="116" r="5"/><circle cx="392" cy="102" r="5"/><circle cx="456" cy="86" r="5"/>
+<circle cx="528" cy="68" r="5"/><circle cx="604" cy="66" r="5"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M70 212 V166 H164 V212"/><path d="M196 212 V146 H274 V212"/>
+<path d="M306 212 V178 H396 V212"/><path d="M428 212 V158 H510 V212"/>
+<path d="M542 212 V184 H646 V212"/></g>
+<g stroke="#C89B4E" stroke-width="3" fill="none" opacity=".7">
+<path d="M96 186 H120"/><path d="M222 170 H246"/><path d="M334 194 H358"/><path d="M456 180 H480"/></g>
+</svg>`,
+
+  art_funfacts: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A lighthouse, a ship and a crescent moon over water">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 200 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".5" stroke-linecap="round">
+<path d="M0 222 C110 210, 220 230, 340 216"/><path d="M380 236 C500 224, 610 240, 718 228"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M84 200 L102 88 H140 L158 200"/><path d="M96 132 H146"/>
+<path d="M98 88 H144"/><path d="M110 88 V70 H132 V88"/></g>
+<g stroke="#C89B4E" stroke-width="3.5" fill="none" stroke-linecap="round">
+<path d="M162 96 L206 78"/><path d="M162 112 L208 112"/><path d="M80 96 L36 78"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M392 200 L420 168 H556 L584 200 Z"/><path d="M488 168 V88"/>
+<path d="M488 100 L548 128 L488 144 Z"/><path d="M488 100 L430 128 L488 144 Z"/></g>
+<path d="M640 66 C616 74, 616 112, 640 120 C620 132, 592 112, 592 92 C592 72, 620 56, 640 66 Z"
+  stroke="#C89B4E" stroke-width="4" fill="none" stroke-linejoin="round"/>
+</svg>`,
+
+  /* ⚠ Rent averages checked August 2026 across several listing sites, which disagreed by
+     roughly $50 a month. The article gives a shape and a range rather than a figure, and
+     says so, because a precise number here would be wrong within a quarter. */
+  art_rent: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two houses, one with a for rent sign, beside a calendar">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M40 42 C150 28, 280 32, 380 44"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M62 162 L128 108 L194 162"/><path d="M78 150 V212"/><path d="M178 150 V212"/>
+<path d="M110 212 V180 H146 V212"/></g>
+<g stroke="#0E1433" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M232 212 V150"/><path d="M232 150 H316 V190 H232"/></g>
+<g stroke="#C89B4E" stroke-width="3.5" fill="none" stroke-linecap="round">
+<path d="M248 166 H300"/><path d="M248 178 H286"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".5">
+<path d="M360 168 L414 122 L468 168"/><path d="M374 158 V212"/><path d="M454 158 V212"/></g>
+<g stroke="#0E1433" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M528 196 V116 H668 V196 Z"/><path d="M528 142 H668"/>
+<path d="M560 116 V100"/><path d="M636 116 V100"/></g>
+<g stroke="#C89B4E" stroke-width="4" fill="none" stroke-linecap="round">
+<path d="M556 166 H584"/><path d="M612 166 H640"/><path d="M556 182 H584"/></g>
+</svg>`,
+
   /* ⚠ Facility names and locations checked August 2026. South Baldwin Regional Medical
      Center rebranded to Baldwin Health and both names are still in local use, which is
      why the article gives both. The Thomas Hospital tower was due fall 2026 — CHECK
@@ -9398,6 +9492,268 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_fishing', published: false, deliver: true,
+    title: 'Fishing licenses here: what you need before you cast',
+    teaser: 'Every Alabama fishing license expires on 31 August no matter when you bought it, saltwater and freshwater are separate, and the reef endorsement catches out people who think they are covered.',
+    body: `Alabama does fishing licenses differently from most states, and the differences are the sort that get people a ticket rather than a warning. Here is what to know, checked in August 2026.
+
+THE DATE THAT CATCHES EVERYONE
+
+The Alabama license year runs 1 September to 31 August. Every license expires on 31 August regardless of when you bought it.
+
+Buy one in July and you have about six weeks of it. Buy in September and you have a full year. Nobody tells you this at the counter, and it is worth timing.
+
+FRESHWATER AND SALTWATER ARE SEPARATE
+
+Unlike states that sell one all-water license, Alabama splits them, and having one does not cover you for the other.
+
+For residents, the annual freshwater license has been running around seventeen dollars and the annual saltwater around thirty. For visitors it depends on your home state, because Alabama uses reciprocal pricing with Florida, Georgia, Louisiana, Mississippi and Tennessee. Non-residents from elsewhere pay roughly sixty-five for an annual saltwater license, with a seven-day trip license at about half that.
+
+If you are fishing the Delta or upper Mobile Bay, which side of the line you are on genuinely matters. Check before you go rather than guessing.
+
+THE REEF ENDORSEMENT PEOPLE MISS
+
+If you are fishing for reef species in Alabama's Gulf waters \u2014 snapper and the rest \u2014 you need the Gulf Reef Fish Endorsement on top of your saltwater license. It has been ten dollars a year, or around two hundred and twenty for a lifetime version.
+
+Here is the part that catches people. You need it even if you hold a lifetime saltwater license, even if you are sixty-five or older and exempt from the basic license, and even if you are fishing from a licensed pier. The exemptions that cover the license do not cover the endorsement.
+
+There is also a reporting requirement for certain species. If you are keeping snapper, find out what you are required to report before the trip, not after.
+
+WHO DOES NOT NEED A LICENSE
+
+Anyone under sixteen fishes free, resident or not, fresh or salt.
+
+Alabama residents aged sixty-five and over are exempt from the basic license, though as above, not from the reef endorsement.
+
+There is a pier license as a cheaper option \u2014 a few dollars a year for residents and around ten for non-residents \u2014 which covers pier fishing only.
+
+THE CHARTER TRAP
+
+If you go out on a licensed charter, you are covered while you are on that boat. The moment you step off it, you are not.
+
+So if you fish the charter in the morning and then cast off the Gulf State Park pier or wade the surf at Fort Morgan that evening, you need your own license for the second half of that day. Plenty of visitors buy a seven-day trip license precisely for this.
+
+PRACTICALITIES
+
+Buy through Outdoor Alabama, the state's official channel. A Social Security number is required by state and federal law for the purchase, and residency is established by driver's license or state ID.
+
+Save a copy offline. Cell coverage out on the water is not reliable, and a license you cannot produce is not much use to you.
+
+Season dates, size limits and creel limits change, sometimes at short notice. The license is the easy part; the rules on what you can keep are the part worth checking the week you go.
+
+All fees above were current in August 2026 and are subject to change. Outdoor Alabama is the authority \u2014 confirm there before you buy.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
+  { id: 'art_jobs', published: false, deliver: true,
+    title: 'Working here: what the job market actually looks like',
+    teaser: 'Nearly half the people who live in Baldwin County leave it to go to work. That single fact explains more about choosing where to live here than any list of employers.',
+    body: `If you are moving here and still need to earn a living, the useful question is not what jobs exist in Baldwin County. It is where you will physically be at eight in the morning.
+
+THE NUMBER THAT MATTERS
+
+Around forty-four percent of Baldwin County's workforce commutes out of the county for work.
+
+That is not a sign of a weak local economy. It is a sign that Mobile is across the bay with a very large employment base, and that plenty of people would rather live on this side and drive.
+
+If you are one of them, where you buy changes everything. From Spanish Fort, Daphne or Fairhope you are close to the bridges and the tunnel and a Mobile commute is entirely normal. From Gulf Shores you are looking at well over an hour each way, every day, and the summer makes it worse.
+
+People underestimate this and then live with it for years.
+
+WHAT THE COUNTY ITSELF RUNS ON
+
+Tourism, first and by a distance. Baldwin County accounted for close to ten billion dollars of Alabama's roughly twenty-four billion in tourism revenue in 2024, which is remarkable for one county. That supports an enormous amount of employment in hospitality, food, property management, construction and retail.
+
+The catch is seasonality. Plenty of coastal work swings hard between summer and February, and a household budget built on July income does not survive January. Ask about year-round hours specifically.
+
+Aerospace is the second story. Collins Aerospace in Foley is the county's largest manufacturing employer, making thrust reversers and nacelle components, and it supplies Airbus across the bay. Segers Aerospace in Fairhope has grown steadily. Airbus itself is in Mobile.
+
+Manufacturing and distribution have grown fast. Novelis is building a multi-billion dollar aluminum mill at the mega site in Bay Minette \u2014 reportedly the first fully integrated aluminum mill built in the United States in decades \u2014 with roughly a thousand jobs expected. ALDI opened a large distribution center in Loxley. Quincy Compressor is headquartered in Bay Minette, and Vulcan and Ace Hardware have significant operations in Foley and Loxley.
+
+Healthcare and education are large and stable. The Baldwin County school system is among the biggest employers in the area, and Infirmary Health, Baldwin Health and USA Health all have substantial presences.
+
+And there is Bon Secour Fisheries, processing seafood since 1892, which is a reminder that some of the economy here long predates the tourists.
+
+ACROSS THE BAY
+
+Mobile brings Airbus, Austal USA and the Port of Mobile, which is among the largest ports in the country. The University of South Alabama is a major employer and a teaching hospital.
+
+If your work is in aerospace, shipbuilding, logistics, healthcare or higher education, Mobile is where the depth is, and Baldwin County is where a lot of those people choose to live.
+
+WHAT THIS MEANS FOR CHOOSING A HOUSE
+
+Work out the commute before you choose the town, not after. Drive it at the hour you would actually drive it, on a weekday, and if you can, drive it once in July.
+
+If you work remotely, check the internet at the specific address rather than the town. It varies more than you would expect, particularly on the peninsula and in the rural north of the county.
+
+If your income is seasonal, be honest with your lender and with yourself about what the winter months look like.
+
+We do this calculation with people most weeks. If you tell us where you will be working, we can tell you which parts of the county actually make sense to look in.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
+  { id: 'art_nightlife', published: false, deliver: true,
+    title: 'What there is to do after dark, and how it changes by season',
+    teaser: 'The honest version: this coast has real nightlife for about five months a year, a quieter version the rest of the time, and the difference is bigger than most people expect.',
+    body: `People visit in July, have a wonderful time, buy a house, and discover February.
+
+That is not a warning against moving here. It is the single thing worth understanding before you choose which town, because the seasonal swing is far more pronounced in some places than others.
+
+THE SEASON IS REAL
+
+From roughly March through October this coast is busy, loud and genuinely fun. Live music most nights, restaurants with waits, festivals, boats everywhere.
+
+From November through February a lot of it closes or drops to weekends only. Some places shut entirely for a stretch. It is quieter, cheaper, and a lot of people who live here full-time say it is their favorite part of the year.
+
+Both of those are true at once. Which one you are buying into depends heavily on where.
+
+BY AREA, HONESTLY
+
+Gulf Shores and Orange Beach have the most going on in season and the sharpest drop out of it. The Wharf in Orange Beach is the closest thing to a year-round entertainment district on the beach side, with an amphitheater that brings in national acts. The beach bars along the strip are the classic version of a night out here and many of them run in some form year-round, just quieter.
+
+Foley is where the family entertainment concentrates, and OWA has made it a genuine destination in its own right. Less a night out, more an evening with kids.
+
+Fairhope has the most consistent year-round evening life in the county, and it is a different kind entirely \u2014 restaurants, wine bars, galleries, a walkable downtown that does not empty in January. If you want somewhere that feels alive on a Tuesday in February, this is the honest answer.
+
+Daphne and Spanish Fort lean toward restaurants and shopping rather than a night out, and both are close enough to Mobile to borrow its evenings.
+
+Mobile itself is the largest cultural offering in the region by a wide margin, and it is right there. Theater, museums, a genuine downtown, and a Mardi Gras that predates the one in New Orleans by some distance. If you live on the Eastern Shore, Mobile is your Friday night whenever you want it to be.
+
+THINGS THAT ANCHOR THE CALENDAR
+
+The Hangout Music Festival in Gulf Shores each spring is the largest single event on the coast and it changes the town completely for a weekend.
+
+Mardi Gras runs through the winter on both sides of the bay, and it is a bigger deal here than people from outside the region realize. It is also, usefully, in the quiet season.
+
+Snowbird season from roughly January to March brings its own social calendar \u2014 a great deal of organized activity aimed at people wintering here, and it keeps more open than you would otherwise expect.
+
+Fishing tournaments, the shrimp festival in Gulf Shores in October, and a steady run of smaller town events through the year.
+
+THE PRACTICAL ADVICE
+
+If evenings out matter to you, visit in February before you buy. Everybody visits in summer. Almost nobody checks what their prospective street feels like in the off season, and it is the single most useful thing you can do.
+
+If you want beach and quiet in winter, the beach towns are excellent. If you want somewhere that hums year-round, look hard at Fairhope and the Eastern Shore.
+
+Specific venues open and close, so this is deliberately about places rather than names. Ask us what has changed recently \u2014 we are out in it.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
+  { id: 'art_funfacts', published: false, deliver: true,
+    title: 'Things about Baldwin and Mobile County you probably did not know',
+    teaser: 'The biggest county in Alabama, a Mardi Gras older than the one in New Orleans, a town founded on a nineteenth-century economic theory, and a natural event that happens almost nowhere else on earth.',
+    body: `Some of this is useful when you are deciding where to live. Some of it is just good to know when somebody asks you why you moved here.
+
+BALDWIN IS THE BIGGEST COUNTY IN ALABAMA
+
+By land area, nothing else comes close. It is larger than the state of Rhode Island.
+
+That is worth holding onto when people talk about Baldwin County as though it is one place. Bay Minette and Gulf Shores are about seventy miles apart and have very little in common. Advice about "Baldwin County" is usually advice about one small part of it.
+
+THE JUBILEE
+
+Daphne calls itself the Jubilee City, and the reason is a genuine natural phenomenon that happens on the eastern shore of Mobile Bay and almost nowhere else in the world.
+
+Under a specific combination of conditions, usually on still summer nights, oxygen levels in the shallows drop and flounder, crab, shrimp and eel move toward the shore in enormous numbers, where they can be gathered by hand. Word goes around, people come out with buckets and lights at three in the morning, and then it is over.
+
+You cannot schedule it. People who have lived here decades have seen a handful.
+
+MOBILE'S MARDI GRAS IS OLDER THAN NEW ORLEANS'
+
+Mobile's celebration traces back to the early eighteenth century, when Mobile was the capital of French Louisiana, and it predates the New Orleans version. It is a genuine point of local pride and is best not argued about.
+
+It is also a full winter season rather than one day, and it is family-oriented in a way that surprises people who only know the New Orleans reputation.
+
+FAIRHOPE WAS FOUNDED AS AN ECONOMIC EXPERIMENT
+
+Fairhope was established in the 1890s as a single-tax colony, based on the theories of the economist Henry George, who argued that land value rather than labor should be taxed. The founders picked the spot on Mobile Bay and named it for having a "fair hope" of succeeding.
+
+Some of that structure still exists in the form of the Fairhope Single Tax Corporation, which holds land leased to residents. If you buy in certain parts of Fairhope you may encounter it, and it is worth understanding before you do.
+
+THE BATTLE OF MOBILE BAY HAPPENED AT YOUR BEACH
+
+In August 1864, Admiral Farragut ran the Union fleet past the guns of Fort Morgan into Mobile Bay, reportedly saying words that became "Damn the torpedoes, full speed ahead." Fort Morgan is still there at the tip of the peninsula and you can walk it.
+
+The USS Alabama is permanently moored across the bay in Mobile, which is a different war and equally worth an afternoon.
+
+ALABAMA'S ONLY SALTWATER BEACHES ARE HERE
+
+The state has a short coastline, and effectively all of it is in Baldwin and Mobile counties. Nearly half of Alabama's Gulf-front beach lies along the fourteen miles of the Fort Morgan peninsula alone.
+
+That scarcity is a large part of why property here holds value the way it does.
+
+THE PORT AND THE PLANES
+
+The Port of Mobile is among the largest ports in the United States by tonnage, and Airbus builds commercial aircraft there. For a region best known for beaches, the industrial base across the bay is substantial and growing.
+
+BON SECOUR FISHERIES HAS BEEN AT IT SINCE 1892
+
+Long before the tourists. The seafood industry here is older than the vacation industry by a century, and in the smaller bayside communities it is still the thing the town is actually about.
+
+If any of this makes you want to see the place properly rather than the beach strip, tell us. The good parts are not the obvious ones.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
+  { id: 'art_rent', published: false, deliver: true,
+    title: 'What renting here actually costs, and why it is hard near the beach',
+    teaser: 'Plenty of people plan to rent for a year before they buy. On this coast that plan runs into a problem, and it is worth knowing about before you arrive.',
+    body: `The sensible advice for anybody moving somewhere new is to rent for a year first, learn the area, then buy. It is good advice and we give it ourselves.
+
+On this coast it comes with a complication, and it is better to hear it now than after you have given notice on the house you are in.
+
+THE NUMBERS FIRST
+
+County-wide, average apartment rent in Baldwin County has been running somewhere around fifteen hundred dollars a month through 2026, depending which source you look at and when.
+
+Broken down by town, the pattern is fairly consistent across the listing sites: Daphne sits at the lower end, Gulf Shores and Foley around the county average, Fairhope and Spanish Fort a little above, and Orange Beach highest of the main towns.
+
+One-bedroom apartments have averaged somewhere in the thirteen to fifteen hundred range and two-bedrooms noticeably higher, with a very wide spread at the top end.
+
+Treat all of that as a shape rather than a quote. These are apartment averages drawn from listing sites, they move constantly, and they do not tell you much about renting an actual house.
+
+THE PART THAT CATCHES PEOPLE OUT
+
+Long-term rentals near the beach are genuinely scarce, and the reason is simple economics.
+
+An owner in Gulf Shores or Orange Beach can rent a property by the week to visitors for a large part of the year. Doing that generally earns considerably more than an annual lease would. So a great deal of the housing stock closest to the water is in the short-term rental pool and is not available to somebody who wants to live here.
+
+What that means practically:
+
+Annual leases in the beach towns are fewer, go quickly, and are priced against what the owner could have made short-term rather than against what a similar house costs inland.
+
+If you are moving with a family, a dog and furniture, you may find the choice is far narrower than the listing sites suggest, because a lot of what appears is vacation inventory.
+
+Availability moves with the season. Looking for an annual lease in Gulf Shores in April is a different experience from looking in October.
+
+WHERE THE LONG-TERM RENTALS ACTUALLY ARE
+
+Inland and north. Foley, Robertsdale, Loxley and Bay Minette have far more conventional rental stock, and it is cheaper.
+
+The Eastern Shore \u2014 Daphne, Spanish Fort, Fairhope \u2014 has a proper year-round rental market, because those towns are commuter towns for Mobile rather than vacation towns. If your plan is to rent for a year while you look, the Eastern Shore is the easiest place in the county to do it.
+
+Gulf Shores and Orange Beach have annual rentals, but you will work harder for them and pay more.
+
+THE HONEST TRADE-OFF
+
+If you are set on living at the beach, renting there first may cost you more per month than buying would, and take longer to find.
+
+That is not us telling you to buy. It is a genuine feature of a market where a large share of the housing near the water earns its keep from tourism. Some people rent inland for a year and shop the beach at their leisure. Some people buy sooner than they planned because the rental math did not work. Both are reasonable, and which one fits depends on how certain you are.
+
+WHAT ELSE TO BUDGET FOR
+
+Overall cost of living in Baldwin County runs a little below the national average, though above the Alabama state average, which surprises people who assume Alabama is uniformly cheap. The coast is the expensive part of the state.
+
+Electricity here is below the national average. Insurance is where the coast costs you, and it costs owners rather than renters, which is one genuine argument for renting first.
+
+If you rent a furnished vacation property short-term while you look, understand that you are paying a seasonal rate and you should budget for it as a temporary expense rather than a baseline.
+
+THE PRACTICAL VERSION
+
+If you want to be at the beach and you want to rent first, start looking earlier than feels necessary and be flexible about which town.
+
+If you mainly want a year to get your bearings, look at the Eastern Shore or inland. You will have more choice, pay less, and still be well inside an hour of the water.
+
+And if you find that renting near the beach costs about what owning would, tell us, because that is a specific conversation worth having with real numbers rather than averages. We can put the two side by side for an actual address.
+
+All figures here were current in August 2026 and rents move constantly. Check what is on the market today rather than planning around an average.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_healthcare', published: false, deliver: true,
     title: 'Healthcare on the coast: where the hospitals actually are',
     teaser: 'There is no full hospital in Gulf Shores or Orange Beach. There is a 24-hour emergency department, which is not the same thing, and the difference matters if you are moving here in retirement.',
