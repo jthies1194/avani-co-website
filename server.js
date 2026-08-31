@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v164',
+    serverVersion: 'v166',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9069,6 +9069,31 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  /* ⚠ Every figure here was checked in August 2026 against the City of Orange Beach, the
+     City of Gulf Shores and Alabama State Parks. Parking rates on this coast changed on
+     1 January 2026 and will change again. The article says when it was checked and tells
+     people to confirm at the kiosk, because a stale fee on a page carrying schema markup
+     is worse than no page at all. RE-CHECK THIS EVERY JANUARY. */
+  art_beaches: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A beach boardwalk over dunes with a parking sign and a dog on a leash">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".5" stroke-linecap="round">
+<path d="M300 44 C400 30, 520 34, 690 46"/><path d="M330 74 C430 60, 540 64, 684 76"/></g>
+<g stroke="#0E1433" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M60 212 V150"/><path d="M60 150 H132 V186 H60"/></g>
+<text x="72" y="176" font-family="Helvetica,Arial,sans-serif" font-size="26" font-weight="bold" fill="#0E1433">P</text>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M196 196 L336 150 L476 174"/><path d="M196 212 V196"/><path d="M266 190 V212"/>
+<path d="M336 176 V212"/><path d="M406 176 V212"/><path d="M476 200 V212"/></g>
+<g stroke="#C89B4E" stroke-width="3" fill="none" opacity=".8" stroke-linecap="round">
+<path d="M180 212 C230 196, 268 200, 300 206"/><path d="M420 212 C460 198, 500 202, 540 208"/></g>
+<g stroke="#0E1433" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M556 212 V186"/><path d="M556 186 H600"/><path d="M600 186 V206"/>
+<path d="M566 206 V212"/><path d="M590 206 V212"/><circle cx="612" cy="180" r="11"/>
+<path d="M620 170 L628 162"/></g>
+<path d="M556 186 C540 168, 546 150, 562 146" stroke="#C89B4E" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>`,
+
   /* ⚠ 720x260, same box and palette as the others above. Line art only, no photographs:
      the whole set has to look like one publication, and a stock photo beside a drawing
      makes both look worse. */
@@ -9330,6 +9355,86 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_beaches', published: false, deliver: true,
+    title: 'Beach parking, and where you can actually take the dog',
+    teaser: 'Parking rates on this coast changed at the start of 2026, and the rules differ by which lot you pull into. The dog question has an answer most people get wrong.',
+    body: `Two questions come up more than any others from people moving here with a family: where do I park, and can I bring the dog. Neither has a single answer, because this stretch of coast is run by three different authorities and they do not use the same rules.
+
+Here is how it actually works, checked in August 2026.
+
+WHO RUNS WHICH BEACH
+
+Gulf State Park runs six beach accesses. Four are in Orange Beach: Romar Beach, Cotton Bayou, Alabama Point and Shell Beach. Two are in Gulf Shores: the Beach Pavilion and the Fishing and Education Pier.
+
+The City of Gulf Shores runs its own public accesses along the numbered streets, from 2nd Street east and west of Highway 59.
+
+Fort Morgan, out at the west end of the peninsula, is largely county and federal land, and that difference matters more than anything else on this page.
+
+PARKING AT GULF STATE PARK
+
+Pay at a kiosk in the lot, or scan the QR code and enter your license plate in the app. The kiosks take cash and cards but do not give change.
+
+Rates went up on 1 January 2026. Daily parking for a personal vehicle is now posted at fifteen dollars, and thirty-five dollars for a bus, a large RV or anything with a trailer.
+
+The annual pass is two hundred dollars for 2026, which is double what it was. It can only be bought and collected in person at Park Headquarters, 20115 State Park Road in Gulf Shores, and the decal goes on the lower left of the windshield.
+
+Overnight parking is not allowed in any Gulf State Park beach lot.
+
+If you paid at the kiosk, put the receipt on the dashboard. If you used the QR code, you do not need anything in the car.
+
+PARKING IN GULF SHORES
+
+The city lots use the ParkMobile app rather than kiosks, and paid parking runs roughly March through November.
+
+Non-resident rates are charged by the hour and depend on which side of Beach Boulevard you are on, with a higher overnight rate. Some lots offer a four-hour or all-day rate instead. The rates are posted at each lot and they are not all the same, so read the sign rather than assuming.
+
+TWO THINGS WORTH KNOWING IF YOU LIVE HERE
+
+Gulf Shores residents park free at city lots with a valid hurricane re-entry decal displayed. If you have just moved and have not sorted your decal, that is a reason to do it before the season.
+
+Orange Beach residents can get up to two no-charge annual passes for the Gulf State Park accesses from City Hall, with a third available for twenty-five dollars from Park Headquarters. The city defines a resident as somebody holding an Alabama driver's license showing a physical address inside the Orange Beach city limits.
+
+That definition catches people out. Owning property in Orange Beach without living there does not qualify you, and Ono Island addresses are not eligible under the city's definition. If either applies to you, it is worth confirming with City Hall before you plan around it.
+
+Active, former and veteran service members can get one free parking pass for the Gulf State Park accesses. It does not expire. Take proof of service and a valid ID to Park Headquarters.
+
+NOW THE DOG
+
+This is the one almost everybody gets wrong, and it is worth knowing before you sign a lease or buy a house because of the beach.
+
+Dogs are not allowed on the beach in Gulf Shores, in Orange Beach, or at Gulf State Park beach accesses. Not on a leash, not early in the morning, not in the off season. Those are the main beaches, and they are closed to dogs.
+
+There are places to take them, and they are worth knowing.
+
+The Fort Morgan peninsula is the answer, and it is a better one than most people expect. The public beach accesses along the peninsula are unincorporated Baldwin County rather than city, so the city bans do not apply. Dogs are allowed on the Gulf-front beach there, and the Fort Morgan Civic Association describes it as the only Gulf beach in Alabama where that is true.
+
+The county ordinance asks that a dog be under the owner's control rather than specifying a leash, but leash your dog anyway. The civic association is blunt that whether this continues is largely down to how responsibly dog owners behave, and off-leash dogs chasing shorebirds during nesting season is the complaint that turns up most often. Pick up after them.
+
+Two exceptions on that same peninsula, and they matter.
+
+Bon Secour National Wildlife Refuge is federal land and dogs are not permitted at any time, anywhere on it. It sits at the eastern end of the peninsula and it is a substantial stretch, so know where its boundary is before you let a dog out of the car.
+
+The Fort Morgan Historic Site at the far western tip has its own rules, because it is state-run rather than county. Leashed dogs are welcome on the fort grounds but not inside the museum. On the beach there, the Gulf-front side is off-limits and part of the bay-front is allowed — roughly the stretch between the old fishing pier and the Old Fisherman's Wharf. Check their signage, because it is a different authority again.
+
+Dauphin Island allows leashed dogs on its beaches, with the exception of West End Beach Park, which is closed to them to protect nesting birds. It is a short ferry ride from Fort Morgan and the ferry itself takes dogs.
+
+The Hugh S. Branyon Backcountry Trail inside Gulf State Park is dog friendly, paved, and about twelve miles of it. It is also accessible for wheelchairs and strollers, which makes it one of the more genuinely usable public spaces in the county.
+
+There are dog parks in Gulf Shores, Orange Beach and at Lake Shelby, plus one on Perdido Key.
+
+If you are crossing into Florida, note that Escambia County beaches are also closed to dogs, so Perdido Key is not the workaround people assume. Leashed dogs are allowed on some of the trails, including the Discovery Trail at Johnson Beach, but not on the sand.
+
+THE PRACTICAL VERSION
+
+If the beach with your dog is a genuine part of why you are moving here, that is a real argument for living on the Fort Morgan peninsula rather than in Gulf Shores or Orange Beach. It is the only Gulf-front beach in the state where the dog can come with you, and from Gulf Shores you are driving twenty to thirty minutes each way to use it.
+
+If you have kids and a car and no dog, an annual Gulf State Park pass pays for itself in about fourteen visits at the current daily rate, and the resident and veteran passes are worth claiming if you qualify.
+
+And check the posted rate at the lot. Parking on this coast changed at the start of 2026 and it will change again. Everything here was accurate in August 2026, and the kiosk is always right.
+
+If you are trying to work out which part of the coast actually suits how you live, that is a conversation we have most weeks. Ask us.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_newbuild_agent', published: false, deliver: true,
     title: 'Do I need my own agent if the builder already has one?',
     teaser: 'The agent at the model home is usually helpful and usually good at their job. They also represent the builder. Here is what that means for you, what actually gets negotiated on a new build, and the one bit of timing worth knowing before you tour.',
