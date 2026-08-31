@@ -2419,8 +2419,27 @@ function dripDue(lead, campaign, now){
   // a slower lane stretches the same steps out rather than dropping any of them
   const days = Math.floor((now - started) / (DAY * pace));
   const done = lead.drip.done || [];
+  /* \u26a0 A call or text reminder for somebody with NO PHONE NUMBER is a task nobody can
+     do. Most of this brokerage's imported contacts arrived with an email and nothing
+     else, so those steps were landing on the Today list as permanent, unactionable
+     items \u2014 and a Today list full of impossible tasks is how a person learns to stop
+     reading the Today list.
+
+     \u26a0 The step is SKIPPED, not marked done, and the sequence carries on to the next
+     one. Add a phone number later and the remaining reminders start appearing again,
+     which is the behaviour you want: the data improved, so the system does more.
+
+     \u26a0 Email steps are untouched. Those still work perfectly well without a number. */
+  const canCall = !!String(lead.phone || '').replace(/[^0-9]/g, '');
   return (campaign.steps || [])
-    .filter(st => st.day <= days && !done.includes(st.id));
+    .filter(st => st.day <= days && !done.includes(st.id))
+    .filter(st => canCall || !dripStepNeedsPhone(st));
+}
+
+/* One place that decides whether a step needs a phone, so the sweep, the Today list and
+   the diagnostic can never disagree about it. */
+function dripStepNeedsPhone(st) {
+  return st && (st.ch === 'task' || st.ch === 'sms');
 }
 
 /* ================= CONTENT LIBRARY & BROADCAST =================
@@ -5370,6 +5389,10 @@ app.get('/api/drip/status', async (req, res) => {
         stopped: !!(l.drip && l.drip.stopped),
         sentSoFar: (l.drip && Array.isArray(l.drip.done)) ? l.drip.done.length : 0,
         dueNow: due,
+        /* \u26a0 Reported explicitly, because a missing call reminder otherwise looks like a
+           bug. It is not \u2014 the lead has no phone number, so the reminder is skipped
+           rather than sitting on the Today list where nobody can act on it. */
+        noPhone: !String(l.phone || '').replace(/[^0-9]/g, ''),
         wouldMatch: campId ? null : ((await pickSequenceFor(l)) || {}).name || 'nothing',
       });
     }
@@ -6154,7 +6177,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v173',
+    serverVersion: 'v174',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
