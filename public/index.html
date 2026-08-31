@@ -5064,7 +5064,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v326';
+window.BUILD = 'index-v327';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -5459,6 +5459,24 @@ document.getElementById('crm-main').style.display='none';
 initCRM();
 }
 
+/* \u26a0 Reverts the checkbox if the write fails. A toggle that looks saved and is not is
+   how an agent's page ends up on the internet before anybody meant it to be. */
+async function agSetLive(id, live, el){
+  try{
+    const r = await fetch('/api/agent/' + id + '/public', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ live: !!live }) });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'could not save that');
+    showToast(live ? 'Profile is now live on the website.'
+                   : 'Profile hidden \u2014 they can still use the CRM.');
+    loadAgents();
+  }catch(e){
+    if(el) el.checked = !live;
+    showToast('Did not save: ' + e.message);
+  }
+}
+
 async function loadAgents(){
 let agents = [];
 try{
@@ -5468,12 +5486,30 @@ agents = data.agents || [];
 }catch(e){}
 agents.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
 
+/* \u26a0 Whether each agent has a PUBLIC PAGE, which is separate from whether they can
+   sign in. A new agent works leads from day one and has no page on the website until
+   this is switched on. Anyone absent from the map is public \u2014 that is what leaves
+   existing agents untouched. */
+let liveMap = {};
+try{
+  const r = await fetch('/api/agent/public-map');
+  if(r.ok){ const d = await r.json(); liveMap = d.map || {}; }
+}catch(e){}
+const isLive = id => liveMap[id] !== false;
+
 const list = document.getElementById('agent-list');
 list.innerHTML = agents.map(a => `
 <div class="agent-row">
 <div class="info">
-<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}</div>
+<div class="name">${escapeHtml(a.name)}${a.id===currentAgent.id ? ' (you)' : ''}<span class="agent-role-tag ${a.role==='broker'?'broker':''}">${a.role}</span>${a.active===false ? '<span class="agent-role-tag" style="color:#B84A2E; border-color:#B84A2E;">Locked</span>' : ''}${isLive(a.id) ? '' : '<span class="agent-role-tag" style="color:#8A6A12; border-color:#C89B4E;">No public page</span>'}</div>
 <div class="meta">${escapeHtml(a.email||'')}${a.phone?(' · '+escapeHtml(a.phone)):''}${a.lastLogin ? ' · Last login: '+fmtDate(a.lastLogin) : ' · Never logged in'}</div>
+<div class="meta" style="margin-top:5px">
+  <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+    <input type="checkbox" ${isLive(a.id) ? 'checked' : ''}
+      onchange="agSetLive('${a.id}', this.checked, this)">
+    <span>${isLive(a.id) ? 'Profile is live on the website' : 'Hidden \u2014 can use the CRM, no public page'}</span>
+  </label>
+</div>
 </div>
 ${(function(){
   const isSelf = a.id === currentAgent.id;
