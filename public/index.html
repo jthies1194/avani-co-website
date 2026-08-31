@@ -5079,7 +5079,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v330';
+window.BUILD = 'index-v331';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -22369,7 +22369,17 @@ async function ntToggle(k){
   letter-spacing:.03em;background:#FCFCFA}
 #crm-main .lt-legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 #crm-main .lt-legend i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
-#crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;overflow:auto}
+/* \u26a0 STICKY, because the list can now be hundreds of rows long. Before this the panel
+   sat at the top of the layout: click a lead 200 rows down and the detail appeared
+   somewhere far above, so you had to scroll all the way up to read it and all the way
+   back to pick the next one. With a dozen leads nobody noticed; with 264 it is the
+   first thing you hit.
+   \u26a0 This only works because html/body use overflow-x:clip rather than hidden \u2014 hidden
+   makes body a scroll container and kills sticky everywhere. Do not change that back.
+   \u26a0 --railtop is measured live and is what the left rail already uses. */
+#crm-main .lt-panel{width:264px;flex:0 0 auto;padding:14px;background:#FBFAF7;
+  position:sticky;top:calc(var(--railtop, 0px) + 8px);align-self:flex-start;
+  max-height:calc(100dvh - var(--railtop, 0px) - 24px);overflow:auto}
 #crm-main .lt-empty{padding:20px 12px;font-size:13px;color:var(--mut)}
 /* ---------- Recently deleted ---------- */
 #crm-main #ld-arch{position:fixed;top:0;right:0;bottom:0;width:min(420px,100%);
@@ -22447,7 +22457,11 @@ async function ntToggle(k){
 /* \u26a0 narrow: the panel is a row inside the table, not a column beside it */
 #crm-main .lt-wrap.narrow{display:block}
 #crm-main .lt-wrap.narrow .lt-list{border-right:0}
-#crm-main .lt-panel.narrow{width:auto;padding:14px 12px 16px;background:#FBFAF7;
+/* \u26a0 The inline variant sits inside a table cell and must not inherit the sticky
+   above. Written as "table cell" deliberately: a literal tag name in a comment is
+   counted by the tag-balance check and shows up as a phantom unclosed element. */
+#crm-main .lt-panel.narrow{position:static;max-height:none;
+  width:auto;padding:14px 12px 16px;background:#FBFAF7;
   border-top:1px solid var(--hair2)}
 #crm-main .lt-inline > td{padding:0;background:#FBFAF7}
 #crm-main .lt-panel.narrow .lt-stack .btn-sm{text-align:center}
