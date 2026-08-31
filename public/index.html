@@ -3277,6 +3277,8 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
     <div class="setup-panel">
       <h3 class="sx-h" id="ct-arts-h">Articles</h3>
       <p class="sx-sub" id="ct-arts-sub">&nbsp;</p>
+      <div id="ct-filter" style="display:none;gap:7px;flex-wrap:wrap;padding:0 0 12px;
+        display:flex"></div>
       <div class="setup-body" id="ct-articles">Loading&hellip;</div>
       <button class="btn-sm primary broker-only" style="margin-top:12px"
         onclick="ctNewArticle()">+ Write an article</button>
@@ -5153,7 +5155,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v338';
+window.BUILD = 'index-v339';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9828,6 +9830,11 @@ function showCrmSection(id){
     if(id === 'sec-marketing' && typeof renderMarketingSection === 'function'){
       renderMarketingSection().then(() => {
         if(typeof renderOpenHouses === 'function') renderOpenHouses();
+        /* \u26a0 Painted after the section render, because that render replaces the whole
+           section and would wipe anything drawn before it. Without this the library
+           sits on "Loading..." forever, which is the same bug the Seller reports panel
+           had for fourteen builds. */
+        if(typeof mlLoad === 'function') mlLoad();
       });
     }
     if(id === 'sec-calendar' && typeof renderCalendarSection === 'function') renderCalendarSection();
@@ -13331,6 +13338,10 @@ function ctCapture(){
   if(g('ct-intro') !== undefined) ctDraft.intro = g('ct-intro') || '';
 }
 
+let ctFilter = 'all';
+
+function ctSetFilter(k){ ctFilter = k; renderContent(); }
+
 async function renderContent(){
   const host = document.getElementById('ct-articles');
   if(!host) return;
@@ -13351,7 +13362,28 @@ async function renderContent(){
       + 'version of the article that is yours \u2014 share it anywhere, and anyone who gets '
       + 'in touch from it comes to you, not the office.';
 
-  host.innerHTML = ctArts.length ? ctArts.map((a,i) => `
+  /* \u26a0 Filter the DISPLAY, never the array. Every button below calls ctPublish(i),
+     ctEdit(i), ctDelete(i) with an index into ctArts \u2014 filter the array itself and
+     those indices shift, so pressing Publish on one article publishes a different one.
+     Pairing each entry with its original index first is what makes this safe. */
+  const counts = { all: ctArts.length,
+    live: ctArts.filter(x => x.published).length,
+    draft: ctArts.filter(x => !x.published).length };
+  const bar = document.getElementById('ct-filter');
+  if(bar && staff){
+    bar.style.display = '';
+    bar.innerHTML = [['all','All'],['draft','Drafts'],['live','Live']].map(([k,label]) =>
+      `<button class="btn-sm ${ctFilter === k ? 'primary' : ''}" onclick="ctSetFilter('${k}')">`
+      + label + ' <span style="opacity:.65">' + counts[k] + '</span></button>').join('');
+  } else if(bar){ bar.style.display = 'none'; }
+
+  const shown = ctArts
+    .map((a, i) => [a, i])
+    .filter(([a]) => ctFilter === 'all'
+                  || (ctFilter === 'live' && a.published)
+                  || (ctFilter === 'draft' && !a.published));
+
+  host.innerHTML = shown.length ? shown.map(([a,i]) => `
     <div class="ct-art ${a.published ? 'live' : ''}">
       <div class="b">
         <div class="st">${a.published
@@ -13806,7 +13838,16 @@ async function renderMarketingSection(){
   const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
   await mkLoadPolicy();
 
-  el.innerHTML = ohPanelHtml() + `<div class="card"><div style="padding:18px">
+  el.innerHTML = `<div class="card" id="ml-panel"><div style="padding:18px">
+      <h3 style="margin:0 0 4px;font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:19px">
+        Posts and graphics, kept</h3>
+      <p style="margin:0 0 14px;color:rgba(27,32,67,.72);max-width:640px;font-size:13.5px">
+        Anything written for Facebook, a Google post or Instagram lives here, with the
+        picture and the link that go with it. Copy it when you need it instead of
+        hunting for where you put it. Your agents can use these too.</p>
+      <div id="ml-body">Loading&hellip;</div>
+    </div></div>
+    ` + ohPanelHtml() + `<div class="card" style="margin-top:14px"><div style="padding:18px">
       <p style="margin:0 0 14px;color:rgba(27,32,67,.72);max-width:640px">
         Business cards and yard sign riders, print-ready, with a QR code that brings
         every scan back to you. Save a project and pick it up later instead of
@@ -26527,6 +26568,140 @@ async function goalSave(){
        what was actually stored \\u2014 the server clamps, and the agent should see that. */
     if(typeof renderDashboard === 'function') renderDashboard();
   }catch(e){ showToast('Did not save: ' + e.message); }
+}
+</script>
+<style>
+#ml-panel .ml-item{border:1px solid var(--hair2);border-radius:7px;background:#fff;
+  padding:14px 16px;margin-bottom:10px}
+#ml-panel .ml-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  flex-wrap:wrap;margin-bottom:7px}
+#ml-panel .ml-t{font-size:15px;font-weight:600;color:var(--rl,#0E1433)}
+#ml-panel .ml-where{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:#8A6A12;background:#FDF3E9;border:1px solid #EBD5B8;border-radius:3px;padding:2px 8px}
+#ml-panel .ml-body{font-size:13px;line-height:1.6;white-space:pre-wrap;color:var(--ink);
+  background:#FBFAF7;border:1px solid var(--hair2);border-radius:5px;padding:11px 13px;
+  max-height:190px;overflow:auto;margin:0 0 9px}
+#ml-panel .ml-acts{display:flex;gap:7px;flex-wrap:wrap}
+#ml-panel .ml-when{font-size:12px;color:var(--driftwood)}
+#ml-panel textarea,#ml-panel input{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;
+  padding:9px 11px;border:1px solid var(--hair2);border-radius:5px;background:#fff;margin-bottom:8px}
+#ml-panel textarea{min-height:120px;line-height:1.55;resize:vertical}
+#ml-panel .ml-new{border:1px dashed var(--hair2);border-radius:7px;padding:14px 16px;margin-top:12px}
+</style>
+<script>
+/* ---------- the marketing library (index 339) ----------
+   ⚠ Built because the broker said it plainly: post text and graphics were living in a
+   chat transcript he had to scroll back through to find. Anything he is expected to
+   publish repeatedly belongs in the system that runs his business, not in a
+   conversation window.
+
+   ⚠ Stored in settings:marketingLibrary. Broker-only to write; agents can read and copy,
+   because the point is that a whole brokerage posts the same approved wording rather
+   than each agent inventing their own.
+
+   ⚠ Images are stored as a URL, not as uploaded bytes. A base64 image in a settings row
+   would bloat every read of that key, and the graphics already live in public/ where
+   Facebook can fetch them. */
+
+let ML = [], mlBusy = false;
+
+async function mlLoad(){
+  try{
+    const v = await storeGet('settings:marketingLibrary');
+    ML = Array.isArray(v) ? v : [];
+  }catch(e){ ML = []; }
+  mlRender();
+}
+
+function mlRender(){
+  const host = document.getElementById('ml-body');
+  if(!host) return;
+  const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
+  host.innerHTML = (ML.length ? ML.map((m,i) => `
+    <div class="ml-item">
+      <div class="ml-top">
+        <span class="ml-t">${escapeHtml(m.title || 'Untitled')}</span>
+        <span>${m.where ? '<span class="ml-where">' + escapeHtml(m.where) + '</span>' : ''}
+          <span class="ml-when">${m.savedAt ? fmtDate(m.savedAt) : ''}</span></span>
+      </div>
+      <div class="ml-body">${escapeHtml(m.text || '')}</div>
+      <div class="ml-acts">
+        <button class="btn-sm primary" onclick="mlCopy(${i})">Copy the words</button>
+        ${m.image ? `<a class="btn-sm" href="${escapeHtml(m.image)}" target="_blank"
+          rel="noopener" download>Get the picture</a>` : ''}
+        ${m.link ? `<button class="btn-sm" onclick="mlCopyLink(${i})">Copy the link</button>` : ''}
+        ${staff ? `<button class="btn-sm" onclick="mlDelete(${i})">Delete</button>` : ''}
+      </div>
+    </div>`).join('')
+    : '<p style="font-size:13px;color:var(--driftwood)">Nothing saved yet. '
+      + 'Anything you paste in below is here next time, for you and for your agents.</p>')
+    + (staff ? `
+    <div class="ml-new">
+      <input id="ml-title" placeholder="What is it? e.g. Down payment help — announcement">
+      <input id="ml-where" placeholder="Where does it go? e.g. Facebook, Google Post, Instagram">
+      <textarea id="ml-text" placeholder="Paste the words here..."></textarea>
+      <input id="ml-link" placeholder="Link it should point at (optional)">
+      <input id="ml-image" placeholder="Picture URL, e.g. /og-hap.png (optional)">
+      <button class="btn-sm primary" onclick="mlSave()">Save it</button>
+    </div>` : '');
+}
+
+async function mlSave(){
+  if(mlBusy) return;
+  const g = id => ((document.getElementById(id) || {}).value || '').trim();
+  const text = g('ml-text');
+  if(!text){ showToast('Paste the words first.'); return; }
+  mlBusy = true;
+  try{
+    const list = Array.isArray(ML) ? ML.slice() : [];
+    /* Newest first, because the thing you just saved is the thing you are about to use. */
+    list.unshift({
+      id: 'ml_' + Date.now().toString(36),
+      title: g('ml-title').slice(0, 120) || 'Untitled',
+      where: g('ml-where').slice(0, 40),
+      text: text.slice(0, 6000),
+      link: g('ml-link').slice(0, 400),
+      image: g('ml-image').slice(0, 400),
+      savedAt: new Date().toISOString(),
+      savedBy: (typeof currentAgent !== 'undefined' && currentAgent) ? currentAgent.name : '',
+    });
+    /* ⚠ storeSet returns false on a failed write. Saying "saved" when it was not is how
+       somebody closes the tab and loses the only copy of what they wrote. */
+    const ok = await storeSet('settings:marketingLibrary', list.slice(0, 200));
+    if(ok === false) throw new Error('that did not save');
+    ML = list;
+    ['ml-title','ml-where','ml-text','ml-link','ml-image'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+    showToast('Saved to the library.');
+    mlRender();
+  }catch(e){ showToast('Did not save: ' + e.message); }
+  mlBusy = false;
+}
+
+function mlCopy(i){
+  const m = ML[i]; if(!m) return;
+  /* The link goes with the words, because a post without its link is half a post. */
+  const out = m.link ? (m.text + '\n\n' + m.link) : m.text;
+  navigator.clipboard.writeText(out)
+    .then(() => showToast(m.link ? 'Words and link copied.' : 'Copied.'))
+    .catch(() => showToast('Could not copy — select the text and copy it by hand.'));
+}
+
+function mlCopyLink(i){
+  const m = ML[i]; if(!m || !m.link) return;
+  navigator.clipboard.writeText(m.link)
+    .then(() => showToast('Link copied.'))
+    .catch(() => showToast('Could not copy that.'));
+}
+
+async function mlDelete(i){
+  const m = ML[i]; if(!m) return;
+  if(!confirm('Delete "' + (m.title || 'this') + '" from the library?')) return;
+  const list = ML.slice(); list.splice(i, 1);
+  const ok = await storeSet('settings:marketingLibrary', list);
+  if(ok === false){ showToast('That did not save.'); return; }
+  ML = list; mlRender(); showToast('Deleted.');
 }
 </script>
 </body>
