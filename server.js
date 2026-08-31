@@ -5992,7 +5992,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v157',
+    serverVersion: 'v158',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -8252,6 +8252,19 @@ function programPage(opts) {
 <meta property="og:title" content="${esc(opts.title)}">
 <meta property="og:description" content="${esc(opts.desc)}">
 <meta property="og:url" content="${url}">
+<meta property="og:site_name" content="${esc(BROKERAGE_NAME)}">
+<!-- \u26a0 Without og:image a shared link renders as a grey card with no picture, which is
+     what these pages did while being posted to Facebook. 1200x630 is the size every
+     platform crops to. The file must live in public/ and be reachable, or the card
+     falls back to grey again \u2014 test with Facebook's sharing debugger after deploying. -->
+<meta property="og:image" content="${origin}${opts.image}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(opts.imageAlt || opts.h1)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(opts.title)}">
+<meta name="twitter:description" content="${esc(opts.desc)}">
+<meta name="twitter:image" content="${origin}${opts.image}">
 <script type="application/ld+json">${JSON.stringify(pageLd)}</script>
 <script type="application/ld+json">${JSON.stringify(faqLd)}</script>
 <style>
@@ -8512,6 +8525,8 @@ app.get('/help/down-payment-assistance', async (req, res) => {
   res.type('html').send(programPage({
     program: 'hap',
     path: '/help/down-payment-assistance',
+    image: '/og-hap.png',
+    imageAlt: 'Baldwin County down payment assistance opens 21 September 2026',
     eyebrow: 'Baldwin County',
     title: 'Baldwin County down payment help — HAP opens 21 September 2026',
     h1: 'Baldwin County is opening down payment help on 21 September',
@@ -8606,6 +8621,8 @@ app.get('/help/fortified-roof-grant', async (req, res) => {
   res.type('html').send(programPage({
     program: 'fortified',
     path: '/help/fortified-roof-grant',
+    image: '/og-fortified.png',
+    imageAlt: 'Up to $10,000 toward a FORTIFIED roof in coastal Alabama',
     eyebrow: 'Coastal Alabama',
     title: 'Strengthen Alabama Homes: up to $10,000 toward a FORTIFIED roof',
     h1: 'There is up to $10,000 for a FORTIFIED roof, and it goes in minutes',
