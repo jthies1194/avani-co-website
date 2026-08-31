@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v162',
+    serverVersion: 'v163',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9059,6 +9059,64 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  /* ⚠ 720x260, same box and palette as the others above. Line art only, no photographs:
+     the whole set has to look like one publication, and a stock photo beside a drawing
+     makes both look worse. */
+  art_newbuild_agent: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two figures either side of a table, one house behind each">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".5" stroke-linecap="round">
+<path d="M40 44 C150 30, 260 34, 340 46"/><path d="M382 46 C470 32, 580 34, 684 48"/></g>
+
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M96 168 L152 122 L208 168"/><path d="M112 156 V212"/><path d="M192 156 V212"/>
+<path d="M138 212 V180 H166 V212"/></g>
+
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".55">
+<path d="M512 168 L568 122 L624 168"/><path d="M528 156 V212"/><path d="M608 156 V212"/>
+<path d="M554 212 V180 H582 V212"/></g>
+
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round">
+<circle cx="300" cy="132" r="17"/><path d="M300 152 V190"/><path d="M300 166 L276 184"/>
+<path d="M300 190 L286 212"/><path d="M300 190 L314 212"/></g>
+
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" opacity=".55">
+<circle cx="420" cy="132" r="17"/><path d="M420 152 V190"/><path d="M420 166 L444 184"/>
+<path d="M420 190 L406 212"/><path d="M420 190 L434 212"/></g>
+
+<path d="M268 186 H452" stroke="#C89B4E" stroke-width="6" stroke-linecap="round"/>
+<path d="M360 186 V212" stroke="#C89B4E" stroke-width="4" stroke-linecap="round" opacity=".7"/>
+</svg>`,
+
+  art_newbuild_inspection: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A house frame before drywall, with a magnifying glass over the studs">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M36 40 C140 26, 250 30, 336 42"/><path d="M400 40 C500 26, 600 30, 690 42"/></g>
+
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M150 150 L330 74 L510 150"/>
+<path d="M172 142 V212"/><path d="M488 142 V212"/></g>
+
+<g stroke="#0E1433" stroke-width="3.5" fill="none" stroke-linecap="round" opacity=".75">
+<path d="M214 150 V212"/><path d="M256 150 V212"/><path d="M298 150 V212"/>
+<path d="M340 150 V212"/><path d="M382 150 V212"/><path d="M424 150 V212"/>
+<path d="M172 176 H488"/></g>
+
+<g stroke="#C89B4E" stroke-width="3" fill="none" opacity=".85" stroke-linecap="round">
+<path d="M330 92 L214 142"/><path d="M330 92 L446 142"/></g>
+
+<g stroke="#0E1433" stroke-width="6" fill="none" stroke-linecap="round">
+<circle cx="392" cy="150" r="52" fill="#F6EEDC"/>
+<circle cx="392" cy="150" r="52"/>
+<path d="M430 188 L468 226"/></g>
+
+<g stroke="#C89B4E" stroke-width="4" fill="none" stroke-linecap="round">
+<path d="M370 150 L385 166 L416 132"/></g>
+</svg>`,
+
   art_insurance: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A house in high wind with a figure watching">
 <rect width="720" height="260" fill="#F6EEDC"/>
 <g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".55" stroke-linecap="round">
@@ -9532,6 +9590,15 @@ async function siteIsPrivate() {
    handed back. */
 function articleSeoHtml(a, origin, agentSlug, noindex, others) {
   const url = `${origin}/insights/${a.slug}`;
+  /* \u26a0 `image` was stored on every article and validated on save, and rendered NOWHERE
+     \u2014 not on the page, not in the share card. Another field written with no reader,
+     which is the oldest bug in this codebase. A shared article showed a grey box with
+     no picture, exactly as the grant pages did before server 158.
+     \u26a0 A relative path is made absolute: a social crawler cannot resolve "/x.png". */
+  const rawImg = String(a.image || '').trim();
+  const artImg = !rawImg ? ''
+    : /^https?:\/\//i.test(rawImg) ? rawImg
+    : origin + (rawImg.startsWith('/') ? '' : '/') + rawImg;
   const esc = t => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const desc = String(a.teaser || '').replace(/\s+/g, ' ').slice(0, 300);
@@ -9564,6 +9631,15 @@ function articleSeoHtml(a, origin, agentSlug, noindex, others) {
 <meta property="og:title" content="${esc(a.title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${url}">
+<meta property="og:site_name" content="${esc(BROKERAGE_NAME)}">
+${artImg ? `<meta property="og:image" content="${esc(artImg)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(a.title)}">` : ''}
+<meta name="twitter:card" content="${artImg ? 'summary_large_image' : 'summary'}">
+<meta name="twitter:title" content="${esc(a.title)}">
+<meta name="twitter:description" content="${esc(desc)}">
+${artImg ? `<meta name="twitter:image" content="${esc(artImg)}">` : ''}
 <script type="application/ld+json">${JSON.stringify(ld)}</script>
 <style>
 body{margin:0;background:#FBFAF7;color:#141A3C;
