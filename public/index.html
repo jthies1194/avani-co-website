@@ -3441,20 +3441,7 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <p>Add a quote and name — these show in a "What our clients say" section on the site. Paste in reviews from past clients or from Google.</p>
 <div id="testimonial-list" style="margin-top:10px;"></div>
 
-<div id="gr-box" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px">
-  <h4 style="margin:0 0 4px;font-size:15px">Bring your Google reviews in</h4>
-  <p style="font-size:13px;color:var(--driftwood);margin:0 0 10px;line-height:1.55">
-    Open your Google profile, select a review, copy it, and paste it below. Several at a time
-    is fine &mdash; leave a blank line between each one. Nothing is saved until you have checked
-    it, and nothing shows publicly until you approve it.</p>
-  <textarea id="gr-paste" placeholder="Sarah M.&#10;5 stars&#10;Jimmy made our move from Ohio painless...&#10;&#10;Dave R.&#10;5 stars&#10;Knew the condo market inside out..."></textarea>
-  <div class="gr-note">&#9888; These stay marked as <b>Google reviews</b> and are shown with that
-    credit. Reviews are not reworded, and they are not turned into site testimonials &mdash;
-    passing a Google review off as something collected here would misrepresent where it came
-    from, and real estate advertising is regulated.</div>
-  <button class="btn-sm" onclick="grParse()">Read them</button>
-  <div id="gr-rows" style="margin-top:12px"></div>
-</div>
+
 <div class="setup-grid" style="margin-top:10px;">
 <textarea id="testimonial-text" placeholder="The testimonial text..." style="grid-column:1/-1; min-height:60px; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-family:'Public Sans',sans-serif; font-size:13px;"></textarea>
 <input id="testimonial-author" placeholder="Client name (e.g. Sarah M.)" style="border:1px solid var(--line); border-radius:4px; padding:8px 10px;">
@@ -3794,6 +3781,28 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="setup-body" id="pending-reviews-body">
 <p>Clients can leave a review directly on the site. Nothing shows publicly until you approve it here.</p>
 <div id="pending-reviews-list" style="margin-top:10px;"></div>
+</div>
+</div></div>
+
+<!-- \u26a0 This belongs in Reviews, not in Settings. It was originally attached to the
+     testimonials panel, which lives under Settings \u2014 so the broker looked for it on the
+     Reviews screen, which is exactly where anyone would look, and reported it missing.
+     A control belongs on the screen named after the job it does. -->
+<div class="card" id="gr-wrap"><div style="padding:18px">
+<div id="gr-box" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px">
+  <h4 style="margin:0 0 4px;font-size:15px">Bring your Google reviews in</h4>
+  <p style="font-size:13px;color:var(--driftwood);margin:0 0 10px;line-height:1.55">
+    Open the Reviews list on your Google profile, select the whole thing, copy it, and paste it
+    below &mdash; all of them at once is fine. <b>Your own replies are stripped out automatically</b>,
+    and anything already imported is skipped, so you can paste the full list again whenever new
+    ones come in. Nothing shows publicly until you approve it.</p>
+  <textarea id="gr-paste" placeholder="Paste the whole Reviews list from your Google profile here..."></textarea>
+  <div class="gr-note">&#9888; These stay marked as <b>Google reviews</b> and are shown with that
+    credit. Reviews are not reworded, and they are not turned into site testimonials &mdash;
+    passing a Google review off as something collected here would misrepresent where it came
+    from, and real estate advertising is regulated.</div>
+  <button class="btn-sm" onclick="grParse()">Read them</button>
+  <div id="gr-rows" style="margin-top:12px"></div>
 </div>
 </div></div>
 
@@ -5055,7 +5064,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v323';
+window.BUILD = 'index-v325';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9547,7 +9556,17 @@ function showCrmSection(id){
       const staff = isAdminOrOwner();
       if(mine)  mine.style.display  = staff ? 'none' : '';
       if(queue) queue.style.display = staff ? '' : 'none';
-      if(staff){ if(typeof loadPendingReviews === 'function') loadPendingReviews(); }
+      /* \u26a0 Broker only. An agent adding reviews to the brokerage's public page is the
+         kind of thing that has to be one person's decision, and the approval queue
+         beside it is already broker-only. */
+      const grw = document.getElementById('gr-wrap');
+      if(grw) grw.style.display = staff ? '' : 'none';
+      if(staff){
+        if(typeof loadPendingReviews === 'function') loadPendingReviews();
+        /* \u26a0 Paint the empty state on open. Without this the box sits blank until the
+           broker presses a button, which reads as broken. */
+        if(typeof grRender === 'function'){ try{ grRender(); }catch(e){} }
+      }
       else     { if(typeof renderMyReviews === 'function') renderMyReviews(); }
     }
     if(id === 'sec-myprofile'){ renderMyProfileSection();
@@ -25798,42 +25817,73 @@ async function cqWrite(id, kind, note, outcome){
    ⚠ Everything lands as `pending`, exactly like a review submitted on the site, so
    nothing appears publicly until the broker has read it and approved it. */
 
-let grRows = [];
+let grRows = [], grSkipped = 0;
 
 function grParse(){
   const raw = (document.getElementById('gr-paste') || {}).value || '';
-  /* Blank line between reviews. Google's copy output varies a great deal, so this
-     guesses and then lets the broker correct every field before anything is saved —
-     guessing badly is fine, guessing badly AND saving silently is not. */
-  const blocks = raw.split(/\n\s*\n/).map(b => b.trim()).filter(b => b.length > 3);
+  /* \u26a0 Keyed off "open_in_new", which Google appends to every reviewer's name when the
+     Reviews list is copied. That is a far more reliable delimiter than blank lines:
+     an earlier version split on blank lines and produced garbage, because the broker's
+     OWN replies sit inside the same block and became fake reviews with his name on them.
+
+     \u26a0 A reply is anything from the line "Owner" or the brokerage signature onward. It
+     must never be imported \u2014 importing the agent praising himself as a review would be
+     both nonsense and, on a public page, misleading advertising. */
+  const lines = String(raw).replace(/\r/g, '').split('\n');
+  const OPEN = /open_in_new\s*$/;
+  const blocks = []; let cur = null;
+  for(const line of lines){
+    const ln = line.trim();
+    if(OPEN.test(ln)){
+      if(cur) blocks.push(cur);
+      cur = { author: ln.replace(OPEN, '').trim(), lines: [] };
+      continue;
+    }
+    if(cur) cur.lines.push(ln);
+  }
+  if(cur) blocks.push(cur);
+
   grRows = blocks.map(b => {
-    const lines = b.split('\n').map(l => l.trim()).filter(Boolean);
-    let author = '', rating = 5, text = '';
+    let rating = 5;
     const body = [];
-    lines.forEach((ln, i) => {
-      const stars = (ln.match(/★/g) || []).length;
-      const outOf = ln.match(/\b([1-5])\s*(?:\/|out of)\s*5\b/i);
-      const bare  = ln.match(/^([1-5])\s*stars?\b/i);
-      if(stars >= 1 && stars <= 5 && ln.replace(/[★☆\s]/g,'').length === 0){ rating = stars; return; }
-      if(outOf){ rating = parseInt(outOf[1],10); return; }
-      if(bare){ rating = parseInt(bare[1],10); return; }
-      /* A short first line is almost always the name. \u26a0 It may legitimately end in a
-         full stop when it is an initial \u2014 "Sarah M." \u2014 which an earlier version rejected,
-         so most reviewers arrived with no name at all. Allow a trailing initial; reject
-         anything that ends like a sentence. */
-      const looksLikeName = ln.length < 46 && ln.split(/\s+/).length <= 5
-        && (!/[.!?]$/.test(ln) || /\b[A-Z]\.$/.test(ln));
-      if(i === 0 && !author && looksLikeName){ author = ln; return; }
-      if(/(^|\s)\d+\s+(reviews?|photos?)\b/i.test(ln)) return;      // "Local Guide · 12 reviews"
-      /* \u26a0 "2 months ago" starts with a digit, so an (a\s+)? prefix never matched it and
-         the timestamp ended up glued to the front of the review text. */
-      if(/^(a|an|\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i.test(ln)) return;
-      if(/^(new|local guide)\b/i.test(ln)) return;
+    for(const ln of b.lines){
+      if(!ln) continue;
+      if(/^Owner\s*$/i.test(ln)) break;                       // the reply starts here
+      if(/REALTOR\s*\u00ae?\s*\|/i.test(ln)) break;            // brokerage signature line
+      /* "starstarstarstarstar 5 weeks ago" \u2014 count the word, take the rating. */
+      const head = ln.split(/\s/)[0] || '';
+      const stars = (head.match(/star/gi) || []).length;
+      if(stars >= 1 && stars <= 5 && /^(star)+$/i.test(head)){ rating = stars; continue; }
+      if(/^(local guide\s*\u2022\s*)?\d+\s+reviews?\s*(\u2022\s*\d+\s+photos?)?$/i.test(ln)) continue;
+      if(/^\d+\s+photos?$/i.test(ln)) continue;
+      if(/^\+\d+$/.test(ln)) continue;                         // "+2" photo marker
+      if(/^positive$/i.test(ln)) continue;                     // old Google attribute block
+      if(/^(responsiveness|quality|professionalism|value)(,\s*(responsiveness|quality|professionalism|value))*$/i.test(ln)) continue;
+      if(/^(all|replied|unreplied|reviews)$/i.test(ln)) continue;   // the list's own tabs
       body.push(ln);
-    });
-    text = body.join(' ').trim();
-    return { author, rating, text };
-  }).filter(r => r.text);
+    }
+    const text = body.join(' ')
+      .replace(/\s*\.\.\.\s*View full review\s*$/i, '')
+      .replace(/\s+/g, ' ').trim();
+    return { author: b.author, rating, text };
+  }).filter(r => r.author && r.text && r.text.length > 3);
+
+  /* \u26a0 Skip anything already imported. Pasting the whole list again after a few new
+     reviews come in is the normal way this gets used, so it must not duplicate. Matched
+     on author plus the first 60 characters, which survives Google truncating long ones. */
+  grDedupe();
+}
+
+async function grDedupe(){
+  try{
+    const list = await storeGet('settings:testimonials') || [];
+    const seen = new Set((Array.isArray(list) ? list : []).map(t =>
+      (String(t.author||'').trim().toLowerCase() + '|' + String(t.text||'').trim().slice(0,60).toLowerCase())));
+    const before = grRows.length;
+    grRows = grRows.filter(r =>
+      !seen.has(String(r.author).trim().toLowerCase() + '|' + String(r.text).trim().slice(0,60).toLowerCase()));
+    grSkipped = before - grRows.length;
+  }catch(e){ grSkipped = 0; }
   grRender();
 }
 
@@ -25841,11 +25891,19 @@ function grRender(){
   const host = document.getElementById('gr-rows');
   if(!host) return;
   if(!grRows.length){
-    host.innerHTML = '<p style="font-size:13px;color:var(--driftwood)">Nothing found yet. '
-      + 'Paste your reviews above with a blank line between each one, then press Read them.</p>';
+    host.innerHTML = '<p style="font-size:13px;color:var(--driftwood)">'
+      + (grSkipped
+          ? 'All ' + grSkipped + ' of those are already in \u2014 nothing new to add.'
+          : 'Nothing found yet. Copy the whole Reviews list from your Google profile and '
+            + 'paste it above, then press Read them. Your own replies are left out '
+            + 'automatically.')
+      + '</p>';
     return;
   }
-  host.innerHTML = grRows.map((r,i) =>
+  host.innerHTML = (grSkipped
+      ? '<p style="font-size:13px;color:var(--driftwood);margin:0 0 10px">'
+        + grSkipped + ' already imported and skipped.</p>' : '')
+    + grRows.map((r,i) =>
     '<div class="gr-row">'
       + '<button class="drop" onclick="grDrop(' + i + ')" title="Leave this one out">&times;</button>'
       + '<input class="who" value="' + escapeHtml(r.author) + '" placeholder="Their name" '
