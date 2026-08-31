@@ -5992,7 +5992,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v156',
+    serverVersion: 'v157',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -8334,6 +8334,177 @@ async function pSend(){
 </script>
 </body></html>`;
 }
+
+/* ================= THE POSTING CALENDAR (server 157) =================
+   \u26a0 What this is and is not. Google's Business Profile LocalPosts API can publish
+   posts directly, and now supports recurring ones. But the Business Profile APIs are
+   NOT open by default: a new Cloud project starts with zero quota and access has to be
+   formally requested and approved. Until that approval lands, nothing here can publish
+   to Google on its own, and pretending otherwise would be the worst kind of feature.
+
+   So this is the half that works today: the calendar remembers, and emails the broker
+   the exact text on the morning it should go out. He pastes it. That removes the
+   "remember to post" problem, which is the actual problem \u2014 the pasting is ten seconds.
+
+   \u26a0 When API access is approved, postSweep is where publishing goes. The schedule, the
+   text, the dates and the "already sent" record all already exist; only the delivery
+   changes. Do not rebuild the calendar to add the API.
+
+   \u26a0 Dated posts expire. A post advertising a deadline that has passed is worse than no
+   post, so anything with an `until` date stops being offered after it. */
+
+const POST_LOG = 'settings:postCalendar';
+
+/* The standing calendar. Dates are ISO; `every` is for things that recur.
+   \u26a0 Edited here rather than in a screen on purpose \u2014 there are four of them and a
+   posting calendar nobody maintains is worse than a short one that is correct. */
+function postCalendar(origin) {
+  const hap = origin + '/help/down-payment-assistance';
+  const fort = origin + '/help/fortified-roof-grant';
+  return [
+    { id: 'hap-announce', on: '2026-09-01', until: '2026-09-14', link: hap,
+      what: 'Announce the Baldwin County down payment assistance programme',
+      text:
+'Baldwin County is opening down payment assistance on 21 September.\n\n'
++ 'If you have been priced out of buying here, this one is worth knowing about. It helps '
++ 'income-qualified households cover the gap between what they can afford and what a home '
++ 'actually costs.\n\n'
++ 'Two public meetings first, both open to anyone:\n'
++ '\u2022 Tuesday 15 September, 5:00pm \u2014 Foley Satellite Courthouse\n'
++ '\u2022 Wednesday 16 September, 10:00am \u2014 Fairhope Satellite Courthouse\n\n'
++ 'We have put the dates, who may qualify and what to have ready in one place.' },
+
+    { id: 'hap-week', on: '2026-09-14', until: '2026-09-20', link: hap,
+      what: 'One week warning before the HAP portal opens',
+      text:
+'One week until Baldwin County opens its down payment assistance portal.\n\n'
++ 'It opens Monday 21 September. Assistance like this is usually limited, so being ready '
++ 'on the day matters more than anything else you can do.\n\n'
++ 'The single most useful step now is starting a mortgage pre-approval \u2014 the county '
++ 'publishes a preferred vendor list. Get your ID, household income and recent tax returns '
++ 'together this week, not on the morning.\n\n'
++ 'Public meetings are on the 15th in Foley and the 16th in Fairhope if you want help with '
++ 'the application.' },
+
+    { id: 'hap-open', on: '2026-09-21', until: '2026-09-26', link: hap,
+      what: 'The morning the HAP portal opens',
+      text:
+'Baldwin County down payment assistance is open today.\n\n'
++ 'If you have been waiting on this one, today is the day. Assistance is limited and '
++ 'applications are taken in the order they arrive.\n\n'
++ 'Everything you need \u2014 who may qualify, the income limits, and what to have ready '
++ 'before you start:' },
+
+    /* \u26a0 Quarterly, five days before each Baldwin window. Recurs forever rather than
+       being a list of dates somebody has to keep extending. */
+    { id: 'fortified', every: 'quarterly', on: '2026-10-04', link: fort,
+      what: 'Warn people before the next FORTIFIED roof grant window',
+      text:
+'There is up to $10,000 toward a FORTIFIED roof, and it goes in minutes.\n\n'
++ 'Strengthen Alabama Homes opens quarterly at 9:00am, first come first served. Funds have '
++ 'been reported gone within minutes of opening.\n\n'
++ 'It is worth the trouble here: Alabama requires insurers to discount windstorm coverage '
++ 'for FORTIFIED homes, reported around 20-30%. On this coast wind is usually the largest '
++ 'single line on a premium, so the grant pays for something that keeps paying you back.\n\n'
++ 'Line up a contractor who has done FORTIFIED work before, and be logged in before 9:00.' },
+  ];
+}
+
+/* \u26a0 Runs once a day, not once a minute. A reminder that arrives twice is worse than one
+   that arrives once, and the sweep below is the only thing writing the sent record. */
+let POST_LAST_DAY = '';
+
+async function postSweep() {
+  if (!supabase || !mailer) return;
+  const today = new Date().toISOString().slice(0, 10);
+  if (POST_LAST_DAY === today) return;          // already looked today
+  POST_LAST_DAY = today;
+  try {
+    const origin = PUBLIC_ORIGIN;
+    let log = {};
+    try { log = (await getSetting(POST_LOG)) || {}; } catch (e) { log = {}; }
+    if (typeof log !== 'object' || !log) log = {};
+
+    const due = [];
+    for (const p of postCalendar(origin)) {
+      let on = p.on;
+      /* Quarterly items roll forward until they land on or after today, so the calendar
+         never needs extending by hand. */
+      if (p.every === 'quarterly') {
+        let d = new Date(on + 'T00:00:00Z');
+        let guard = 0;
+        while (d.toISOString().slice(0, 10) < today && guard++ < 60) {
+          d.setUTCMonth(d.getUTCMonth() + 3);
+        }
+        on = d.toISOString().slice(0, 10);
+      }
+      if (on !== today) continue;
+      if (p.until && today > p.until) continue;   // the moment has passed
+      const key = p.id + ':' + on;
+      if (log[key]) continue;                     // already sent for this occurrence
+      due.push({ p, key });
+    }
+    if (!due.length) return;
+
+    const to = await resolveNotifyAddress();
+    if (!to) { console.warn('[posts] nowhere to send the reminder'); return; }
+
+    for (const { p, key } of due) {
+      try {
+        await mailer.sendMail({
+          to,
+          subject: 'Post this on Google today: ' + p.what,
+          text:
+            'This is your reminder to put a post on your Google Business Profile today.\n\n'
+          + 'Search your business name while signed in, press Add update, choose What\u2019s new,\n'
+          + 'paste the text below, add a photo, and set the button to Learn more pointing at:\n'
+          + p.link + '\n\n'
+          + '--- copy from here ---\n\n'
+          + p.text + '\n\n'
+          + '--- to here ---\n\n'
+          + 'Takes about a minute. Google Posts are the most underused part of a Business\n'
+          + 'Profile, and a dated local fact is a very different signal from "Just Listed".\n\n'
+          + BROKERAGE_NAME + '\n',
+        });
+        log[key] = new Date().toISOString();
+        console.log('[posts] reminder sent:', p.id);
+      } catch (e) { console.error('[posts] reminder failed:', e.message); }
+    }
+    /* \u26a0 Written only after the sends. If this fails the reminder repeats tomorrow, which
+       is the right way round \u2014 a duplicate nudge beats a post that never happens. */
+    const ok = await setSetting(POST_LOG, log);
+    if (ok === false) console.error('[posts] sent-log write FAILED \u2014 reminders may repeat');
+  } catch (e) { console.error('[posts sweep]', e.message); }
+}
+
+/* Every six hours. Frequent enough that a restart cannot skip a day, and the
+   once-per-day guard above stops it sending twice. */
+setInterval(() => { postSweep().catch(() => {}); }, 6 * 60 * 60 * 1000);
+setTimeout(() => { postSweep().catch(() => {}); }, 45 * 1000);
+
+/* What is coming up, for the CRM. Read-only. */
+app.get('/api/posts/upcoming', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  const origin = PUBLIC_ORIGIN;
+  const today = new Date().toISOString().slice(0, 10);
+  let log = {};
+  try { log = (await getSetting(POST_LOG)) || {}; } catch (e) {}
+  const out = postCalendar(origin).map(p => {
+    let on = p.on;
+    if (p.every === 'quarterly') {
+      let d = new Date(on + 'T00:00:00Z'); let guard = 0;
+      while (d.toISOString().slice(0, 10) < today && guard++ < 60) d.setUTCMonth(d.getUTCMonth() + 3);
+      on = d.toISOString().slice(0, 10);
+    }
+    return {
+      id: p.id, on, what: p.what, link: p.link, text: p.text,
+      expired: !!(p.until && today > p.until),
+      done: !!log[p.id + ':' + on],
+    };
+  }).filter(x => !x.expired).sort((a, b) => a.on.localeCompare(b.on));
+  res.json({ ok: true, today, posts: out });
+});
 
 /* ---------- Homeownership Assistance Program ---------- */
 app.get('/help/down-payment-assistance', async (req, res) => {
