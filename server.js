@@ -4166,6 +4166,19 @@ app.post('/api/agent/create', async (req, res) => {
     const id = 'agent_' + Date.now();
     const password_hash = hashPassword(defaultPassword);
     const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: normalizeRole(role) });
+    /* \u26a0 A new agent starts with NO public page. They can sign in, work leads and find
+       bugs straight away, but nothing about them is on the website until the broker
+       switches it on under Agents. Written explicitly as false, because the default
+       for anyone absent from this map is public \u2014 which is what keeps existing agents
+       exactly as they are. */
+    if (!error) {
+      try {
+        const map = await agentPublicMap();
+        map[id] = false;
+        const okMap = await setSetting(AGENT_LIVE, map);
+        if (okMap === false) console.error('[agent] could not mark', id, 'hidden \u2014 CHECK the switch before they go live');
+      } catch (e) { console.error('[agent] hide-on-create failed:', e.message); }
+    }
     if (error) return res.status(500).json({ error: error.message });
     let emailStatus = 'skipped';
     if (mailer) {
@@ -5992,7 +6005,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v158',
+    serverVersion: 'v159',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6277,6 +6290,10 @@ app.get('/api/agent/by-slug/:slug', async (req, res) => {
       .select('id,name,email,phone,role,active').order('name');
     const match = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(req.params.slug));
     if (!match) return res.status(404).json({ error: 'No agent by that name.' });
+    /* \u26a0 An agent whose profile is not live must 404 exactly like one who does not
+       exist. Anything softer \u2014 a stub page, a redirect \u2014 confirms they are there. */
+    if (!agentIsPublic(await agentPublicMap(), match.id))
+      return res.status(404).json({ error: 'No agent by that name.' });
     const profile = await getSetting('agentPublic:' + match.id) || {};
     const publicPhone = profile.publicPhone || match.phone || '251-229-3216';
     const publicEmail = profile.publicEmail || match.email || '';
@@ -6299,7 +6316,8 @@ app.get('/api/agent/directory', async (req, res) => {
   try {
     const { data } = await supabase.from('agents')
       .select('id,name,email,phone,role,active').order('name');
-    const rows = (data || []).filter(a => a.active !== false);
+    const liveMap = await agentPublicMap();
+    const rows = (data || []).filter(a => a.active !== false && agentIsPublic(liveMap, a.id));
     const out = [];
     for (const a of rows) {
       const p = await getSetting('agentPublic:' + a.id) || {};
@@ -6467,6 +6485,7 @@ async function loadAgentForSeo(slug){
     .select('id,name,email,phone,role,active').order('name');
   const match = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(slug));
   if (!match) return null;
+  if (!agentIsPublic(await agentPublicMap(), match.id)) return null;   // not live yet
   const p = (await getSetting('agentPublic:' + match.id)) || {};
   const licensed = licensedStatesOf(p);
   return {
@@ -8779,6 +8798,53 @@ ${AREAS.map(a => `<a class="it" href="${origin}/homes/${a.slug}">
 </div></body></html>`);
 });
 
+/* ================= PUBLIC PROFILE SWITCH (server 159) =================
+   \u26a0 An agent can now exist in the CRM \u2014 sign in, work leads, find bugs \u2014 without a
+   public page. Their profile goes live only when the broker says so.
+
+   \u26a0 Stored in settings, not as a column on the agents table, because adding a column
+   means a Supabase migration the broker has to run by hand. A map of id -> boolean
+   needs no schema change and works the moment this deploys.
+
+   \u26a0 ANYONE NOT IN THE MAP IS PUBLIC. That is deliberate: every agent who exists today
+   stays live exactly as they are. Only agents created from here on are hidden, and
+   they are written into the map as false at creation. Flip that default and you take
+   the broker's own page off the internet without telling him. */
+/* \u26a0 NOT 'settings:agentPublic'. There is already a per-agent key of the form
+   'agentPublic:<id>' holding public phone, email and licensed states. Two keys one
+   character apart, holding different shapes, is a trap for whoever reads this next. */
+const AGENT_LIVE = 'settings:agentProfileLive';
+
+async function agentPublicMap() {
+  try {
+    const m = await getSetting(AGENT_LIVE);
+    return (m && typeof m === 'object') ? m : {};
+  } catch (e) { return {}; }
+}
+
+function agentIsPublic(map, id) {
+  return map[id] !== false;          // absent or true => public
+}
+
+/* Broker sets it. Returns the whole map so the screen never guesses. */
+app.post('/api/agent/:id/public', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  const id = String(req.params.id || '');
+  const live = !!(req.body || {}).live;
+  const map = await agentPublicMap();
+  map[id] = live;
+  const ok = await setSetting(AGENT_LIVE, map);
+  if (ok === false) return res.status(500).json({ error: 'That did not save.' });
+  console.log(`[agent] ${sess.name} set profile ${live ? 'LIVE' : 'hidden'} for ${id}`);
+  res.json({ ok: true, live, map });
+});
+
+app.get('/api/agent/public-map', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.json({ ok: true, map: await agentPublicMap() });
+});
+
 app.get('/:slug', async (req, res, next) => {
   const slug = req.params.slug || '';
   if (slug.startsWith('api') || slug.includes('.')) return next();
@@ -9401,8 +9467,11 @@ app.get('/sitemap.xml', async (req, res) => {
   const urls = [{ loc: origin + '/', pri: '1.0' }];
   try {
     if (supabase) {
-      const { data } = await supabase.from('agents').select('name,active').order('name');
-      (data || []).filter(a => a.active !== false).forEach(a => {
+      const { data } = await supabase.from('agents').select('id,name,active').order('name');
+      /* \u26a0 A hidden profile must not be advertised in the sitemap either. Gating the page
+         but leaving the URL in here tells Google exactly where to look. */
+      const liveMap = await agentPublicMap();
+      (data || []).filter(a => a.active !== false && agentIsPublic(liveMap, a.id)).forEach(a => {
         urls.push({ loc: origin + '/' + slugify(a.name), pri: '0.8' });
       });
     }
