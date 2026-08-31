@@ -5992,7 +5992,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v155',
+    serverVersion: 'v156',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6981,6 +6981,33 @@ app.post('/api/reset', async (req, res) => {
    is a route the broker triggers. That is a feature, not a gap: a letter that goes out
    monthly on its own, to a list nobody re-read, is how a brokerage ends up apologising. */
 
+/* \u26a0 ONE PLACE. What the figures in the letter actually cover. When the Baldwin feed
+   is approved, change this line and nothing else needs finding. */
+/* Timely, local, and self-expiring. Returns [] when there is nothing worth saying,
+   so the letter closes up cleanly rather than leaving a gap. */
+function marketLetterNote(origin) {
+  const out = [];
+  try {
+    const opens = new Date(PROGRAM_DATES.hap.portalOpens + 'T00:00:00Z').getTime();
+    const days = Math.ceil((opens - Date.now()) / 86400000);
+    /* Only while it is genuinely ahead, and only once it is close enough to act on. */
+    if (days > 0 && days <= 45) {
+      out.push('', 'One other thing worth knowing this month:', '',
+        'Baldwin County is opening a down payment assistance program on '
+        + '21 September. It helps income-qualified buyers cover the gap between what '
+        + 'they can afford and what a home costs. If you know somebody who has been '
+        + 'priced out, this is worth their time \u2014 the details and the meeting dates '
+        + 'are here: ' + origin + '/help/down-payment-assistance');
+    }
+  } catch (e) {}
+  return out;
+}
+
+const MARKET_SOURCE_NOTE =
+  'These are counted live from the Gulf Coast MLS feed this morning, not estimated. '
+  + 'Baldwin REALTORS run a separate feed we are still waiting on, so if you see a '
+  + 'listing elsewhere that is not in here, that is why \u2014 ask me and I will pull it up.';
+
 const LETTER_LOG = 'settings:marketLetters';
 
 /* ⚠ The bulk pull that /api/market-stats already does, lifted out so the letter and
@@ -7073,11 +7100,27 @@ function letterText(s, first, sender, origin, unsub) {
     s.cut ? `\u00b7 ${s.cut} ${s.cut === 1 ? 'has' : 'have'} dropped their asking price` : '',
     s.medianDom ? `\u00b7 The typical one has been listed about ${s.medianDom} days` : '',
     '',
-    'That is every active listing, counted this morning, not an estimate.',
+    /* \u26a0 It said "That is every active listing, counted this morning." That was not
+       true and it went out under the brokerage's name. These figures come from the
+       Gulf Coast MLS feed only. Baldwin REALTORS is the larger book in Gulf Shores and
+       Orange Beach \u2014 over 3,000 members \u2014 and that feed is not yet approved, so the
+       real count on this coast can be several times what we can see.
+
+       A homeowner can check the number on any portal in ten seconds. Being caught
+       overstating it costs more than the letter is worth, and saying where the figure
+       comes from actually reads as competence rather than a limitation.
+
+       \u26a0 When Baldwin is approved, MARKET_SOURCE_NOTE is the one line to change. */
+    MARKET_SOURCE_NOTE,
     '',
     `See them: ${origin}/homes/${slugify(s.town)}`,
     '',
     'If you want to know what any particular one would mean for you, just reply.',
+    /* \u26a0 A monthly letter needs a reason to be opened, and a dated local fact is worth
+       more than another inventory count. Driven from PROGRAM_DATES and it removes
+       itself once the date passes \u2014 a letter still advertising a closed deadline is
+       worse than one that never mentioned it. */
+    ...marketLetterNote(origin),
     '',
     '\u2014',
     sender.name || '',
