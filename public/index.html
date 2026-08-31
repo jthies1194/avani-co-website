@@ -5064,7 +5064,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v325';
+window.BUILD = 'index-v326';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -6612,7 +6612,17 @@ const mine = isAdminOrOwner()
 ? list.filter(r => r.status === 'pending')
 : list.filter(r => r.status === 'pending' && r.agentId === currentAgent.id);
 const el = document.getElementById('pending-reviews-list');
-el.innerHTML = mine.map(r => `
+/* \u26a0 Approve all, because importing forty Google reviews and then clicking Approve
+   forty times is the sort of thing that makes a feature go unused. It is deliberately
+   NOT the first button and it names the count in its confirmation \u2014 approving is what
+   puts them on the public site, so it should take one considered press, not a reflex. */
+const bulk = mine.length > 1
+  ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
+       <button class="btn-sm primary" onclick="approveAllReviews()">Approve all ${mine.length}</button>
+       <span style="font-size:12.5px;color:var(--driftwood)">or read them one at a time below</span>
+     </div>`
+  : '';
+el.innerHTML = bulk + mine.map(r => `
 <div class="pending-review-item">
 <div class="txt">"${escapeHtml(r.text)}"</div>
 <div class="meta">— ${escapeHtml(r.author)} · ${fmtDate(r.submittedAt)}</div>
@@ -6632,6 +6642,35 @@ showToast("Review approved — now visible on the site.");
 loadPendingReviews();
 loadTestimonialAdmin();
 }
+/* \u26a0 Approves only what is on screen for THIS person. An agent seeing their own
+   pending reviews must not be able to approve the whole brokerage's queue, and the
+   filter above is the thing that decides it \u2014 so the same filter is applied here
+   rather than approving everything with status 'pending'. */
+async function approveAllReviews(){
+  const list = await storeGet('settings:testimonials') || [];
+  const staff = isAdminOrOwner();
+  const mine = staff
+    ? list.filter(r => r.status === 'pending')
+    : list.filter(r => r.status === 'pending' && r.agentId === currentAgent.id);
+  if(!mine.length){ showToast('Nothing pending.'); return; }
+  const google = mine.filter(r => r.source === 'google').length;
+  if(!confirm('Approve all ' + mine.length + ' pending review'
+    + (mine.length === 1 ? '' : 's') + '?\n\n'
+    + (google ? google + ' of them came from Google and will be shown with that credit.\n\n' : '')
+    + 'They go live on the public site straight away. You can still remove any of them '
+    + 'afterwards under Settings.')) return;
+  const ids = new Set(mine.map(r => r.id));
+  list.forEach(r => { if(ids.has(r.id)) r.status = 'approved'; });
+  /* \u26a0 storeSet returns false on a failed write. Saying "42 approved" when nothing
+     saved is the exact class of lie this codebase keeps having to fix. */
+  const ok = await storeSet('settings:testimonials', list);
+  if(ok === false){ showToast('That did not save \u2014 nothing was approved.'); return; }
+  showToast(mine.length + ' approved \u2014 now showing on the site.');
+  loadPendingReviews();
+  if(typeof loadTestimonialAdmin === 'function') loadTestimonialAdmin();
+  if(typeof loadTestimonials === 'function') loadTestimonials();
+}
+
 async function rejectReview(id){
 let list = await storeGet('settings:testimonials') || [];
 list = list.filter(r => r.id !== id);
