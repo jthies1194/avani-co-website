@@ -5079,7 +5079,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v329';
+window.BUILD = 'index-v330';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -26065,30 +26065,75 @@ const DL_TRADE = /(realt|real ?estate|homes|mortgage|lending|lender|loans|title|
 
 function dlParse(){
   const raw = (document.getElementById('dl-paste') || {}).value || '';
-  const lines = String(raw).replace(/\r/g, '').split('\n');
-  const found = []; let cur = null;
-  for(const line of lines){
-    const ln = line.trim();
-    /* Every contact begins with a bullet. Everything under it belongs to them. */
-    if(/^[*\u2022\u00b7-]\s+/.test(ln)){
-      if(cur) found.push(cur);
-      cur = { name: ln.replace(/^[*\u2022\u00b7-]\s+/, '').trim(), email: '', phone: '' };
-      continue;
+  const lines = String(raw).replace(/\r/g, '').split('\n').map(l => l.trim());
+
+  /* \u26a0 TWO SHAPES. Copying a Dotloop people list one way gives "* Name" bullets;
+     copying straight off the page gives no bullets at all, just a name line then an
+     email line. The first version only handled bullets and found nothing in a real
+     paste. Bullets are used when present, otherwise the EMAIL is the anchor and the
+     name is the nearest sensible line above it. */
+  const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+  const PHONE = /(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/;
+
+  /* Page furniture. Anything matching this is never a person. */
+  const CHROME = /^(dotloop|dotloop by zillow|reporting|loops|tasks|people|templates|add person|build your network|name|email|phone|search|filter|all|sort|actions?|edit|view|share|archive|show more|load more|\d+\s*[-\u2013]\s*\d+.*|page \d+.*)$/i;
+  const isChrome = ln =>
+    !ln || CHROME.test(ln)
+    /* "ReportingLoopsTasksPeopleTemplates" \u2014 a run-together nav bar with no spaces. */
+    || (ln.length > 18 && !/\s/.test(ln) && !EMAIL.test(ln))
+    || /^[\s\u2022*\u00b7|>-]+$/.test(ln);
+
+  const looksLikeName = ln =>
+    ln && !EMAIL.test(ln) && !isChrome(ln)
+    && ln.length >= 2 && ln.length <= 60
+    && ln.split(/\s+/).length <= 6
+    && /[A-Za-z]/.test(ln)
+    && !/^\d/.test(ln);
+
+  const found = [];
+  const hasBullets = lines.some(l => /^[*\u2022\u00b7]\s+\S/.test(l));
+
+  if(hasBullets){
+    let cur = null;
+    for(const ln of lines){
+      if(/^[*\u2022\u00b7]\s+/.test(ln)){
+        if(cur) found.push(cur);
+        cur = { name: ln.replace(/^[*\u2022\u00b7]\s+/, '').trim(), email: '', phone: '' };
+        continue;
+      }
+      if(!cur || !ln) continue;
+      const em = ln.match(EMAIL); if(em && !cur.email){ cur.email = em[0]; continue; }
+      const ph = ln.match(PHONE); if(ph && !cur.phone){ cur.phone = ph[0]; continue; }
     }
-    if(!cur || !ln) continue;
-    const em = ln.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    if(em && !cur.email){ cur.email = em[0]; continue; }
-    const ph = ln.match(/(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-    if(ph && !cur.phone){ cur.phone = ph[0]; continue; }
+    if(cur) found.push(cur);
+  } else {
+    /* Email-anchored. Walk the lines keeping the last plausible name; when an address
+       turns up, that name owns it. Names with no address are kept too, so the broker
+       can see who came across without one rather than them vanishing silently. */
+    let pending = null;
+    for(const ln of lines){
+      if(isChrome(ln)) continue;
+      const em = ln.match(EMAIL);
+      if(em){
+        if(pending){ pending.email = em[0]; found.push(pending); pending = null; }
+        else found.push({ name: '', email: em[0], phone: '' });
+        continue;
+      }
+      const ph = ln.match(PHONE);
+      if(ph && pending && !pending.phone){ pending.phone = ph[0]; continue; }
+      if(looksLikeName(ln)){
+        if(pending) found.push(pending);           // previous one had no address
+        pending = { name: ln, email: '', phone: '' };
+      }
+    }
+    if(pending) found.push(pending);
   }
-  if(cur) found.push(cur);
 
   dlRows = found
-    .filter(p => p.name && !/^add person$/i.test(p.name))
+    .filter(p => (p.name || p.email) && !/^add person$/i.test(p.name))
     .map(p => ({
       ...p,
       trade: DL_TRADE.test(p.name) || DL_TRADE.test(p.email),
-      /* Trade contacts and anyone without an email start unticked. */
       keep: !!p.email && !(DL_TRADE.test(p.name) || DL_TRADE.test(p.email)),
     }));
   dlDedupe();
