@@ -3025,6 +3025,21 @@ html,body{overflow-x:hidden;overflow-x:clip}
      The heading exists because the broker's words were "I don't understand how to
      use this or the purpose" — the three panels never said what they were for, what
      order to do them in, or that two of them are the same machine. -->
+<div class="setup-panel" id="dl-panel">
+  <h3 class="sx-h">Paste in a contact list</h3>
+  <p class="sx-sub">From Dotloop, or anywhere that gives you names and email addresses.
+    Paste the whole thing &mdash; it works out who is who, skips anyone already in your
+    list, and flags the ones that look like agents, lenders or title companies so they
+    do not end up on a marketing email by accident. <b>Nothing is sent to anybody by
+    adding them.</b></p>
+  <textarea id="dl-paste" placeholder="Paste your contact list here..."
+    style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;
+    min-height:130px;padding:10px 12px;border:1px solid var(--hair2);border-radius:5px;
+    background:#fff;resize:vertical"></textarea>
+  <button class="btn-sm" style="margin-top:8px" onclick="dlParse()">Read them</button>
+  <div id="dl-rows" style="margin-top:12px"></div>
+</div>
+
 <div class="setup-panel" id="en-panel">
   <h3 class="sx-h">Put existing people on a follow-up</h3>
   <p class="sx-sub">New leads go onto a follow-up by themselves the moment they arrive.
@@ -5064,7 +5079,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v327';
+window.BUILD = 'index-v328';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -26023,6 +26038,159 @@ async function grSave(){
     grRender();
     if(typeof loadTestimonialAdmin === 'function') loadTestimonialAdmin();
   }catch(e){ showToast('Could not add those: ' + e.message); }
+}
+</script>
+<script>
+/* ---------- pasting a Dotloop contact list in (index 328) ----------
+   ⚠ These are TRANSACTION contacts, not clients. A Dotloop list is everybody you have
+   been in a deal with: the other side's agent, their lender, the title company, the
+   inspector. Sending marketing to a rival brokerage is a bad look and sending it to
+   somebody's school-board address is worse, so likely trade contacts are flagged on
+   the way in and left OUT by default. The broker can tick them back on.
+
+   ⚠ Trade detection reads the NAME and the WHOLE address, not just the domain.
+   alyhegwoodrealtor@gmail.com is on gmail and is plainly an agent; one contact has
+   "Realtor" inside the name field itself. Domain-only matching missed both.
+
+   ⚠ It is a guess, and it is presented as a guess. Every row is editable and the count
+   of what will and will not be added is shown before anything is written. */
+
+let dlRows = [], dlSkipped = 0;
+
+const DL_TRADE = /(realt|real ?estate|homes|mortgage|lending|lender|loans|title|escrow|insurance|apprais|inspect|broker|properties|century ?21|remax|re\/max|coldwell|exp realty|keller ?williams|kw\.com|compass)/i;
+
+function dlParse(){
+  const raw = (document.getElementById('dl-paste') || {}).value || '';
+  const lines = String(raw).replace(/\r/g, '').split('\n');
+  const found = []; let cur = null;
+  for(const line of lines){
+    const ln = line.trim();
+    /* Every contact begins with a bullet. Everything under it belongs to them. */
+    if(/^[*\u2022\u00b7-]\s+/.test(ln)){
+      if(cur) found.push(cur);
+      cur = { name: ln.replace(/^[*\u2022\u00b7-]\s+/, '').trim(), email: '', phone: '' };
+      continue;
+    }
+    if(!cur || !ln) continue;
+    const em = ln.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    if(em && !cur.email){ cur.email = em[0]; continue; }
+    const ph = ln.match(/(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
+    if(ph && !cur.phone){ cur.phone = ph[0]; continue; }
+  }
+  if(cur) found.push(cur);
+
+  dlRows = found
+    .filter(p => p.name && !/^add person$/i.test(p.name))
+    .map(p => ({
+      ...p,
+      trade: DL_TRADE.test(p.name) || DL_TRADE.test(p.email),
+      /* Trade contacts and anyone without an email start unticked. */
+      keep: !!p.email && !(DL_TRADE.test(p.name) || DL_TRADE.test(p.email)),
+    }));
+  dlDedupe();
+}
+
+async function dlDedupe(){
+  try{
+    const leads = (typeof DASH_LEADS !== 'undefined' ? DASH_LEADS : []) || [];
+    const have = new Set(leads.map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean));
+    const before = dlRows.length;
+    dlRows = dlRows.filter(r => !(r.email && have.has(r.email.trim().toLowerCase())));
+    dlSkipped = before - dlRows.length;
+  }catch(e){ dlSkipped = 0; }
+  dlRender();
+}
+
+function dlRender(){
+  const host = document.getElementById('dl-rows');
+  if(!host) return;
+  if(!dlRows.length){
+    host.innerHTML = '<p style="font-size:13px;color:var(--driftwood)">'
+      + (dlSkipped ? 'All ' + dlSkipped + ' of those are already in your list.'
+                   : 'Nothing found yet. Paste the list above and press Read them.')
+      + '</p>';
+    return;
+  }
+  const keep = dlRows.filter(r => r.keep).length;
+  const trade = dlRows.filter(r => r.trade).length;
+  const noEmail = dlRows.filter(r => !r.email).length;
+
+  host.innerHTML =
+    '<div style="font-size:13px;color:var(--driftwood);margin-bottom:10px;line-height:1.6">'
+      + '<b>' + dlRows.length + '</b> found'
+      + (dlSkipped ? ' · ' + dlSkipped + ' already in your list' : '')
+      + (trade ? ' · <b>' + trade + '</b> look like agents, lenders or title \u2014 unticked' : '')
+      + (noEmail ? ' · ' + noEmail + ' have no email and cannot be added' : '')
+    + '</div>'
+    + dlRows.map((r, i) =>
+      '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;'
+        + 'border-bottom:1px solid var(--hair2)' + (r.email ? '' : ';opacity:.5') + '">'
+      + '<input type="checkbox" ' + (r.keep ? 'checked' : '') + (r.email ? '' : ' disabled')
+        + ' onchange="dlSet(' + i + ',\'keep\',this.checked)">'
+      + '<input value="' + escapeHtml(r.name) + '" style="width:190px;font:inherit;font-size:13px;'
+        + 'padding:5px 8px;border:1px solid var(--hair2);border-radius:4px"'
+        + ' oninput="dlSet(' + i + ',\'name\',this.value)">'
+      + '<input value="' + escapeHtml(r.email) + '" placeholder="no email"'
+        + ' style="flex:1;min-width:170px;font:inherit;font-size:13px;padding:5px 8px;'
+        + 'border:1px solid var(--hair2);border-radius:4px"'
+        + ' oninput="dlSet(' + i + ',\'email\',this.value)">'
+      + (r.trade ? '<span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;'
+        + 'color:#8A6A12;background:#FDF3E9;border:1px solid #EBD5B8;border-radius:3px;'
+        + 'padding:2px 7px">TRADE</span>' : '')
+      + '</div>').join('')
+    + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+      + '<button class="btn-sm primary" onclick="dlSave()">Add ' + keep + ' to my leads</button>'
+      + '<button class="btn-sm" onclick="dlAll(true)">Tick all</button>'
+      + '<button class="btn-sm" onclick="dlAll(false)">Untick all</button>'
+    + '</div>';
+}
+
+function dlSet(i, k, v){
+  if(!dlRows[i]) return;
+  dlRows[i][k] = v;
+  if(k === 'email'){ dlRows[i].keep = !!String(v).trim() && dlRows[i].keep; }
+  if(k !== 'keep') return;
+  dlRender();
+}
+function dlAll(on){ dlRows.forEach(r => { if(r.email) r.keep = on; }); dlRender(); }
+
+async function dlSave(){
+  const keep = dlRows.filter(r => r.keep && String(r.email || '').trim());
+  if(!keep.length){ showToast('Nothing ticked.'); return; }
+  const trade = keep.filter(r => r.trade).length;
+  if(!confirm('Add ' + keep.length + ' contact' + (keep.length === 1 ? '' : 's') + ' to your leads?\n\n'
+    + (trade ? trade + ' of them look like agents, lenders or title companies.\n\n' : '')
+    + 'Nothing is emailed to them by this. They will sit in your leads list until you '
+    + 'choose to do something with them.')) return;
+
+  let added = 0, failed = 0;
+  for(const r of keep){
+    const id = 'lead_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    const lead = {
+      id,
+      name: String(r.name).trim().slice(0, 120),
+      email: String(r.email).trim().slice(0, 160),
+      phone: String(r.phone || '').trim().slice(0, 40),
+      /* ⚠ Its own source so these are always separable from people who asked to hear
+         from you. There is NO consent record here \u2014 a transaction contact never gave
+         one \u2014 which is why the call list will show them amber, manual dial only. */
+      source: r.trade ? 'dotloop-trade' : 'dotloop',
+      message: r.trade ? 'Imported from Dotloop. Looks like an agent, lender or title contact.'
+                       : 'Imported from Dotloop contacts.',
+      stage: 'New', notes: '', lane: 'steady',
+      createdAt: new Date().toISOString(),
+      assignedAgentId: currentAgent ? currentAgent.id : '',
+    };
+    try{
+      const ok = await storeSet('lead:' + id, lead);
+      if(ok === false){ failed++; continue; }
+      added++;
+    }catch(e){ failed++; }
+  }
+  showToast(added + ' added' + (failed ? ' \u2014 ' + failed + ' failed to save' : '') + '.');
+  dlRows = dlRows.filter(r => !r.keep);
+  dlRender();
+  if(typeof loadLeads === 'function') loadLeads();
 }
 </script>
 </body>
