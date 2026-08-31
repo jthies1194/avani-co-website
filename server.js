@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v170',
+    serverVersion: 'v171',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9069,6 +9069,31 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  /* ⚠ Named places here are long-standing institutions rather than new openings, and the
+     article says explicitly that restaurants change. Do not add a new place to this list
+     without a reason to think it will still be there in two years. */
+  art_food: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A shrimp, an oyster on the half shell and a plate">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 206 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M40 44 C170 30, 320 34, 440 46"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M96 168 C96 122, 140 100, 186 108 C222 114, 236 142, 220 164 C206 182, 176 180, 170 160"/>
+<path d="M96 168 C112 190, 148 194, 172 182"/>
+<path d="M186 108 L206 88"/><path d="M186 108 L214 100"/><circle cx="176" cy="124" r="3.5"/></g>
+<g stroke="#C89B4E" stroke-width="3" fill="none" opacity=".8" stroke-linecap="round">
+<path d="M124 148 C136 158, 152 162, 166 158"/><path d="M132 132 C144 142, 160 146, 174 142"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M320 178 C300 150, 316 112, 356 104 C398 96, 428 126, 416 158 C408 178, 366 190, 320 178 Z"/></g>
+<g stroke="#C89B4E" stroke-width="3.5" fill="none" stroke-linecap="round">
+<path d="M340 156 C352 138, 380 130, 400 140"/><path d="M348 168 C362 150, 388 144, 406 152"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M508 182 C508 146, 546 122, 596 122 C646 122, 684 146, 684 182 Z"/>
+<path d="M492 182 H700"/></g>
+<g stroke="#C89B4E" stroke-width="3.5" fill="none" stroke-linecap="round">
+<path d="M556 154 C568 144, 590 142, 604 150"/><path d="M572 168 C586 158, 610 158, 624 166"/></g>
+</svg>`,
+
   art_fishing: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A fishing rod and line over water with a fish below">
 <rect width="720" height="260" fill="#F6EEDC"/>
 <path d="M0 196 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
@@ -9492,6 +9517,72 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_food', published: false, deliver: true,
+    title: 'What to eat here, and where the good stuff hides',
+    teaser: 'Royal Reds taste like lobster and are caught a thousand feet down. Fried crab claws were invented up the road. Here is what is actually worth driving for, and how to buy it straight off the boat.',
+    body: `People move here for the water and stay for the food, and then spend two years finding out where anything is. Here is the short version.
+
+START WITH ROYAL REDS
+
+If you eat one thing on this coast, eat Royal Reds.
+
+They are deep-water shrimp, pulled from somewhere between eight hundred and fifteen hundred feet down where the water is cold. The shell is already red before anybody cooks it, which is how you know you are looking at the real thing. The taste is closer to lobster or scallop than to a normal Gulf shrimp, and the texture is softer.
+
+They also cook faster than regular shrimp and are easy to ruin, which is why the good places do almost nothing to them. Steamed, a little butter, done. If a menu is doing something elaborate to a Royal Red, order something else.
+
+They are not always available. When they are on, they are on the board somewhere, and it is worth changing your dinner plans for.
+
+THE REST OF THE SHORT LIST
+
+Fried crab claws. Mobile claims to have invented them and nobody local is going to argue with that. Small, sweet, mostly a handle and a bite, and completely addictive.
+
+West Indies salad. Lump crab meat, thin onion, oil and vinegar, left to sit cold. That is the whole recipe. It is credited to a restaurant near Mobile in the 1940s and it has been on menus around Mobile Bay ever since. Almost nowhere outside this stretch of coast has heard of it, which makes it the most genuinely local thing you can order.
+
+Oysters. Alabama has a farmed oyster industry now alongside the wild ones, and the difference between a good raw oyster here and a supermarket one is not subtle. Char-grilled with butter and garlic is the version that converts people who think they do not like oysters.
+
+Gumbo. Everyone makes it, everyone's is different, and arguing about it is a local sport.
+
+Snapper, grouper, mahi, flounder, triggerfish. What is good depends entirely on what is in season and what came in that morning. A place that changes its fish board is telling you something good about itself.
+
+WHERE THE DIFFERENT KINDS LIVE
+
+There are roughly five sorts of eating here and they are not interchangeable.
+
+The waterfront places. Orange Beach and the Intracoastal have restaurants you can arrive at by boat, where the view is doing half the work and the seafood is doing the other half. Fisher's at Orange Beach Marina, LuLu's on the Intracoastal, and the Flora-Bama out on the state line are the ones everybody names, and they have earned it. The Wharf has a cluster of them in one place.
+
+The shacks. Low ceilings, paper towels on the table, a line out the door in July. If there is a line at a seafood shack, get in it. That is the single most reliable dining advice on this coast.
+
+The oyster bars. Tin Top in Bon Secour is worth the drive out from the beach, under live oaks with Spanish moss, and there is a long outdoor oyster bar. Wintzell's over in Mobile has been serving them fried, stewed or nude for generations.
+
+The proper restaurants. Fairhope has the most consistent chef-driven cooking in the county, and it does not empty out in January the way the beach does. Mobile has more depth again, and it is a genuine food city that most visitors never see.
+
+Barbecue, which is not seafood but matters. Alabama white sauce is a real thing, it is mayonnaise-based, it goes on chicken, and you should try it once before deciding.
+
+BUY IT YOURSELF
+
+This is the part people who move here discover late, and it changes how you eat.
+
+There are seafood markets all along the coast selling what came in that day \u2014 shrimp, Royal Reds when they are running, crab claws, crab meat, oysters, seasonal fish, sometimes crawfish in spring. Several will season and steam it for you while you wait.
+
+Bon Secour Fisheries has been processing seafood since 1892 and supplies a lot of what you eat in restaurants here. The bayside communities were fishing villages long before they were anything else.
+
+Buying a pound of shrimp off a market counter and cooking it that evening is genuinely one of the better parts of living here, and it costs a fraction of the restaurant version.
+
+WHAT TO DRINK
+
+The Bushwacker, which is essentially a frozen chocolate milkshake with rum in it and is far more dangerous than it tastes. Every beach bar has a version and everyone has an opinion about whose is best.
+
+Conecuh sausage turns up in everything from gumbo to breakfast, and is an Alabama institution in its own right.
+
+A NOTE ON TIMING
+
+The beach places get very busy from March through October and go quiet after. Some close for a stretch in winter. Fairhope and Mobile carry on year-round.
+
+Crawfish is a spring thing. Royal Reds come and go. Snapper has a season. If you eat here for a year you will learn the calendar without trying.
+
+Restaurants open and close, so treat the names above as a starting point rather than a fixed list. If you want to know what is actually good right now, ask us \u2014 we eat out here constantly and we will tell you the truth, including which famous places are coasting.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_fishing', published: false, deliver: true,
     title: 'Fishing licenses here: what you need before you cast',
     teaser: 'Every Alabama fishing license expires on 31 August no matter when you bought it, saltwater and freshwater are separate, and the reef endorsement catches out people who think they are covered.',
