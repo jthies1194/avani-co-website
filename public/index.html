@@ -346,8 +346,17 @@ header.stuck nav .tel{color:var(--gold)}
 .dark .sec-head p{color:rgba(255,255,255,.6)}
 
 /* ---------- listing carousel ---------- */
-.rail{display:flex;gap:34px;overflow-x:auto;scroll-snap-type:x mandatory;
-  padding:0 48px 30px;scrollbar-width:none}
+/* \u26a0 A flex scroller ignores its own right padding once the content overflows. The
+   48px on the left is honoured because the scroller starts there; the 48px on the
+   right is not, so the last photo stops short of the edge and the strip looks broken
+   at full width. This is a long-standing browser behaviour, not a layout mistake.
+   The fix is a MARGIN on the last item, which a scroller does honour. Keep both: the
+   left padding positions the first card, the margin gives the last one its gutter.
+   \u26a0 The margin is not affected by `gap`, which only sits BETWEEN items, so 48px here
+   matches the 48px padding on the left exactly. */
+.rail{--rail-gutter:48px;display:flex;gap:34px;overflow-x:auto;scroll-snap-type:x mandatory;
+  padding:0 var(--rail-gutter) 30px;scrollbar-width:none}
+.rail > *:last-child{margin-right:var(--rail-gutter)}
 .rail::-webkit-scrollbar{display:none}
 .listing{flex:0 0 clamp(300px,31vw,430px);scroll-snap-align:start;cursor:pointer}
 .listing-photo{position:relative;aspect-ratio:4/5;overflow:hidden;background:linear-gradient(155deg,#C6CCEC,#EAE6DC)}
@@ -439,6 +448,9 @@ header.stuck nav .tel{color:var(--gold)}
   .services{grid-template-columns:repeat(2,1fr)}
   .band{grid-template-columns:1fr;gap:16px}
   .wrap,header,.hero-inner,.rail{padding-left:24px;padding-right:24px}
+  /* \u26a0 The rail's right gutter is a margin on the last card, not padding, so it has to
+     be narrowed here too or the phone view keeps a 48px gap the padding no longer has. */
+  .rail{--rail-gutter:24px}
   .search{margin:-34px 24px 0}
   .site-footer .foot{grid-template-columns:1fr 1fr}
 }
@@ -5079,7 +5091,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v331';
+window.BUILD = 'index-v332';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
