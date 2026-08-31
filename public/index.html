@@ -258,8 +258,14 @@ nav{display:flex;gap:26px;align-items:center;flex-shrink:0}
   .seal{height:56px}header{padding:16px 24px}}
 @media(max-width:940px){nav{gap:10px}nav a{font-size:11.5px}.mark-text{font-size:23px}
   .mark-text span{font-size:8px;letter-spacing:.18em}.seal{height:48px}}
+/* \u26a0 padding-bottom with no matching padding-top pushed the TEXT off centre. The
+   header uses align-items:center, which centres each link's BOX \u2014 box height was
+   text + 5px, so the words sat ~2.5px above the middle and read as misaligned against
+   the wordmark at full width. The underline is absolutely positioned at bottom:0, so
+   it does not need the padding to hold it; balancing the two keeps the underline
+   exactly where it was and puts the text back on the centre line. */
 nav a{position:relative;color:var(--ivory);font-size:14px;font-weight:500;letter-spacing:0.10em;
-  text-transform:uppercase;padding-bottom:5px;transition:color .5s}
+  text-transform:uppercase;padding-top:5px;padding-bottom:5px;transition:color .5s}
 header.stuck nav a{color:var(--blue-ink)}
 nav a::after{content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;background:var(--gold);
   transform:scaleX(0);transform-origin:right;transition:transform .45s cubic-bezier(.6,.05,.2,1)}
@@ -5117,7 +5123,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v333';
+window.BUILD = 'index-v334';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
