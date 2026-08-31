@@ -2580,6 +2580,22 @@ app.post('/api/article-draft', async (req, res) => {
   }
 });
 
+/* \u26a0 PUBLIC, no session. The homepage needs to show articles to a stranger, and the
+   route above requires a session because it can expose drafts and preview links. A
+   visitor could not reach a single article from the homepage before this existed \u2014
+   twenty pages indexed by Google and nothing on the site linking to them, which is
+   bad for people and bad for how Google judges the pages.
+   \u26a0 Published only, and only the fields a card needs. No body, no preview token. */
+app.get('/api/articles/public', async (req, res) => {
+  try {
+    const list = (await articlesPublic()).map(a => ({
+      title: a.title, teaser: a.teaser, slug: a.slug,
+    }));
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ ok: true, articles: list });
+  } catch (e) { res.json({ ok: true, articles: [] }); }
+});
+
 app.get('/api/articles', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const origin = `${req.protocol}://${req.get('host')}`;
@@ -6138,7 +6154,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v171',
+    serverVersion: 'v173',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9069,6 +9085,28 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  /* ⚠ Details verified August 2026 against the resorts' own material and Historic Hotels
+     of America. Room counts, amenities and unit sizes change with renovations \u2014 re-check
+     before re-publishing rather than assuming these stay true. */
+  art_landmarks: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two tall towers beside a long low resort building under live oaks">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M40 40 C170 26, 300 30, 400 42"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M92 212 V72 H150 V212"/><path d="M166 212 V44 H224 V212"/></g>
+<g stroke="#C89B4E" stroke-width="3" fill="none" opacity=".75" stroke-linecap="round">
+<path d="M104 100 H138"/><path d="M104 132 H138"/><path d="M104 164 H138"/>
+<path d="M178 76 H212"/><path d="M178 108 H212"/><path d="M178 140 H212"/><path d="M178 172 H212"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M414 212 V152 L500 112 L586 152 V212"/><path d="M448 212 V178 H478 V212"/>
+<path d="M520 176 H556"/></g>
+<g stroke="#0E1433" stroke-width="4.5" fill="none" stroke-linecap="round">
+<path d="M646 212 V132"/><path d="M646 150 C616 140, 604 116, 616 98"/>
+<path d="M646 150 C676 140, 690 116, 678 98"/><path d="M646 128 C628 118, 622 100, 632 86"/>
+<path d="M646 128 C666 118, 674 100, 664 86"/></g>
+</svg>`,
+
   /* ⚠ Named places here are long-standing institutions rather than new openings, and the
      article says explicitly that restaurants change. Do not add a new place to this list
      without a reason to think it will still be there in two years. */
@@ -9517,6 +9555,64 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_landmarks', published: false, deliver: true,
+    title: 'The landmark places on this coast, and what it takes to own one',
+    teaser: 'A hotel that has stood on Mobile Bay since 1847 and fired a cannon every afternoon since. Twin towers in Orange Beach where every balcony has its own hot tub. Here is what makes the famous addresses famous.',
+    body: `Every coast has a handful of addresses that everybody knows. Ours are worth knowing properly, whether you want to spend a weekend in one or put your name on the deed.
+
+THE GRAND HOTEL, POINT CLEAR
+
+If you only see one place on this coast, see the Grand.
+
+There has been a hotel on that spot since 1847. It sits on five hundred and fifty acres along Mobile Bay, under live oaks the resort protects so carefully that the landscaping is designed around them. It has been called the Queen of Southern Resorts for more than a hundred and seventy-five years and it has earned the name.
+
+It has also been a Civil War hospital and a World War Two military training ground, and it does not treat that as trivia. Every afternoon there is a procession from the lobby fireplace down to Cannon Park on the edge of the bay, where a Civil War replica cannon is fired in salute to past and present military. It happens daily, it is open to guests, and it is genuinely moving rather than a gimmick.
+
+The resort came through a three-year, thirty-five million dollar transformation and reopened in 2018 as part of Marriott's Autograph Collection, with just over four hundred rooms. It is also a member of Historic Hotels of America.
+
+What is actually there: two championship golf courses at the Lakewood Club, both on the Robert Trent Jones Golf Trail. A twenty thousand square foot spa. Ten lit tennis courts, eleven pickleball courts, and two croquet lawns \u2014 croquet has been played there since the mid-1940s. A marina. Two beaches and several pools. Seven restaurants and bars, including a garden-to-glass cocktail bar named 1847 that uses herbs from the resort's own gardens, and Bucky's Lounge, named after a man who worked there for sixty years and who has a statue.
+
+You do not need to be staying there to appreciate it. Sunset from the bayfront, with a drink, under those oaks, is one of the genuinely great things about living on the Eastern Shore.
+
+TURQUOISE PLACE, ORANGE BEACH
+
+The other end of the coast and the other end of the century.
+
+Twin towers on Perdido Beach Boulevard, rising twenty-four and thirty stories straight off the sand. You can see them from a long way down the beach and they are the building people mean when they say the tall turquoise ones.
+
+Every residence is Gulf-front. There are no interior units and no side views. Homes run from three to five bedrooms, and the sizes are what set the building apart: roughly twenty-seven hundred square feet for a three-bedroom, around four and a half thousand for a four, and a five-bedroom penthouse over five and a half thousand. Ten-foot ceilings, an en-suite bathroom for every bedroom.
+
+The balconies are the signature. Each one has a private hot tub and a proper outdoor kitchen with a gas grill and a sink, looking straight out over the Gulf. Very little else on this coast does that.
+
+The amenities deck is a small resort in itself \u2014 indoor and outdoor pools, a lazy river, a three-hundred-foot water slide, a putting green, an outdoor movie area, a splash pad, sauna and steam room, tennis and a fitness center.
+
+WHAT ELSE ANCHORS THE COAST
+
+The Beach Club, out on the Fort Morgan peninsula, is the quieter version of the same idea \u2014 a full resort with a spa, well away from the crowds, with the peninsula's isolation as part of the point.
+
+The Wharf in Orange Beach is not somewhere you live, but it shapes what living nearby is like: marina, shops, restaurants, an amphitheater that brings national acts, and a Ferris wheel you can see from the water.
+
+Ono Island sits behind a gate on its own island between Perdido Bay and the Intracoastal, and is about as private as this coast gets.
+
+Kiva Dunes and the golf communities around Craft Farms are the inland version of the same buyer \u2014 space, quiet, and a course rather than a beach at the end of the street.
+
+IF YOU ARE THINKING OF BUYING IN ONE
+
+Landmark buildings come with landmark considerations, and the glossy ones need the most homework.
+
+The master insurance policy and the deductible, which on a Gulf-front tower is the number that decides your annual cost.
+
+The reserves, and what is scheduled. A tall building on salt water has an expensive maintenance life, and you want to know where it is in that cycle before you buy rather than after the assessment letter.
+
+Whether the building supports conventional financing. Some coastal projects do not, and buyers find out at underwriting.
+
+What the rental rules actually allow, if income is part of your plan, and what the on-site program takes.
+
+None of that is a reason not to buy. It is a reason to ask before you make an offer, and it is the part of the job we care most about.
+
+If there is a specific building you have your eye on, tell us which one. We will pull what actually sold there, what is on the market, and what the documents say \u2014 before you fall in love with a view.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_food', published: false, deliver: true,
     title: 'What to eat here, and where the good stuff hides',
     teaser: 'Royal Reds taste like lobster and are caught a thousand feet down. Fried crab claws were invented up the road. Here is what is actually worth driving for, and how to buy it straight off the boat.',
