@@ -1769,7 +1769,13 @@ app.post('/api/lead/:id/event', async (req, res) => {
   if (!SCORE_EVENTS[k]) return res.status(400).json({ error: 'Unknown event.' });
 
   lead.events = Array.isArray(lead.events) ? lead.events : [];
-  lead.events.push({ k, at: new Date().toISOString(), note: String((req.body||{}).note || '').slice(0,200) });
+  /* \u26a0 `by` is who actually did it. Without it an event cannot be attributed, so a
+     per-agent goal has nothing to count \u2014 every event in this system was anonymous
+     until now. Older events have no `by`; anything counting them falls back to the
+     lead's assigned agent, which is right often enough and honest about being a
+     fallback. */
+  lead.events.push({ k, at: new Date().toISOString(), by: sess.agentId || '',
+    note: String((req.body||{}).note || '').slice(0,200) });
   lead.lastActivity = new Date().toISOString();
 
   /* A reply means a person is talking. This used to set drip.stopped and end the
@@ -5176,6 +5182,133 @@ app.post('/api/drip/enrol', async (req, res) => {
   res.json({ ok: true, enrolled, failed, names, sequence: camp.name });
 });
 
+/* ================= AGENT GOALS (server 161) =================
+   Each agent sets a weekly target for calls, emails and new leads, and sees where they
+   are against it. Set by the agent, not imposed by the broker \u2014 the broker asked for
+   "self goal", and a number somebody chose is one they argue with less.
+
+   \u26a0 THE COUNT MUST BE HONEST OR THE FEATURE IS WORSE THAN NOTHING. An agent who works
+   hard and sees 3 of 25 will stop looking at it by Thursday. So:
+     - only real, recorded actions count
+     - automated follow-up does NOT count as the agent's email. The machine sent it.
+     - events carry `by` from server 161 onward; older ones fall back to the lead's
+       assigned agent, which is a guess and is treated as one.
+
+   \u26a0 The week runs Monday to Sunday in CENTRAL time, because that is the working week
+   of the brokerage. Using UTC would roll the counter over at 6pm on Sunday. */
+
+const GOALS_KEY = 'settings:agentGoals';
+
+/* \u26a0 Starting numbers, not targets handed down. Deliberately modest: a goal that is
+   obviously unreachable gets ignored in week one, and the point is the habit. The
+   agent edits these to whatever they actually intend to do. */
+const GOAL_DEFAULTS = { calls: 20, emails: 15, leads: 4 };
+
+/* Monday 00:00 Central of the current week, as a timestamp. */
+function weekStartCentral(now) {
+  const d = now ? new Date(now) : new Date();
+  /* Central is UTC-6 (CST) or UTC-5 (CDT). centralHour() already handles the shift for
+     the claim sweeps; this reuses the same idea rather than inventing a second answer. */
+  const off = centralHour(d) - d.getUTCHours();
+  const shift = ((off + 24) % 24) > 12 ? (((off + 24) % 24) - 24) : ((off + 24) % 24);
+  const local = new Date(d.getTime() + shift * 3600000);
+  const dow = (local.getUTCDay() + 6) % 7;            // Monday = 0
+  local.setUTCHours(0, 0, 0, 0);
+  return local.getTime() - dow * 86400000 - shift * 3600000;
+}
+
+async function goalsMap() {
+  try {
+    const m = await getSetting(GOALS_KEY);
+    return (m && typeof m === 'object') ? m : {};
+  } catch (e) { return {}; }
+}
+
+function goalsFor(map, id) {
+  const g = map[id] || {};
+  return {
+    calls:  Number.isFinite(+g.calls)  ? +g.calls  : GOAL_DEFAULTS.calls,
+    emails: Number.isFinite(+g.emails) ? +g.emails : GOAL_DEFAULTS.emails,
+    leads:  Number.isFinite(+g.leads)  ? +g.leads  : GOAL_DEFAULTS.leads,
+    set: !!map[id],
+  };
+}
+
+/* What counts. Kept explicit rather than clever, because the day somebody disputes a
+   number this list is the answer. */
+const GOAL_CALL_EVENTS  = /^call_/;                       // from the call list
+const GOAL_EMAIL_EVENTS = /^(welcomed|letter_sent|listings_sent|email_sent)$/;
+
+app.get('/api/goals', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const who = String(req.query.agent || sess.agentId || '');
+  /* An agent sees their own. Staff can look at anyone's. */
+  if (who !== sess.agentId && !isStaff(sess))
+    return res.status(403).json({ error: 'Not permitted.' });
+
+  const map = await goalsMap();
+  const goal = goalsFor(map, who);
+  const since = weekStartCentral();
+  const done = { calls: 0, emails: 0, leads: 0 };
+
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    for (const row of (data || [])) {
+      const l = row.value; if (!l) continue;
+
+      /* New leads: created this week AND assigned to this agent. */
+      if (l.assignedAgentId === who && l.createdAt
+          && new Date(l.createdAt).getTime() >= since) done.leads++;
+
+      for (const ev of (Array.isArray(l.events) ? l.events : [])) {
+        if (!ev || !ev.at) continue;
+        if (new Date(ev.at).getTime() < since) continue;
+        /* \u26a0 `by` when we have it; the lead's owner only as a fallback for events
+           recorded before attribution existed. */
+        const actor = ev.by || l.assignedAgentId || '';
+        if (actor !== who) continue;
+        if (GOAL_CALL_EVENTS.test(ev.k)) done.calls++;
+        else if (GOAL_EMAIL_EVENTS.test(ev.k)) done.emails++;
+      }
+    }
+  } catch (e) {
+    return res.status(500).json({ error: 'Could not read the activity.' });
+  }
+
+  res.json({
+    ok: true, agentId: who, goal, done,
+    weekStart: new Date(since).toISOString(),
+    /* So the screen can say "3 days left" rather than the agent doing the sum. */
+    daysLeft: Math.max(0, 7 - Math.floor((Date.now() - since) / 86400000)),
+  });
+});
+
+app.post('/api/goals', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const b = req.body || {};
+  const who = String(b.agent || sess.agentId || '');
+  if (who !== sess.agentId && !isStaff(sess))
+    return res.status(403).json({ error: 'Not permitted.' });
+
+  /* \u26a0 Clamped. A goal of 0 makes the bar meaningless and a goal of 9999 makes it
+     depressing; neither is a number anybody chose on purpose. */
+  const clamp = (v, d) => {
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n)) return d;
+    return Math.max(0, Math.min(500, n));
+  };
+  const map = await goalsMap();
+  map[who] = {
+    calls:  clamp(b.calls,  GOAL_DEFAULTS.calls),
+    emails: clamp(b.emails, GOAL_DEFAULTS.emails),
+    leads:  clamp(b.leads,  GOAL_DEFAULTS.leads),
+    setBy: sess.agentId, setAt: new Date().toISOString(),
+  };
+  const ok = await setSetting(GOALS_KEY, map);
+  if (ok === false) return res.status(500).json({ error: 'That did not save.' });
+  res.json({ ok: true, goal: goalsFor(map, who) });
+});
+
 app.get('/api/drip/status', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
@@ -6005,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v160',
+    serverVersion: 'v162',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -7202,7 +7335,7 @@ function welcomeText(lead, sender, origin, slug, unsub) {
     '',
     `You can search every active listing on the coast${town ? ', including ' + town : ''} \u2014 no`,
     `sign-in needed to look around. If you make a free account it will remember your`,
-    `favourites and email you when something new comes up that fits.`,
+    `favorites and email you when something new comes up that fits.`,
     '',
     `No obligation and nothing automated at you. If you would rather I just called when`,
     `something good turns up, reply and say so and I will.`,
@@ -7235,7 +7368,7 @@ before anybody else does.</p>
 <p><a href="${esc(link)}" style="color:#171F63;font-weight:600">${esc(link)}</a></p>
 <p>You can search every active listing on the coast${town ? ', including ' + esc(town) : ''}
 &mdash; no sign-in needed to look around. If you make a free account it will remember
-your favourites and email you when something new comes up that fits.</p>
+your favorites and email you when something new comes up that fits.</p>
 <p>No obligation and nothing automated at you. If you would rather I just called when
 something good turns up, reply and say so and I will.</p>
 <p style="margin-top:26px;padding-top:16px;border-top:1px solid #E4E1D9">
@@ -8395,7 +8528,7 @@ function postCalendar(origin) {
   const fort = origin + '/help/fortified-roof-grant';
   return [
     { id: 'hap-announce', on: '2026-09-01', until: '2026-09-14', link: hap,
-      what: 'Announce the Baldwin County down payment assistance programme',
+      what: 'Announce the Baldwin County down payment assistance program',
       text:
 'Baldwin County is opening down payment assistance on 21 September.\n\n'
 + 'If you have been priced out of buying here, this one is worth knowing about. It helps '
@@ -8695,7 +8828,7 @@ on day one. It is one of the first things we check on a coastal property.</p>`,
           + 'biggest part of the premium. Your own figure depends on your carrier and your home.' },
       { q: 'Does a metal roof count as FORTIFIED?',
         a: 'Not by itself. The roof has to be installed to the specific standard and certified '
-          + 'through the FORTIFIED programme \u2014 the material alone does not qualify it.' },
+          + 'through the FORTIFIED program \u2014 the material alone does not qualify it.' },
       { q: 'Does the FORTIFIED certificate transfer when the house is sold?',
         a: 'A designation is attached to the home and is worth asking about when you buy, because '
           + 'it affects what you will pay to insure it. Confirm the certificate and its date as '
@@ -8711,7 +8844,7 @@ on day one. It is one of the first things we check on a coastal property.</p>`,
     ctaDone: 'Done \u2014 we will warn you before the next one.',
     ctaFine: 'We are a real estate brokerage. We do not administer this grant, we do not decide '
            + 'who receives it, and we are not paid by it or by any contractor. By sending this you '
-           + 'agree we may contact you about the programme and about property here. Every email '
+           + 'agree we may contact you about the program and about property here. Every email '
            + 'has a one-click unsubscribe.',
     sourceName: 'Strengthen Alabama Homes',
     source: f.source,
@@ -9146,7 +9279,7 @@ Most builders ask that your agent is with you, or registered, on your first visi
 
 It just means the timing matters. If you tour on your own first and decide later that you would like representation, it can be too late for that particular purchase.
 
-So if you are even thinking about new construction, bring your agent the first time, or ring them before you walk in. It takes a phone call and it saves an awkward conversation later.
+So if you are even thinking about new construction, bring your agent the first time, or call them before you walk in. It takes a phone call and it saves an awkward conversation later.
 
 WHAT AN AGENT ACTUALLY DOES ON A NEW BUILD
 
@@ -9154,7 +9287,7 @@ People assume that because the price is on a sheet and the house does not exist 
 
 The contract is not the one you have seen before. A builder writes their own purchase agreement, and it is a different document from the standard residential contract used on a resale. Completion dates are often written as estimates rather than commitments. There may be language about what happens if the build runs long, what the builder can substitute without telling you, how disputes are handled, and what you are entitled to if you walk away. We read that before you sign it, and we tell you which parts are normal and which are worth pushing on.
 
-Price is usually the least flexible thing. Builders protect their list price because it sets the comparable for every other house in the neighbourhood. What often moves instead is upgrades, closing costs, a structural option, or the appliance package. Knowing which lever the builder is willing to pull, and when in the quarter they are willing to pull it, is worth more than asking for money off.
+Price is usually the least flexible thing. Builders protect their list price because it sets the comparable for every other house in the neighborhood. What often moves instead is upgrades, closing costs, a structural option, or the appliance package. Knowing which lever the builder is willing to pull, and when in the quarter they are willing to pull it, is worth more than asking for money off.
 
 The lot matters more than the finishes. The finishes can be changed later. The lot cannot. What is planned for the empty ground behind it, where the water goes in a heavy rain, which way the house faces in August, whether the road on the plat is going to be a road — those are questions with answers, and they are easier to ask before you are committed.
 
@@ -9168,7 +9301,7 @@ Buying new construction here means making one of the largest purchases of your l
 
 Having somebody whose only job is your side of it is not a formality, and it is not a comment on the builder. Good builders are used to working with buyers' agents and generally prefer it, because a buyer who understands what they are signing is a buyer who closes.
 
-If you are already talking to a builder and are not sure where you stand, give us a ring before your next visit. Even if the answer is that you are in good hands, you will know.`,
+If you are already talking to a builder and are not sure where you stand, give us a call before your next visit. Even if the answer is that you are in good hands, you will know.`,
     updatedAt: '2026-08-31T00:00:00.000Z' },
 
   { id: 'art_newbuild_inspection', published: false, deliver: true,
@@ -9262,7 +9395,7 @@ The short version: ask what the fee covers, what the reserves look like, and wha
 
 Fort Morgan is the quiet end. Fewer people, fewer restaurants, a longer drive for groceries, and the beach largely to yourself in February. If quiet is the point, this is the answer. If you want to walk to dinner, it is not.
 
-Gulf Shores is the centre of gravity. The most amenities, the most rental demand, the most traffic in July. Good if you want things open year round and you accept the season.
+Gulf Shores is the center of gravity. The most amenities, the most rental demand, the most traffic in July. Good if you want things open year round and you accept the season.
 
 Orange Beach has the bigger buildings and the marinas. If boating matters, this is usually where the answer lands. It also has some of the strongest rental performance on the coast.
 
