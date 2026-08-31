@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v163',
+    serverVersion: 'v164',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -8568,9 +8568,10 @@ function postCalendar(origin) {
 'There is up to $10,000 toward a FORTIFIED roof, and it goes in minutes.\n\n'
 + 'Strengthen Alabama Homes opens quarterly at 9:00am, first come first served. Funds have '
 + 'been reported gone within minutes of opening.\n\n'
-+ 'It is worth the trouble here: Alabama requires insurers to discount windstorm coverage '
-+ 'for FORTIFIED homes, reported around 20-30%. On this coast wind is usually the largest '
-+ 'single line on a premium, so the grant pays for something that keeps paying you back.\n\n'
++ 'It is worth the trouble here: Alabama law requires insurers to provide premium discounts '
++ 'or rate reductions for qualifying FORTIFIED homes on policies that include wind coverage. '
++ 'On this coast wind is usually the largest single line on a premium. What it is worth on '
++ 'any particular home is a question for your insurance agent.\n\n'
 + 'Line up a contractor who has done FORTIFIED work before, and be logged in before 9:00.' },
   ];
 }
@@ -8796,9 +8797,17 @@ app.get('/help/fortified-roof-grant', async (req, res) => {
 <p>Most standard homeowners policies on this coast exclude wind altogether, so wind is bought
 separately &mdash; often through the Alabama Insurance Underwriting Association when private
 carriers will not write it. Wind is usually the largest single line on a coastal premium.</p>
-<p>Alabama is unusual: insurers are legally required to offer discounts for homes built or
-retrofitted to the FORTIFIED standard. Reported discounts run to 20&ndash;30% off windstorm
-coverage. On a coastal premium that is real money every year, not a one-off.</p>
+<p>Alabama is unusual: state law requires insurers to provide premium discounts or rate
+reductions for qualifying FORTIFIED homes, on policies that include wind coverage. Wind is
+usually the largest single line on a coastal premium, so that is money back every year
+rather than a one-off.</p>
+<!-- \u26a0 NO PERCENTAGE. An earlier version said "reported 20-30%", which is a number this
+     brokerage cannot stand behind for any particular house or carrier. Somebody reads it,
+     budgets for it, gets less, and it was our page that said so. We are not insurance
+     agents and the page now says where that question belongs. -->
+<p>What the discount is worth on a specific home depends on your carrier and your policy,
+and that is a question for your insurance agent rather than for us. It is worth asking
+before you make an offer rather than after.</p>
 <p>It is also about the house standing up. Homes built to FORTIFIED standards came through
 Hurricane Sally markedly better than those that were not.</p>
 
@@ -8823,9 +8832,10 @@ on day one. It is one of the first things we check on a coastal property.</p>`,
           + 'reported to run out within minutes of opening, so being ready before the hour matters '
           + 'more than anything else.' },
       { q: 'Does a FORTIFIED roof actually lower my insurance in Alabama?',
-        a: 'Alabama requires insurers to offer discounts for FORTIFIED homes. Reported discounts '
-          + 'run around 20\u201330% off windstorm coverage, which on this coast is usually the '
-          + 'biggest part of the premium. Your own figure depends on your carrier and your home.' },
+        a: 'Alabama law requires insurers to provide premium discounts or rate reductions for '
+          + 'qualifying FORTIFIED homes on policies that include wind coverage. Wind is usually '
+          + 'the biggest part of a coastal premium. What that is worth on your own home depends '
+          + 'on your carrier and your policy, so ask your insurance agent for the actual figure.' },
       { q: 'Does a metal roof count as FORTIFIED?',
         a: 'Not by itself. The roof has to be installed to the specific standard and certified '
           + 'through the FORTIFIED program \u2014 the material alone does not qualify it.' },
