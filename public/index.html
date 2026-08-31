@@ -3440,6 +3440,21 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <h4>4. Testimonials</h4>
 <p>Add a quote and name — these show in a "What our clients say" section on the site. Paste in reviews from past clients or from Google.</p>
 <div id="testimonial-list" style="margin-top:10px;"></div>
+
+<div id="gr-box" style="margin-top:22px;border-top:1px solid var(--line);padding-top:18px">
+  <h4 style="margin:0 0 4px;font-size:15px">Bring your Google reviews in</h4>
+  <p style="font-size:13px;color:var(--driftwood);margin:0 0 10px;line-height:1.55">
+    Open your Google profile, select a review, copy it, and paste it below. Several at a time
+    is fine &mdash; leave a blank line between each one. Nothing is saved until you have checked
+    it, and nothing shows publicly until you approve it.</p>
+  <textarea id="gr-paste" placeholder="Sarah M.&#10;5 stars&#10;Jimmy made our move from Ohio painless...&#10;&#10;Dave R.&#10;5 stars&#10;Knew the condo market inside out..."></textarea>
+  <div class="gr-note">&#9888; These stay marked as <b>Google reviews</b> and are shown with that
+    credit. Reviews are not reworded, and they are not turned into site testimonials &mdash;
+    passing a Google review off as something collected here would misrepresent where it came
+    from, and real estate advertising is regulated.</div>
+  <button class="btn-sm" onclick="grParse()">Read them</button>
+  <div id="gr-rows" style="margin-top:12px"></div>
+</div>
 <div class="setup-grid" style="margin-top:10px;">
 <textarea id="testimonial-text" placeholder="The testimonial text..." style="grid-column:1/-1; min-height:60px; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-family:'Public Sans',sans-serif; font-size:13px;"></textarea>
 <input id="testimonial-author" placeholder="Client name (e.g. Sarah M.)" style="border:1px solid var(--line); border-radius:4px; padding:8px 10px;">
@@ -5040,7 +5055,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v322';
+window.BUILD = 'index-v323';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -25746,6 +25761,135 @@ async function cqWrite(id, kind, note, outcome){
   const ok = await storeSet('lead:'+id, lead);
   if(ok === false) throw new Error('the write did not save');
   if(typeof loadLeads === 'function') loadLeads({ reuse:true });
+}
+</script>
+<style>
+#gr-box textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;line-height:1.55;
+  min-height:150px;padding:11px 12px;border:1px solid var(--hair2);border-radius:5px;
+  background:#fff;resize:vertical}
+#gr-box .gr-note{font-size:12.5px;color:#7A5B32;background:#FDF3E9;border:1px solid #EBD5B8;
+  border-radius:5px;padding:9px 12px;margin:10px 0;line-height:1.55}
+#gr-box .gr-row{border:1px solid var(--hair2);border-radius:6px;padding:11px 13px;margin-bottom:8px;
+  background:#fff}
+#gr-box .gr-row input{font:inherit;font-size:13.5px;padding:6px 9px;border:1px solid var(--hair2);
+  border-radius:4px;background:#FBFAF7}
+#gr-box .gr-row .who{width:190px}
+#gr-box .gr-row .st{width:56px}
+#gr-box .gr-row .tx{width:100%;box-sizing:border-box;margin-top:7px;font-size:13px}
+#gr-box .gr-row .drop{float:right;border:none;background:none;color:#C0483C;cursor:pointer;
+  font-size:16px;line-height:1}
+</style>
+<script>
+/* ---------- pasting Google reviews in (index 323) ----------
+   ⚠ These are marked source:'google' and shown with that attribution wherever they
+   appear. They are NOT silently converted into site testimonials. Two reasons, and
+   both matter more than the convenience:
+
+     1. Google's terms restrict republishing review content. Reproducing a review
+        verbatim WITH attribution back to Google is the normal, accepted practice.
+        Stripping the source and presenting it as a testimonial gathered here is not.
+     2. It would be misleading advertising. The reviewer wrote it for Google. Passing
+        it off as something collected on this site misrepresents where it came from,
+        and real estate advertising is a regulated space.
+
+   ⚠ Text is never edited on import. Trimmed of whitespace, nothing else. If a review
+   needs shortening to fit a design, the design is wrong.
+
+   ⚠ Everything lands as `pending`, exactly like a review submitted on the site, so
+   nothing appears publicly until the broker has read it and approved it. */
+
+let grRows = [];
+
+function grParse(){
+  const raw = (document.getElementById('gr-paste') || {}).value || '';
+  /* Blank line between reviews. Google's copy output varies a great deal, so this
+     guesses and then lets the broker correct every field before anything is saved —
+     guessing badly is fine, guessing badly AND saving silently is not. */
+  const blocks = raw.split(/\n\s*\n/).map(b => b.trim()).filter(b => b.length > 3);
+  grRows = blocks.map(b => {
+    const lines = b.split('\n').map(l => l.trim()).filter(Boolean);
+    let author = '', rating = 5, text = '';
+    const body = [];
+    lines.forEach((ln, i) => {
+      const stars = (ln.match(/★/g) || []).length;
+      const outOf = ln.match(/\b([1-5])\s*(?:\/|out of)\s*5\b/i);
+      const bare  = ln.match(/^([1-5])\s*stars?\b/i);
+      if(stars >= 1 && stars <= 5 && ln.replace(/[★☆\s]/g,'').length === 0){ rating = stars; return; }
+      if(outOf){ rating = parseInt(outOf[1],10); return; }
+      if(bare){ rating = parseInt(bare[1],10); return; }
+      /* A short first line is almost always the name. \u26a0 It may legitimately end in a
+         full stop when it is an initial \u2014 "Sarah M." \u2014 which an earlier version rejected,
+         so most reviewers arrived with no name at all. Allow a trailing initial; reject
+         anything that ends like a sentence. */
+      const looksLikeName = ln.length < 46 && ln.split(/\s+/).length <= 5
+        && (!/[.!?]$/.test(ln) || /\b[A-Z]\.$/.test(ln));
+      if(i === 0 && !author && looksLikeName){ author = ln; return; }
+      if(/(^|\s)\d+\s+(reviews?|photos?)\b/i.test(ln)) return;      // "Local Guide · 12 reviews"
+      /* \u26a0 "2 months ago" starts with a digit, so an (a\s+)? prefix never matched it and
+         the timestamp ended up glued to the front of the review text. */
+      if(/^(a|an|\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i.test(ln)) return;
+      if(/^(new|local guide)\b/i.test(ln)) return;
+      body.push(ln);
+    });
+    text = body.join(' ').trim();
+    return { author, rating, text };
+  }).filter(r => r.text);
+  grRender();
+}
+
+function grRender(){
+  const host = document.getElementById('gr-rows');
+  if(!host) return;
+  if(!grRows.length){
+    host.innerHTML = '<p style="font-size:13px;color:var(--driftwood)">Nothing found yet. '
+      + 'Paste your reviews above with a blank line between each one, then press Read them.</p>';
+    return;
+  }
+  host.innerHTML = grRows.map((r,i) =>
+    '<div class="gr-row">'
+      + '<button class="drop" onclick="grDrop(' + i + ')" title="Leave this one out">&times;</button>'
+      + '<input class="who" value="' + escapeHtml(r.author) + '" placeholder="Their name" '
+        + 'oninput="grSet(' + i + ',\'author\',this.value)">'
+      + ' <input class="st" type="number" min="1" max="5" value="' + r.rating + '" '
+        + 'oninput="grSet(' + i + ',\'rating\',this.value)"> stars'
+      + '<input class="tx" value="' + escapeHtml(r.text) + '" '
+        + 'oninput="grSet(' + i + ',\'text\',this.value)">'
+    + '</div>').join('')
+    + '<button class="btn-sm primary" onclick="grSave()">Add ' + grRows.length
+      + ' review' + (grRows.length===1?'':'s') + ' for approval</button>';
+}
+
+function grSet(i, k, v){ if(grRows[i]) grRows[i][k] = (k==='rating') ? Math.max(1,Math.min(5,parseInt(v,10)||5)) : v; }
+function grDrop(i){ grRows.splice(i,1); grRender(); }
+
+async function grSave(){
+  const good = grRows.filter(r => String(r.author||'').trim() && String(r.text||'').trim());
+  if(!good.length){ showToast('Each one needs a name and some words.'); return; }
+  if(!confirm('Add ' + good.length + ' Google review' + (good.length===1?'':'s')
+    + ' for approval?\n\nThey will be marked as coming from Google and will not show '
+    + 'publicly until you approve them.')) return;
+  try{
+    const list = await storeGet('settings:testimonials') || [];
+    const arr = Array.isArray(list) ? list : [];
+    const now = new Date().toISOString();
+    good.forEach(r => arr.push({
+      id: 'rv_g_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+      author: String(r.author).trim().slice(0,80),
+      text: String(r.text).trim().slice(0,2000),
+      rating: r.rating,
+      /* ⚠ The attribution. Anything rendering a review must show this. */
+      source: 'google',
+      status: 'pending',
+      submittedAt: now,
+    }));
+    const ok = await storeSet('settings:testimonials', arr);
+    if(ok === false) throw new Error('that did not save');
+    showToast(good.length + ' added — approve them under Reviews.');
+    grRows = [];
+    const p = document.getElementById('gr-paste'); if(p) p.value = '';
+    grRender();
+    if(typeof loadTestimonialAdmin === 'function') loadTestimonialAdmin();
+  }catch(e){ showToast('Could not add those: ' + e.message); }
 }
 </script>
 </body>
