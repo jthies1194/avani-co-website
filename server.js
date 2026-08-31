@@ -6138,7 +6138,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v166',
+    serverVersion: 'v167',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9069,6 +9069,29 @@ function previewToken(slug) {
    brand, and it is a couple of kilobytes. Keyed by article id so an article
    without one simply renders without a header image. */
 const ARTICLE_ART = {
+  /* ⚠ Rates and phone numbers checked August 2026 against Baldwin County, Baldwin EMC and
+     the city utilities. The kWh figures are averages and move; the article says so and
+     gives no monthly bill estimate, because that depends entirely on the house. */
+  art_utilities: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A house with a power line, a water drop and a flame beside it">
+<rect width="720" height="260" fill="#F6EEDC"/>
+<path d="M0 212 H720" stroke="#0E1433" stroke-width="2" opacity=".25"/>
+<g stroke="#C89B4E" stroke-width="2.5" fill="none" opacity=".45" stroke-linecap="round">
+<path d="M40 44 C160 30, 300 34, 420 46"/></g>
+<g stroke="#0E1433" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M96 164 L172 106 L248 164"/><path d="M114 152 V212"/><path d="M230 152 V212"/>
+<path d="M154 212 V178 H190 V212"/></g>
+<g stroke="#0E1433" stroke-width="4" fill="none" stroke-linecap="round">
+<path d="M330 212 V96"/><path d="M300 112 H360"/><path d="M306 132 H354"/>
+<path d="M248 140 C282 128, 306 122, 330 118"/></g>
+<g stroke="#C89B4E" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M330 118 C378 126, 420 140, 452 158"/></g>
+<g stroke="#0E1433" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M496 196 C476 178, 490 154, 506 138 C522 154, 536 178, 516 196 Z"/></g>
+<g stroke="#C89B4E" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M596 198 C572 176, 596 152, 604 132 C614 156, 640 176, 616 198 Z"/>
+<path d="M604 190 C594 180, 602 168, 606 158" opacity=".7"/></g>
+</svg>`,
+
   /* ⚠ Every figure here was checked in August 2026 against the City of Orange Beach, the
      City of Gulf Shores and Alabama State Parks. Parking rates on this coast changed on
      1 January 2026 and will change again. The article says when it was checked and tells
@@ -9355,6 +9378,74 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_utilities', published: false, deliver: true,
+    title: 'What it actually costs to run a house here',
+    teaser: 'Who supplies your power depends on your address rather than your city, you do not get to choose, and electricity on this coast is well below the national average. Here is the whole picture before you set anything up.',
+    body: `People moving here spend a long time on the price of the house and almost no time on what it costs to run. That is the wrong way round, because two of the numbers are unusual on this coast \u2014 one in your favor and one against.
+
+WHO SUPPLIES YOUR POWER IS DECIDED BY YOUR ADDRESS
+
+Alabama has a regulated electricity market. You do not shop for a provider. Where you live determines who bills you, and that is the end of the discussion.
+
+Baldwin EMC covers all of Gulf Shores and Orange Beach, plus most of the unincorporated county \u2014 which includes the Fort Morgan peninsula.
+
+Riviera Utilities covers the electric side for Daphne, Spanish Fort, Point Clear, Loxley, Silverhill, Summerdale, Foley, Elberta, Lillian, Bon Secour and Magnolia Springs.
+
+Alabama Power serves parts of the county as well.
+
+The practical consequence is that two houses you are choosing between, twenty minutes apart, may be billed by different companies at different rates. It is worth knowing which one before you buy rather than after.
+
+THE GOOD NEWS, AND IT IS REAL
+
+Baldwin EMC is an electric cooperative rather than a for-profit utility, and its average residential rate has run around 13.3 cents per kilowatt hour, against roughly 15.9 cents for Alabama as a whole and about 16.2 cents nationally.
+
+That is meaningfully below the national average. On a house that runs air conditioning hard from May to October, the difference over a year is not trivial.
+
+Being a cooperative also means members are, in principle, part-owners rather than customers. Co-ops sometimes return margins to members as capital credits. Ask Baldwin EMC how that works for them currently rather than assuming anything about it.
+
+WHAT ACTUALLY DRIVES THE BILL HERE
+
+Cooling, and it is not close. A house on this coast runs air conditioning for most of the year, and August is relentless. Heating barely registers by comparison.
+
+So the things that move your power bill are the things that affect cooling load: how well the house is insulated, how old and how well sized the air conditioning is, which way the house faces, how much glass it has, and whether the attic is properly ventilated. A newer, tighter house with a correctly sized system can cost noticeably less to run than an older one of the same square footage.
+
+If the house has a pool, the pump is its own line item. If it is a rental, turnover means the air conditioning runs whether anybody is home or not.
+
+WATER AND SEWER ARE SEPARATE AGAIN
+
+Water depends on the city. Gulf Shores runs its own utilities. Orange Beach has its own water authority. Other towns have their own arrangements, and much of south Baldwin County is served on the water side by regional providers.
+
+Sewer is a different question again, and in some areas it is Baldwin County Sewer Service rather than the city.
+
+The one to actually check: not every property is on sewer. Parts of the county, including stretches of the peninsula and the more rural areas, are on septic. That changes what you are responsible for, what an inspection should look at, and what it costs you if something goes wrong. Ask, in writing, as part of your due diligence rather than assuming a house on a paved road is connected to something.
+
+NATURAL GAS IS PATCHY
+
+Riviera Utilities supplies gas directly to Foley, Magnolia Springs, Summerdale, Elberta, Miflin, Gulf Shores and Silverhill, and wholesales to some other municipalities.
+
+Plenty of houses here have no gas at all and run entirely electric. If you cook on gas and care about it, that is a question to ask about a specific address rather than a specific town.
+
+THE PART THAT WORKS AGAINST YOU
+
+Insurance. It is the line item that surprises people moving from inland, and on this coast it can be the largest recurring cost of owning after the mortgage itself. Wind is often a separate policy from standard homeowners cover, and flood is separate again.
+
+We are not insurance agents and we will not quote you a number. What we will say is that you should get real quotes on the specific address early, before you are committed, rather than budgeting from a national average. Two houses on the same street can differ.
+
+SETTING IT ALL UP
+
+Do it before closing, not after. Several of these are separate companies and each wants its own call.
+
+Baldwin EMC, 251-989-6247. Riviera Utilities, 251-943-5001. Gulf Shores Utilities, 251-968-6323. Orange Beach Water Authority, 251-981-4233. Baldwin County Sewer Service, 251-971-3022.
+
+Ask the seller or your agent which providers serve that exact address. On a street where the boundary runs down the middle, the answer is not obvious from a map.
+
+THE HONEST SUMMARY
+
+Power here is cheaper than most of the country. Insurance costs more than in most of the country. Water, sewer and gas depend entirely on where the house sits, and there is no single county-wide answer to give you.
+
+If you want the real numbers for a specific house rather than county averages, ask us and we will help you chase them down before you are under contract. It is a much better time to find out.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_beaches', published: false, deliver: true,
     title: 'Beach parking, and where you can actually take the dog',
     teaser: 'Parking rates on this coast changed at the start of 2026, and the rules differ by which lot you pull into. The dog question has an answer most people get wrong.',
