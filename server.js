@@ -6005,7 +6005,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v159',
+    serverVersion: 'v160',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -9129,6 +9129,104 @@ function articleSlug(a) {
    deploys. Written for this coast specifically — the topics a national
    newsletter cannot cover and a local agent gets asked constantly. */
 const ARTICLE_DEFAULTS = [
+  { id: 'art_newbuild_agent', published: false, deliver: true,
+    title: 'Do I need my own agent if the builder already has one?',
+    teaser: 'The agent at the model home is usually helpful and usually good at their job. They also represent the builder. Here is what that means for you, what actually gets negotiated on a new build, and the one bit of timing worth knowing before you tour.',
+    body: `Yes. And the reason has nothing to do with whether the on-site agent is good at their job.
+
+Walk into a model home on the Alabama coast and you will usually meet somebody helpful. They know the floor plans, the lot inventory, the current incentives, and the construction schedule. They will answer your questions and they will not lie to you.
+
+They also work for the builder. The builder pays them. Their obligation is to the builder's interests, not yours. That is not a criticism, it is simply who they represent, and any honest on-site agent will tell you the same thing if you ask them directly.
+
+So the question is not whether they are trustworthy. It is who is looking out for you.
+
+ONE PRACTICAL THING, BEFORE YOU GO
+
+Most builders ask that your agent is with you, or registered, on your first visit. It is a completely normal policy and every builder we work with has some version of it.
+
+It just means the timing matters. If you tour on your own first and decide later that you would like representation, it can be too late for that particular purchase.
+
+So if you are even thinking about new construction, bring your agent the first time, or ring them before you walk in. It takes a phone call and it saves an awkward conversation later.
+
+WHAT AN AGENT ACTUALLY DOES ON A NEW BUILD
+
+People assume that because the price is on a sheet and the house does not exist yet, there is nothing to negotiate and nothing to represent. Neither is true.
+
+The contract is not the one you have seen before. A builder writes their own purchase agreement, and it is a different document from the standard residential contract used on a resale. Completion dates are often written as estimates rather than commitments. There may be language about what happens if the build runs long, what the builder can substitute without telling you, how disputes are handled, and what you are entitled to if you walk away. We read that before you sign it, and we tell you which parts are normal and which are worth pushing on.
+
+Price is usually the least flexible thing. Builders protect their list price because it sets the comparable for every other house in the neighbourhood. What often moves instead is upgrades, closing costs, a structural option, or the appliance package. Knowing which lever the builder is willing to pull, and when in the quarter they are willing to pull it, is worth more than asking for money off.
+
+The lot matters more than the finishes. The finishes can be changed later. The lot cannot. What is planned for the empty ground behind it, where the water goes in a heavy rain, which way the house faces in August, whether the road on the plat is going to be a road — those are questions with answers, and they are easier to ask before you are committed.
+
+Incentives are worth understanding properly. A builder may offer help with closing costs when you use a preferred lender or title company, and those are often genuinely strong offers. They are also easier to judge when you have something to compare them against. We will help you line the numbers up so you can see what you are choosing between.
+
+Inspections are a separate job from code compliance. The city or county inspects against code. A private inspection looks at the house on your behalf and produces a list, which most builders would far rather receive before closing than after. Knowing when in the build to book it is half of getting value from it.
+
+THE SHORT VERSION
+
+Buying new construction here means making one of the largest purchases of your life, from a company that has its own contract, its own process and its own salesperson on site. All of that is entirely reasonable. It is simply all built around the builder's side of the table.
+
+Having somebody whose only job is your side of it is not a formality, and it is not a comment on the builder. Good builders are used to working with buyers' agents and generally prefer it, because a buyer who understands what they are signing is a buyer who closes.
+
+If you are already talking to a builder and are not sure where you stand, give us a ring before your next visit. Even if the answer is that you are in good hands, you will know.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
+  { id: 'art_newbuild_inspection', published: false, deliver: true,
+    title: 'Why you still need an inspection on a brand-new house',
+    teaser: 'It has never been lived in and the county has already signed it off, so what is left to find? Quite a lot, as it turns out — and the most valuable inspection is the one almost nobody books.',
+    body: `Because new does not mean finished properly. It means nobody has lived in it yet.
+
+A house is built by a long line of different trades, working to a schedule, often across several houses at once. Framing, roofing, plumbing, electrical, HVAC, insulation, drywall. Every one of those is a different crew on a different day, and the work of each gets covered up by the next.
+
+That is not a criticism of anybody. It is simply how a house gets built, and it is why a second set of eyes at the right moment is worth having.
+
+The county or city inspects the house. That inspection asks one question: does this meet code. Code is the minimum a house is allowed to be. It is not a judgement about quality, it does not cover workmanship, and the inspector is not there on your behalf.
+
+None of that is a gap in anyone's work. It just means the one inspection carried out specifically on your behalf is the one you arrange.
+
+THE ONE THAT MATTERS MOST
+
+If you only do one inspection, do the pre-drywall.
+
+Once the drywall goes up, the bones of the house disappear behind it for the next fifty years. Before that, everything is visible: framing, fasteners, plumbing runs, wiring, ductwork, the window and door flashing, how the roof is tied in, whether anything has been sitting wet.
+
+That is a two-hour window in a six-month build, and it is the only chance anybody gets to look at the parts that matter most. It is also the cheapest possible time to fix something, which is exactly why builders are generally willing to address what comes up.
+
+Ask your builder when drywall is scheduled and get your inspector booked before it happens. If the schedule moves, and it usually does, stay on it.
+
+THE ONE ALMOST NOBODY BOOKS
+
+Most builders provide a warranty covering the first year on many items. Most buyers use it for the obvious things in the first month and then forget it exists.
+
+An eleven-month inspection, booked before that first year runs out, is the single most valuable one on this list. The house has been through a full year of weather. It has settled. The air conditioning has run through an Alabama August and a wet January. Anything that was going to reveal itself has had time to.
+
+Whatever the inspector finds goes to the builder in writing while the warranty is still live. Booked at thirteen months, the same list is your problem.
+
+Put it in your calendar the week you close. Not the month you close, the week.
+
+WHAT AN INSPECTOR LOOKS AT HERE THAT THEY MIGHT NOT ELSEWHERE
+
+This is the coast, and it is hard on houses.
+
+Where and how the windows and doors are flashed, because wind-driven rain finds every shortcut. Whether the roof is detailed properly at the edges and penetrations. How the site drains, and where the water actually goes when it rains hard rather than where the plan says it goes. Whether the air conditioning is sized for the house rather than for the spreadsheet. Attic ventilation, which is unglamorous and matters enormously in this humidity. Whether anything has been closed up damp.
+
+None of that is exotic. It is just specific to building near salt water in a hot, wet climate, and an inspector who works here every week will look for it without being asked.
+
+CHOOSE YOUR OWN INSPECTOR
+
+Builders often keep a list of inspectors they have worked with. Some of those people are excellent.
+
+It is still worth having somebody whose only relationship is with you, and who will still be taking your call in eleven months. Ask what they will and will not look at, ask whether they come back for the warranty inspection, and ask for a sample report before you book.
+
+WHAT TO DO WITH THE LIST
+
+You will get a report with items on it. Most of them will be small. That is normal, including on a well-built house.
+
+Put them in writing, send them through the proper channel rather than mentioning them to whoever is on site that day, and keep a record of what was agreed and when. Small items get fixed quickly when they are documented and slowly when they are not.
+
+If you are buying new construction here and are not sure when to book what, ask us. We do this often enough to know where the schedule usually slips, and it is a great deal easier to plan the inspections before the build starts than to chase them once the drywall is going up.`,
+    updatedAt: '2026-08-31T00:00:00.000Z' },
+
   { id: 'art_insurance', slug: 'gulf-coast-home-insurance-costs',
     title: 'What home insurance actually costs on the Alabama Gulf Coast',
     teaser: 'Wind, flood and hail are three separate conversations, and the difference between a mile inland and on the beach can be thousands a year.',
@@ -9250,7 +9348,30 @@ Work out where you will actually spend your time before you choose a town. The p
    deliberately. The seeds ship as drafts to be reviewed, not as live pages. */
 async function articlesAll() {
   const saved = await getSetting(ARTICLES_KEY);
-  const list = Array.isArray(saved) && saved.length ? saved : ARTICLE_DEFAULTS;
+  /* \u26a0 Saved articles override the defaults entirely, so a new article shipped in
+     ARTICLE_DEFAULTS would never appear on any site where the broker has ever pressed
+     save in Content. This is the same trap the quiz had: the built-in list is only a
+     fallback, and a fallback is not a delivery mechanism.
+
+     Any default whose id is missing from the saved list is merged in as an UNPUBLISHED
+     draft, so it turns up in Content to be read and published rather than appearing on
+     the website unannounced.
+
+     \u26a0 Matched on id. A default the broker has deleted on purpose will come back \u2014 the
+     alternative is new writing silently never arriving, which is worse. If deletions
+     need to stick, record the removed ids rather than dropping this merge. */
+  const savedList = Array.isArray(saved) ? saved : [];
+  const have = new Set(savedList.map(a => a && a.id).filter(Boolean));
+  /* \u26a0 ONLY defaults flagged `deliver` are merged. Without that flag this resurrects
+     every built-in article the broker has ever deleted from Content, which is a worse
+     problem than the one it solves. Set `deliver: true` deliberately on genuinely new
+     writing, and it can be removed once the article has been seen. */
+  const missing = ARTICLE_DEFAULTS.filter(a => a.deliver && !have.has(a.id))
+    .map(a => Object.assign({}, a, { published: a.published === true }));
+  const list = savedList.length ? savedList.concat(missing) : ARTICLE_DEFAULTS;
+  if (missing.length && savedList.length) {
+    console.log('[content] ' + missing.length + ' new draft article(s) available in Content');
+  }
   return list.map(a => Object.assign({}, a, {
     slug: articleSlug(a),
     published: a.published === true,
