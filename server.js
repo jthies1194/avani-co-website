@@ -5274,6 +5274,203 @@ function goalsFor(map, id) {
 const GOAL_CALL_EVENTS  = /^call_/;                       // from the call list
 const GOAL_EMAIL_EVENTS = /^(welcomed|letter_sent|listings_sent|email_sent)$/;
 
+/* ================= ANALYTICS (server 175) =================
+   \u26a0 FIRST PARTY ON PURPOSE, not Google Analytics.
+
+   Three reasons. GA needs a cookie banner in most of the world and the broker does not
+   want another consent popup on a lead-capture page. GA data lives in a separate console
+   the agents will never open, and the broker's whole reason for asking was "it motivates
+   them to see what is working" \u2014 data they cannot see motivates nobody. And GA would tell
+   us about visitors while telling us nothing about which AGENT's link brought them.
+
+   \u26a0 NO COOKIES, NO IP ADDRESSES, NO PERSONAL DATA. This counts page views by path, by
+   referrer host, and by agent slug when a link carried one. That is enough to answer
+   "what is working" and it keeps the site out of consent-banner territory. Do not extend
+   this to store anything that identifies a person without talking to the attorney first.
+
+   \u26a0 COUNTERS ARE HELD IN MEMORY AND FLUSHED ONCE A MINUTE. A database write per page view
+   would be both slow and expensive, and this site does not need per-visit detail. The
+   cost is that a restart loses up to a minute of counts, which is an acceptable trade for
+   something nobody is billing against. */
+
+const PV_PREFIX = 'analytics:';       // analytics:YYYY-MM-DD
+let PV_BUFFER = {};                   // { day: { paths:{}, refs:{}, agents:{}, total:n } }
+let PV_LAST_FLUSH = 0;
+
+function pvToday() { return new Date().toISOString().slice(0, 10); }
+
+/* \u26a0 Paths are normalized so /insights/a-long-slug and /homes/gulf-shores stay useful
+   but query strings and ids do not explode the key count. */
+function pvCleanPath(p) {
+  let s = String(p || '/').split('?')[0].split('#')[0].slice(0, 160);
+  if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
+  return s || '/';
+}
+
+function pvCleanRef(r) {
+  const t = String(r || '').trim();
+  if (!t) return 'direct';
+  try {
+    const h = new URL(t).hostname.replace(/^www\./, '');
+    /* Our own pages are not a referrer worth counting. */
+    if (h && PUBLIC_ORIGIN.includes(h)) return 'direct';
+    return h.slice(0, 80) || 'direct';
+  } catch (e) { return 'direct'; }
+}
+
+app.post('/api/pv', async (req, res) => {
+  /* Always answers 204 and never blocks. A page view must never be able to slow down or
+     break the page it is counting. */
+  res.status(204).end();
+  try {
+    const b = req.body || {};
+    const day = pvToday();
+    const bucket = PV_BUFFER[day] || (PV_BUFFER[day] = { paths: {}, refs: {}, agents: {}, total: 0 });
+    const path = pvCleanPath(b.p);
+    const ref = pvCleanRef(b.r);
+    bucket.paths[path] = (bucket.paths[path] || 0) + 1;
+    bucket.refs[ref] = (bucket.refs[ref] || 0) + 1;
+    bucket.total++;
+    const ag = String(b.a || '').trim().slice(0, 60);
+    if (ag) bucket.agents[ag] = (bucket.agents[ag] || 0) + 1;
+    if (Date.now() - PV_LAST_FLUSH > 60000) pvFlush().catch(() => {});
+  } catch (e) { /* counting must never throw into a response */ }
+});
+
+async function pvFlush() {
+  PV_LAST_FLUSH = Date.now();
+  const days = Object.keys(PV_BUFFER);
+  for (const day of days) {
+    const add = PV_BUFFER[day];
+    delete PV_BUFFER[day];
+    if (!add || !add.total) continue;
+    try {
+      const key = PV_PREFIX + day;
+      const cur = (await getSetting(key)) || { paths: {}, refs: {}, agents: {}, total: 0 };
+      /* \u26a0 Merged, not replaced. Two flushes in one day must add up rather than the second
+         wiping the first. */
+      for (const g of ['paths', 'refs', 'agents']) {
+        cur[g] = cur[g] || {};
+        for (const k in add[g]) cur[g][k] = (cur[g][k] || 0) + add[g][k];
+      }
+      cur.total = (cur.total || 0) + add.total;
+      const ok = await setSetting(key, cur);
+      /* \u26a0 Put the counts back in the buffer if the write failed, or they are gone. */
+      if (ok === false) PV_BUFFER[day] = add;
+    } catch (e) { PV_BUFFER[day] = add; }
+  }
+}
+
+setInterval(() => { pvFlush().catch(() => {}); }, 60 * 1000);
+
+/* ---------- reading it back ---------- */
+app.get('/api/analytics', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 30));
+  await pvFlush().catch(() => {});
+
+  const out = { ok: true, days, total: 0, paths: {}, refs: {}, agents: {}, daily: [] };
+  const staff = isStaff(sess);
+  try {
+    for (let i = 0; i < days; i++) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const row = (await getSetting(PV_PREFIX + d)) || null;
+      out.daily.unshift({ day: d, total: row ? (row.total || 0) : 0 });
+      if (!row) continue;
+      out.total += row.total || 0;
+      for (const g of ['paths', 'refs', 'agents']) {
+        for (const k in (row[g] || {})) out[g][k] = (out[g][k] || 0) + row[g][k];
+      }
+    }
+  } catch (e) { return res.status(500).json({ error: 'Could not read the numbers.' }); }
+
+  /* \u26a0 An agent sees the whole site's traffic \u2014 that is the point, it shows them what is
+     working \u2014 but the per-agent breakdown is the broker's. Seeing another agent's link
+     performance is a different thing from seeing which articles people read. */
+  if (!staff) {
+    const mine = out.agents[slugify(sess.name || '')] || 0;
+    out.agents = { you: mine };
+  }
+  const top = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
+  out.topPaths = top(out.paths, 15);
+  out.topRefs = top(out.refs, 10);
+  out.topAgents = top(out.agents, 20);
+  delete out.paths; delete out.refs;
+  res.json(out);
+});
+
+/* ================= BROKER WEEKLY STATS =================
+   \u26a0 The broker asked for this in his own words: "I don't want to baby them but helps me
+   help them be accountable." So: he sees everyone, each agent sees only themselves, and
+   there is no public leaderboard. Ranking colleagues against each other publicly
+   motivates the top two and demoralizes everybody else, and that was not what he asked
+   for. If he wants one later it is a small change on top of this. */
+app.get('/api/team/activity', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
+  const weeks = Math.max(1, Math.min(12, parseInt(req.query.weeks, 10) || 4));
+  const since = weekStartCentral() - (weeks - 1) * 7 * 86400000;
+
+  let agents = [];
+  try {
+    const { data } = await supabase.from('agents').select('id,name,active').order('name');
+    agents = (data || []).filter(a => a.active !== false);
+  } catch (e) { return res.status(500).json({ error: 'Could not read the agents.' }); }
+
+  const blank = () => ({ calls: 0, emails: 0, leads: 0, reached: 0 });
+  const byAgent = {};
+  agents.forEach(a => { byAgent[a.id] = { id: a.id, name: a.name, weeks: {}, total: blank() }; });
+
+  const weekKey = t => new Date(weekStartOf(t)).toISOString().slice(0, 10);
+
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    for (const row of (data || [])) {
+      const l = row.value; if (!l) continue;
+
+      if (l.createdAt && new Date(l.createdAt).getTime() >= since) {
+        const rec = byAgent[l.assignedAgentId];
+        if (rec) {
+          const wk = weekKey(new Date(l.createdAt).getTime());
+          (rec.weeks[wk] || (rec.weeks[wk] = blank())).leads++;
+          rec.total.leads++;
+        }
+      }
+      for (const ev of (Array.isArray(l.events) ? l.events : [])) {
+        if (!ev || !ev.at) continue;
+        const t = new Date(ev.at).getTime();
+        if (t < since) continue;
+        const rec = byAgent[ev.by || l.assignedAgentId || ''];
+        if (!rec) continue;
+        const wk = weekKey(t);
+        const w = rec.weeks[wk] || (rec.weeks[wk] = blank());
+        if (/^call_/.test(ev.k)) { w.calls++; rec.total.calls++; }
+        if (ev.k === 'call_reached') { w.reached++; rec.total.reached++; }
+        else if (GOAL_EMAIL_EVENTS.test(ev.k)) { w.emails++; rec.total.emails++; }
+      }
+    }
+  } catch (e) { return res.status(500).json({ error: 'Could not read the activity.' }); }
+
+  /* The list of weeks, newest first, so the screen never has to work them out. */
+  const weekList = [];
+  for (let i = 0; i < weeks; i++) {
+    weekList.push(new Date(weekStartCentral() - i * 7 * 86400000).toISOString().slice(0, 10));
+  }
+  res.json({ ok: true, weeks: weekList, agents: Object.values(byAgent) });
+});
+
+/* Monday of whatever week a timestamp falls in, Central. Shares its logic with
+   weekStartCentral() so the weekly card and this report can never disagree. */
+function weekStartOf(t) {
+  const d = new Date(t);
+  const off = centralHour(d) - d.getUTCHours();
+  const shift = ((off + 24) % 24) > 12 ? (((off + 24) % 24) - 24) : ((off + 24) % 24);
+  const local = new Date(d.getTime() + shift * 3600000);
+  const dow = (local.getUTCDay() + 6) % 7;
+  local.setUTCHours(0, 0, 0, 0);
+  return local.getTime() - dow * 86400000 - shift * 3600000;
+}
+
 app.get('/api/goals', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const who = String(req.query.agent || sess.agentId || '');
@@ -6177,7 +6374,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v174',
+    serverVersion: 'v175',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
