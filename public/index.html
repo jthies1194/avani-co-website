@@ -5314,7 +5314,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v356';
+window.BUILD = 'index-v357';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -27147,14 +27147,11 @@ async function mlDelete(i){
 /* \u26a0 Solid white, not translucent. A translucent chip lets the blue through and the
    colored glyph goes muddy again, which was the whole problem.
 
-   \u26a0 AND THE ICON COLOR IS DARKENED. A white chip alone was not enough: it rescued the
-   dark icons (green went 1.36 to 6.45) and made the light ones WORSE (gold fell 3.45 to
-   2.54), because gold on white is barely there. Mixing each tab color 62% with the deep
-   ink puts every one of them past 4.5 on white while keeping the hue recognizable \u2014
-   gold still reads gold, green still reads green. Measured across all seven colors;
-   62 is the point where the worst of them clears. */
+   \u26a0 AND THE ICON COLOR IS NUDGED DARKER. A white chip alone was not enough: it rescued
+   the dark icons and made the light ones worse, because gold on white is barely there.
+   85% of the tab color keeps every hue vivid and clears the 3:1 graphic standard. */
 .crm-nav button .ti{background:#FFFFFF;
-  color:color-mix(in srgb, var(--tab) 62%, #14183A);
+  color:color-mix(in srgb, var(--tab) 85%, #14183A);
   border-radius:7px;width:27px;height:27px}
 .crm-nav button:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.24)}
 .crm-nav button:hover .ti{background:#FFFFFF}
@@ -27189,8 +27186,12 @@ async function mlDelete(i){
   background:transparent;border:1px solid transparent;border-radius:9px;
   padding:6px 9px;margin:0 0 4px}
 #crm-main .crm-nav button .tl{color:inherit}
+/* \u26a0 85%, not 62%. The 62% mix was chosen against the 4.5 text standard and it turned
+   gold into brown and teal into slate \u2014 the broker's word was "bland", and he was right.
+   An icon is a GRAPHIC: the standard is 3:1, not 4.5:1. At 85% every color stays
+   recognizably itself and the worst of them still clears 3.15 on white. */
 #crm-main .crm-nav button .ti{background:#FFFFFF;
-  color:color-mix(in srgb, var(--tab) 62%, #14183A);border-radius:6px;width:24px;height:24px}
+  color:color-mix(in srgb, var(--tab) 85%, #14183A);border-radius:6px;width:24px;height:24px}
 /* Hover brightens toward white rather than losing the hue entirely. */
 #crm-main .crm-nav button:hover{background:rgba(255,255,255,.14);
   border-color:rgba(255,255,255,.24);
@@ -27202,8 +27203,8 @@ async function mlDelete(i){
    icons \u2014 so the current tab is unmistakably its own color rather than generic blue.
    This is the other half of making "Make it yours" visibly do something. */
 #crm-main .crm-nav button.on .tl{
-  color:color-mix(in srgb, var(--tab) 62%, #14183A);font-weight:700}
-#crm-main .crm-nav button.on{color:color-mix(in srgb, var(--tab) 62%, #14183A)}
+  color:color-mix(in srgb, var(--tab) 72%, #14183A);font-weight:700}
+#crm-main .crm-nav button.on{color:color-mix(in srgb, var(--tab) 72%, #14183A)}
 #crm-main .crm-nav button.on .ti{background:var(--tab);color:#FFFFFF}
 #crm-main .crm-nav button.on .pill{background:var(--tab);color:#FFFFFF}
 
