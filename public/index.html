@@ -915,35 +915,9 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   transition:transform .2s;transform-origin:center}
 .pn-caret.shut{transform:rotate(-90deg)}
 
-/* \u26a0 CONTRAST ON THE DARK RAIL (index 346). The rules above mix every tab color toward
-   #14183A, which is nearly black. That is right on a white page and wrong on the navy
-   rail the nav actually sits on \u2014 it produced dark text on a dark background, and the
-   broker could not read the tabs or the quick links at all.
-
-   Everything here mixes toward WHITE instead, and the resting color is a light slate
-   rather than the mid-grey --driftwood, which was designed for light backgrounds.
-
-   \u26a0 THIS BLOCK MUST STAY AFTER THE RULES IT OVERRIDES. Same specificity, so source
-   order decides. Moved earlier it silently does nothing. */
-.crm-nav button{color:#C3CAE4}
-.crm-nav button:hover{color:color-mix(in srgb, var(--tab) 62%, #FFFFFF)}
-.crm-nav button:hover .ti{background:color-mix(in srgb, var(--tab) 34%, transparent)}
-.crm-nav button.on{color:#FFFFFF;border-bottom-color:var(--tab)}
-.crm-nav button.on .ti{background:var(--tab);color:#14183A}
-/* Idle icons need enough tint to be visible against navy. */
-.crm-nav button .ti{background:color-mix(in srgb, var(--tab) 24%, transparent)}
-
-/* The external quick links \u2014 ShowingTime, Perchwell \u2014 were the worst of it: mid-grey
-   on navy at 15px. */
-#crm-nav .crm-ext{color:#C3CAE4}
-#crm-nav .crm-ext:hover{color:#F0D9A8}
-#crm-nav .crm-ext .ti{background:rgba(230,195,129,.22)}
-#crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.40)}
-#crm-nav .crm-ext::after{opacity:.8}
-/* The screen-finder box sat almost invisible in the same row. */
-#crm-rail input,#crm-nav input{background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.22);color:#fff}
-#crm-rail input::placeholder,#crm-nav input::placeholder{color:rgba(255,255,255,.55)}
+/* Contrast overrides for the dark rail live at the END of the last style block.
+   See the note there \u2014 they must come after #crm-nav .crm-ext, which is defined far
+   below this point. */
 /* The old single-color hover and active rules used to sit here. They came after
    the colored ones and overrode them, so every tab went back to marsh blue.
    Removed rather than reordered — two sets of rules for the same thing is how
@@ -5340,7 +5314,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v347';
+window.BUILD = 'index-v348';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -27117,6 +27091,46 @@ async function mlDelete(i){
 #tm-panel td{padding:9px 0;border-top:1px solid var(--hair2)}
 #tm-panel .nm{font-weight:600;color:var(--rl,#0E1433)}
 #tm-panel .zero{color:#C0483C}
+
+/* ================= CONTRAST ON THE DARK RAIL (index 348) =================
+   \u26a0 PLACED LAST ON PURPOSE. The first attempt put these next to the .crm-nav button
+   rules around line 900. The tabs fixed, and the ShowingTime and Perchwell links did
+   not \u2014 because "#crm-nav .crm-ext" is defined around line 3800, AFTER that, and with
+   equal specificity the later rule wins. The broker reported the same problem twice
+   before I checked where the original actually sat.
+
+   This is rule 32 in the project notes, written after making the identical mistake on
+   the search panel, and then made again. Overrides go after everything.
+
+   The nav sits on a navy rail. Every rule above mixes tab colors toward #14183A, which
+   is nearly black \u2014 correct on a white page, invisible on navy. The active tab measured
+   1.32 against the rail where 4.5 is the accessible minimum. These mix toward white. */
+.crm-nav button{color:#C3CAE4}
+.crm-nav button .ti{background:color-mix(in srgb, var(--tab) 24%, transparent)}
+.crm-nav button:hover{color:color-mix(in srgb, var(--tab) 62%, #FFFFFF)}
+.crm-nav button:hover .ti{background:color-mix(in srgb, var(--tab) 34%, transparent)}
+.crm-nav button.on{color:#FFFFFF}
+.crm-nav button.on .ti{background:var(--tab);color:#14183A}
+
+/* The outside tools were the worst of it: mid-grey on navy. */
+#crm-nav .crm-ext,#crm-rail .crm-ext,.crm-nav .crm-ext{color:#C3CAE4}
+#crm-nav .crm-ext .tl,.crm-nav .crm-ext .tl{color:inherit}
+#crm-nav .crm-ext:hover,.crm-nav .crm-ext:hover{color:#F0D9A8}
+#crm-nav .crm-ext .ti,.crm-nav .crm-ext .ti{background:rgba(230,195,129,.24);color:#E6C381}
+#crm-nav .crm-ext:hover .ti,.crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.42)}
+#crm-nav .crm-ext::after,.crm-nav .crm-ext::after{opacity:.85}
+
+/* "Make it yours" sat at the same dim grey. */
+.crm-nav .crm-arrange{color:#C3CAE4}
+.crm-nav .crm-arrange .tl{color:inherit}
+.crm-nav .crm-arrange:hover{color:#FFFFFF}
+
+/* The screen finder was nearly invisible in the same row. */
+#crm-rail input[type=text],#crm-nav input[type=text],#crm-rail #crm-find,#crm-find{
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.24);color:#fff}
+#crm-rail input::placeholder,#crm-nav input::placeholder,#crm-find::placeholder{
+  color:rgba(255,255,255,.58)}
+
 </style>
 <script>
 /* ---------- analytics + team activity (index 343) ----------
