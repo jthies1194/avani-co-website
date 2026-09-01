@@ -5380,7 +5380,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v363';
+window.BUILD = 'index-v365';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -19616,7 +19616,7 @@ function plDealHtml(d){
   const people = [
     ...(Array.isArray(d.people) && d.people.length
         ? d.people.filter(p => p.name).map(p => p.role + ': ' + p.name)
-        : plMigratePeople(d).map(p => p.role + ': ' + p.name)),
+        : plMigratePeople(d).filter(p => p.name).map(p => p.role + ': ' + p.name)),
     d.split && 'My split: ' + d.split,
     (d.refPct || d.refTo) && ('Referral: ' + [d.refPct, d.refTo].filter(Boolean).join(' to ')),
   ].filter(Boolean);
@@ -27705,13 +27705,29 @@ async function plFindListing(){
   const msg = document.getElementById('pl-photo-msg');
   const q = addr || prompt('Street number and name, e.g. 412 Sandpiper');
   if(!q) return;
-  if(msg) msg.textContent = 'Looking\u2026';
+  /* \u26a0 The server may make up to three widening queries against the MLS, which can take
+     ten seconds or more. A bare "Looking..." for that long reads as frozen \u2014 the broker
+     reported it as the photo not loading. Say what is happening and give up rather than
+     hang forever. */
+  if(msg) msg.textContent = 'Searching the MLS for "' + q + '" \u2014 this can take a few seconds\u2026';
   let d;
   try{
-    const r = await fetch('/api/listing-lookup?q=' + encodeURIComponent(q));
+    const ctrl = new AbortController();
+    const bail = setTimeout(() => ctrl.abort(), 25000);
+    const r = await fetch('/api/listing-lookup?q=' + encodeURIComponent(q), { signal: ctrl.signal });
+    clearTimeout(bail);
     d = await r.json();
-  }catch(e){ if(msg) msg.textContent = 'Could not reach the listing feed.'; return; }
+  }catch(e){
+    if(msg) msg.textContent = e && e.name === 'AbortError'
+      ? 'The listing feed did not answer in time. Try again, or upload a photo yourself.'
+      : 'Could not reach the listing feed. You can still upload a photo yourself.';
+    return;
+  }
 
+  /* \u26a0 Everything below is wrapped, because an exception while rendering leaves the
+     message stuck on "Searching..." and looks exactly like a hung request. That is what
+     happened, and it cost an afternoon. */
+  try{
   const list = (d && d.matches) || [];
   if(!list.length){
     if(msg) msg.innerHTML = 'Nothing in the feed matches <b>' + escapeHtml(q) + '</b>. '
@@ -27725,9 +27741,19 @@ async function plFindListing(){
       '<div style="padding:5px 0"><a href="#" onclick="plUseListing(' + i + ');return false;">'
       + escapeHtml(m.address) + '</a> <span style="color:var(--driftwood)">'
       + escapeHtml(m.city) + (m.status ? ' \u00b7 ' + escapeHtml(m.status) : '')
-      + (m.price ? ' \u00b7 ' + money(m.price) : '') + '</span></div>').join('');
+      /* \u26a0 Formatted inline, NOT with money(). That helper lives inside a
+         (function(global){...}) module and is not reachable from here, so calling it
+         threw a ReferenceError, the whole list render died, and the message sat on
+         "Searching..." forever. The MLS had returned matches perfectly well \u2014 the bug
+         was in drawing them. Check a helper is actually in scope before calling it. */
+      + (m.price ? ' \u00b7 $' + Number(m.price).toLocaleString('en-US') : '')
+      + '</span></div>').join('');
   }
   window.__plMatches = list;
+  }catch(err){
+    console.error('[listing-lookup render]', err);
+    if(msg) msg.textContent = 'Found matches but could not show them: ' + err.message;
+  }
 }
 
 function plFindAgain(){
@@ -27802,12 +27828,20 @@ let plPeople = [];
 
 /* Old single-value fields -> rows. Runs only when the list is empty, so it cannot
    duplicate people on a deal that has already been converted and saved. */
+/* \u26a0 A new deal STARTS WITH THE STANDARD ROLES as blank rows. The first version opened
+   on an empty list saying "Nobody added yet", and the broker's objection was exactly
+   right: the five labelled boxes it replaced told you who you were supposed to be
+   recording, and a blank list tells you nothing. The prompt was doing real work.
+   Blank rows are dropped on save, so an unused row costs nothing. */
+const PL_STANDARD = ['Other agent','Lender','Title company','Inspector',
+                     'Transaction coordinator'];
+
 function plMigratePeople(d){
   if(Array.isArray(d.people) && d.people.length) return d.people.slice();
   const out = [];
   const add = (role, name, email) => {
-    if(name && String(name).trim()) out.push({
-      role, name: String(name).trim(), email: String(email || '').trim(), docs: false });
+    out.push({ role, name: String(name || '').trim(),
+               email: String(email || '').trim(), docs: false });
   };
   add('Other agent', d.pAgent);
   add('Lender', d.pLender);
@@ -27822,7 +27856,7 @@ function plRenderPeople(){
   if(!host) return;
   if(!plPeople.length){
     host.innerHTML = '<div style="font-size:13px;color:var(--driftwood);padding:6px 0">'
-      + 'Nobody added yet.</div>';
+      + 'Nobody yet \u2014 press <b>Add someone</b>.</div>';
     return;
   }
   host.innerHTML = plPeople.map((p, i) => `
