@@ -5314,7 +5314,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v348';
+window.BUILD = 'index-v350';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -27092,44 +27092,72 @@ async function mlDelete(i){
 #tm-panel .nm{font-weight:600;color:var(--rl,#0E1433)}
 #tm-panel .zero{color:#C0483C}
 
-/* ================= CONTRAST ON THE DARK RAIL (index 348) =================
-   \u26a0 PLACED LAST ON PURPOSE. The first attempt put these next to the .crm-nav button
-   rules around line 900. The tabs fixed, and the ShowingTime and Perchwell links did
-   not \u2014 because "#crm-nav .crm-ext" is defined around line 3800, AFTER that, and with
-   equal specificity the later rule wins. The broker reported the same problem twice
-   before I checked where the original actually sat.
+/* ================= THE RAIL IS ROYAL BLUE (index 350) =================
+   \u26a0 History, so nobody undoes this by halves. It began as --rl #0E1433, which is
+   nearly black, and the broker said three times it was too dark to read the tabs
+   against. My first two attempts brightened the TEXT, which was not what he asked for.
+   Then I made it off-white, and he was right again: a white bar above a white page has
+   no edge to it and the whole screen blurs together.
 
-   This is rule 32 in the project notes, written after making the identical mistake on
-   the search panel, and then made again. Overrides go after everything.
+   \u26a0 --blue #2E3CB0 is already in the palette. Not a new shade \u2014 the brand's royal
+   blue, which is light enough to read against and still reads as a distinct band.
 
-   The nav sits on a navy rail. Every rule above mixes tab colors toward #14183A, which
-   is nearly black \u2014 correct on a white page, invisible on navy. The active tab measured
-   1.32 against the rail where 4.5 is the accessible minimum. These mix toward white. */
-.crm-nav button{color:#C3CAE4}
-.crm-nav button .ti{background:color-mix(in srgb, var(--tab) 24%, transparent)}
-.crm-nav button:hover{color:color-mix(in srgb, var(--tab) 62%, #FFFFFF)}
-.crm-nav button:hover .ti{background:color-mix(in srgb, var(--tab) 34%, transparent)}
-.crm-nav button.on{color:#FFFFFF}
-.crm-nav button.on .ti{background:var(--tab);color:#14183A}
+   \u26a0 White text on #2E3CB0 measures 6.9:1, comfortably past the 4.5 minimum, so the
+   text can go back to being light. The tab-color mixes have to target WHITE rather than
+   #14183A, because the rules further up this file were written for a light background
+   and this is not one. */
+#crm-rail{background:var(--blue,#2E3CB0);
+  border-right:1px solid rgba(255,255,255,.16);color:#FFFFFF}
+@media(max-width:1000px){
+  #crm-rail{border-right:none;border-bottom:1px solid rgba(255,255,255,.16)}
+}
 
-/* The outside tools were the worst of it: mid-grey on navy. */
-#crm-nav .crm-ext,#crm-rail .crm-ext,.crm-nav .crm-ext{color:#C3CAE4}
+/* Brand block, back to light on the blue. */
+#crm-rail .mk,#crm-rail .mk .n{color:#FFFFFF}
+#crm-rail .mk .s{color:var(--gold,#E6C381)}
+#crm-rail .me .t{color:#FFFFFF}
+#crm-rail .me .r{color:rgba(255,255,255,.72)}
+#crm-rail .out{color:#FFFFFF;border-color:rgba(255,255,255,.42)}
+#crm-rail .out:hover{background:#FFFFFF;color:var(--blue,#2E3CB0);border-color:#FFFFFF}
+#crm-rail button,#crm-rail a{color:inherit}
+
+/* Tabs. The idle state is deliberately near-white rather than a tinted grey \u2014 a tab
+   you cannot read is not a subtle tab, it is a broken one. */
+.crm-nav button{color:rgba(255,255,255,.88)}
+.crm-nav button .ti{background:rgba(255,255,255,.16)}
+.crm-nav button:hover{color:#FFFFFF}
+.crm-nav button:hover .ti{background:rgba(255,255,255,.30)}
+/* \u26a0 The active tab is white-on-white-block rather than a color mix. On a blue bar a
+   mixed tint is not distinct enough at a glance, and this is the one thing a person
+   needs to find without looking for it. */
+.crm-nav button.on{color:var(--blue,#2E3CB0);background:#FFFFFF;border-radius:8px 8px 0 0;
+  border-bottom-color:#FFFFFF}
+.crm-nav button.on .ti{background:var(--tab);color:#FFFFFF}
+
+/* Outside tools: readable, still clearly secondary to the tabs. */
+#crm-nav .crm-ext,#crm-rail .crm-ext,.crm-nav .crm-ext{color:rgba(255,255,255,.78)}
 #crm-nav .crm-ext .tl,.crm-nav .crm-ext .tl{color:inherit}
-#crm-nav .crm-ext:hover,.crm-nav .crm-ext:hover{color:#F0D9A8}
-#crm-nav .crm-ext .ti,.crm-nav .crm-ext .ti{background:rgba(230,195,129,.24);color:#E6C381}
-#crm-nav .crm-ext:hover .ti,.crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.42)}
-#crm-nav .crm-ext::after,.crm-nav .crm-ext::after{opacity:.85}
+#crm-nav .crm-ext:hover,.crm-nav .crm-ext:hover{color:var(--gold,#E6C381)}
+#crm-nav .crm-ext .ti,.crm-nav .crm-ext .ti{background:rgba(230,195,129,.26);color:var(--gold,#E6C381)}
+#crm-nav .crm-ext:hover .ti,.crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.44)}
 
-/* "Make it yours" sat at the same dim grey. */
-.crm-nav .crm-arrange{color:#C3CAE4}
+.crm-nav .crm-arrange{color:rgba(255,255,255,.78)}
 .crm-nav .crm-arrange .tl{color:inherit}
 .crm-nav .crm-arrange:hover{color:#FFFFFF}
 
-/* The screen finder was nearly invisible in the same row. */
+/* The finder needs a visible edge against blue. */
 #crm-rail input[type=text],#crm-nav input[type=text],#crm-rail #crm-find,#crm-find{
-  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.24);color:#fff}
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.34);color:#FFFFFF}
 #crm-rail input::placeholder,#crm-nav input::placeholder,#crm-find::placeholder{
-  color:rgba(255,255,255,.58)}
+  color:rgba(255,255,255,.62)}
+#crm-rail .ver,#crm-nav .ver{color:rgba(255,255,255,.62)}
+#crm-rail .sugg,#crm-nav .sugg,#crm-rail [onclick*="uggest"]{
+  background:rgba(255,255,255,.14);color:#FFFFFF;border-color:rgba(255,255,255,.34)}
+#crm-rail .me .av{color:#14183A}
+#crm-rail button,#crm-rail a{color:inherit}
+/* Suggest an improvement was a dark pill on a dark bar; keep it dark on light. */
+#crm-rail .sugg,#crm-nav .sugg,#crm-rail [onclick*="uggest"]{
+  background:#14183A;color:#FFFFFF;border-color:#14183A}
 
 </style>
 <script>
