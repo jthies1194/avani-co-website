@@ -695,15 +695,32 @@ app.get('/api/listing-lookup', async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 3) return res.json({ ok: true, matches: [] });
   try {
-    /* Street number and name only. "412 Sandpiper Ln, Gulf Shores AL 36542" will not
-       match a feed that stores it differently, but "412 Sandpiper" nearly always does. */
-    const short = q.split(',')[0].replace(/'/g, "''").slice(0, 60);
-    const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
-      $filter: `contains(UnparsedAddress,'${short}')`,
-      $select: 'ListingKey,UnparsedAddress,City,ListPrice,StandardStatus,'
-             + 'BedroomsTotal,BathroomsTotalInteger,Media',
-      $top: 8,
-    });
+    /* \u26a0 THREE ATTEMPTS, WIDENING. The first version searched the whole string before the
+       comma, so "317 Beach Boulevard # 204A" found nothing \u2014 the feed does not store the
+       unit that way, and a condo address is exactly the case this needs to handle on
+       this coast. Now: the full string, then without the unit, then number and street
+       name only. Stops at the first attempt that returns anything. */
+    const first = q.split(',')[0].trim();
+    const noUnit = first
+      .replace(/\s*(#|\bunit\b|\bapt\b|\bste\b|\bsuite\b)\s*[a-z0-9-]+\s*$/i, '').trim();
+    const m = noUnit.match(
+      /^(\d+)\s+([A-Za-z][A-Za-z\s]*?)(\s+(blvd|boulevard|st|street|ave|avenue|dr|drive|rd|road|ln|lane|way|ct|court|cir|circle|pkwy|parkway|hwy|highway))?$/i);
+    const tries = [...new Set([first, noUnit, m ? (m[1] + ' ' + m[2]).trim() : ''])]
+      .filter(x => x && x.length >= 3);
+
+    let rows = [];
+    for (const attempt of tries) {
+      const esc = attempt.replace(/'/g, "''").slice(0, 60);
+      const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
+        $filter: `contains(UnparsedAddress,'${esc}')`,
+        $select: 'ListingKey,UnparsedAddress,City,ListPrice,StandardStatus,'
+               + 'BedroomsTotal,BathroomsTotalInteger,Media',
+        $top: 8,
+      });
+      rows = d.value || [];
+      if (rows.length) break;
+    }
+    const d = { value: rows };
     const matches = (d.value || []).map(r => ({
       key: r.ListingKey,
       address: r.UnparsedAddress || '',
@@ -6430,7 +6447,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v177',
+    serverVersion: 'v178',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6729,7 +6746,8 @@ app.get('/api/agent/by-slug/:slug', async (req, res) => {
       bio: profile.bio || '', photo: profile.photo || '', title: profile.title || '',
       specialties: profile.specialties || '', languages: profile.languages || '',
       logo: profile.logo || '', teamName: profile.teamName || '',
-      brandColor: profile.brandColor || '', tagline: profile.tagline || '',
+      brandColor: profile.brandColor || '', brandAccent: profile.brandAccent || '',
+      tagline: profile.tagline || '',
       facebook: profile.facebook || '', instagram: profile.instagram || '',
       licensedStates: licensedStatesOf(profile),
       licenseNumbers: profile.licenseNumbers || {},
@@ -6840,6 +6858,10 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
     teamName: clean(b.teamName).slice(0, 80),
     brandColor: /^#[0-9a-f]{6}$/i.test(String(b.brandColor || '').trim())
       ? String(b.brandColor).trim() : (existing.brandColor || ''),
+    /* \u26a0 Two colors. One cannot be both a heading and a button \u2014 a pale gold heading
+       reads fine and a pale gold button disappears. */
+    brandAccent: /^#[0-9a-f]{6}$/i.test(String(b.brandAccent || '').trim())
+      ? String(b.brandAccent).trim() : (existing.brandAccent || ''),
     tagline: clean(b.tagline).slice(0, 120),
     updatedAt: new Date().toISOString(),
   };
