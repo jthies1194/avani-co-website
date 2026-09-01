@@ -3460,9 +3460,20 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
      list of articles and a Send button and had to work out the rest.
      \u26a0 Collapsed by default. Somebody who has done this twice does not need instructions
      in the way every week, and somebody who has not can open it. -->
-<details class="setup-panel" style="margin-bottom:14px">
-  <summary style="cursor:pointer;font-family:'Fraunces',Georgia,serif;font-size:17px;
-    padding:2px 0">How to send one of these out</summary>
+<!-- \u26a0 A bare <summary> renders as a small triangle and a line of text, which the
+     broker could not pick out from the page. Given a background, a border and an
+     explicit prompt so it reads as something you press. -->
+<details class="setup-panel" style="margin-bottom:14px;background:#F6EEDC;
+  border:1px solid #E3D2AE;border-radius:8px;padding:14px 16px">
+  <summary style="cursor:pointer;font-family:'Fraunces',Georgia,serif;font-size:18px;
+    padding:0;list-style:none;display:flex;align-items:center;gap:9px;color:#7A5A16">
+    <span style="display:inline-flex;align-items:center;justify-content:center;
+      width:24px;height:24px;border-radius:50%;background:#C89B4E;color:#fff;
+      font-family:'Public Sans',sans-serif;font-size:14px;font-weight:700">?</span>
+    New here? How to send one of these out
+    <span style="margin-left:auto;font-family:'Public Sans',sans-serif;font-size:12.5px;
+      font-weight:600;color:#8A6A12">open</span>
+  </summary>
   <div style="font-size:14px;line-height:1.7;color:var(--ink);margin-top:12px;max-width:640px">
     <p style="margin:0 0 12px"><b>1. Pick what to send.</b> Anything marked <b>Live</b> is
     already published and safe to send. A <b>Draft</b> is not on the site yet, so send it
@@ -3480,7 +3491,7 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
     <p style="margin:0 0 12px"><b>5. Do not send the same people something every week.</b>
     Once a month is plenty. Every email carries an unsubscribe and once somebody uses it,
     they are gone from your list for good.</p>
-    <p style="margin:0"><b>Set your branding once</b> under <b>My page</b> \u2014 team name,
+    <p style="margin:0"><b>Set your branding once</b> under <b>My page</b> &mdash; team name,
     tagline, logo and color. It then appears on what you send without you doing anything
     else.</p>
   </div>
@@ -5369,7 +5380,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v360';
+window.BUILD = 'index-v363';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -11790,17 +11801,41 @@ async function renderMyPageSection(){
          requirement, not a design preference, and a team logo does not replace it. -->
     <h4 style="margin:22px 0 4px;font-size:15px">Your own branding</h4>
     <p style="font-size:12.5px;color:var(--driftwood);margin:0 0 12px;line-height:1.55">
-      If you run a team inside the brokerage, put its name and logo here once and it will
-      be used on your page, your flyers and anything you send. The brokerage name still
+      If you run a team inside the brokerage, set it here once. The brokerage name still
       appears alongside it &mdash; that part is required.</p>
+    <!-- \u26a0 The broker's words: "doesn't show how to put it where it can go on the
+         articles." Saying branding "appears on what you send" without showing WHERE is
+         not an explanation. This states exactly which three places use it, and which
+         two do not yet, rather than implying it is everywhere. -->
+    <div style="font-size:12.5px;line-height:1.7;background:#FBFAF7;border:1px solid var(--hair2);
+      border-radius:6px;padding:11px 13px;margin:0 0 14px">
+      <b>Where this shows up</b>
+      <div style="margin-top:5px">&#10003; The signature on any article or newsletter you
+        send from Content &mdash; your name, then the team name, then the brokerage.</div>
+      <div>&#10003; Your public agent page at bamacoast.com/<span
+        style="color:var(--driftwood)">yourname</span>.</div>
+      <div>&#10003; Flyers and printed pieces you build under Marketing.</div>
+      <div style="margin-top:6px;color:var(--driftwood)">Not on the articles themselves.
+        Those are brokerage pages that everyone shares, so they carry the brokerage
+        branding &mdash; your name goes on them through the link you share, which is what
+        credits the lead to you.</div>
+    </div>
     <div class="setup-grid">
       <div><div class="field-label">Team name</div>
         <input id="mp-teamname" value="${escapeHtml(p.teamName||'')}" placeholder="The Thies Group"></div>
       <div><div class="field-label">Tagline</div>
         <input id="mp-tagline" value="${escapeHtml(p.tagline||'')}" placeholder="Coastal property, done properly"></div>
-      <div><div class="field-label">Brand color</div>
-        <input id="mp-brandcolor" type="color" value="${escapeHtml(p.brandColor||'#C89B4E')}"
-          style="height:42px;padding:4px"></div>
+      <!-- \u26a0 Two colors, because one is not a brand. A single color has to be both the
+           heading and the button, and when it is a pale gold the button disappears.
+           Main carries type and rules; accent is for buttons and highlights. -->
+      <div><div class="field-label">Main color</div>
+        <input id="mp-brandcolor" type="color" value="${escapeHtml(p.brandColor||'#171F63')}"
+          style="height:42px;padding:4px">
+        <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px">Headings and lines</div></div>
+      <div><div class="field-label">Accent color</div>
+        <input id="mp-brandaccent" type="color" value="${escapeHtml(p.brandAccent||'#C89B4E')}"
+          style="height:42px;padding:4px">
+        <div style="font-size:11.5px;color:var(--driftwood);margin-top:4px">Buttons and highlights</div></div>
       <div><div class="field-label">Team logo</div>
         <input id="mp-logo-file" type="file" accept="image/png,image/jpeg,image/webp"
           onchange="mpLogoPick(this)">
@@ -11871,7 +11906,7 @@ async function saveMyPage(){
         publicPhone: g('mp-phone'), publicEmail: g('mp-email'),
         specialties: g('mp-specialties'), languages: g('mp-languages'),
         teamName: g('mp-teamname'), tagline: g('mp-tagline'),
-        brandColor: g('mp-brandcolor'), logo: g('mp-logo'),
+        brandColor: g('mp-brandcolor'), brandAccent: g('mp-brandaccent'), logo: g('mp-logo'),
       })
     });
     const d = await res.json();
@@ -18732,10 +18767,24 @@ async function tkSendLink(id){
       body: JSON.stringify({
         to: t.clientEmail,
         subject: `Following your ${t.side === 'sell' ? 'sale' : 'purchase'}${t.address ? ' — ' + t.address : ''}`,
+        /* \u26a0 Same wording as the deal-side version. Two copies of this email exist and
+           they must not drift \u2014 a client who gets one tone from the tracker screen and
+           another from the deal screen notices. \u26a0 The escaping differs: this one sits
+           inside an outer template literal, so every newline is doubly escaped. */
         message: `Hi ${(t.clientName||'there').split(' ')[0]},\\n\\n`
-          + `You can see exactly where things stand any time, here:\\n`
+          + `A purchase or a sale only happens because a group of people each do their `
+          + `part \u2014 the lender, the processor, title, the inspector, the other agent, `
+          + `and you. We built this tracker because we think you should be able to see `
+          + `that work happening rather than wonder about it.\\n\\n`
+          + `Here is where yours stands, any time you want it:\\n`
           + `${location.origin}/?track=${t.token}\\n\\n`
-          + `I'll update it as each step happens, so you won't have to wonder.\\n\\n`
+          + `It updates as each step is finished, so nothing is a mystery and you never `
+          + `have to chase anybody for an answer.\\n\\n`
+          + `If something on it is unclear, or there is something you wish it told you, `
+          + `say so. We would genuinely rather hear it than have you squinting at a page `
+          + `that does not answer your question.\\n\\n`
+          + `And thank you \u2014 to you, and to everyone working on this alongside us. `
+          + `It takes all of them.\\n\\n`
           + `${currentAgent.name}\\n${AvaniTemplates.BROKERAGE_NAME}`,
         attachments: [],
       }),
@@ -19369,16 +19418,21 @@ function commToggle(){
 <div style="font-size:11.5px;color:var(--driftwood);margin:-4px 0 12px">
   These appear on your calendar automatically, and you'll be told if a date is coming up.</div>
 
-<div class="field-label">Who else is involved</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
-  <div class="field"><label>Other agent</label><input id="pl-p-agent" placeholder="Name &amp; brokerage"></div>
-  <div class="field"><label>Lender</label><input id="pl-p-lender"></div>
-  <div class="field"><label>Title company</label><input id="pl-p-title"></div>
-  <div class="field"><label>Inspector</label><input id="pl-p-inspector"></div>
-  <!-- \u26a0 TC block, at the broker's request. A transaction coordinator is a distinct
-       role from the agent and from title, and deals were carrying them in the notes. -->
-  <div class="field"><label>Transaction coordinator</label><input id="pl-p-tc"></div>
-  <div class="field"><label>TC email</label><input id="pl-p-tcemail" type="email"></div>
+<!-- \u26a0 ONE LIST, NOT FIVE FIXED SLOTS. There were separate boxes for agent, lender,
+     title, inspector and TC, which meant a deal with two lenders or a co-agent had
+     nowhere to put the second person. A list with a role on each row handles all of
+     that and is less to look at, not more.
+     \u26a0 Every person carries their own email and their own document permission, because
+     "who is on this deal" and "who may see the paperwork" are different questions. -->
+<div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
+  <span>Who else is involved</span>
+  <span style="font-weight:400;font-size:12px;color:var(--driftwood)">
+    Tick <b>Docs</b> for anyone allowed to receive the paperwork</span>
+</div>
+<div id="pl-people"></div>
+<div style="display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 4px">
+  <button type="button" class="btn-sm" onclick="plAddPerson()">+ Add someone</button>
+  <button type="button" class="btn-sm" onclick="plEmailAll()">Email everyone on this deal</button>
 </div>
 
 <!-- \u26a0 CONSENT, recorded rather than assumed. Adding somebody's lender or processor to a
@@ -19431,6 +19485,21 @@ function commToggle(){
     Contracts, disclosures, a photo of a check. Kept with the deal so you are not
     hunting through email for it. Six files, up to 4MB each.</div>
 </div>
+
+<!-- \u26a0 A REMINDER, not a commission record. The broker asked for it as something he
+     would see when the deal comes up, so it sits on the deal and shows on the card. It
+     deliberately does NOT feed the Commissions screen: that screen is the official
+     ledger the brokerage pays from, and a number typed as a note six weeks earlier is
+     not something that should quietly become a payable figure. -->
+<div class="field-label">Splits and referrals</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px">
+  <div class="field"><label>My split</label><input id="pl-split" placeholder="e.g. 70%"></div>
+  <div class="field"><label>Referral out</label><input id="pl-ref" placeholder="e.g. 25%"></div>
+  <div class="field"><label>Referral to</label><input id="pl-refto" placeholder="Who, and their brokerage"></div>
+</div>
+<div style="font-size:12px;color:var(--driftwood);margin:-2px 0 10px;line-height:1.5">
+  A note to yourself so it is not a surprise at closing. Nothing here is paid from
+  &mdash; the official numbers live on the commission you submit.</div>
 
 <div class="field"><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Anything you want to remember"></textarea></div>
 
@@ -19541,12 +19610,15 @@ async function renderPipelineSection(){
 function plDealHtml(d){
   const st = PL_STAGES.find(s => s.k === (d.stage||'open')) || PL_STAGES[0];
   const side = d.side === 'sell' ? 'Listing' : d.side === 'both' ? 'Both sides' : 'Buyer';
+  /* \u26a0 The old pAgent/pLender/pTitle lines were removed from this summary. They are
+     still on the record, but the people list is built FROM them, so listing both showed
+     everybody twice on any deal saved before the migration. */
   const people = [
-    d.pAgent && 'Other agent: ' + d.pAgent,
-    d.pLender && 'Lender: ' + d.pLender,
-    d.pTitle && 'Title: ' + d.pTitle,
-    d.pInspector && 'Inspector: ' + d.pInspector,
-    d.pTc && 'TC: ' + d.pTc,
+    ...(Array.isArray(d.people) && d.people.length
+        ? d.people.filter(p => p.name).map(p => p.role + ': ' + p.name)
+        : plMigratePeople(d).map(p => p.role + ': ' + p.name)),
+    d.split && 'My split: ' + d.split,
+    (d.refPct || d.refTo) && ('Referral: ' + [d.refPct, d.refTo].filter(Boolean).join(' to ')),
   ].filter(Boolean);
 
   const dates = PL_DATES.map(([k,label]) => {
@@ -19592,8 +19664,12 @@ function plOpen(id){
   set('pl-side', d.side || 'buy');
   set('pl-address', d.address); set('pl-client', d.client); set('pl-price', d.price);
   PL_DATES.forEach(([k]) => set('pl-d-' + k, (d.dates||{})[k]));
-  set('pl-p-agent', d.pAgent); set('pl-p-lender', d.pLender);
-  set('pl-p-tc', d.pTc); set('pl-p-tcemail', d.pTcEmail);
+  /* \u26a0 Rebuilt from the record every time. Left as a module variable it would carry the
+     previous deal's people into a new one, which is the class of bug that puts somebody
+     else's lender on your transaction. */
+  plPeople = plMigratePeople(d);
+  plRenderPeople();
+  set('pl-split', d.split); set('pl-ref', d.refPct); set('pl-refto', d.refTo);
   plFiles = Array.isArray(d.files) ? d.files.slice() : [];
   plRenderFiles();
   plSetPhoto(d.photo || '', '');
@@ -19623,9 +19699,19 @@ async function plSave(){
     stage: g('pl-stage'), side: g('pl-side'),
     address: g('pl-address'), client: g('pl-client'), price: g('pl-price'),
     dates,
-    pAgent: g('pl-p-agent'), pLender: g('pl-p-lender'),
-    pTitle: g('pl-p-title'), pInspector: g('pl-p-inspector'),
-    pTc: g('pl-p-tc'), pTcEmail: g('pl-p-tcemail'),
+    /* \u26a0 The old single-value fields are CARRIED FORWARD, not rewritten. They are the
+       original data and the migration reads them; overwriting them with '' would
+       destroy the only copy if the people list ever had to be rolled back. */
+    pAgent: plEditing ? (plEditing.pAgent || '') : '',
+    pLender: plEditing ? (plEditing.pLender || '') : '',
+    pTitle: plEditing ? (plEditing.pTitle || '') : '',
+    pInspector: plEditing ? (plEditing.pInspector || '') : '',
+    pTc: plEditing ? (plEditing.pTc || '') : '',
+    pTcEmail: plEditing ? (plEditing.pTcEmail || '') : '',
+    people: Array.isArray(plPeople)
+      ? plPeople.filter(x => String(x.name || '').trim() || String(x.email || '').trim())
+      : [],
+    split: g('pl-split'), refPct: g('pl-ref'), refTo: g('pl-refto'),
     photo: g('pl-photo'),
     /* \u26a0 Carried forward from the record being edited rather than re-read from the
        input, because a file input cannot be repopulated from saved data \u2014 reading it
@@ -19859,9 +19945,22 @@ async function plSendTracker(id){
         to,
         subject: `Following your ${d.side === 'sell' ? 'sale' : 'purchase'}`
           + (d.address ? ' \u2014 ' + d.address : ''),
+        /* \u26a0 The broker's brief: this email should say why the tracker exists, credit
+           everybody who makes a transaction happen, and invite improvements. A bare
+           link says none of that and reads like a system notification. */
         message: `Hi ${first},\n\n`
-          + `You can see exactly where things stand any time, here:\n${link}\n\n`
-          + `I'll update it as each step happens, so you won't have to wonder.\n\n`
+          + `A purchase or a sale only happens because a group of people each do their `
+          + `part \u2014 the lender, the processor, title, the inspector, the other agent, `
+          + `and you. We built this tracker because we think you should be able to see `
+          + `that work happening rather than wonder about it.\n\n`
+          + `Here is where yours stands, any time you want it:\n${link}\n\n`
+          + `It updates as each step is finished, so nothing is a mystery and you never `
+          + `have to chase anybody for an answer.\n\n`
+          + `If something on it is unclear, or there is something you wish it told you, `
+          + `say so. We would genuinely rather hear it than have you squinting at a page `
+          + `that does not answer your question.\n\n`
+          + `And thank you \u2014 to you, and to everyone working on this alongside us. `
+          + `It takes all of them.\n\n`
           + `${currentAgent ? currentAgent.name : ''}\n${AvaniTemplates.BROKERAGE_NAME}`,
         attachments: [],
       }),
@@ -27680,6 +27779,105 @@ function plRenderFiles(){
 }
 
 function plFileDrop(i){ plFiles.splice(i, 1); plRenderFiles(); }
+</script>
+<script>
+/* ---------- people on a deal (index 362) ----------
+   ⚠ Replaces five fixed slots — agent, lender, title, inspector, TC — with one list.
+   A deal with two lenders, a co-agent or a second inspector had nowhere to put the
+   second person before.
+
+   ⚠ Each row carries its own email and its own `docs` permission. Being on the deal and
+   being allowed to see the paperwork are different questions, and the second one is the
+   client's business rather than a convenience. Unticked is the default and it means no.
+
+   ⚠ MIGRATION MATTERS. Deals already exist with pAgent, pLender, pTitle, pInspector and
+   pTc filled in. Those are converted to rows the first time a deal is opened, so nothing
+   typed before today disappears. The old fields are left on the record untouched — if
+   this list ever needs rolling back, the original data is still there. */
+
+const PL_ROLES = ['Other agent','Lender','Processor','Title company','Inspector',
+                  'Transaction coordinator','Appraiser','Other'];
+
+let plPeople = [];
+
+/* Old single-value fields -> rows. Runs only when the list is empty, so it cannot
+   duplicate people on a deal that has already been converted and saved. */
+function plMigratePeople(d){
+  if(Array.isArray(d.people) && d.people.length) return d.people.slice();
+  const out = [];
+  const add = (role, name, email) => {
+    if(name && String(name).trim()) out.push({
+      role, name: String(name).trim(), email: String(email || '').trim(), docs: false });
+  };
+  add('Other agent', d.pAgent);
+  add('Lender', d.pLender);
+  add('Title company', d.pTitle);
+  add('Inspector', d.pInspector);
+  add('Transaction coordinator', d.pTc, d.pTcEmail);
+  return out;
+}
+
+function plRenderPeople(){
+  const host = document.getElementById('pl-people');
+  if(!host) return;
+  if(!plPeople.length){
+    host.innerHTML = '<div style="font-size:13px;color:var(--driftwood);padding:6px 0">'
+      + 'Nobody added yet.</div>';
+    return;
+  }
+  host.innerHTML = plPeople.map((p, i) => `
+    <div style="display:grid;grid-template-columns:140px 1fr 1fr auto auto;gap:7px;
+      align-items:center;padding:5px 0">
+      <select onchange="plSetPerson(${i},'role',this.value)"
+        style="font:inherit;font-size:13px;padding:7px 8px;border:1px solid var(--hair2);
+        border-radius:5px;background:#fff">
+        ${PL_ROLES.map(r => `<option${p.role === r ? ' selected' : ''}>${r}</option>`).join('')}
+      </select>
+      <input value="${escapeHtml(p.name || '')}" placeholder="Name &amp; company"
+        oninput="plSetPerson(${i},'name',this.value)"
+        style="font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--hair2);border-radius:5px">
+      <input value="${escapeHtml(p.email || '')}" placeholder="Email" type="email"
+        oninput="plSetPerson(${i},'email',this.value)"
+        style="font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--hair2);border-radius:5px">
+      <label title="May receive the paperwork"
+        style="display:inline-flex;align-items:center;gap:5px;font-size:12px;
+        color:var(--driftwood);cursor:pointer;white-space:nowrap">
+        <input type="checkbox"${p.docs ? ' checked' : ''}
+          onchange="plSetPerson(${i},'docs',this.checked)"> Docs</label>
+      <button type="button" class="btn-sm" onclick="plDropPerson(${i})"
+        title="Remove">&times;</button>
+    </div>`).join('');
+}
+
+function plSetPerson(i, k, v){
+  if(!plPeople[i]) return;
+  plPeople[i][k] = v;
+  /* ⚠ Only the checkbox redraws. Re-rendering on every keystroke would move the cursor
+     to the end of the field and make the name box unusable. */
+  if(k === 'docs') plRenderPeople();
+}
+
+function plAddPerson(){
+  plPeople.push({ role: 'Lender', name: '', email: '', docs: false });
+  plRenderPeople();
+}
+
+function plDropPerson(i){ plPeople.splice(i, 1); plRenderPeople(); }
+
+/* ⚠ Both routes, as asked: one button for everybody, and each row's own address is
+   right there to copy. mailto opens their own mail client, which is the only way to
+   send from the agent's real address without holding their mailbox credentials. */
+function plEmailAll(){
+  const to = plPeople.map(p => String(p.email || '').trim()).filter(e => e.indexOf('@') > 0);
+  if(!to.length){ showToast('Nobody on this deal has an email address yet.'); return; }
+  const addr = ((document.getElementById('pl-address') || {}).value || '').trim();
+  const subject = addr ? ('Re: ' + addr) : 'About our deal';
+  /* ⚠ Addresses go in the TO line. Not BCC: these people are all working the same
+     transaction and hiding them from each other creates the reply-all confusion this
+     is meant to save. */
+  window.location.href = 'mailto:' + to.join(',')
+    + '?subject=' + encodeURIComponent(subject);
+}
 </script>
 </body>
 </html>
