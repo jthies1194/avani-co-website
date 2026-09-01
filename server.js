@@ -6374,7 +6374,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v175',
+    serverVersion: 'v176',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6672,6 +6672,8 @@ app.get('/api/agent/by-slug/:slug', async (req, res) => {
       role: match.role, slug: slugify(match.name),
       bio: profile.bio || '', photo: profile.photo || '', title: profile.title || '',
       specialties: profile.specialties || '', languages: profile.languages || '',
+      logo: profile.logo || '', teamName: profile.teamName || '',
+      brandColor: profile.brandColor || '', tagline: profile.tagline || '',
       facebook: profile.facebook || '', instagram: profile.instagram || '',
       licensedStates: licensedStatesOf(profile),
       licenseNumbers: profile.licenseNumbers || {},
@@ -6769,6 +6771,20 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
                                   : (existing.licenseNumbers || {}),
     specialties: clean(b.specialties), languages: clean(b.languages),
     facebook: clean(b.facebook), instagram: clean(b.instagram),
+    /* \u26a0 PERSONAL BRANDING (server 176). Agents on a team have their own logo and colors
+       and were re-uploading them into every flyer and newsletter. Saved once here, then
+       reused wherever their name appears.
+       \u26a0 The logo goes through cleanPhoto, the same validator the headshot uses, so it is
+       a data URL of a known image type and nothing else. A raw URL from anywhere would
+       let somebody point the brokerage's pages at a host we do not control.
+       \u26a0 teamName is separate from the brokerage name. An agent may run "The Smith Group"
+       inside Avani & Co, and both have to appear \u2014 the brokerage name is a licensing
+       requirement, not a design choice. */
+    logo: cleanPhoto(b.logo),
+    teamName: clean(b.teamName).slice(0, 80),
+    brandColor: /^#[0-9a-f]{6}$/i.test(String(b.brandColor || '').trim())
+      ? String(b.brandColor).trim() : (existing.brandColor || ''),
+    tagline: clean(b.tagline).slice(0, 120),
     updatedAt: new Date().toISOString(),
   };
   const ok = await setSetting('agentPublic:' + req.params.id, profile);
