@@ -681,6 +681,51 @@ app.get('/api/market-stats', async (req, res) => {
   }
 });
 
+/* ================= FIND A LISTING BY ADDRESS (server 177) =================
+   \u26a0 For attaching a property photo to a deal. A deal is often typed up before anything
+   is under contract, and just as often it is a buyer deal on somebody else's listing, so
+   there may be no matching record at all. The rule the broker agreed: try to match, and
+   if nothing comes back offer a search rather than failing silently. A blank photo with
+   no explanation reads as broken.
+
+   \u26a0 Active listings only would miss most deals \u2014 by the time a deal exists the listing is
+   frequently pending or sold. This searches every status. */
+app.get('/api/listing-lookup', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const q = String(req.query.q || '').trim();
+  if (q.length < 3) return res.json({ ok: true, matches: [] });
+  try {
+    /* Street number and name only. "412 Sandpiper Ln, Gulf Shores AL 36542" will not
+       match a feed that stores it differently, but "412 Sandpiper" nearly always does. */
+    const short = q.split(',')[0].replace(/'/g, "''").slice(0, 60);
+    const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
+      $filter: `contains(UnparsedAddress,'${short}')`,
+      $select: 'ListingKey,UnparsedAddress,City,ListPrice,StandardStatus,'
+             + 'BedroomsTotal,BathroomsTotalInteger,Media',
+      $top: 8,
+    });
+    const matches = (d.value || []).map(r => ({
+      key: r.ListingKey,
+      address: r.UnparsedAddress || '',
+      city: r.City || '',
+      status: r.StandardStatus || '',
+      price: r.ListPrice || 0,
+      /* \u26a0 First photo only. A deal card needs one image, and returning forty URLs per
+         match would make this response enormous for no benefit. */
+      photo: (Array.isArray(r.Media) && r.Media.length)
+        ? (typeof r.Media[0] === 'string' ? r.Media[0]
+           : (r.Media[0].MediaURL || r.Media[0].MediaUrl || ''))
+        : '',
+    })).filter(m => m.address);
+    res.json({ ok: true, matches });
+  } catch (e) {
+    /* \u26a0 Answers 200 with an empty list rather than an error. The feed being down should
+       not stop somebody saving a deal \u2014 the photo is a nicety, the deal is the point. */
+    console.error('[listing-lookup]', e.message);
+    res.json({ ok: true, matches: [], note: 'The listing feed did not answer.' });
+  }
+});
+
 app.get('/api/listings', async (req, res) => {
   const token = process.env.BRIDGE_SERVER_TOKEN;
   const dataset = process.env.BRIDGE_DATASET;
@@ -2941,6 +2986,10 @@ app.post('/api/broadcast', async (req, res) => {
 
   const origin = `${req.protocol}://${req.get('host')}`;
   const senderSlug = slugify(sess.name || '');
+  /* \u26a0 Loaded ONCE before the send loop, not per lead. A brokerage sending to two
+     hundred people would otherwise read the same profile two hundred times. */
+  let senderBrand = {};
+  try { senderBrand = (await getSetting('agentPublic:' + sess.agentId)) || {}; } catch (e) {}
   const bid = 'bc_' + Date.now().toString(36);
   let sent = 0, failed = 0;
 
@@ -2960,8 +3009,15 @@ app.post('/api/broadcast', async (req, res) => {
           to: lead.email,
           marketing: true,
           subject,
+          /* \u26a0 The agent's own team name signs above the brokerage, not instead of it.
+             An agent running a team inside the brokerage wants their name on what they
+             send; the brokerage name is a licensing requirement and stays regardless.
+             Falls back cleanly to just the agent's name when no team is set. */
           text: `Hi ${first},\n\n${intro ? intro + '\n\n' : ''}${items}\n\n`
-              + `\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
+              + `\u2014\n${sess.name || ''}\n`
+              + `${senderBrand.teamName ? senderBrand.teamName + '\n' : ''}`
+              + `${senderBrand.tagline ? senderBrand.tagline + '\n' : ''}`
+              + `${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
               + `${BROKERAGE_ADDRESS}\n\n`
               + `${arts.some(articleRegulated) ? DISCLAIMER_REGULATED + '\n\n' : ''}`
               + `${DISCLAIMER_EMAIL}\n\nNo longer want these? ${unsub}`,
@@ -6374,7 +6430,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v176',
+    serverVersion: 'v177',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
