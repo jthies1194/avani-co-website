@@ -742,11 +742,26 @@ header.stuck{top:52px}
 @media(max-width:1050px){.letter-inner{padding:0 24px}.letter{padding:84px 0}}
 
 /* ---------- chat launcher ---------- */
+/* \u26a0 GOLD, NOT BLUE. There are two .chat-fab rules in this file \u2014 an earlier one that
+   set gold and this one that set var(--blue). This one wins on source order, so the
+   button ended up the same blue as the bands it floats over and disappeared into them.
+   It is the only call-to-action on the page that follows the visitor down the screen;
+   it has to be the one thing that is not blue.
+   \u26a0 Dark text on gold, not white \u2014 white on this gold measures 1.68:1, unreadable.
+   Dark ink on it measures 8.84:1.
+
+   \u26a0 AND A SOLID DARK BORDER, because this button floats over BOTH the blue bands and
+   the white sections. Gold reads 5.23:1 against blue but only 1.68:1 against white, so
+   fill alone solves half the page and breaks the other half. The 2px ink border gives it
+   an edge on white (13.4:1) while the gold fill carries it on blue. Do not thin this
+   border to make it prettier \u2014 it is doing the work on every light section. */
 .chat-fab{position:fixed;right:22px;bottom:22px;z-index:120;display:flex;align-items:center;gap:11px;
-  background:var(--blue);color:#fff;border:1px solid var(--gold);padding:15px 22px;
-  font-family:'Jost',sans-serif;font-size:15px;font-weight:500;cursor:pointer;
+  background:var(--gold);color:var(--blue-ink);border:2px solid var(--blue-ink);padding:14px 21px;
+  font-family:'Jost',sans-serif;font-size:15px;font-weight:600;cursor:pointer;
   box-shadow:0 14px 36px rgba(23,31,99,.34);transition:.35s}
-.chat-fab:hover{background:var(--blue-ink)}
+.chat-fab svg{stroke:var(--blue-ink)}
+.chat-fab:hover{background:#F0D6A0;transform:translateY(-2px);
+  box-shadow:0 18px 44px rgba(23,31,99,.40)}
 
 @media(max-width:600px){.chat-fab{right:14px;bottom:14px;padding:13px 18px;font-size:14.5px}
   .fab-label{display:none}
@@ -1910,7 +1925,16 @@ Call Jimmy · 251-229-3216
     which is too wide a range for one photograph to survive. Tying it to an aspect
     ratio with limits narrows that to roughly 3.4:1 down to 1.6:1 — still a crop,
     but a photograph composed for it works everywhere. */
-.reel{position:relative;aspect-ratio:21/9;min-height:300px;max-height:560px;
+/* \u26a0 width:100% IS LOAD-BEARING. With aspect-ratio:21/9 and max-height:560px and no
+   explicit width, the browser derives the width FROM the ratio once the height is
+   capped: at a 1500px viewport 21:9 wants 643px of height, that is over the cap, so the
+   height clamps to 560 and the width shrinks to 560 x 21 / 9 = 1307px. The result was a
+   ~190px white strip down the right of the photo on any wide screen, which the broker
+   reported twice and which I could not see until I measured it.
+   Setting the width explicitly means the ratio only ever drives the HEIGHT, and the
+   max-height then simply crops the photo through background-size:cover, which is what
+   it was for. */
+.reel{position:relative;width:100%;aspect-ratio:21/9;min-height:300px;max-height:560px;
   overflow:hidden;background:#1B2043}
 @media(max-width:700px){
   .reel{aspect-ratio:4/3;min-height:300px}
@@ -3431,6 +3455,37 @@ body:not(.is-broker) #sec-content .broker-only{display:none}
 .ct-warn{background:#FDF2F1;border:1px solid rgba(166,52,42,.35);border-radius:4px;
   padding:12px 15px;font-size:12.5px;color:#8A2C22;line-height:1.55;margin-top:12px}
 </style>
+<!-- \u26a0 The broker asked plainly: "Do we have a system that tells them how to build the
+     articles and send them out?" There was nothing. An agent opening this screen saw a
+     list of articles and a Send button and had to work out the rest.
+     \u26a0 Collapsed by default. Somebody who has done this twice does not need instructions
+     in the way every week, and somebody who has not can open it. -->
+<details class="setup-panel" style="margin-bottom:14px">
+  <summary style="cursor:pointer;font-family:'Fraunces',Georgia,serif;font-size:17px;
+    padding:2px 0">How to send one of these out</summary>
+  <div style="font-size:14px;line-height:1.7;color:var(--ink);margin-top:12px;max-width:640px">
+    <p style="margin:0 0 12px"><b>1. Pick what to send.</b> Anything marked <b>Live</b> is
+    already published and safe to send. A <b>Draft</b> is not on the site yet, so send it
+    only after the broker has published it.</p>
+    <p style="margin:0 0 12px"><b>2. Press Share it</b> on the article. That gives you a
+    link with your name on it, so anybody who becomes a lead from it is credited to you
+    rather than to the brokerage.</p>
+    <p style="margin:0 0 12px"><b>3. To email it to a group</b>, use the broadcast below.
+    Choose who it goes to, add a line of your own at the top, and send. Your name, your
+    team name if you have set one, and the brokerage details go on the bottom
+    automatically, along with the unsubscribe link the law requires.</p>
+    <p style="margin:0 0 12px"><b>4. Put your own words at the top.</b> The article does
+    the work; the line above it is why they should read it. "This one comes up on every
+    listing appointment" beats "Please see the attached article".</p>
+    <p style="margin:0 0 12px"><b>5. Do not send the same people something every week.</b>
+    Once a month is plenty. Every email carries an unsubscribe and once somebody uses it,
+    they are gone from your list for good.</p>
+    <p style="margin:0"><b>Set your branding once</b> under <b>My page</b> \u2014 team name,
+    tagline, logo and color. It then appears on what you send without you doing anything
+    else.</p>
+  </div>
+</details>
+
 <div class="ct-grid">
   <div>
     <div class="setup-panel">
@@ -5314,7 +5369,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v357';
+window.BUILD = 'index-v360';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -19345,6 +19400,38 @@ function commToggle(){
   <div id="pl-consent-when" style="font-size:12px;color:var(--driftwood);margin-top:7px"></div>
 </div>
 
+<!-- \u26a0 The property photo and any paperwork. Both optional \u2014 a deal has to be savable
+     in ten seconds when somebody is standing in a driveway. -->
+<div class="field">
+  <label>Photo of the property</label>
+  <div id="pl-photo-wrap" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+    <div id="pl-photo-prev" style="width:132px;height:88px;border-radius:6px;
+      border:1px solid var(--line);background:#FBFAF7;display:flex;align-items:center;
+      justify-content:center;font-size:11.5px;color:var(--driftwood);overflow:hidden;
+      flex:0 0 auto">None</div>
+    <div style="flex:1;min-width:200px">
+      <button type="button" class="btn-sm" onclick="plFindListing()">Find it in the MLS</button>
+      <button type="button" class="btn-sm" onclick="document.getElementById('pl-photo-file').click()">Upload one</button>
+      <button type="button" class="btn-sm" onclick="plPhotoClear()">Remove</button>
+      <input type="file" id="pl-photo-file" accept="image/png,image/jpeg,image/webp"
+        style="display:none" onchange="plPhotoPick(this)">
+      <input type="hidden" id="pl-photo">
+      <div id="pl-photo-msg" style="font-size:12.5px;color:var(--driftwood);margin-top:7px;
+        line-height:1.5"></div>
+    </div>
+  </div>
+</div>
+
+<div class="field">
+  <label>Paperwork</label>
+  <input type="file" id="pl-files" multiple
+    accept="image/png,image/jpeg,image/webp,application/pdf" onchange="plFilesPick(this)">
+  <div id="pl-files-list" style="margin-top:8px"></div>
+  <div style="font-size:12px;color:var(--driftwood);margin-top:5px;line-height:1.5">
+    Contracts, disclosures, a photo of a check. Kept with the deal so you are not
+    hunting through email for it. Six files, up to 4MB each.</div>
+</div>
+
 <div class="field"><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Anything you want to remember"></textarea></div>
 
 <button class="submit-btn" onclick="plSave()">Save it</button>
@@ -19507,6 +19594,9 @@ function plOpen(id){
   PL_DATES.forEach(([k]) => set('pl-d-' + k, (d.dates||{})[k]));
   set('pl-p-agent', d.pAgent); set('pl-p-lender', d.pLender);
   set('pl-p-tc', d.pTc); set('pl-p-tcemail', d.pTcEmail);
+  plFiles = Array.isArray(d.files) ? d.files.slice() : [];
+  plRenderFiles();
+  plSetPhoto(d.photo || '', '');
   const cb = document.getElementById('pl-consent');
   if(cb) cb.checked = !!d.shareConsentAt;
   const cw = document.getElementById('pl-consent-when');
@@ -19536,6 +19626,11 @@ async function plSave(){
     pAgent: g('pl-p-agent'), pLender: g('pl-p-lender'),
     pTitle: g('pl-p-title'), pInspector: g('pl-p-inspector'),
     pTc: g('pl-p-tc'), pTcEmail: g('pl-p-tcemail'),
+    photo: g('pl-photo'),
+    /* \u26a0 Carried forward from the record being edited rather than re-read from the
+       input, because a file input cannot be repopulated from saved data \u2014 reading it
+       on a second save would wipe every previously attached file. */
+    files: Array.isArray(plFiles) ? plFiles : [],
     notes: g('pl-notes'),
     updatedAt: new Date().toISOString(),
   };
@@ -27455,6 +27550,136 @@ function mpLogoClear(){
   if(prev) prev.innerHTML = '<span style="font-size:12.5px;color:var(--driftwood)">None yet</span>';
   showToast('Removed \u2014 press Save my page.');
 }
+</script>
+<script>
+/* ---------- deal photo and paperwork (index 358) ----------
+   ⚠ Both optional. A deal has to be savable in ten seconds by somebody standing in a
+   driveway, so nothing here blocks the save.
+
+   ⚠ Files are stored as data URLs on the deal record, which is fine for a handful of
+   contracts and would not be fine for hundreds. Six files at 4MB is the ceiling, and it
+   is enforced rather than suggested — the deal list is read on every render of that
+   screen, and a bloated record makes the whole screen slow, not just that deal. */
+
+let plFiles = [];
+
+function plSetPhoto(src, note){
+  const hid = document.getElementById('pl-photo');
+  const prev = document.getElementById('pl-photo-prev');
+  const msg = document.getElementById('pl-photo-msg');
+  if(hid) hid.value = src || '';
+  if(prev) prev.innerHTML = src
+    ? '<img src="' + escapeHtml(src) + '" alt="" style="width:100%;height:100%;object-fit:cover">'
+    : 'None';
+  if(msg) msg.textContent = note || '';
+}
+
+function plPhotoClear(){ plSetPhoto('', 'Removed. Save the deal to keep that.'); }
+
+/* Downscaled before storing, for the same reason the team logo is. */
+function plPhotoPick(input){
+  const f = input && input.files && input.files[0];
+  if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 640;
+      const sc = Math.min(1, max / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      plSetPhoto(c.toDataURL('image/jpeg', 0.82), 'Ready \u2014 save the deal to keep it.');
+    };
+    img.onerror = () => plSetPhoto('', 'That image could not be read.');
+    img.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+
+/* ⚠ Tries the address first, and offers a search when nothing matches rather than
+   failing quietly. A deal is often typed before anything is under contract, or is a
+   buyer deal on somebody else's listing, so no match is a normal outcome and not an
+   error worth alarming anybody about. */
+async function plFindListing(){
+  const addr = ((document.getElementById('pl-address') || {}).value || '').trim();
+  const msg = document.getElementById('pl-photo-msg');
+  const q = addr || prompt('Street number and name, e.g. 412 Sandpiper');
+  if(!q) return;
+  if(msg) msg.textContent = 'Looking\u2026';
+  let d;
+  try{
+    const r = await fetch('/api/listing-lookup?q=' + encodeURIComponent(q));
+    d = await r.json();
+  }catch(e){ if(msg) msg.textContent = 'Could not reach the listing feed.'; return; }
+
+  const list = (d && d.matches) || [];
+  if(!list.length){
+    if(msg) msg.innerHTML = 'Nothing in the feed matches <b>' + escapeHtml(q) + '</b>. '
+      + 'That is normal for a new build, a pocket listing or a deal typed before it is live. '
+      + '<a href="#" onclick="plFindAgain();return false;">Try a different address</a> '
+      + 'or upload a photo yourself.';
+    return;
+  }
+  if(msg){
+    msg.innerHTML = list.map((m, i) =>
+      '<div style="padding:5px 0"><a href="#" onclick="plUseListing(' + i + ');return false;">'
+      + escapeHtml(m.address) + '</a> <span style="color:var(--driftwood)">'
+      + escapeHtml(m.city) + (m.status ? ' \u00b7 ' + escapeHtml(m.status) : '')
+      + (m.price ? ' \u00b7 ' + money(m.price) : '') + '</span></div>').join('');
+  }
+  window.__plMatches = list;
+}
+
+function plFindAgain(){
+  const q = prompt('Street number and name, e.g. 412 Sandpiper');
+  if(!q) return;
+  const a = document.getElementById('pl-address');
+  const had = a ? a.value : '';
+  if(a) a.value = q;
+  plFindListing().finally(() => { if(a) a.value = had; });
+}
+
+function plUseListing(i){
+  const m = (window.__plMatches || [])[i];
+  if(!m) return;
+  if(!m.photo){ plSetPhoto('', 'That listing has no photo in the feed.'); return; }
+  /* ⚠ The MLS URL is stored, not a copy of the image. Copying somebody else's listing
+     photo into our own records is a licensing question we do not need to have. */
+  plSetPhoto(m.photo, 'From the MLS \u2014 ' + m.address);
+}
+
+function plFilesPick(input){
+  const chosen = Array.from((input && input.files) || []);
+  if(!chosen.length) return;
+  const room = 6 - plFiles.length;
+  if(room <= 0){ showToast('Six files is the limit.'); input.value = ''; return; }
+  chosen.slice(0, room).forEach(f => {
+    if(f.size > 4 * 1024 * 1024){ showToast(f.name + ' is over 4MB.'); return; }
+    const rd = new FileReader();
+    rd.onload = () => {
+      plFiles.push({ name: String(f.name).slice(0, 90), type: f.type, data: rd.result });
+      plRenderFiles();
+    };
+    rd.readAsDataURL(f);
+  });
+  input.value = '';
+}
+
+function plRenderFiles(){
+  const host = document.getElementById('pl-files-list');
+  if(!host) return;
+  host.innerHTML = plFiles.length
+    ? plFiles.map((f, i) =>
+        '<div style="display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13px">'
+        + '<a href="' + f.data + '" download="' + escapeHtml(f.name) + '">'
+        + escapeHtml(f.name) + '</a>'
+        + '<button type="button" class="btn-sm" onclick="plFileDrop(' + i + ')">Remove</button>'
+        + '</div>').join('')
+    : '';
+}
+
+function plFileDrop(i){ plFiles.splice(i, 1); plRenderFiles(); }
 </script>
 </body>
 </html>
