@@ -5314,7 +5314,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v354';
+window.BUILD = 'index-v356';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -27140,9 +27140,10 @@ async function mlDelete(i){
    So the icon sits on a solid white chip instead. The section color stays exactly as it
    was and now has something to be legible against. Every tab also gets its own bordered
    tile, which is what the broker asked for and separates them from the bar. */
-.crm-nav button{color:#FFFFFF;background:transparent;border:1px solid transparent;
-  border-radius:9px;padding:7px 10px;margin:0 0 4px;
-  transition:background .18s,border-color .18s}
+.crm-nav button{color:color-mix(in srgb, var(--tab) 35%, #FFFFFF);background:transparent;
+  border:1px solid transparent;border-radius:9px;padding:7px 10px;margin:0 0 4px;
+  transition:background .18s,border-color .18s,color .18s}
+.crm-nav button .tl{color:inherit}
 /* \u26a0 Solid white, not translucent. A translucent chip lets the blue through and the
    colored glyph goes muddy again, which was the whole problem.
 
@@ -27176,16 +27177,33 @@ async function mlDelete(i){
    way and an ID beats a class wherever it sits. Without this the active tab rendered as
    a white tile with no label \u2014 white text on white \u2014 which only showed up by rendering
    it and looking. */
-#crm-main .crm-nav button{color:#FFFFFF;background:transparent;
-  border:1px solid transparent;border-radius:9px;padding:6px 9px;margin:0 0 4px}
+/* \u26a0 THE LABEL CARRIES ITS SECTION COLOR AGAIN (index 356). Hard-coding every label to
+   white threw away the color-coding that made the row scannable, and it broke "Make it
+   yours" \u2014 a broker could pick a new color for a tab and nothing visible changed,
+   because the only thing still reading var(--tab) was a small icon.
+
+   The trick on a blue bar is to LIGHTEN rather than darken: 35% of the section color
+   mixed with white keeps every hue recognizable and clears 4.5 against the bar for all
+   eight colors. Measured; at 45% the worst of them fails. */
+#crm-main .crm-nav button{color:color-mix(in srgb, var(--tab) 35%, #FFFFFF);
+  background:transparent;border:1px solid transparent;border-radius:9px;
+  padding:6px 9px;margin:0 0 4px}
+#crm-main .crm-nav button .tl{color:inherit}
 #crm-main .crm-nav button .ti{background:#FFFFFF;
   color:color-mix(in srgb, var(--tab) 62%, #14183A);border-radius:6px;width:24px;height:24px}
+/* Hover brightens toward white rather than losing the hue entirely. */
 #crm-main .crm-nav button:hover{background:rgba(255,255,255,.14);
-  border-color:rgba(255,255,255,.24);color:#FFFFFF}
+  border-color:rgba(255,255,255,.24);
+  color:color-mix(in srgb, var(--tab) 18%, #FFFFFF)}
 /* You are here. The only tile in the row. */
 #crm-main .crm-nav button.on{background:#FFFFFF;color:var(--blue,#2E3CB0);
   border-color:#FFFFFF;box-shadow:0 2px 10px rgba(0,0,0,.16)}
-#crm-main .crm-nav button.on .tl{color:var(--blue,#2E3CB0);font-weight:700}
+/* \u26a0 On the white tile the label uses the DARKENED mix \u2014 the same 62% used for the
+   icons \u2014 so the current tab is unmistakably its own color rather than generic blue.
+   This is the other half of making "Make it yours" visibly do something. */
+#crm-main .crm-nav button.on .tl{
+  color:color-mix(in srgb, var(--tab) 62%, #14183A);font-weight:700}
+#crm-main .crm-nav button.on{color:color-mix(in srgb, var(--tab) 62%, #14183A)}
 #crm-main .crm-nav button.on .ti{background:var(--tab);color:#FFFFFF}
 #crm-main .crm-nav button.on .pill{background:var(--tab);color:#FFFFFF}
 
@@ -27206,18 +27224,29 @@ async function mlDelete(i){
   #crm-main .crm-nav .crm-ext .tl,.crm-nav .crm-ext .tl{max-width:12ch}
 }
 
-/* \u26a0 The count badge sits on the CORNER OF THE ICON, not in the row. As an inline
-   third child it made Leads taller than every other tab; aligning tops instead pushed
-   it onto its own line below the label, which was worse. Absolutely positioned it costs
-   no layout height at all and is where people already look for a count. */
-#crm-main .crm-nav button,.crm-nav button{position:relative}
+/* \u26a0 THE COUNT BADGE, THIRD ATTEMPT. Inline made Leads taller than the row. Aligning
+   tops pushed it onto its own line. Absolute positioning at a fixed left offset landed
+   it on top of the icon and clipped it, because the offset was tuned against a preview
+   whose padding differed from the real layout \u2014 position that depends on padding math
+   is brittle by construction.
+
+   Inline again, but with the two things that actually caused the height problem fixed:
+   the button may not wrap, and the badge may not grow. It sits after the label, is
+   shorter than the 24px icon chip, and therefore cannot make the button any taller. */
+/* \u26a0 THE TABS ARE A COLUMN \u2014 icon above label \u2014 which is why every inline attempt put
+   the badge on a third line and made Leads taller than the row. Anchored to the button's
+   TOP-RIGHT CORNER instead. Right-anchored rather than a fixed left offset, so it does
+   not depend on padding, label length or icon size, all of which differ between the two
+   nav layouts. That was the flaw in the previous attempt. */
+#crm-main .crm-nav button,.crm-nav button{position:relative;overflow:visible}
 #crm-main .crm-nav button .pill,.crm-nav button .pill{
-  position:absolute;top:1px;left:26px;margin:0;z-index:2;
-  font-size:9.5px;font-weight:700;line-height:1;padding:2px 5px;border-radius:99px;
-  background:var(--tab,#C89B4E);color:#FFFFFF;
-  box-shadow:0 0 0 2px var(--blue,#2E3CB0)}
+  position:absolute;top:-2px;right:-2px;margin:0;z-index:3;
+  font-size:9.5px;font-weight:700;line-height:1;padding:3px 5px;border-radius:99px;
+  white-space:nowrap;min-width:0;
+  background:#C0483C;color:#FFFFFF;box-shadow:0 0 0 2px var(--blue,#2E3CB0)}
+/* On the white active tile the ring has to match the tile, not the bar. */
 #crm-main .crm-nav button.on .pill,.crm-nav button.on .pill{
-  box-shadow:0 0 0 2px #FFFFFF}
+  background:#C0483C;color:#FFFFFF;box-shadow:0 0 0 2px #FFFFFF}
 
 /* "Make it yours" is a CRM action, so it keeps a chip but no tile. */
 #crm-main .crm-nav .crm-arrange{color:#FFFFFF;background:transparent;
