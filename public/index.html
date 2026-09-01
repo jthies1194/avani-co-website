@@ -5298,7 +5298,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v342';
+window.BUILD = 'index-v343';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10565,6 +10565,36 @@ async function renderDashboard(){
     <div id="wn-slot"></div>
     <div id="bf-slot"></div>
     ${goalCardHtml(goalData)}
+    <!-- \u26a0 On Today, not on a screen of their own. The broker asked for this because it
+         "motivates them to see what is working" \u2014 numbers on a page nobody opens motivate
+         nobody. Collapsed by default so it does not push the day's work down. -->
+    <div class="card" id="an-panel" style="margin:0 0 16px">
+      <div style="padding:16px 18px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <h3 style="margin:0;font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:17px">
+            What the website is doing</h3>
+          <span style="font-size:12.5px">
+            <a href="#" onclick="anLoad(7);return false;">7 days</a> &middot;
+            <a href="#" onclick="anLoad(30);return false;">30 days</a> &middot;
+            <a href="#" onclick="anLoad(90);return false;">90 days</a></span>
+        </div>
+        <div id="an-body" style="margin-top:14px">
+          <button class="btn-sm" onclick="anLoad(30)">Show me the numbers</button></div>
+      </div>
+    </div>
+    ${isBroker ? `<div class="card" id="tm-panel" style="margin:0 0 16px">
+      <div style="padding:16px 18px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <h3 style="margin:0;font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:17px">
+            How the team is working</h3>
+          <span style="font-size:12.5px">
+            <a href="#" onclick="tmLoad(4);return false;">4 weeks</a> &middot;
+            <a href="#" onclick="tmLoad(12);return false;">12 weeks</a></span>
+        </div>
+        <div id="tm-body" style="margin-top:14px">
+          <button class="btn-sm" onclick="tmLoad(4)">Show me</button></div>
+      </div>
+    </div>` : ''}
     <div class="dash-hero">
       <div>
         <div class="eyebrow-sm">${new Date().toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})}</div>
@@ -11894,8 +11924,19 @@ async function resolveAgentFromQuery(){
 }
 
 function showReferralBar(){
-  const r = getAgentReferral();
+  /* \u26a0 TURNED OFF at the broker's instruction. It pinned a bar to the bottom of every
+     public page reading "Your inquiries are going to <name>", which is internal routing
+     information a visitor did not ask for and cannot act on usefully. The attribution
+     itself still works exactly as before \u2014 the referral is stored, the lead is still
+     credited to the right agent, and the agent's own page still says who they are.
+     Only the banner is gone.
+     \u26a0 The function is kept rather than deleted because six places call it. */
   const bar = document.getElementById('referral-bar');
+  if(bar) bar.style.display = 'none';
+  return;
+
+  /* eslint-disable no-unreachable */
+  const r = getAgentReferral();
   if(!bar) return;
   if(!r){ bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
@@ -26895,6 +26936,153 @@ async function mlDelete(i){
     </a>`).join('');
   sec.style.display = '';
 })();
+</script>
+<script>
+/* ---------- page view beacon (index 343) ----------
+   \u26a0 No cookies, no identifiers, no personal data \u2014 just the path, the referring host
+   and the agent slug when a link carried one. That is deliberate: it answers "what is
+   working" without putting this site into consent-banner territory.
+   \u26a0 Fire-and-forget with keepalive, so counting a view can never delay or break the
+   page being counted. Failures are swallowed on purpose. */
+(function pv(){
+  try{
+    if(document.body && document.body.classList.contains('in-crm')) return;  // not the CRM
+    var qp = new URLSearchParams(location.search);
+    var agent = qp.get('agent') || '';
+    /* An agent page like /jimmythies counts toward that agent even with no query string. */
+    if(!agent){
+      var m = location.pathname.match(/^\/([a-z][a-z0-9-]{2,})$/i);
+      if(m && !['insights','homes','help','listing'].includes(m[1])) agent = m[1];
+    }
+    var body = JSON.stringify({ p: location.pathname, r: document.referrer || '', a: agent });
+    if(navigator.sendBeacon){
+      navigator.sendBeacon('/api/pv', new Blob([body], { type:'application/json' }));
+    } else {
+      fetch('/api/pv', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: body, keepalive: true }).catch(function(){});
+    }
+  }catch(e){}
+})();
+</script>
+<style>
+#an-panel .an-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;margin-bottom:18px}
+#an-panel .an-card{border:1px solid var(--hair2);border-radius:8px;background:#fff;padding:14px 16px}
+#an-panel .an-n{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;
+  color:var(--rl,#0E1433);line-height:1.1}
+#an-panel .an-l{font-size:12px;color:var(--driftwood);margin-top:3px}
+#an-panel .an-spark{display:flex;align-items:flex-end;gap:2px;height:46px;margin-top:14px}
+#an-panel .an-spark i{flex:1;background:var(--gd,#C89B4E);border-radius:2px 2px 0 0;min-height:2px;
+  opacity:.75}
+#an-panel table{width:100%;border-collapse:collapse;font-size:13.5px}
+#an-panel th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--driftwood);font-weight:700;padding:0 0 7px}
+#an-panel td{padding:7px 0;border-top:1px solid var(--hair2)}
+#an-panel td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#an-panel .an-two{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:20px}
+@media(max-width:760px){#an-panel .an-two{grid-template-columns:1fr}}
+#tm-panel td.n{text-align:right;font-variant-numeric:tabular-nums}
+#tm-panel table{width:100%;border-collapse:collapse;font-size:13.5px}
+#tm-panel th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--driftwood);font-weight:700;padding:0 0 7px}
+#tm-panel th.n{text-align:right}
+#tm-panel td{padding:9px 0;border-top:1px solid var(--hair2)}
+#tm-panel .nm{font-weight:600;color:var(--rl,#0E1433)}
+#tm-panel .zero{color:#C0483C}
+</style>
+<script>
+/* ---------- analytics + team activity (index 343) ----------
+   ⚠ Agents see the whole site's traffic on purpose. The broker's reason for asking was
+   "it motivates them to see what is working", and numbers nobody can see motivate
+   nobody. What they do NOT see is the per-agent breakdown — which of their colleagues'
+   links performed — because that is a different thing and he did not ask for it. */
+
+async function anLoad(days){
+  const host = document.getElementById('an-body');
+  if(!host) return;
+  host.innerHTML = '<div class="probe-wait">Counting…</div>';
+  let d;
+  try{
+    const r = await fetch('/api/analytics?days=' + (days || 30));
+    if(!r.ok) throw new Error('could not read that');
+    d = await r.json();
+  }catch(e){ host.innerHTML = '<div class="probe-bad">' + escapeHtml(e.message) + '</div>'; return; }
+
+  if(!d.total){
+    host.innerHTML = '<p style="font-size:13.5px;color:var(--driftwood);line-height:1.6">'
+      + 'No visits counted yet. This starts from the moment the new build goes up, so '
+      + 'there is no history before today — it will fill in from here.</p>';
+    return;
+  }
+
+  const staff = isAdminOrOwner();
+  const max = Math.max.apply(null, d.daily.map(x => x.total).concat([1]));
+  const perDay = Math.round(d.total / Math.max(1, d.days));
+  const rows = (list, label) => '<table><tr><th>' + label + '</th><th class="n">Views</th></tr>'
+    + list.map(([k,v]) => '<tr><td>' + escapeHtml(k) + '</td><td class="n">' + v + '</td></tr>').join('')
+    + '</table>';
+
+  host.innerHTML =
+    '<div class="an-cards">'
+      + '<div class="an-card"><div class="an-n">' + d.total.toLocaleString() + '</div>'
+        + '<div class="an-l">Page views, last ' + d.days + ' days</div></div>'
+      + '<div class="an-card"><div class="an-n">' + perDay.toLocaleString() + '</div>'
+        + '<div class="an-l">Average a day</div></div>'
+      + '<div class="an-card"><div class="an-n">' + (d.topPaths[0] ? d.topPaths[0][1] : 0) + '</div>'
+        + '<div class="an-l">Best page: ' + escapeHtml(d.topPaths[0] ? d.topPaths[0][0] : '—') + '</div></div>'
+    + '</div>'
+    + '<div class="an-spark">' + d.daily.map(x =>
+        '<i style="height:' + Math.max(2, Math.round((x.total / max) * 46)) + 'px" title="'
+        + x.day + ': ' + x.total + '"></i>').join('') + '</div>'
+    + '<div style="font-size:11.5px;color:var(--driftwood);margin-top:5px">'
+      + escapeHtml(d.daily[0] ? d.daily[0].day : '') + ' to '
+      + escapeHtml(d.daily[d.daily.length-1] ? d.daily[d.daily.length-1].day : '') + '</div>'
+    + '<div class="an-two">'
+      + '<div>' + rows(d.topPaths, 'Most read') + '</div>'
+      + '<div>' + rows(d.topRefs, 'Where they came from') + '</div>'
+    + '</div>'
+    + (staff && d.topAgents.length
+        ? '<div style="margin-top:22px">' + rows(d.topAgents, 'Views by agent link') + '</div>'
+        : '')
+    + '<p style="font-size:12px;color:var(--driftwood);margin-top:16px;line-height:1.6">'
+      + 'Counted on our own server. No cookies and nothing that identifies a person, which '
+      + 'is why there is no consent banner on the site. "Direct" means no referring site '
+      + '\\u2014 typed in, a bookmark, or a link from an app.</p>';
+}
+
+/* ---------- the team report, broker only ---------- */
+async function tmLoad(weeks){
+  const host = document.getElementById('tm-body');
+  if(!host) return;
+  host.innerHTML = '<div class="probe-wait">Adding it up…</div>';
+  let d;
+  try{
+    const r = await fetch('/api/team/activity?weeks=' + (weeks || 4));
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || 'could not read that');
+    d = j;
+  }catch(e){ host.innerHTML = '<div class="probe-bad">' + escapeHtml(e.message) + '</div>'; return; }
+
+  const wk = d.weeks[0];
+  const cell = (a, k) => {
+    const v = (a.weeks[wk] || {})[k] || 0;
+    /* ⚠ A zero is the number worth seeing, so it is marked rather than blending in. */
+    return '<td class="n' + (v === 0 ? ' zero' : '') + '">' + v + '</td>';
+  };
+  host.innerHTML =
+    '<table><tr><th>Agent</th><th class="n">Calls</th><th class="n">Spoke to</th>'
+      + '<th class="n">Emails</th><th class="n">New leads</th>'
+      + '<th class="n">' + d.weeks.length + '-week total</th></tr>'
+    + d.agents.map(a =>
+        '<tr><td class="nm">' + escapeHtml(a.name) + '</td>'
+        + cell(a,'calls') + cell(a,'reached') + cell(a,'emails') + cell(a,'leads')
+        + '<td class="n">' + (a.total.calls + a.total.emails) + '</td></tr>').join('')
+    + '</table>'
+    + '<p style="font-size:12px;color:var(--driftwood);margin-top:12px;line-height:1.6">'
+      + 'This week so far, Monday to now, Central. <b>Spoke to</b> counts calls that were '
+      + 'actually answered \\u2014 a voicemail is an attempt, not a conversation. Only the broker '
+      + 'sees this; each agent sees their own numbers on their Today screen.</p>';
+}
 </script>
 </body>
 </html>
