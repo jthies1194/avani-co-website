@@ -705,8 +705,12 @@ app.get('/api/listing-lookup', async (req, res) => {
       .replace(/\s*(#|\bunit\b|\bapt\b|\bste\b|\bsuite\b)\s*[a-z0-9-]+\s*$/i, '').trim();
     const m = noUnit.match(
       /^(\d+)\s+([A-Za-z][A-Za-z\s]*?)(\s+(blvd|boulevard|st|street|ave|avenue|dr|drive|rd|road|ln|lane|way|ct|court|cir|circle|pkwy|parkway|hwy|highway))?$/i);
-    const tries = [...new Set([first, noUnit, m ? (m[1] + ' ' + m[2]).trim() : ''])]
-      .filter(x => x && x.length >= 3);
+    /* \u26a0 Two attempts, not three. Each one is a live MLS round trip and three of them
+       could take fifteen seconds, which reads as a frozen screen. The middle attempt \u2014
+       the address without its unit number \u2014 is the one that actually rescues condo
+       addresses, so it is the one kept alongside the exact string. */
+    const tries = [...new Set([first, noUnit || (m ? (m[1] + ' ' + m[2]).trim() : '')])]
+      .filter(x => x && x.length >= 3).slice(0, 2);
 
     let rows = [];
     for (const attempt of tries) {
@@ -6447,7 +6451,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v178',
+    serverVersion: 'v179',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
