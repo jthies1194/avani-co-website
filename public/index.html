@@ -5298,7 +5298,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v343';
+window.BUILD = 'index-v345';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10576,7 +10576,12 @@ async function renderDashboard(){
           <span style="font-size:12.5px">
             <a href="#" onclick="anLoad(7);return false;">7 days</a> &middot;
             <a href="#" onclick="anLoad(30);return false;">30 days</a> &middot;
-            <a href="#" onclick="anLoad(90);return false;">90 days</a></span>
+            <a href="#" onclick="anLoad(90);return false;">90 days</a>
+            <!-- \u26a0 A panel that opens and cannot be closed pushes the day's work down the
+                 screen permanently. Hide, not remove: the numbers stay loaded so
+                 reopening is instant. -->
+            &middot; <a href="#" id="an-hide" onclick="anToggle();return false;"
+              style="display:none">hide</a></span>
         </div>
         <div id="an-body" style="margin-top:14px">
           <button class="btn-sm" onclick="anLoad(30)">Show me the numbers</button></div>
@@ -10589,7 +10594,9 @@ async function renderDashboard(){
             How the team is working</h3>
           <span style="font-size:12.5px">
             <a href="#" onclick="tmLoad(4);return false;">4 weeks</a> &middot;
-            <a href="#" onclick="tmLoad(12);return false;">12 weeks</a></span>
+            <a href="#" onclick="tmLoad(12);return false;">12 weeks</a>
+            &middot; <a href="#" id="tm-hide" onclick="tmToggle();return false;"
+              style="display:none">hide</a></span>
         </div>
         <div id="tm-body" style="margin-top:14px">
           <button class="btn-sm" onclick="tmLoad(4)">Show me</button></div>
@@ -11703,6 +11710,34 @@ async function renderMyPageSection(){
       <div><div class="field-label">Languages</div>
         <input id="mp-languages" value="${escapeHtml(p.languages||'')}" placeholder="English, Spanish"></div>
     </div>
+
+    <!-- \u26a0 PERSONAL BRANDING. Agents running a team inside the brokerage were re-uploading
+         the same logo into every flyer and newsletter. Saved once here and reused.
+         \u26a0 The brokerage name still appears everywhere regardless \u2014 that is a licensing
+         requirement, not a design preference, and a team logo does not replace it. -->
+    <h4 style="margin:22px 0 4px;font-size:15px">Your own branding</h4>
+    <p style="font-size:12.5px;color:var(--driftwood);margin:0 0 12px;line-height:1.55">
+      If you run a team inside the brokerage, put its name and logo here once and it will
+      be used on your page, your flyers and anything you send. The brokerage name still
+      appears alongside it &mdash; that part is required.</p>
+    <div class="setup-grid">
+      <div><div class="field-label">Team name</div>
+        <input id="mp-teamname" value="${escapeHtml(p.teamName||'')}" placeholder="The Thies Group"></div>
+      <div><div class="field-label">Tagline</div>
+        <input id="mp-tagline" value="${escapeHtml(p.tagline||'')}" placeholder="Coastal property, done properly"></div>
+      <div><div class="field-label">Brand color</div>
+        <input id="mp-brandcolor" type="color" value="${escapeHtml(p.brandColor||'#C89B4E')}"
+          style="height:42px;padding:4px"></div>
+      <div><div class="field-label">Team logo</div>
+        <input id="mp-logo-file" type="file" accept="image/png,image/jpeg,image/webp"
+          onchange="mpLogoPick(this)">
+        <input type="hidden" id="mp-logo" value="${escapeHtml(p.logo||'')}">
+        <div id="mp-logo-prev" style="margin-top:8px">${p.logo
+          ? '<img src="'+escapeHtml(p.logo)+'" alt="" style="max-height:54px;max-width:180px">'
+          : '<span style="font-size:12.5px;color:var(--driftwood)">None yet</span>'}</div>
+        ${p.logo ? '<button class="btn-sm" style="margin-top:7px" onclick="mpLogoClear()">Remove it</button>' : ''}
+      </div>
+    </div>
     <div style="margin-top:14px;"><div class="field-label">About you</div>
       <textarea id="mp-bio" rows="7" style="width:100%;border:1px solid var(--line);padding:12px;
         font-family:'Jost',sans-serif;font-size:15.5px;">${escapeHtml(p.bio||'')}</textarea>
@@ -11762,6 +11797,8 @@ async function saveMyPage(){
         photoEdit: window.__mpPhotoEdit !== undefined ? window.__mpPhotoEdit : undefined,
         publicPhone: g('mp-phone'), publicEmail: g('mp-email'),
         specialties: g('mp-specialties'), languages: g('mp-languages'),
+        teamName: g('mp-teamname'), tagline: g('mp-tagline'),
+        brandColor: g('mp-brandcolor'), logo: g('mp-logo'),
       })
     });
     const d = await res.json();
@@ -19265,7 +19302,31 @@ function commToggle(){
   <div class="field"><label>Lender</label><input id="pl-p-lender"></div>
   <div class="field"><label>Title company</label><input id="pl-p-title"></div>
   <div class="field"><label>Inspector</label><input id="pl-p-inspector"></div>
+  <!-- \u26a0 TC block, at the broker's request. A transaction coordinator is a distinct
+       role from the agent and from title, and deals were carrying them in the notes. -->
+  <div class="field"><label>Transaction coordinator</label><input id="pl-p-tc"></div>
+  <div class="field"><label>TC email</label><input id="pl-p-tcemail" type="email"></div>
 </div>
+
+<!-- \u26a0 CONSENT, recorded rather than assumed. Adding somebody's lender or processor to a
+     tracker means sharing where a client is in their own purchase with a third party.
+     The agent ticks this to record that the client agreed, and it stores WHO recorded it
+     and WHEN. An unticked box is not a soft default \u2014 it means the tracker will not
+     include those people. -->
+<div class="field" style="border:1px solid var(--line);border-radius:6px;padding:12px 14px;
+  background:#FBFAF7">
+  <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-weight:400">
+    <input type="checkbox" id="pl-consent" style="margin-top:3px;width:17px;height:17px">
+    <span style="font-size:13.5px;line-height:1.55">
+      <b>The client has agreed</b> that I can share progress on this deal with their lender,
+      processor and transaction coordinator.
+      <span style="display:block;color:var(--driftwood);margin-top:4px">
+        Leave this unticked and those people are not added to the tracker. Ask first
+        &mdash; it is their purchase.</span></span>
+  </label>
+  <div id="pl-consent-when" style="font-size:12px;color:var(--driftwood);margin-top:7px"></div>
+</div>
+
 <div class="field"><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Anything you want to remember"></textarea></div>
 
 <button class="submit-btn" onclick="plSave()">Save it</button>
@@ -19380,6 +19441,7 @@ function plDealHtml(d){
     d.pLender && 'Lender: ' + d.pLender,
     d.pTitle && 'Title: ' + d.pTitle,
     d.pInspector && 'Inspector: ' + d.pInspector,
+    d.pTc && 'TC: ' + d.pTc,
   ].filter(Boolean);
 
   const dates = PL_DATES.map(([k,label]) => {
@@ -19426,6 +19488,13 @@ function plOpen(id){
   set('pl-address', d.address); set('pl-client', d.client); set('pl-price', d.price);
   PL_DATES.forEach(([k]) => set('pl-d-' + k, (d.dates||{})[k]));
   set('pl-p-agent', d.pAgent); set('pl-p-lender', d.pLender);
+  set('pl-p-tc', d.pTc); set('pl-p-tcemail', d.pTcEmail);
+  const cb = document.getElementById('pl-consent');
+  if(cb) cb.checked = !!d.shareConsentAt;
+  const cw = document.getElementById('pl-consent-when');
+  if(cw) cw.textContent = d.shareConsentAt
+    ? 'Recorded ' + fmtDate(d.shareConsentAt) + (d.shareConsentBy ? ' by ' + d.shareConsentBy : '')
+    : '';
   set('pl-p-title', d.pTitle); set('pl-p-inspector', d.pInspector);
   set('pl-notes', d.notes);
   const _n = document.getElementById('pl-lnote'); if(_n) _n.textContent = '';
@@ -19448,9 +19517,24 @@ async function plSave(){
     dates,
     pAgent: g('pl-p-agent'), pLender: g('pl-p-lender'),
     pTitle: g('pl-p-title'), pInspector: g('pl-p-inspector'),
+    pTc: g('pl-p-tc'), pTcEmail: g('pl-p-tcemail'),
     notes: g('pl-notes'),
     updatedAt: new Date().toISOString(),
   };
+
+  /* \u26a0 Consent is stamped the first time it is given and then left alone. Rewriting the
+     timestamp on every save would make it impossible to say when the client actually
+     agreed, which is the only thing the record is for. Unticking it clears it, because
+     consent that was withdrawn should not leave a date behind implying it stands. */
+  const consentBox = document.getElementById('pl-consent');
+  const had = plEditing && plEditing.shareConsentAt;
+  if(consentBox && consentBox.checked){
+    rec.shareConsentAt = had || new Date().toISOString();
+    rec.shareConsentBy = (plEditing && plEditing.shareConsentBy)
+      || (currentAgent ? currentAgent.name : '');
+  } else {
+    rec.shareConsentAt = ''; rec.shareConsentBy = '';
+  }
   if(plEditing) Object.assign(plEditing, rec);
   else plDeals.push(rec);
 
@@ -24968,7 +25052,7 @@ function aeRender(){
        <div class="ae-f">
          <label>Subject</label>
          <select id="ae-topic" onchange="aeSet('topic', this.value)">
-           <option value="general"${aeDraft.topic!=='regulated'?' selected':''}>General \\u2014 no extra disclaimer</option>
+           <option value="general"${aeDraft.topic!=='regulated'?' selected':''}>General \u2014 no extra disclaimer</option>
            <option value="regulated"${aeDraft.topic==='regulated'?' selected':''}>Insurance, lending or tax</option>
          </select>
          <div class="ae-hint">Regulated subjects get the extra disclaimer on the page
@@ -26758,7 +26842,7 @@ async function goalSave(){
     if(!r.ok) throw new Error(d.error || 'could not save that');
     showToast('Targets saved.');
     /* ⚠ Re-render from the server rather than from the boxes, so what is on screen is
-       what was actually stored \\u2014 the server clamps, and the agent should see that. */
+       what was actually stored \u2014 the server clamps, and the agent should see that. */
     if(typeof renderDashboard === 'function') renderDashboard();
   }catch(e){ showToast('Did not save: ' + e.message); }
 }
@@ -26997,9 +27081,32 @@ async function mlDelete(i){
    nobody. What they do NOT see is the per-agent breakdown — which of their colleagues'
    links performed — because that is a different thing and he did not ask for it. */
 
+/* \u26a0 Hidden, not emptied. Somebody who collapses the panel and opens it again should
+   not wait for another round trip, and the server call is not free. */
+function anToggle(){
+  const b = document.getElementById('an-body');
+  const l = document.getElementById('an-hide');
+  if(!b || !l) return;
+  const shown = b.style.display !== 'none';
+  b.style.display = shown ? 'none' : '';
+  l.textContent = shown ? 'show' : 'hide';
+}
+
+function tmToggle(){
+  const b = document.getElementById('tm-body');
+  const l = document.getElementById('tm-hide');
+  if(!b || !l) return;
+  const shown = b.style.display !== 'none';
+  b.style.display = shown ? 'none' : '';
+  l.textContent = shown ? 'show' : 'hide';
+}
+
 async function anLoad(days){
   const host = document.getElementById('an-body');
   if(!host) return;
+  host.style.display = '';
+  const hl = document.getElementById('an-hide');
+  if(hl){ hl.style.display = ''; hl.textContent = 'hide'; }
   host.innerHTML = '<div class="probe-wait">Counting…</div>';
   let d;
   try{
@@ -27047,13 +27154,16 @@ async function anLoad(days){
     + '<p style="font-size:12px;color:var(--driftwood);margin-top:16px;line-height:1.6">'
       + 'Counted on our own server. No cookies and nothing that identifies a person, which '
       + 'is why there is no consent banner on the site. "Direct" means no referring site '
-      + '\\u2014 typed in, a bookmark, or a link from an app.</p>';
+      + '\u2014 typed in, a bookmark, or a link from an app.</p>';
 }
 
 /* ---------- the team report, broker only ---------- */
 async function tmLoad(weeks){
   const host = document.getElementById('tm-body');
   if(!host) return;
+  host.style.display = '';
+  const hl = document.getElementById('tm-hide');
+  if(hl){ hl.style.display = ''; hl.textContent = 'hide'; }
   host.innerHTML = '<div class="probe-wait">Adding it up…</div>';
   let d;
   try{
@@ -27080,8 +27190,53 @@ async function tmLoad(weeks){
     + '</table>'
     + '<p style="font-size:12px;color:var(--driftwood);margin-top:12px;line-height:1.6">'
       + 'This week so far, Monday to now, Central. <b>Spoke to</b> counts calls that were '
-      + 'actually answered \\u2014 a voicemail is an attempt, not a conversation. Only the broker '
+      + 'actually answered \u2014 a voicemail is an attempt, not a conversation. Only the broker '
       + 'sees this; each agent sees their own numbers on their Today screen.</p>';
+}
+</script>
+<script>
+/* ---------- team logo upload (index 344) ----------
+   \u26a0 Downscaled in the browser before it is stored. A logo dropped straight from a
+   designer can be several megabytes, and it would be read back on every page load of
+   that agent's profile. 360px wide is plenty for a flyer header and a newsletter.
+   \u26a0 PNG is preserved rather than converted to JPEG, because a logo almost always needs
+   a transparent background and JPEG has none. */
+function mpLogoPick(input){
+  const f = input && input.files && input.files[0];
+  if(!f) return;
+  if(f.size > 8 * 1024 * 1024){ showToast('That file is very large \u2014 try one under 8MB.'); return; }
+  const rd = new FileReader();
+  rd.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 360;
+      const scale = Math.min(1, max / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const isPng = /png/i.test(f.type);
+      const data = c.toDataURL(isPng ? 'image/png' : 'image/jpeg', isPng ? undefined : 0.88);
+      const hid = document.getElementById('mp-logo');
+      const prev = document.getElementById('mp-logo-prev');
+      if(hid) hid.value = data;
+      if(prev) prev.innerHTML = '<img src="' + data + '" alt="" style="max-height:54px;max-width:180px">';
+      showToast('Logo ready \u2014 press Save my page to keep it.');
+    };
+    img.onerror = () => showToast('That image could not be read.');
+    img.src = rd.result;
+  };
+  rd.onerror = () => showToast('That file could not be read.');
+  rd.readAsDataURL(f);
+}
+
+function mpLogoClear(){
+  const hid = document.getElementById('mp-logo');
+  const prev = document.getElementById('mp-logo-prev');
+  if(hid) hid.value = '';
+  if(prev) prev.innerHTML = '<span style="font-size:12.5px;color:var(--driftwood)">None yet</span>';
+  showToast('Removed \u2014 press Save my page.');
 }
 </script>
 </body>
