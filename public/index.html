@@ -5314,7 +5314,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v350';
+window.BUILD = 'index-v354';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -27121,27 +27121,128 @@ async function mlDelete(i){
 #crm-rail .out:hover{background:#FFFFFF;color:var(--blue,#2E3CB0);border-color:#FFFFFF}
 #crm-rail button,#crm-rail a{color:inherit}
 
-/* Tabs. The idle state is deliberately near-white rather than a tinted grey \u2014 a tab
-   you cannot read is not a subtle tab, it is a broken one. */
-.crm-nav button{color:rgba(255,255,255,.88)}
-.crm-nav button .ti{background:rgba(255,255,255,.16)}
-.crm-nav button:hover{color:#FFFFFF}
-.crm-nav button:hover .ti{background:rgba(255,255,255,.30)}
-/* \u26a0 The active tab is white-on-white-block rather than a color mix. On a blue bar a
-   mixed tint is not distinct enough at a glance, and this is the one thing a person
-   needs to find without looking for it. */
-.crm-nav button.on{color:var(--blue,#2E3CB0);background:#FFFFFF;border-radius:8px 8px 0 0;
-  border-bottom-color:#FFFFFF}
+/* \u26a0 HIERARCHY (index 353). The tile is reserved for the CURRENT tab. Boxing all
+   eighteen made the active one compete with seventeen others for attention, which is
+   the opposite of what a tile is for. Three levels now:
+     white tile        = you are here
+     chip + label      = a screen you can go to
+     plain gold link   = leaves this app entirely
+   The white icon chips stay \u2014 they are what made the section colors legible on blue,
+   and that part measured well. */
+
+/* \u26a0 SUPERSEDED BY THE BLOCK BELOW \u2014 kept for the note only. */
+/* EACH TAB GETS A TILE, AND THE ICON GETS A WHITE CHIP (index 351).
+   The labels were fine on blue \u2014 they are white. The ICONS were not: each one carries
+   its section's own color, and a green dollar or a yellow star on a blue bar is close to
+   invisible. Tinting the colors would have thrown away the color-coding, which is the
+   only thing making the tabs scannable.
+
+   So the icon sits on a solid white chip instead. The section color stays exactly as it
+   was and now has something to be legible against. Every tab also gets its own bordered
+   tile, which is what the broker asked for and separates them from the bar. */
+.crm-nav button{color:#FFFFFF;background:transparent;border:1px solid transparent;
+  border-radius:9px;padding:7px 10px;margin:0 0 4px;
+  transition:background .18s,border-color .18s}
+/* \u26a0 Solid white, not translucent. A translucent chip lets the blue through and the
+   colored glyph goes muddy again, which was the whole problem.
+
+   \u26a0 AND THE ICON COLOR IS DARKENED. A white chip alone was not enough: it rescued the
+   dark icons (green went 1.36 to 6.45) and made the light ones WORSE (gold fell 3.45 to
+   2.54), because gold on white is barely there. Mixing each tab color 62% with the deep
+   ink puts every one of them past 4.5 on white while keeping the hue recognizable \u2014
+   gold still reads gold, green still reads green. Measured across all seven colors;
+   62 is the point where the worst of them clears. */
+.crm-nav button .ti{background:#FFFFFF;
+  color:color-mix(in srgb, var(--tab) 62%, #14183A);
+  border-radius:7px;width:27px;height:27px}
+.crm-nav button:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.24)}
+.crm-nav button:hover .ti{background:#FFFFFF}
+/* The current tab is a solid white tile \u2014 unmistakable at a glance, which is the one
+   thing a person should never have to hunt for. */
+.crm-nav button.on{color:var(--blue,#2E3CB0);background:#FFFFFF;
+  border-color:#FFFFFF;border-radius:9px}
 .crm-nav button.on .ti{background:var(--tab);color:#FFFFFF}
+.crm-nav button.on .pill{background:var(--tab);color:#FFFFFF}
+
+/* \u26a0 THE SAME RULES AGAIN, SCOPED TO #crm-main. There are 24 rules in this file
+   written as "#crm-main .crm-nav button..." and an ID beats a class no matter where it
+   sits in the file, so everything above was being overruled inside the CRM shell. The
+   visible symptom was the active tab rendering as a white tile with NO LABEL \u2014 white
+   text on a white background \u2014 because #crm-main set color:var(--rl) against the old
+   dark bar and my class rule could not touch it.
+
+   Caught by rendering the thing and looking at it rather than trusting the CSS. */
+/* \u26a0 Repeated at #crm-main specificity because 24 rules in this file are scoped that
+   way and an ID beats a class wherever it sits. Without this the active tab rendered as
+   a white tile with no label \u2014 white text on white \u2014 which only showed up by rendering
+   it and looking. */
+#crm-main .crm-nav button{color:#FFFFFF;background:transparent;
+  border:1px solid transparent;border-radius:9px;padding:6px 9px;margin:0 0 4px}
+#crm-main .crm-nav button .ti{background:#FFFFFF;
+  color:color-mix(in srgb, var(--tab) 62%, #14183A);border-radius:6px;width:24px;height:24px}
+#crm-main .crm-nav button:hover{background:rgba(255,255,255,.14);
+  border-color:rgba(255,255,255,.24);color:#FFFFFF}
+/* You are here. The only tile in the row. */
+#crm-main .crm-nav button.on{background:#FFFFFF;color:var(--blue,#2E3CB0);
+  border-color:#FFFFFF;box-shadow:0 2px 10px rgba(0,0,0,.16)}
+#crm-main .crm-nav button.on .tl{color:var(--blue,#2E3CB0);font-weight:700}
+#crm-main .crm-nav button.on .ti{background:var(--tab);color:#FFFFFF}
+#crm-main .crm-nav button.on .pill{background:var(--tab);color:#FFFFFF}
+
+/* \u26a0 Leaves the app \u2014 so it must not look like a tab. No chip, no tile, gold glyph
+   inline with the label. "Dimmer tab" read as a disabled tab, which it is not. */
+#crm-main .crm-nav .crm-ext,.crm-nav .crm-ext{color:var(--gold,#E6C381);
+  background:transparent;border:none;padding:6px 8px;margin:0 0 4px;font-weight:500}
+#crm-main .crm-nav .crm-ext .ti,.crm-nav .crm-ext .ti{background:transparent;
+  color:var(--gold,#E6C381);width:16px;height:16px;border-radius:0}
+#crm-main .crm-nav .crm-ext:hover,.crm-nav .crm-ext:hover{color:#FFFFFF;background:transparent}
+#crm-main .crm-nav .crm-ext:hover .ti,.crm-nav .crm-ext:hover .ti{color:#FFFFFF}
+/* \u26a0 Widened. The 10ch limit was set when these were chunky tiles competing for room;
+   without the chip and the tile they take far less space, and "ShowingT\u2026" reads as a
+   bug rather than as a shortened label. 16ch fits both real names whole. */
+#crm-main .crm-nav .crm-ext .tl,.crm-nav .crm-ext .tl{text-decoration:underline;
+  text-underline-offset:3px;text-decoration-color:rgba(230,195,129,.45);max-width:16ch}
+@media(max-width:900px){
+  #crm-main .crm-nav .crm-ext .tl,.crm-nav .crm-ext .tl{max-width:12ch}
+}
+
+/* \u26a0 The count badge sits on the CORNER OF THE ICON, not in the row. As an inline
+   third child it made Leads taller than every other tab; aligning tops instead pushed
+   it onto its own line below the label, which was worse. Absolutely positioned it costs
+   no layout height at all and is where people already look for a count. */
+#crm-main .crm-nav button,.crm-nav button{position:relative}
+#crm-main .crm-nav button .pill,.crm-nav button .pill{
+  position:absolute;top:1px;left:26px;margin:0;z-index:2;
+  font-size:9.5px;font-weight:700;line-height:1;padding:2px 5px;border-radius:99px;
+  background:var(--tab,#C89B4E);color:#FFFFFF;
+  box-shadow:0 0 0 2px var(--blue,#2E3CB0)}
+#crm-main .crm-nav button.on .pill,.crm-nav button.on .pill{
+  box-shadow:0 0 0 2px #FFFFFF}
+
+/* "Make it yours" is a CRM action, so it keeps a chip but no tile. */
+#crm-main .crm-nav .crm-arrange{color:#FFFFFF;background:transparent;
+  border:1px solid rgba(255,255,255,.22);border-radius:9px;padding:6px 9px}
+#crm-main .crm-nav .crm-arrange .ti{background:#FFFFFF;color:var(--blue,#2E3CB0);
+  border-radius:6px;width:24px;height:24px}
+#crm-main #crm-rail{background:var(--blue,#2E3CB0)}
 
 /* Outside tools: readable, still clearly secondary to the tabs. */
 #crm-nav .crm-ext,#crm-rail .crm-ext,.crm-nav .crm-ext{color:rgba(255,255,255,.78)}
 #crm-nav .crm-ext .tl,.crm-nav .crm-ext .tl{color:inherit}
 #crm-nav .crm-ext:hover,.crm-nav .crm-ext:hover{color:var(--gold,#E6C381)}
-#crm-nav .crm-ext .ti,.crm-nav .crm-ext .ti{background:rgba(230,195,129,.26);color:var(--gold,#E6C381)}
-#crm-nav .crm-ext:hover .ti,.crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.44)}
+/* The outside tools get the same treatment so the row reads as one family. */
+#crm-nav .crm-ext,.crm-nav .crm-ext{background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:9px 13px;margin:0 0 6px}
+#crm-nav .crm-ext .ti,.crm-nav .crm-ext .ti{background:#FFFFFF;color:#846946;
+  border-radius:7px;width:27px;height:27px}
+#crm-nav .crm-ext:hover,.crm-nav .crm-ext:hover{background:rgba(255,255,255,.18);
+  border-color:rgba(255,255,255,.34)}
+#crm-nav .crm-ext:hover .ti,.crm-nav .crm-ext:hover .ti{background:#FFFFFF}
 
-.crm-nav .crm-arrange{color:rgba(255,255,255,.78)}
+.crm-nav .crm-arrange{color:#FFFFFF;background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.16);border-radius:9px}
+.crm-nav .crm-arrange .ti{background:#FFFFFF;color:var(--blue,#2E3CB0);
+  border-radius:7px;width:27px;height:27px}
 .crm-nav .crm-arrange .tl{color:inherit}
 .crm-nav .crm-arrange:hover{color:#FFFFFF}
 
