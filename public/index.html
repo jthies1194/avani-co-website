@@ -902,6 +902,36 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   border-bottom-color:var(--tab)}
 .crm-nav button.on .ti{background:color-mix(in srgb, var(--tab) 60%, #14183A);color:#fff}
 .crm-nav button.on .pill{background:var(--tab)}
+
+/* \u26a0 CONTRAST ON THE DARK RAIL (index 346). The rules above mix every tab color toward
+   #14183A, which is nearly black. That is right on a white page and wrong on the navy
+   rail the nav actually sits on \u2014 it produced dark text on a dark background, and the
+   broker could not read the tabs or the quick links at all.
+
+   Everything here mixes toward WHITE instead, and the resting color is a light slate
+   rather than the mid-grey --driftwood, which was designed for light backgrounds.
+
+   \u26a0 THIS BLOCK MUST STAY AFTER THE RULES IT OVERRIDES. Same specificity, so source
+   order decides. Moved earlier it silently does nothing. */
+.crm-nav button{color:#C3CAE4}
+.crm-nav button:hover{color:color-mix(in srgb, var(--tab) 62%, #FFFFFF)}
+.crm-nav button:hover .ti{background:color-mix(in srgb, var(--tab) 34%, transparent)}
+.crm-nav button.on{color:#FFFFFF;border-bottom-color:var(--tab)}
+.crm-nav button.on .ti{background:var(--tab);color:#14183A}
+/* Idle icons need enough tint to be visible against navy. */
+.crm-nav button .ti{background:color-mix(in srgb, var(--tab) 24%, transparent)}
+
+/* The external quick links \u2014 ShowingTime, Perchwell \u2014 were the worst of it: mid-grey
+   on navy at 15px. */
+#crm-nav .crm-ext{color:#C3CAE4}
+#crm-nav .crm-ext:hover{color:#F0D9A8}
+#crm-nav .crm-ext .ti{background:rgba(230,195,129,.22)}
+#crm-nav .crm-ext:hover .ti{background:rgba(230,195,129,.40)}
+#crm-nav .crm-ext::after{opacity:.8}
+/* The screen-finder box sat almost invisible in the same row. */
+#crm-rail input,#crm-nav input{background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.22);color:#fff}
+#crm-rail input::placeholder,#crm-nav input::placeholder{color:rgba(255,255,255,.55)}
 /* The old single-color hover and active rules used to sit here. They came after
    the colored ones and overrode them, so every tab went back to marsh blue.
    Removed rather than reordered — two sets of rules for the same thing is how
@@ -5298,7 +5328,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v345';
+window.BUILD = 'index-v346';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
