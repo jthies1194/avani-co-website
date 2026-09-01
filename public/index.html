@@ -903,6 +903,18 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .crm-nav button.on .ti{background:color-mix(in srgb, var(--tab) 60%, #14183A);color:#fff}
 .crm-nav button.on .pill{background:var(--tab)}
 
+/* \u26a0 A close control that looks like one. Sized for a thumb, not a mouse pointer. */
+.pn-x{position:absolute;top:10px;right:12px;z-index:2;width:30px;height:30px;
+  display:flex;align-items:center;justify-content:center;border:none;background:none;
+  font-size:23px;line-height:1;color:var(--driftwood);cursor:pointer;border-radius:6px;
+  transition:.15s}
+.pn-x:hover{background:#F1EFE7;color:var(--rl,#0E1433)}
+.pn-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  flex-wrap:wrap;cursor:pointer;padding-right:26px}
+.pn-caret{display:inline-block;font-size:11px;color:var(--driftwood);
+  transition:transform .2s;transform-origin:center}
+.pn-caret.shut{transform:rotate(-90deg)}
+
 /* \u26a0 CONTRAST ON THE DARK RAIL (index 346). The rules above mix every tab color toward
    #14183A, which is nearly black. That is right on a white page and wrong on the navy
    rail the nav actually sits on \u2014 it produced dark text on a dark background, and the
@@ -5328,7 +5340,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v346';
+window.BUILD = 'index-v347';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10589,6 +10601,8 @@ async function renderDashboard(){
      be forgotten by the next person to touch this function. */
   const goalData = await goalLoad();
   if(gen !== __dashGen) return;   // a newer render started while we waited
+  /* \u26a0 Queued for after the innerHTML below, which recreates these panels every render. */
+  setTimeout(() => { if(typeof pnRestore === 'function') pnRestore(); }, 0);
 
   el.innerHTML = `
     <div id="ce-nudge-slot"></div>
@@ -10598,35 +10612,35 @@ async function renderDashboard(){
     <!-- \u26a0 On Today, not on a screen of their own. The broker asked for this because it
          "motivates them to see what is working" \u2014 numbers on a page nobody opens motivate
          nobody. Collapsed by default so it does not push the day's work down. -->
-    <div class="card" id="an-panel" style="margin:0 0 16px">
+    <!-- \u26a0 A real close control. The first version put a small "hide" text link between
+         the date ranges, and the broker told me twice he could not find a way out of the
+         panel. He was right \u2014 a text link wedged between other links does not read as a
+         control. This is an X in the corner, the whole header is clickable, and the state
+         is remembered so it does not spring open again tomorrow. -->
+    <div class="card" id="an-panel" style="margin:0 0 16px;position:relative">
+      <button class="pn-x" onclick="anToggle()" title="Hide this" aria-label="Hide this">&times;</button>
       <div style="padding:16px 18px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div class="pn-head" onclick="anToggle()">
           <h3 style="margin:0;font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:17px">
-            What the website is doing</h3>
-          <span style="font-size:12.5px">
+            What the website is doing <span class="pn-caret" id="an-caret">&#9662;</span></h3>
+          <span style="font-size:12.5px" onclick="event.stopPropagation()">
             <a href="#" onclick="anLoad(7);return false;">7 days</a> &middot;
             <a href="#" onclick="anLoad(30);return false;">30 days</a> &middot;
-            <a href="#" onclick="anLoad(90);return false;">90 days</a>
-            <!-- \u26a0 A panel that opens and cannot be closed pushes the day's work down the
-                 screen permanently. Hide, not remove: the numbers stay loaded so
-                 reopening is instant. -->
-            &middot; <a href="#" id="an-hide" onclick="anToggle();return false;"
-              style="display:none">hide</a></span>
+            <a href="#" onclick="anLoad(90);return false;">90 days</a></span>
         </div>
         <div id="an-body" style="margin-top:14px">
           <button class="btn-sm" onclick="anLoad(30)">Show me the numbers</button></div>
       </div>
     </div>
-    ${isBroker ? `<div class="card" id="tm-panel" style="margin:0 0 16px">
+    ${isBroker ? `<div class="card" id="tm-panel" style="margin:0 0 16px;position:relative">
+      <button class="pn-x" onclick="tmToggle()" title="Hide this" aria-label="Hide this">&times;</button>
       <div style="padding:16px 18px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div class="pn-head" onclick="tmToggle()">
           <h3 style="margin:0;font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:17px">
-            How the team is working</h3>
-          <span style="font-size:12.5px">
+            How the team is working <span class="pn-caret" id="tm-caret">&#9662;</span></h3>
+          <span style="font-size:12.5px" onclick="event.stopPropagation()">
             <a href="#" onclick="tmLoad(4);return false;">4 weeks</a> &middot;
-            <a href="#" onclick="tmLoad(12);return false;">12 weeks</a>
-            &middot; <a href="#" id="tm-hide" onclick="tmToggle();return false;"
-              style="display:none">hide</a></span>
+            <a href="#" onclick="tmLoad(12);return false;">12 weeks</a></span>
         </div>
         <div id="tm-body" style="margin-top:14px">
           <button class="btn-sm" onclick="tmLoad(4)">Show me</button></div>
@@ -27111,32 +27125,34 @@ async function mlDelete(i){
    nobody. What they do NOT see is the per-agent breakdown — which of their colleagues'
    links performed — because that is a different thing and he did not ask for it. */
 
-/* \u26a0 Hidden, not emptied. Somebody who collapses the panel and opens it again should
-   not wait for another round trip, and the server call is not free. */
-function anToggle(){
-  const b = document.getElementById('an-body');
-  const l = document.getElementById('an-hide');
-  if(!b || !l) return;
-  const shown = b.style.display !== 'none';
-  b.style.display = shown ? 'none' : '';
-  l.textContent = shown ? 'show' : 'hide';
+/* \u26a0 Hidden, not emptied \u2014 reopening should not cost another round trip.
+   \u26a0 The state is REMEMBERED. A panel somebody deliberately closed springing open again
+   the next morning is the same annoyance as not being able to close it at all. */
+function pnToggle(bodyId, caretId, key, force){
+  const b = document.getElementById(bodyId);
+  const c = document.getElementById(caretId);
+  if(!b) return;
+  const shut = (force !== undefined) ? force : (b.style.display !== 'none');
+  b.style.display = shut ? 'none' : '';
+  if(c) c.classList.toggle('shut', shut);
+  try{ localStorage.setItem(key, shut ? '1' : '0'); }catch(e){}
 }
 
-function tmToggle(){
-  const b = document.getElementById('tm-body');
-  const l = document.getElementById('tm-hide');
-  if(!b || !l) return;
-  const shown = b.style.display !== 'none';
-  b.style.display = shown ? 'none' : '';
-  l.textContent = shown ? 'show' : 'hide';
+function anToggle(force){ pnToggle('an-body','an-caret','pnAn', force); }
+function tmToggle(force){ pnToggle('tm-body','tm-caret','pnTm', force); }
+
+/* Applied after the dashboard paints, since the panels are rebuilt on every render. */
+function pnRestore(){
+  try{
+    if(localStorage.getItem('pnAn') === '1') anToggle(true);
+    if(localStorage.getItem('pnTm') === '1') tmToggle(true);
+  }catch(e){}
 }
 
 async function anLoad(days){
   const host = document.getElementById('an-body');
   if(!host) return;
-  host.style.display = '';
-  const hl = document.getElementById('an-hide');
-  if(hl){ hl.style.display = ''; hl.textContent = 'hide'; }
+  anToggle(false);   // asking for numbers means you want to see them
   host.innerHTML = '<div class="probe-wait">Counting…</div>';
   let d;
   try{
@@ -27191,9 +27207,7 @@ async function anLoad(days){
 async function tmLoad(weeks){
   const host = document.getElementById('tm-body');
   if(!host) return;
-  host.style.display = '';
-  const hl = document.getElementById('tm-hide');
-  if(hl){ hl.style.display = ''; hl.textContent = 'hide'; }
+  tmToggle(false);
   host.innerHTML = '<div class="probe-wait">Adding it up…</div>';
   let d;
   try{
