@@ -690,6 +690,19 @@ app.get('/api/market-stats', async (req, res) => {
 
    \u26a0 Active listings only would miss most deals \u2014 by the time a deal exists the listing is
    frequently pending or sold. This searches every status. */
+/* One place that knows every shape a listing photo arrives in. */
+function pickPhoto(r) {
+  const m = Array.isArray(r && r.Media) ? r.Media : [];
+  for (const item of m) {
+    if (!item) continue;
+    if (typeof item === 'string' && /^https?:/i.test(item)) return item;
+    const u = item.MediaURL || item.MediaUrl || item.Uri1600 || item.Uri1024
+           || item.Uri800 || item.Uri640 || item.url || '';
+    if (u) return u;
+  }
+  return r.PhotoURL || r.ThumbnailURL || '';
+}
+
 app.get('/api/listing-lookup', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const q = String(req.query.q || '').trim();
@@ -715,10 +728,16 @@ app.get('/api/listing-lookup', async (req, res) => {
     let rows = [];
     for (const attempt of tries) {
       const esc = attempt.replace(/'/g, "''").slice(0, 60);
+      /* \u26a0 NO $select. Naming Media in a $select does not return it on this feed \u2014 it is
+         a collection rather than a plain field, so it came back empty and every match
+         had no photo. The route that already works, /api/listing/:key, sends no $select
+         at all and gets Media fine. Copying that is more reliable than guessing at
+         $expand syntax the feed may or may not support.
+         \u26a0 The cost is a larger response. $top is 8, so it is eight full records rather
+         than eight thin ones, which is acceptable for something a person triggers by
+         hand. Do not raise $top without revisiting this. */
       const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
         $filter: `contains(UnparsedAddress,'${esc}')`,
-        $select: 'ListingKey,UnparsedAddress,City,ListPrice,StandardStatus,'
-               + 'BedroomsTotal,BathroomsTotalInteger,Media',
         $top: 8,
       });
       rows = d.value || [];
@@ -733,10 +752,10 @@ app.get('/api/listing-lookup', async (req, res) => {
       price: r.ListPrice || 0,
       /* \u26a0 First photo only. A deal card needs one image, and returning forty URLs per
          match would make this response enormous for no benefit. */
-      photo: (Array.isArray(r.Media) && r.Media.length)
-        ? (typeof r.Media[0] === 'string' ? r.Media[0]
-           : (r.Media[0].MediaURL || r.Media[0].MediaUrl || ''))
-        : '',
+      /* \u26a0 Feeds disagree about the shape of Media: an array of strings, an array of
+         objects with MediaURL, or MediaUrl, or a sized variant. Some records also carry
+         a plain photo field instead. Try each rather than assume one. */
+      photo: pickPhoto(r),
     })).filter(m => m.address);
     res.json({ ok: true, matches });
   } catch (e) {
@@ -6451,7 +6470,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v179',
+    serverVersion: 'v180',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
