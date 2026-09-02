@@ -5380,7 +5380,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v365';
+window.BUILD = 'index-v366';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -27747,6 +27747,9 @@ async function plFindListing(){
          "Searching..." forever. The MLS had returned matches perfectly well \u2014 the bug
          was in drawing them. Check a helper is actually in scope before calling it. */
       + (m.price ? ' \u00b7 $' + Number(m.price).toLocaleString('en-US') : '')
+      /* \u26a0 Say which ones actually have a picture. Without this every row looks the same
+         and you only find out a listing has no photo after clicking it. */
+      + (m.photo ? '' : ' \u00b7 no photo')
       + '</span></div>').join('');
   }
   window.__plMatches = list;
