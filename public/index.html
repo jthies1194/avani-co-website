@@ -1668,9 +1668,14 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="hero-veil"></div>
   <div class="hero-inner">
     <div class="hero-copy rv in">
-      <div class="eyebrow">Coastal Alabama &amp; Northwest Florida</div>
+      <div class="eyebrow">Coastal Alabama</div>
       <h1>Find <em class="yours">your</em> place<br>on the <span class="accent">Gulf</span>.</h1>
-      <p>Search every active listing from Gulf Shores to Perdido Key &mdash;
+      <!-- ⚠ Do NOT upgrade this to "the only" or "the exclusive" site for Baldwin
+           County. Every member brokerage with an IDX feed shows the same listings,
+           so exclusivity would be false advertising under AREC's advertising rules
+           and the MLS's own IDX terms. Describing the coverage is fine; claiming
+           to be alone in it is not. -->
+      <p>Search Baldwin County listings &mdash;
          with a brokerage small enough to answer the phone.</p>
       <a href="#listings" class="btn btn-light" id="hero-cta">Search homes</a>
       <!-- ⚠ The alerts and valuation doors were buried in a band headed "Not ready to
@@ -1745,7 +1750,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
       onkeydown="cityKey(event)">
     <div id="city-hint" role="listbox"></div>
     <datalist id="city-options">
-      <option value="Gulf Shores"><option value="Orange Beach"><option value="Fort Morgan"><option value="Ono Island"><option value="Perdido Beach"><option value="Bon Secour"><option value="Laguna Key"><option value="Fairhope"><option value="Daphne"><option value="Spanish Fort"><option value="Point Clear"><option value="Montrose"><option value="Magnolia Springs"><option value="Barnwell"><option value="Belforest"><option value="Battles Wharf"><option value="Malbis"><option value="Foley"><option value="Robertsdale"><option value="Loxley"><option value="Summerdale"><option value="Silverhill"><option value="Elberta"><option value="Bay Minette"><option value="Stapleton"><option value="Seminole"><option value="Lillian"><option value="Josephine"><option value="Rosinton"><option value="Bromley"><option value="Miflin"><option value="Perdido Key"><option value="Innerarity Point"><option value="Pensacola"><option value="Pensacola Beach"><option value="Gulf Breeze"><option value="Navarre"><option value="Navarre Beach"><option value="Cantonment"><option value="Molino"><option value="Beulah"><option value="Bellview"><option value="Myrtle Grove"><option value="Warrington"><option value="Gonzalez"><option value="Ferry Pass"><option value="Brent"><option value="Pace"><option value="Milton"><option value="Jay"><option value="Century">
+      <option value="Gulf Shores"><option value="Orange Beach"><option value="Fort Morgan"><option value="Ono Island"><option value="Perdido Beach"><option value="Bon Secour"><option value="Laguna Key"><option value="Fairhope"><option value="Daphne"><option value="Spanish Fort"><option value="Point Clear"><option value="Montrose"><option value="Magnolia Springs"><option value="Barnwell"><option value="Belforest"><option value="Battles Wharf"><option value="Malbis"><option value="Foley"><option value="Robertsdale"><option value="Loxley"><option value="Summerdale"><option value="Silverhill"><option value="Elberta"><option value="Bay Minette"><option value="Stapleton"><option value="Seminole"><option value="Lillian"><option value="Josephine"><option value="Rosinton"><option value="Bromley"><option value="Miflin">
     </datalist>
   </div>
   <div class="f"><label for="f-beds">Beds</label>
@@ -2200,7 +2205,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="eyebrow">Where We Work</div>
       <span class="flourish center" role="presentation"></span>
       <h2>The Whole Coast</h2>
-      <p>Every city, town, and community across Baldwin County, plus the Perdido Key and Pensacola corridor — arranged the way the coast actually runs, from the Gulf inland to the Delta.</p>
+      <p>Every city, town, and community across Baldwin County — arranged the way the coast actually runs, from the Gulf inland to the Delta.</p>
     </div>
 
     <div class="comm-tools rv">
@@ -2212,7 +2217,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <button data-b="0">Gulf &amp; Beaches</button>
         <button data-b="1">Eastern Shore</button>
         <button data-b="2">Inland Baldwin</button>
-        <button data-b="3">NW Florida</button>
       </div>
     </div>
     <div class="bands rv">
@@ -2240,12 +2244,6 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
 
 
-      <div class="band"><span class="band-dot" style="--dot:#C89B4E"></span>
-        <div><h3>Northwest Florida</h3><span>Escambia &amp; Santa Rosa</span></div>
-        <div class="towns">
-          <a href="#listings" onclick="searchTown('Perdido Key');return false;">Perdido Key</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Innerarity Point');return false;">Innerarity Point</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Pensacola');return false;">Pensacola</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Pensacola Beach');return false;">Pensacola Beach</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Gulf Breeze');return false;">Gulf Breeze</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Navarre');return false;">Navarre</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Navarre Beach');return false;">Navarre Beach</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Cantonment');return false;">Cantonment</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Molino');return false;">Molino</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Beulah');return false;">Beulah</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Bellview');return false;">Bellview</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Myrtle Grove');return false;">Myrtle Grove</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Warrington');return false;">Warrington</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Gonzalez');return false;">Gonzalez</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Ferry Pass');return false;">Ferry Pass</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Brent');return false;">Brent</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Pace');return false;">Pace</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Milton');return false;">Milton</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Jay');return false;">Jay</a><span class="sep">/</span><a href="#listings" onclick="searchTown('Century');return false;">Century</a>
-        </div>
-      </div>
     </div>
     <div class="no-hits" id="noHits" style="display:none">No community by that name — try another spelling, or call 251-229-3216.</div>
   </div>
@@ -2339,7 +2337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="about-copy rv d1">
       <div class="eyebrow">The Brokerage</div>
       <h2>Built for this coast.</h2>
-      <p>Avani &amp; Co. is a boutique brokerage licensed in both Alabama and Florida, covering Baldwin County and the Perdido Key and Pensacola corridor.</p>
+      <p>Avani &amp; Co. is a boutique brokerage licensed in both Alabama and Florida, covering Baldwin County.</p>
       <p>Our agents live in the communities they sell in. They know the condo boards, the flood maps, and what a fair number looks like on either side of the bay — backed by a brokerage that stays small enough to actually answer the phone.</p>
       <div class="sig">Jimmy Thies<small>Qualifying Broker &middot; Alabama &amp; Florida</small></div>
     </div>
@@ -2753,8 +2751,6 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
     <div>
       <h4>Coverage</h4>
       Baldwin County, AL<br>
-      Escambia County, FL<br>
-      Santa Rosa County, FL
     </div>
     <div>
       <h4>Licensing</h4>
@@ -5372,7 +5368,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v367';
+window.BUILD = 'index-v370';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -12243,7 +12239,7 @@ function licenseLine(a){
       <strong>Licensed in ${parts.join(' and ')}</strong>
       ${missingFL ? `<div class="ap-license-note">Looking in Florida? ${escapeHtml((a.name||'').split(' ')[0])}
         can introduce you to a licensed Avani &amp; Co Real Estate Southern Sands agent
-        for the Perdido Key and Pensacola area.</div>` : ''}
+        in Florida.</div>` : ''}
     </div>`;
 }
 </script>
@@ -23832,7 +23828,7 @@ function asRerun(){ asOut = null; asRenderPane(); }
    it carrying ?agent= for attribution. */
 
 const QZ_TOWNS = ['Gulf Shores','Orange Beach','Fort Morgan','Fairhope','Foley','Daphne',
-  'Spanish Fort','Elberta','Robertsdale','Perdido Key','Pensacola area'];
+  'Spanish Fort','Elberta','Robertsdale'];
 
 let qzPath = 'buy', qzStep = 0, qzA = {}, qzCash = false;
 
