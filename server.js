@@ -456,24 +456,262 @@ function sortByMarket(rows) {
   });
 }
 
+/* ==================== MLS SOURCES (server 181) ====================
+   TWO BRIDGE ACCOUNTS, NOT ONE KEY WITH TWO DATASETS. Bridge confirmed (server 136)
+   that Baldwin REALTORS is a separate Bridge account from Gulf Coast — separate
+   login, separate credentials — because the Baldwin account is tied to the member
+   record in Baldwin's own system. The 404s on 'baldwin' were the Gulf Coast key
+   being asked about a dataset it has no account for. So every query that used to
+   hit one dataset with one token now fans out over a list of {dataset, token}.
+
+   ⚠ A source is live only when BOTH its dataset code and its token are set. With
+   Baldwin dark, every function below behaves exactly as the single-source code did
+   — same request, same $skip, same shape — which is what makes this safe to deploy
+   BEFORE the Baldwin credentials exist. Nothing changes on the site until both
+   BRIDGE_BALDWIN_DATASET and BRIDGE_BALDWIN_TOKEN are set. */
+/* ⚠ ADDING A THIRD MLS LATER TAKES NO CODE CHANGE. Set four environment
+   variables on the host and restart — nothing in this file needs editing:
+
+       MLS3_ID=pensacola
+       MLS3_LABEL=Pensacola MLS
+       MLS3_DATASET=<the short dataset code, not the UUID>
+       MLS3_TOKEN=<that account's server token>
+
+   Slots MLS1 through MLS8 are scanned. Check it worked at /api/health, which
+   lists every live source, and inspect the new feed's fields with
+   /api/mls-test?source=pensacola before pointing the public site at it.
+
+   ⚠ Remember the county allowlist below. A new feed whose listings sit outside
+   COVERED_COUNTIES will connect successfully and still show nothing — set
+   MLS_COUNTIES at the same time. That trap is why health reports both. */
+function mlsSlots() {
+  const out = [];
+  for (let i = 1; i <= 8; i++) {
+    const dataset = process.env[`MLS${i}_DATASET`];
+    const token   = process.env[`MLS${i}_TOKEN`];
+    if (!dataset || !token) continue;
+    out.push({
+      id:    process.env[`MLS${i}_ID`]    || `mls${i}`,
+      label: process.env[`MLS${i}_LABEL`] || `MLS ${i}`,
+      dataset, token,
+    });
+  }
+  return out;
+}
+
+/* The two named slots stay for the variable names already set on the host.
+   Everything after them comes from MLS1..MLS8. */
+/* ⚠ Order is the dedupe tie-break, so gulf stays FIRST while both are live: a
+   property in both feeds keeps the ListingKey already in clients' favorites, in
+   past alert emails and in indexed /listing/KEY URLs. Reordering this list
+   silently rewrites which key wins. When the Gulf Coast access ends, clear
+   BRIDGE_SERVER_TOKEN — do not reorder.
+   ⚠ BRIDGE_DATASET keeps its 'gcmls2' default so this refactor cannot turn an
+   existing feed off by itself. Removing a feed is clearing its token. */
+const MLS_SOURCES_ALL = [
+  { id: 'gulf',    label: 'Gulf Coast MLS',
+    dataset: process.env.BRIDGE_DATASET || 'gcmls2',
+    token:   process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN || '' },
+  { id: 'baldwin', label: 'Baldwin REALTORS',
+    dataset: process.env.BRIDGE_BALDWIN_DATASET || '',
+    token:   process.env.BRIDGE_BALDWIN_TOKEN   || '' },
+  ...mlsSlots(),
+];
+
+function mlsSources() {
+  const live = MLS_SOURCES_ALL.filter(s => s.dataset && s.token);
+  /* ⚠ Deduped by id AND by dataset. Pointing a numbered slot at a dataset one of
+     the named slots already serves would otherwise query it twice and halve the
+     usable page size for no reason. First definition wins. */
+  const seenId = new Set(), seenDs = new Set();
+  return live.filter(s => {
+    if (seenId.has(s.id) || seenDs.has(s.dataset)) return false;
+    seenId.add(s.id); seenDs.add(s.dataset);
+    return true;
+  });
+}
+function mlsConfigured()     { return mlsSources().length > 0; }
+function mlsSourceById(id)   { return mlsSources().find(s => s.id === id) || null; }
+
+function mlsUrl(src, params) {
+  const u = new URL(`https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(src.dataset)}/Property`);
+  u.searchParams.set('access_token', src.token);
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, v);
+  });
+  return u.toString();
+}
+
+/* One source, one request. Never throws — a feed that is down must not take the
+   site down with it, so the failure is reported in the return value and the
+   caller decides. */
+async function mlsFetchOne(src, params) {
+  const started = Date.now();
+  try {
+    const r = await fetch(mlsUrl(src, params));
+    const text = await r.text().catch(() => '');
+    const ms = Date.now() - started;
+    if (!r.ok) {
+      console.error(`[mls:${src.id}] ${r.status} in ${ms}ms: ${text.slice(0, 200)}`);
+      return { src, ok: false, status: r.status, ms, rows: [], count: null, detail: text.slice(0, 300) };
+    }
+    let json = {};
+    try { json = JSON.parse(text); }
+    catch (e) { return { src, ok: false, status: 200, ms, rows: [], count: null, detail: 'Feed returned non-JSON.' }; }
+    /* Tag every row with the feed it came from. Non-RESO fields, prefixed, so they
+       cannot collide with anything Bridge sends now or later. The detail lookup and
+       the photo proxy both need to know which account to ask. */
+    const rows = (json.value || []).map(row => {
+      try { row._src = src.id; row._srcLabel = src.label; } catch (e) {}
+      return row;
+    });
+    return { src, ok: true, status: 200, ms, rows,
+             count: json['@odata.count'] != null ? json['@odata.count'] : null };
+  } catch (e) {
+    console.error(`[mls:${src.id}] threw: ${e.message}`);
+    return { src, ok: false, status: 0, ms: Date.now() - started, rows: [], count: null, detail: e.message };
+  }
+}
+
+/* ⚠ Gulf Shores and Orange Beach are IN Baldwin County, so the two feeds overlap
+   and a dual-listed property arrives twice under two different ListingKeys. Matched
+   on the street address, normalised — unit numbers kept, because 1104 and 1105 are
+   different condos. */
+function mlsDedupeKey(r) {
+  const a = String(r.UnparsedAddress || '').toLowerCase()
+    .replace(/[.,#]/g, ' ')
+    .replace(/\b(unit|apt|apartment|ste|suite|lot)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return a || null;
+}
+
+/* Source order is the tie-break, and that is deliberate: when the same property is
+   in both feeds the incumbent Gulf Coast record wins, so it keeps the ListingKey
+   that is already sitting in clients' favorites, in past alert emails and in
+   indexed /listing/KEY URLs. A rule that picked "whichever copy has more photos"
+   would be better data and would silently change keys whenever a photo was added. */
+/* ==================== COVERAGE (server 182) ====================
+   The counties this brokerage actually sells in. Mobile County came out when the
+   Mobile MLS access ended: removing the word "Mobile" from the menus did not stop
+   Mobile listings appearing, because /api/listings tops up from the whole feed and
+   /api/search never filtered by county at all.
+
+   ⚠ Filtered HERE, in the merge, so every caller inherits it — search, the
+   homepage, market stats, the market letter, saved-search alerts and comps. A
+   filter added per route is a filter somebody forgets on the seventh route.
+
+   ⚠ A listing whose CountyOrParish is EMPTY is kept, not dropped. An unknown
+   county is a gap in the feed's data, and silently losing real inventory is worse
+   than showing one that sorts last anyway under marketRank(). Only a county we can
+   positively read and do not cover is excluded.
+
+   ⚠ Baldwin only, because Baldwin is the only MLS we hold. Widen it by setting
+   MLS_COUNTIES — a comma-separated list, matched as a prefix on CountyOrParish,
+   so "santa rosa" catches "Santa Rosa County":
+
+       MLS_COUNTIES=baldwin,escambia,santa rosa
+
+   Set it in the same breath as adding a feed. A new MLS whose listings all sit
+   outside this list will connect cleanly and display nothing. */
+const COVERED_COUNTIES = (process.env.MLS_COUNTIES || 'baldwin')
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+function mlsCovered(row) {
+  const c = String(row.CountyOrParish || '').toLowerCase().trim();
+  if (!c) return true;                       // unknown — keep, see above
+  return COVERED_COUNTIES.some(x => c.startsWith(x));
+}
+
+function mlsMerge(results) {
+  const seen = new Set();
+  const out = [];
+  for (const res of results) {
+    if (!res.ok) continue;
+    for (const row of res.rows) {
+      if (!mlsCovered(row)) continue;
+      const k = mlsDedupeKey(row);
+      if (k) { if (seen.has(k)) continue; seen.add(k); }
+      out.push(row);
+    }
+  }
+  out.sort((x, y) => new Date(y.ModificationTimestamp || 0) - new Date(x.ModificationTimestamp || 0));
+  return out;
+}
+
+/* The one entry point. Returns { value, total, sources, partial, configured }.
+   `partial` means at least one live feed failed and the results are incomplete —
+   callers that show a count should say so rather than quietly under-reporting. */
+async function mlsQuery({ filter, top = 24, skip = 0, select, orderby = 'ModificationTimestamp desc', count = true } = {}) {
+  const srcs = mlsSources();
+  if (!srcs.length) return { value: [], total: 0, sources: [], partial: false, configured: false };
+
+  const multi = srcs.length > 1;
+  /* ⚠ $skip cannot be passed through to more than one feed. Page three of the
+     merged list is not page three of either feed, so with two sources each is
+     asked for everything up to the end of the requested page and the slice happens
+     after the merge. Capped, because that cost grows as you page deeper. */
+  const need = multi ? Math.min(skip + top, 400) : top;
+  const params = { $filter: filter, $top: need, $orderby: orderby };
+  if (!multi && skip) params.$skip = skip;
+  if (count)  params.$count = 'true';
+  if (select) params.$select = select;
+
+  const results = await Promise.all(srcs.map(s => mlsFetchOne(s, params)));
+  const okResults = results.filter(r => r.ok);
+  const merged = mlsMerge(results);
+  const value = multi ? merged.slice(skip, skip + top) : merged;
+
+  let total = null;
+  if (okResults.some(r => r.count != null)) {
+    total = okResults.reduce((n, r) => n + (r.count || 0), 0);
+  }
+  return {
+    value, total,
+    /* Approximate with two feeds: the totals are summed before duplicates are
+       removed, because Bridge counts its own dataset and knows nothing of ours. */
+    totalApprox: multi,
+    partial: okResults.length < results.length,
+    configured: true,
+    sources: results.map(r => ({ id: r.src.id, label: r.src.label, ok: r.ok,
+                                 status: r.status, ms: r.ms, count: r.count,
+                                 detail: r.ok ? undefined : r.detail })),
+  };
+}
+
+/* Find one listing by key across every live feed. Tries the sources in order and
+   returns the first hit, so a bare key from an old favorite or an indexed URL —
+   saved long before Baldwin existed — still resolves without a source prefix. */
+async function mlsFindByKey(key, { select } = {}) {
+  const esc = String(key || '').replace(/'/g, "''").slice(0, 128);
+  if (!esc) return null;
+  for (const src of mlsSources()) {
+    const params = { $filter: `ListingKey eq '${esc}' or ListingId eq '${esc}'`, $top: 1 };
+    if (select) params.$select = select;
+    const r = await mlsFetchOne(src, params);
+    /* Coverage applies to a single lookup too. IDX display rules are about
+       display, so a listing in a county we no longer carry must not render on a
+       share page or a QR landing just because somebody has the old link. */
+    const hit = (r.ok ? r.rows : []).find(mlsCovered);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 let listingsCache = { data: null, at: 0 };
 // TODO: once you have the exact Bridge "Dataset" resource name for GCMLS,
 // confirm this URL shape against Bridge's docs — it may need adjusting.
 // Fetch a single listing by key — printed QR codes must keep working even after
 // a listing falls outside the batch we cache for the homepage.
 app.get('/api/listing/:key', async (req, res) => {
-  const token = process.env.BRIDGE_SERVER_TOKEN;
-  const dataset = process.env.BRIDGE_DATASET;
-  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
   const key = String(req.params.key || '').slice(0, 128);
   try {
-    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-      + `?access_token=${encodeURIComponent(token)}`
-      + `&$filter=${encodeURIComponent(`ListingKey eq '${key.replace(/'/g, "''")}'`)}&$top=1`;
-    const r = await fetch(url);
-    if (!r.ok) return res.status(502).json({ error: `MLS API error ${r.status}` });
-    const json = await r.json();
-    const one = (json.value || [])[0];
+    /* ⚠ Searches every live feed in turn, not just the configured one. A printed QR
+       code, a client's favorite or an indexed /listing/KEY URL carries a bare key
+       with nothing in it to say which MLS it came from — most of them were saved
+       before a second feed existed. Trying each source in order is what keeps all
+       of those working. */
+    const one = await mlsFindByKey(key);
     if (!one) return res.status(404).json({ error: 'Listing not found.' });
     res.json({ value: [one] });
   } catch (e) {
@@ -486,19 +724,34 @@ app.get('/api/listing/:key', async (req, res) => {
 // active listings instead of only the batch we cache for the homepage.
 // Diagnostic: what does this dataset actually put in CountyOrParish / City?
 app.get('/api/mls-fields', async (req, res) => {
-  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
-  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
   try {
-    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-      + `?access_token=${encodeURIComponent(token)}&$top=200`
-      + `&$filter=${encodeURIComponent(STATUS_CLAUSE)}`;
-    const r = await fetch(url);
-    const json = await r.json();
-    const rows = json.value || [];
+    /* ⚠ Per feed as well as combined. Two MLSs do not populate the same fields —
+       one may carry PoolPrivateYN on every listing and the other on none — and a
+       filter that works beautifully against one feed and returns nothing from the
+       other looks like a broken search. `bySource` is how we see that before a
+       client does. */
+    const results = await Promise.all(mlsSources().map(s =>
+      mlsFetchOne(s, { $top: 200, $filter: STATUS_CLAUSE })));
+    const rows = [];
+    for (const r of results) if (r.ok) rows.push(...r.rows);
     const tally = (f) => {
       const m = {};
       rows.forEach(x => { const v = x[f]; if (v !== undefined && v !== null && v !== '') m[v] = (m[v]||0)+1; });
       return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0, 40);
+    };
+    const FILTERABLE = ['PoolPrivateYN','WaterfrontYN','ViewYN','GarageSpaces',
+                        'StoriesTotal','LotSizeAcres','LivingArea','YearBuilt',
+                        'AssociationYN','AssociationFee','BedroomsTotal',
+                        'BathroomsTotalInteger','PropertyCondition','OnMarketDate'];
+    const coverage = (sample) => {
+      const out = {};
+      if (!sample.length) return out;
+      FILTERABLE.forEach(f => {
+        const n = sample.filter(x => x[f] !== undefined && x[f] !== null && x[f] !== '').length;
+        out[f] = Math.round((n / sample.length) * 100);   // percent populated
+      });
+      return out;
     };
     res.json({
       sampled: rows.length,
@@ -508,14 +761,22 @@ app.get('/api/mls-fields', async (req, res) => {
       counties: tally('CountyOrParish'),
       cities: tally('City'),
       states: tally('StateOrProvince'),
+      fieldCoverage: coverage(rows),
+      bySource: results.map(r => ({
+        id: r.src.id, label: r.src.label, dataset: r.src.dataset,
+        ok: r.ok, status: r.status, ms: r.ms, sampled: r.rows.length,
+        detail: r.ok ? undefined : r.detail,
+        counties: r.ok ? Object.entries(r.rows.reduce((m, x) => {
+          const v = x.CountyOrParish; if (v) m[v] = (m[v] || 0) + 1; return m;
+        }, {})).sort((a, b) => b[1] - a[1]).slice(0, 12) : [],
+        fieldCoverage: r.ok ? coverage(r.rows) : {},
+      })),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/search', async (req, res) => {
-  const token = process.env.BRIDGE_SERVER_TOKEN;
-  const dataset = process.env.BRIDGE_DATASET;
-  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
   const q = req.query || {};
   const esc = v => String(v).replace(/'/g, "''");
@@ -570,26 +831,27 @@ app.get('/api/search', async (req, res) => {
   const top  = Math.min(num(q.top) || 24, 200);
   const skip = num(q.skip) || 0;
 
-  const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-    + `?access_token=${encodeURIComponent(token)}`
-    + `&$filter=${encodeURIComponent(parts.join(' and '))}`
-    + `&$orderby=ModificationTimestamp desc`
-    + `&$top=${top}&$skip=${skip}&$count=true`;
-
   try {
-    const r = await fetch(url);
-    if (!r.ok) {
-      const text = await r.text().catch(() => '');
-      console.error(`[search] Bridge ${r.status}: ${text.slice(0, 300)}`);
-      return res.status(502).json({ error: `MLS search error ${r.status}`, detail: text.slice(0, 300) });
+    const r = await mlsQuery({ filter: parts.join(' and '), top, skip });
+
+    /* ⚠ Every live feed failing is a 502. ONE of two failing is not — the visitor
+       gets the feed that answered, flagged partial, rather than an error page.
+       Baldwin having a bad morning must not empty the Gulf Coast search. */
+    if (r.sources.length && !r.sources.some(s => s.ok)) {
+      const first = r.sources.find(s => !s.ok) || {};
+      console.error(`[search] every feed failed; first status ${first.status}`);
+      return res.status(502).json({ error: `MLS search error ${first.status || ''}`.trim(),
+                                    detail: first.detail, sources: r.sources });
     }
-    const json = await r.json();
-    const rows = json.value || [];
+
     // with no city specified, rank by market so the beach leads
-    const ordered = (q.city && q.city.trim()) ? rows : sortByMarket(rows);
+    const ordered = (q.city && q.city.trim()) ? r.value : sortByMarket(r.value);
     res.json({
       value: ordered,
-      total: json['@odata.count'] != null ? json['@odata.count'] : null,
+      total: r.total,
+      totalApprox: r.totalApprox,
+      partial: r.partial,
+      sources: r.sources,
       top, skip,
     });
   } catch (e) {
@@ -614,8 +876,7 @@ function median(nums) {
 }
 
 app.get('/api/market-stats', async (req, res) => {
-  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
-  if (!token || !dataset) return res.status(503).json({ error: 'MLS not configured.' });
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
   if (marketCache.data && Date.now() - marketCache.at < 30 * 60 * 1000 && !req.query.fresh) {
     return res.json({ ...marketCache.data, cached: true });
@@ -736,9 +997,9 @@ app.get('/api/listing-lookup', async (req, res) => {
          \u26a0 The cost is a larger response. $top is 8, so it is eight full records rather
          than eight thin ones, which is acceptable for something a person triggers by
          hand. Do not raise $top without revisiting this. */
-      const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
-        $filter: `contains(UnparsedAddress,'${esc}')`,
-        $top: 8,
+      const d = await mlsQuery({
+        filter: `contains(UnparsedAddress,'${esc}')`,
+        top: 8, count: false,
       });
       rows = d.value || [];
       if (rows.length) break;
@@ -767,10 +1028,7 @@ app.get('/api/listing-lookup', async (req, res) => {
 });
 
 app.get('/api/listings', async (req, res) => {
-  const token = process.env.BRIDGE_SERVER_TOKEN;
-  const dataset = process.env.BRIDGE_DATASET;
-
-  if (!token || !dataset) {
+  if (!mlsConfigured()) {
     return res.json({ mock: true, value: [] });
   }
 
@@ -789,25 +1047,50 @@ app.get('/api/listings', async (req, res) => {
     let totalAvailable = null;
     const seen = new Set();
 
+    /* ⚠ $skip is applied per feed, which is right here and wrong in /api/search.
+       This is a bulk sweep that keeps everything and dedupes afterwards, so the
+       union of each feed's page N is exactly what we want. A user-facing page of
+       results is a different problem and mlsQuery() handles it differently. */
     const fetchPage = async (filter, skip, wantCount) => {
-      const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-        + `?access_token=${encodeURIComponent(token)}`
-        + `&$filter=${encodeURIComponent(filter)}`
-        + `&$orderby=ModificationTimestamp desc`
-        + `&$top=${PAGE}&$skip=${skip}`
-        + (wantCount ? '&$count=true' : '');
-      const r = await fetch(url);
-      if (!r.ok) {
-        const text = await r.text().catch(() => '');
-        throw Object.assign(new Error(`MLS API error ${r.status}`), { detail: text.slice(0, 400), status: r.status });
+      const params = { $filter: filter, $orderby: 'ModificationTimestamp desc',
+                       $top: PAGE, $skip: skip };
+      if (wantCount) params.$count = 'true';
+      const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, params)));
+      const okr = results.filter(r => r.ok);
+      if (!okr.length) {
+        const first = results[0] || {};
+        throw Object.assign(new Error(`MLS API error ${first.status || 0}`),
+                            { detail: first.detail, status: first.status });
       }
-      return r.json();
+      const value = [];
+      for (const r of okr) value.push(...r.rows);
+      return {
+        value,
+        '@odata.count': okr.some(r => r.count != null)
+          ? okr.reduce((n, r) => n + (r.count || 0), 0) : null,
+        /* ⚠ The caller stops paging when a page comes back short. With two feeds
+           merged, `value.length` can be up to 2x PAGE and would never look short,
+           so the loop would run to its cap every time. This reports the largest
+           SINGLE feed's page, which is the number that answers "is anyone still
+           returning full pages?" */
+        _maxPage: Math.max(0, ...okr.map(r => r.rows.length)),
+      };
     };
 
+    /* Deduped on ListingKey AND on street address: the key catches the same feed
+       returning a row twice across pages, the address catches a property listed in
+       both MLSs under two different keys. */
+    const seenAddr = new Set();
     const collect = (rows) => {
       for (const row of rows) {
+        if (!mlsCovered(row)) continue;
         const k = row.ListingKey || row.ListingId;
-        if (k && !seen.has(k)) { seen.add(k); all.push(row); }
+        if (k && seen.has(k)) continue;
+        const a = mlsDedupeKey(row);
+        if (a && seenAddr.has(a)) continue;
+        if (k) seen.add(k);
+        if (a) seenAddr.add(a);
+        all.push(row);
       }
     };
 
@@ -816,9 +1099,8 @@ app.get('/api/listings', async (req, res) => {
       const baldwinFilter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
       for (let skip = 0; skip < 400; skip += PAGE) {
         const json = await fetchPage(baldwinFilter, skip, false);
-        const rows = json.value || [];
-        collect(rows);
-        if (rows.length < PAGE) break;
+        collect(json.value || []);
+        if (json._maxPage < PAGE) break;
       }
       console.log(`[listings] Baldwin County: ${all.length}`);
     } catch (e) {
@@ -835,9 +1117,8 @@ app.get('/api/listings', async (req, res) => {
         return res.status(502).json({ error: e.message, detail: e.detail });
       }
       if (skip === 0 && json['@odata.count'] != null) totalAvailable = json['@odata.count'];
-      const rows = json.value || [];
-      collect(rows);
-      if (rows.length < PAGE) break;
+      collect(json.value || []);
+      if (json._maxPage < PAGE) break;
     }
 
     const ordered = sortByMarket(all);
@@ -1953,18 +2234,24 @@ function searchLabel(c){
 }
 
 async function searchRun(criteria, sinceISO){
-  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
-  if (!token || !dataset) return [];
+  if (!mlsConfigured()) return [];
   const c = Object.assign({}, criteria, { since: sinceISO });
-  const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-    + `?access_token=${encodeURIComponent(token)}`
-    + `&$filter=${encodeURIComponent(searchFilter(c))}`
-    + `&$orderby=OnMarketDate desc&$top=12`;
   try {
-    const r = await fetch(url);
-    if (!r.ok) { console.error('[search] MLS returned', r.status); return []; }
-    const j = await r.json();
-    return j.value || [];
+    /* ⚠ Ordered by OnMarketDate, not ModificationTimestamp — this answers "what
+       came on the market since last time", so mlsQuery's default ordering is
+       overridden here and the merge re-sorts on the same field below.
+
+       ⚠ Returns [] when every feed fails, exactly as before. A failed alert run
+       must look like "nothing new", never like a broken list of listings, because
+       the caller stamps whatever comes back as already-sent. */
+    const r = await mlsQuery({
+      filter: searchFilter(c), top: 12, skip: 0,
+      orderby: 'OnMarketDate desc',
+      count: false,
+    });
+    const rows = r.value || [];
+    return rows.slice().sort((a, b) =>
+      new Date(b.OnMarketDate || 0) - new Date(a.OnMarketDate || 0)).slice(0, 12);
   } catch (e) { console.error('[search] failed:', e.message); return []; }
 }
 
@@ -2599,7 +2886,6 @@ const TOPIC_BANK = [
   'Downsizing on the Eastern Shore',
   'What a condo association actually does',
   'Selling a rental property with bookings on the calendar',
-  'The difference between Baldwin and Mobile County for buyers',
   'What to look at in a building before you buy in it',
   'Timing a move around hurricane season',
 ];
@@ -2627,7 +2913,7 @@ app.post('/api/article-draft', async (req, res) => {
      the important one: an invented premium or fee is worse than no article. */
   const system = [
     'You write short, plain articles for a small real estate brokerage on the',
-    'Alabama Gulf Coast, covering Baldwin County and Mobile County.',
+    'Alabama Gulf Coast, covering Baldwin County.',
     '',
     'Voice: direct, specific, unhurried. Short sentences. No marketing language,',
     'no "nestled", no "dream home", no exclamation marks, no headings, no lists.',
@@ -2641,8 +2927,8 @@ app.post('/api/article-draft', async (req, res) => {
     '2. Never give insurance, lending, legal or tax advice. Explain the mechanics',
     '   and say who to ask.',
     '3. Be specific to this coast — Fort Morgan, Gulf Shores, Orange Beach,',
-    '   Perdido Key, Foley, Fairhope, Daphne, Spanish Fort, Elberta, Baldwin',
-    '   County, Mobile. Anything that would read the same about Florida or Texas',
+    '   Perdido Key, Foley, Fairhope, Daphne, Spanish Fort, Elberta and Baldwin',
+    '   County. Anything that would read the same about Florida or Texas',
     '   is not worth writing.',
     '4. 350 to 500 words. Paragraphs separated by a blank line.',
     '5. Do not repeat these existing articles: ' + existing.join('; '),
@@ -5921,7 +6207,7 @@ async function callClaude(system, messages, maxTokens = 500) {
   return (json.content || []).map(b => b.text || '').join('');
 }
 
-const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for ${BROKERAGE_NAME}, a boutique brokerage licensed in Alabama and Florida, serving Baldwin and Mobile County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne, Mobile) and the Perdido Key and Pensacola corridor in Florida. Broker: Jimmy Thies, phone ${BROKERAGE_PHONE}.
+const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for ${BROKERAGE_NAME}, a boutique brokerage licensed in Alabama and Florida, serving Baldwin County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne) and the Perdido Key and Pensacola corridor in Florida. Broker: Jimmy Thies, phone ${BROKERAGE_PHONE}.
 
 Always refer to the brokerage by its full name, "${BROKERAGE_NAME}" — never an abbreviation. Alabama license law requires the company name to appear as licensed.
 
@@ -6267,12 +6553,7 @@ app.post('/api/ai/listing-copy', async (req, res) => {
 
   let r;
   try {
-    const url = `OData/${BRIDGE_DATASET}/Property`;
-    const data = await bridgeGet(url, {
-      $filter: `ListingKey eq '${key.replace(/'/g, "''")}' or ListingId eq '${key.replace(/'/g, "''")}'`,
-      $top: 1,
-    });
-    r = (data.value || [])[0];
+    r = await mlsFindByKey(key);
   } catch (e) {
     console.error('[ai/listing-copy] feed:', e.message);
     return res.status(502).json({ error: 'Could not reach the MLS feed.' });
@@ -6412,31 +6693,39 @@ app.get('/api/my-outbound-ip', async (req, res) => {
   }
 });
 
-// ---------- MLS data (Bridge Data Output / Gulf Coast MLS) ----------
-// The live secret is BRIDGE_SERVER_TOKEN. This read BRIDGE_TOKEN, which is not
-// set on this deployment, so /api/mls-test always failed with "not set".
-const BRIDGE_TOKEN   = process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN;
-const BRIDGE_DATASET = process.env.BRIDGE_DATASET || 'gcmls2';
-const BRIDGE_BASE    = 'https://api.bridgedataoutput.com/api/v2';
+// ---------- MLS data (Bridge Data Output) ----------
+/* ⚠ bridgeGet() AND the BRIDGE_TOKEN / BRIDGE_DATASET constants were removed in
+   server 181. They queried exactly one dataset with one token, which is now wrong
+   in a way that fails silently: anything wired to them would quietly return Gulf
+   Coast results only, and nobody would notice until a client asked why a Fairhope
+   listing never reached them. They are gone rather than deprecated so that a grep
+   for "how do I query the MLS" cannot land on them.
 
-async function bridgeGet(path, params = {}) {
-  if (!BRIDGE_TOKEN) throw new Error('BRIDGE_TOKEN is not set.');
-  const url = new URL(`${BRIDGE_BASE}/${path}`);
-  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') url.searchParams.set(k, v); });
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${BRIDGE_TOKEN}` },
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Bridge ${res.status}: ${text.slice(0, 400)}`);
-  try { return JSON.parse(text); } catch { throw new Error(`Bridge returned non-JSON: ${text.slice(0, 200)}`); }
-}
+   Use mlsQuery({ filter, top, skip, select, orderby }) for a set of listings, or
+   mlsFindByKey(key) for one. Both fan out over every live feed. The source
+   registry is near the top of this file, above its first call site, because
+   `const` does not hoist. */
 
 // Read-only probe. Pulls ONE listing and reports what the feed actually contains,
 // so we can see the real field names before wiring anything to the public site.
 app.get('/api/mls-test', async (req, res) => {
   try {
-    const data = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, { $top: 1 });
-    const rows = data.value || [];
+    /* ?source=baldwin to inspect the second feed. Defaults to the primary one, so
+       the bare URL answers what it always did. Comparing the two field lists is
+       the quickest way to see what Baldwin carries that Gulf Coast does not. */
+    const wanted = String(req.query.source || 'gulf');
+    const src = mlsSourceById(wanted);
+    if (!src) {
+      return res.status(503).json({ ok: false,
+        error: `No live feed called '${wanted}'.`,
+        live: mlsSources().map(s => s.id) });
+    }
+    const data = await mlsFetchOne(src, { $top: 1 });
+    if (!data.ok) {
+      return res.status(502).json({ ok: false, source: src.id, dataset: src.dataset,
+                                    status: data.status, error: data.detail });
+    }
+    const rows = data.rows || [];
     const one = rows[0] || {};
     const fields = Object.keys(one).sort();
 
@@ -6449,7 +6738,8 @@ app.get('/api/mls-test', async (req, res) => {
 
     res.json({
       ok: true,
-      dataset: BRIDGE_DATASET,
+      source: src.id,
+      dataset: src.dataset,
       returned: rows.length,
       totalFields: fields.length,
       sitePresent: present,
@@ -6470,12 +6760,17 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v180',
+    serverVersion: 'v182',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
     mlsDataset: process.env.BRIDGE_DATASET || 'gcmls2',
-    mlsConfigured: !!(process.env.BRIDGE_SERVER_TOKEN && process.env.BRIDGE_DATASET),
+    mlsConfigured: mlsConfigured(),
+    /* Which feeds are actually live, so "is Baldwin connected?" is answerable
+       without logging in. Dataset codes and labels only — never the tokens. */
+    mlsSources: mlsSources().map(s => ({ id: s.id, label: s.label, dataset: s.dataset })),
+    mlsBaldwinConnected: !!mlsSourceById('baldwin'),
+    coveredCounties: COVERED_COUNTIES,
     emailConfigured: !!mailer,
     marketingDomainReady: MARKETING_READY,
     aiConfigured: !!ANTHROPIC_API_KEY,
@@ -6497,7 +6792,7 @@ const MOCK_LISTINGS = [
   {ListingKey:"AL10234477", StandardStatus:"Active", ListPrice:612500, City:"Fairhope", UnparsedAddress:"75 Bayview Terrace", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2380},
   {ListingKey:"AL10234550", StandardStatus:"Active", ListPrice:245000, City:"Daphne", UnparsedAddress:"1601 Chateau Dr", BedroomsTotal:2, BathroomsTotalInteger:2, LivingArea:1180},
   {ListingKey:"AL10234502", StandardStatus:"Active", ListPrice:1295000, City:"Orange Beach", UnparsedAddress:"27500 Perdido Beach Blvd #1104", BedroomsTotal:3, BathroomsTotalInteger:3, LivingArea:1980},
-  {ListingKey:"AL10234533", StandardStatus:"Active", ListPrice:389000, City:"Mobile", UnparsedAddress:"22 Dauphin Landing Way", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1710},
+  {ListingKey:"AL10234533", StandardStatus:"Active", ListPrice:389000, City:"Robertsdale", UnparsedAddress:"22 County Road 64", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1710},
   {ListingKey:"AL10234519", StandardStatus:"Pending", ListPrice:525000, City:"Gulf Shores", UnparsedAddress:"88 Waterway Village Blvd", BedroomsTotal:3, BathroomsTotalInteger:2, LivingArea:1960},
   {ListingKey:"AL10234544", StandardStatus:"Active", ListPrice:719000, City:"Fairhope", UnparsedAddress:"14 Volanta Ave", BedroomsTotal:4, BathroomsTotalInteger:3, LivingArea:2510},
 ];
@@ -6513,14 +6808,8 @@ app.get('/', async (req, res, next) => {
   // and the nine fake ones showed invented prices. It uses the live feed now.
   let listing = null;
   try {
-    const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
-    if (token && dataset) {
-      const key = String(listingKey).slice(0, 128).replace(/'/g, "''");
-      const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-        + `?access_token=${encodeURIComponent(token)}`
-        + `&$filter=${encodeURIComponent(`ListingKey eq '${key}'`)}&$top=1`;
-      const r = await fetch(url);
-      if (r.ok) listing = ((await r.json()).value || [])[0] || null;
+    if (mlsConfigured()) {
+      listing = await mlsFindByKey(String(listingKey).slice(0, 128));
     }
   } catch (e) { console.warn('[social card] lookup failed:', e.message); }
   if (!listing) return next();
@@ -6598,7 +6887,7 @@ function unlicensedClaims(text, licensed) {
 /* The service-area sentence, built from the license record. */
 function serviceAreaSentence(licensed) {
   const parts = [];
-  if (licensed.includes('AL')) parts.push('Baldwin and Mobile County, Alabama');
+  if (licensed.includes('AL')) parts.push('Baldwin County, Alabama');
   if (licensed.includes('FL')) parts.push('the Perdido Key and Pensacola corridor in Florida');
   if (!parts.length) return '';
   return parts.join(' and ');
@@ -6920,7 +7209,7 @@ function agentSeoHtml(a, origin){
   const areaServed = [];
   if ((a.licensedStates || []).includes('AL'))
     areaServed.push('Gulf Shores, AL', 'Orange Beach, AL', 'Fairhope, AL', 'Daphne, AL',
-                    'Foley, AL', 'Baldwin County, AL', 'Mobile County, AL');
+                    'Foley, AL', 'Baldwin County, AL');
   if ((a.licensedStates || []).includes('FL'))
     areaServed.push('Perdido Key, FL', 'Pensacola, FL');
 
@@ -7072,11 +7361,11 @@ async function areaStats(city) {
   const esc = String(city).replace(/'/g, "''");
   const out = { count: 0, min: null, max: null, beds: {}, types: {}, sample: [] };
   try {
-    const d = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
-      $filter: `${ACTIVE_ONLY} and contains(City,'${esc}')`,
-      $select: 'ListingKey,ListingId,UnparsedAddress,City,ListPrice,BedroomsTotal,'
-             + 'BathroomsTotalInteger,LivingArea,PropertySubType,ListOfficeName',
-      $top: 200, $orderby: 'ListPrice desc',
+    const d = await mlsQuery({
+      filter: `${ACTIVE_ONLY} and contains(City,'${esc}')`,
+      select: 'ListingKey,ListingId,UnparsedAddress,City,ListPrice,BedroomsTotal,'
+            + 'BathroomsTotalInteger,LivingArea,PropertySubType,ListOfficeName',
+      top: 200, orderby: 'ListPrice desc', count: false,
     });
     const rows = (d.value || []).filter(r => r.ListPrice > 0);
     out.count = rows.length;
@@ -7519,23 +7808,32 @@ const LETTER_LOG = 'settings:marketLetters';
    the stats page cannot drift apart — two functions computing "the market" from two
    different pulls is how a letter says 47 and the website says 45. */
 async function marketRows() {
-  const token = process.env.BRIDGE_SERVER_TOKEN, dataset = process.env.BRIDGE_DATASET;
-  if (!token || !dataset) throw new Error('MLS not configured.');
+  if (!mlsConfigured()) throw new Error('MLS not configured.');
   if (marketCache.rows && Date.now() - marketCache.rowsAt < 30 * 60 * 1000) return marketCache.rows;
   const rows = [];
   const PAGE = 200;
+  /* ⚠ Deduped on address across feeds. These rows become median price and inventory
+     counts, so a dual-listed condo counted twice would move the published number —
+     and the market letter quotes it to clients. */
+  const seenAddr = new Set();
   for (let skip = 0; skip < 1200; skip += PAGE) {
     const filter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
-    const url = `https://api.bridgedataoutput.com/api/v2/OData/${encodeURIComponent(dataset)}/Property`
-      + `?access_token=${encodeURIComponent(token)}`
-      + `&$filter=${encodeURIComponent(filter)}`
-      + `&$orderby=ModificationTimestamp desc&$top=${PAGE}&$skip=${skip}`;
-    const r = await fetch(url);
-    if (!r.ok) break;
-    const j = await r.json();
-    const v = j.value || [];
-    rows.push(...v);
-    if (v.length < PAGE) break;
+    const params = { $filter: filter, $orderby: 'ModificationTimestamp desc',
+                     $top: PAGE, $skip: skip };
+    const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, params)));
+    const okr = results.filter(r => r.ok);
+    if (!okr.length) break;
+    let maxPage = 0;
+    for (const r of okr) {
+      maxPage = Math.max(maxPage, r.rows.length);
+      for (const row of r.rows) {
+        if (!mlsCovered(row)) continue;
+        const a = mlsDedupeKey(row);
+        if (a) { if (seenAddr.has(a)) continue; seenAddr.add(a); }
+        rows.push(row);
+      }
+    }
+    if (maxPage < PAGE) break;
   }
   marketCache.rows = rows;
   marketCache.rowsAt = Date.now();
@@ -8586,11 +8884,14 @@ app.get('/listing/:key', async (req, res, next) => {
   let r;
   try {
     const esc = key.replace(/'/g, "''");
-    const data = await bridgeGet(`OData/${BRIDGE_DATASET}/Property`, {
-      $filter: `(ListingKey eq '${esc}' or ListingId eq '${esc}') and ${ACTIVE_ONLY}`,
-      $top: 1,
-    });
-    r = (data.value || [])[0];
+    r = await mlsFindByKey(esc);
+    /* ⚠ ACTIVE_ONLY used to be part of the filter, so an off-market listing came
+       back as "not found" and fell through to the redirect below. Same outcome,
+       reached differently: the lookup is status-blind across feeds, and the status
+       is checked here.
+       ⚠ Exact match, not a prefix: 'Active Under Contract' also begins with
+       'Active' and did NOT satisfy the old filter. */
+    if (r && String(r.StandardStatus || '') !== 'Active') r = null;
   } catch (e) {
     console.error('[listing share] feed:', e.message);
     return next();
@@ -10161,7 +10462,7 @@ Specific venues open and close, so this is deliberately about places rather than
     updatedAt: '2026-08-31T00:00:00.000Z' },
 
   { id: 'art_funfacts', published: false, deliver: true,
-    title: 'Things about Baldwin and Mobile County you probably did not know',
+    title: 'Things about this coast you probably did not know',
     teaser: 'The biggest county in Alabama, a Mardi Gras older than the one in New Orleans, a town founded on a nineteenth-century economic theory, and a natural event that happens almost nowhere else on earth.',
     body: `Some of this is useful when you are deciding where to live. Some of it is just good to know when somebody asks you why you moved here.
 
