@@ -423,7 +423,7 @@ app.delete('/api/kv/:key', async (req, res) => {
   }
 });
 
-// ---------- MLS listings proxy (Bridge Interactive / Gulf Coast MLS) ----------
+// ---------- MLS listings proxy (Bridge Data Output) ----------
 // What the public homepage shows by default: genuinely available listings.
 // Pending and under-contract are still searchable via the Status filter.
 const ACTIVE_ONLY = "StandardStatus eq 'Active'";
@@ -493,6 +493,10 @@ function mlsSlots() {
     out.push({
       id:    process.env[`MLS${i}_ID`]    || `mls${i}`,
       label: process.env[`MLS${i}_LABEL`] || `MLS ${i}`,
+      /* MLSn_ATTRIBUTION is the IDX credit line that MLS requires. It falls back
+         to the label, which is almost certainly not the wording they mandate —
+         set it explicitly when you add a feed. */
+      attribution: process.env[`MLS${i}_ATTRIBUTION`] || process.env[`MLS${i}_LABEL`] || '',
       dataset, token,
     });
   }
@@ -508,15 +512,74 @@ function mlsSlots() {
    BRIDGE_SERVER_TOKEN — do not reorder.
    ⚠ BRIDGE_DATASET keeps its 'gcmls2' default so this refactor cannot turn an
    existing feed off by itself. Removing a feed is clearing its token. */
+/* ⚠ `attribution` is the IDX credit line, and it is per feed because it is a
+   compliance obligation rather than a label. It drifted once already: the site
+   went on crediting "Gulf Coast MLS — Mobile Area Association of REALTORS®"
+   after that feed was gone and every listing on the page came from Baldwin.
+   Displaying one MLS's data under another's name breaches both of their IDX
+   rules. It is derived from the live sources now so it cannot say something the
+   data does not support.
+
+   ⚠ Confirm the exact required wording with each MLS. They specify it, it
+   differs between them, and "close enough" is not a defence. */
 const MLS_SOURCES_ALL = [
   { id: 'gulf',    label: 'Gulf Coast MLS',
+    attribution: 'Gulf Coast MLS — Mobile Area Association of REALTORS®',
     dataset: process.env.BRIDGE_DATASET || 'gcmls2',
     token:   process.env.BRIDGE_SERVER_TOKEN || process.env.BRIDGE_TOKEN || '' },
   { id: 'baldwin', label: 'Baldwin REALTORS',
+    /* ⚠ "ASSOCIATION", not "Board". The Participant Data Access Agreement PDF
+       says "Baldwin County Board of REALTORS® Multiple Listing Service", and an
+       earlier build used that. But the Bridge dashboard says "Baldwin County
+       Association of REALTORS®", and all three live Baldwin IDX sites checked
+       use Association too — e.g. "Listing information © 2026 Baldwin County
+       Association of REALTORS® MLS". The agreement text looks like older
+       boilerplate. Worth one email to BRMLS to settle; if they say Board, this
+       line and the copyright below are the only two places to change. */
+    attribution: 'Baldwin County Association of REALTORS® MLS',
+    /* s.B.13 prescribes the copyright notice, with the year replaced on
+       1 January. Computed rather than typed, because a hard-coded year goes
+       stale silently and nobody notices until someone checks in March. */
+    copyright: () => `© ${new Date().getFullYear()} Baldwin County Association of REALTORS® MLS`,
     dataset: process.env.BRIDGE_BALDWIN_DATASET || '',
     token:   process.env.BRIDGE_BALDWIN_TOKEN   || '' },
   ...mlsSlots(),
 ];
+
+/* The credit line for whatever is actually live, joined when more than one feed
+   is serving. Empty string when nothing is configured — a caller showing no
+   listings must not print a credit for data it is not displaying. */
+function mlsAttribution() {
+  const names = mlsSources().map(s => s.attribution || s.label).filter(Boolean);
+  if (!names.length) return '';
+  if (names.length === 1) return names[0];
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
+function mlsCopyright() {
+  const notes = mlsSources().map(s => (typeof s.copyright === 'function' ? s.copyright() : '')).filter(Boolean);
+  return notes.join(' · ');
+}
+
+/* ⚠ BRMLS IDX Rules s.18.3.8 requires ALL THREE of these statements on the site,
+   not just the reliability one we had. The wording tracks the rule closely on
+   purpose — this is prescribed text, not marketing copy, and "the gist of it" is
+   not compliance. s.18.3.7 separately requires the MLS be shown as the source,
+   which is what mlsAttribution() supplies.
+
+   ⚠ Do not trim this to fit a layout. If it does not fit, change the layout. */
+function mlsIdxDisclaimer() {
+  const src = mlsAttribution();
+  return 'IDX information is provided exclusively for consumers’ personal, non-commercial use '
+    + 'and may not be used for any purpose other than to identify prospective properties '
+    + 'consumers may be interested in purchasing. Data is deemed reliable but is not '
+    /* Naming ourselves as well as the MLS follows the most carefully drafted of
+       the local IDX sites — "not guaranteed accurate by the MLS or Mobile Bay
+       Realty" — and it disclaims our own accuracy, not just theirs. */
+    + 'guaranteed accurate by the MLS or ' + BROKERAGE_NAME
+    + (src ? '. Listing data courtesy of ' + src : '')
+    + '. Listings may be from other brokerages. Equal Housing Opportunity.';
+}
 
 function mlsSources() {
   const live = MLS_SOURCES_ALL.filter(s => s.dataset && s.token);
@@ -585,6 +648,42 @@ function mlsDedupeKey(r) {
   return a || null;
 }
 
+/* ==================== SELLER OPT-OUT (server 186) ====================
+   BRMLS IDX Rules s.18.2.3: a listing may be shown "except where a seller has
+   directed their listing broker to withhold their listing OR the listing's
+   property address from all display on the Internet". The feed carries both
+   switches — "Display on the Internet" and "Address Display" are in BRMLS's own
+   authorised-field list.
+
+   ⚠ We were honouring NEITHER. Every listing came through regardless of what the
+   seller had asked for, which is a rule violation on someone else's listing and
+   exactly the kind of thing their listing broker notices and reports.
+
+   ⚠ Only an explicit `false` suppresses. A missing field means the feed did not
+   say, and defaulting that to "withhold" would empty the site; defaulting it to
+   "show" matches how the data behaved before these switches were read at all. */
+function mlsDisplayable(r) {
+  return r.InternetEntireListingDisplayYN !== false;
+}
+
+/* Address withheld but the listing itself still displayable. The address is
+   stripped server-side rather than hidden in the markup, so it never reaches the
+   browser in a payload someone can read. */
+function mlsApplyAddressOptOut(r) {
+  if (r.InternetAddressDisplayYN === false) {
+    try {
+      r._addressWithheld = true;
+      r.UnparsedAddress = '';
+      r.StreetNumber = ''; r.StreetName = ''; r.StreetSuffix = '';
+      r.StreetDirPrefix = ''; r.StreetDirSuffix = '';
+      r.UnitNumber = '';
+      /* City, state and postcode stay: s.18.2.3 covers the property address, and
+         a listing with no location at all is useless in a search. */
+    } catch (e) {}
+  }
+  return r;
+}
+
 /* Source order is the tie-break, and that is deliberate: when the same property is
    in both feeds the incumbent Gulf Coast record wins, so it keeps the ListingKey
    that is already sitting in clients' favorites, in past alert emails and in
@@ -629,6 +728,8 @@ function mlsMerge(results) {
     if (!res.ok) continue;
     for (const row of res.rows) {
       if (!mlsCovered(row)) continue;
+      if (!mlsDisplayable(row)) continue;   // s.18.2.3 seller opt-out
+      mlsApplyAddressOptOut(row);
       const k = mlsDedupeKey(row);
       if (k) { if (seen.has(k)) continue; seen.add(k); }
       out.push(row);
@@ -691,8 +792,10 @@ async function mlsFindByKey(key, { select } = {}) {
     /* Coverage applies to a single lookup too. IDX display rules are about
        display, so a listing in a county we no longer carry must not render on a
        share page or a QR landing just because somebody has the old link. */
-    const hit = (r.ok ? r.rows : []).find(mlsCovered);
-    if (hit) return hit;
+    /* s.18.2.3 applies to a direct lookup as much as to a search — a share link
+       or a QR code must not be a way round a seller's opt-out. */
+    const hit = (r.ok ? r.rows : []).find(x => mlsCovered(x) && mlsDisplayable(x));
+    if (hit) return mlsApplyAddressOptOut(hit);
   }
   return null;
 }
@@ -1005,7 +1108,7 @@ app.get('/api/market-stats', async (req, res) => {
       ok: true,
       generatedAt: new Date().toISOString(),
       area: 'Baldwin County, Alabama',
-      source: 'Gulf Coast MLS \u2014 Mobile Area Association of REALTORS\u00AE',
+      source: mlsAttribution(),
       basis: 'Active listings only. Sold data is not included in this feed.',
       overall: statsFor(priced),
       byCity,
@@ -1164,6 +1267,8 @@ app.get('/api/listings', async (req, res) => {
     const collect = (rows) => {
       for (const row of rows) {
         if (!mlsCovered(row)) continue;
+        if (!mlsDisplayable(row)) continue;   // s.18.2.3 seller opt-out
+        mlsApplyAddressOptOut(row);
         const k = row.ListingKey || row.ListingId;
         if (k && seen.has(k)) continue;
         const a = mlsDedupeKey(row);
@@ -1340,7 +1445,7 @@ Thanks for creating an account at bamacoast.com.
 You can now:
   - Save homes to your favorites
   - Save searches and pick up where you left off
-  - Browse the full Gulf Coast MLS
+  - Browse every active listing in Baldwin County
 
 Just click "Client Login" at the top of the site any time.
 
@@ -2252,11 +2357,17 @@ app.post('/api/lead/:id/event', async (req, res) => {
    listed it. This is a condition of the MLS/IDX licence, and displaying other
    firms' inventory without it is the kind of thing that costs feed access.
    Every surface that renders a listing goes through this. */
+/* ⚠ FIRM ONLY, and kept word-for-word identical to listingCredit() in
+   index.html — an alert email and the card it links to must not credit the same
+   listing differently. An earlier build added the agent name and a phone number
+   from a literal reading of s.18.3.4 and s.18.2.12; three live Baldwin County
+   IDX sites were then checked and all three show the firm alone, so that is what
+   both copies do. The reasoning is written out in full in index.html. */
 function listingCredit(r) {
   const office = String((r && (r.ListOfficeName || r.listOfficeName)) || '').trim();
   if (!office) return '';
   if (office.toLowerCase() === String(BROKERAGE_NAME).toLowerCase()) return '';
-  return 'Listed by ' + office;
+  return 'Listed by: ' + office;
 }
 
 function searchFilter(c){
@@ -6306,7 +6417,7 @@ If they seem to be SELLING: ask for the property address (or at least the city/a
 
 If they're unsure what they want, or their answers are vague, gently suggest: "Would it help to just send a quick message to Jimmy directly? He can set up a time to talk through it." and encourage them to use the "leave your contact info" option.
 
-The site shows live MLS listings from Gulf Coast MLS, so visitors can search real inventory themselves. You cannot see those listings from this conversation, so never quote a specific price, address, or availability — point them to the search on the site instead, or offer to have an agent pull exactly what they need.
+The site shows live MLS listings from Baldwin REALTORS\u00AE, covering Baldwin County, so visitors can search real inventory themselves. You cannot see those listings from this conversation, so never quote a specific price, address, or availability — point them to the search on the site instead, or offer to have an agent pull exactly what they need.
 
 Never state who pays commission or say representation is free. Commissions are negotiable, are not set by law, and are covered in a written buyer agreement signed before touring. If asked how agents are paid, say exactly that and offer to connect them with Jimmy.
 
@@ -6840,7 +6951,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v184',
+    serverVersion: 'v189',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6851,6 +6962,11 @@ app.get('/api/health', async (req, res) => {
     mlsSources: mlsSources().map(s => ({ id: s.id, label: s.label, dataset: s.dataset })),
     mlsBaldwinConnected: !!mlsSourceById('baldwin'),
     coveredCounties: COVERED_COUNTIES,
+    /* The front end reads this to build the IDX credit line, so the notice on
+       the page always names the feed actually serving the listings. */
+    mlsAttribution: mlsAttribution(),
+    mlsCopyright: mlsCopyright(),
+    mlsIdxDisclaimer: mlsIdxDisclaimer(),
     emailConfigured: !!mailer,
     marketingDomainReady: MARKETING_READY,
     aiConfigured: !!ANTHROPIC_API_KEY,
@@ -7482,7 +7598,7 @@ function areaSeoHtml(a, stats, origin, agentSlug, noindex, articles) {
   const title = `Homes for sale in ${a.name}, AL`;
   const desc = stats.count
     ? `${stats.count} active listings in ${a.name} right now, from ${money(stats.min)} to `
-      + `${money(stats.max)}. Live from Gulf Coast MLS, updated hourly.`
+      + `${money(stats.max)}. Live from ${mlsAttribution()}, updated hourly.`
     : `Current listings and market detail for ${a.name} on the Alabama Gulf Coast.`;
 
   const topTypes = Object.entries(stats.types || {})
@@ -7560,7 +7676,7 @@ ${stats.count === 1 ? 'listing' : 'listings'} in ${esc(a.name)}, priced between
 ${money(stats.min)} and ${money(stats.max)}, with a midpoint around ${money(stats.median)}.
 ${topTypes.length ? 'Most of it is ' + topTypes.map(([t, n]) =>
   `${esc(t.toLowerCase())} (${n})`).join(', ') + '.' : ''}
-These figures come straight from Gulf Coast MLS and are refreshed hourly, so they move
+These figures come straight from ${mlsAttribution()} and are refreshed hourly, so they move
 with the market rather than being written once and forgotten.</p>` :
 `<p>Live inventory for ${esc(a.name)} is not loading at the moment. Every active listing
 is searchable on the main site.</p>`}
@@ -7872,10 +7988,15 @@ function marketLetterNote(origin) {
   return out;
 }
 
+/* \u26a0 Rewritten when Baldwin was approved (server 185). The old wording told
+   clients we were still waiting on this feed, which stopped being true the
+   moment it connected \u2014 and it was going out monthly under the brokerage's
+   name. Still does not claim to be every listing in existence: Baldwin is the
+   main book for this county, not the only place a property can be listed. */
 const MARKET_SOURCE_NOTE =
-  'These are counted live from the Gulf Coast MLS feed this morning, not estimated. '
-  + 'Baldwin REALTORS run a separate feed we are still waiting on, so if you see a '
-  + 'listing elsewhere that is not in here, that is why \u2014 ask me and I will pull it up.';
+  'Counted live from the Baldwin REALTORS\u00AE feed this morning, not estimated. '
+  + 'That is the main book for this county, so it is close to the whole picture \u2014 '
+  + 'but if you see a listing elsewhere that is not in here, ask me and I will pull it up.';
 
 const LETTER_LOG = 'settings:marketLetters';
 
@@ -7903,6 +8024,8 @@ async function marketRows() {
       maxPage = Math.max(maxPage, r.rows.length);
       for (const row of r.rows) {
         if (!mlsCovered(row)) continue;
+        if (!mlsDisplayable(row)) continue;   // s.18.2.3 seller opt-out
+        mlsApplyAddressOptOut(row);
         const a = mlsDedupeKey(row);
         if (a) { if (seenAddr.has(a)) continue; seenAddr.add(a); }
         rows.push(row);
@@ -7978,17 +8101,12 @@ function letterText(s, first, sender, origin, unsub) {
     s.cut ? `\u00b7 ${s.cut} ${s.cut === 1 ? 'has' : 'have'} dropped their asking price` : '',
     s.medianDom ? `\u00b7 The typical one has been listed about ${s.medianDom} days` : '',
     '',
-    /* \u26a0 It said "That is every active listing, counted this morning." That was not
-       true and it went out under the brokerage's name. These figures come from the
-       Gulf Coast MLS feed only. Baldwin REALTORS is the larger book in Gulf Shores and
-       Orange Beach \u2014 over 3,000 members \u2014 and that feed is not yet approved, so the
-       real count on this coast can be several times what we can see.
-
-       A homeowner can check the number on any portal in ten seconds. Being caught
-       overstating it costs more than the letter is worth, and saying where the figure
-       comes from actually reads as competence rather than a limitation.
-
-       \u26a0 When Baldwin is approved, MARKET_SOURCE_NOTE is the one line to change. */
+    /* \u26a0 It once said "That is every active listing, counted this morning." That
+       was not true and it went out under the brokerage's name. Baldwin is connected
+       now and the figures are far closer to complete, but the principle holds: a
+       homeowner can check the number on any portal in ten seconds, and being caught
+       overstating it costs more than the letter is worth. Saying where the figure
+       comes from reads as competence, not as a limitation. */
     MARKET_SOURCE_NOTE,
     '',
     `See them: ${origin}/homes/${slugify(s.town)}`,
