@@ -433,7 +433,7 @@ const STATUS_CLAUSE = "(StandardStatus eq 'Active' or StandardStatus eq 'Active 
 // which buries beach listings under Mobile County volume — so we pull Baldwin
 // explicitly, then rank what comes back by how close it is to home.
 const BEACH_CITIES = ['gulf shores','orange beach','fort morgan','perdido beach','ono island',
-                      'bon secour','perdido key','gulf highlands','laguna key'];
+                      'bon secour','gulf highlands','laguna key'];
 const EASTERN_SHORE = ['fairhope','daphne','spanish fort','point clear','montrose','magnolia springs',
                        'barnwell','belforest','battles wharf','malbis'];
 
@@ -3007,7 +3007,7 @@ app.post('/api/article-draft', async (req, res) => {
     '2. Never give insurance, lending, legal or tax advice. Explain the mechanics',
     '   and say who to ask.',
     '3. Be specific to this coast — Fort Morgan, Gulf Shores, Orange Beach,',
-    '   Perdido Key, Foley, Fairhope, Daphne, Spanish Fort, Elberta and Baldwin',
+    '   Foley, Fairhope, Daphne, Spanish Fort, Elberta and Baldwin',
     '   County. Anything that would read the same about Florida or Texas',
     '   is not worth writing.',
     '4. 350 to 500 words. Paragraphs separated by a blank line.',
@@ -6287,7 +6287,7 @@ async function callClaude(system, messages, maxTokens = 500) {
   return (json.content || []).map(b => b.text || '').join('');
 }
 
-const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for ${BROKERAGE_NAME}, a boutique brokerage licensed in Alabama and Florida, serving Baldwin County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne) and the Perdido Key and Pensacola corridor in Florida. Broker: Jimmy Thies, phone ${BROKERAGE_PHONE}.
+const CHAT_SYSTEM_PROMPT = `You are a friendly, helpful assistant for ${BROKERAGE_NAME}, a boutique brokerage licensed in Alabama and Florida, serving Baldwin County, Alabama (Gulf Shores, Orange Beach, Fairhope, Foley, Daphne). Broker: Jimmy Thies, phone ${BROKERAGE_PHONE}.
 
 Always refer to the brokerage by its full name, "${BROKERAGE_NAME}" — never an abbreviation. Alabama license law requires the company name to appear as licensed.
 
@@ -6840,7 +6840,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v183',
+    serverVersion: 'v184',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -6968,7 +6968,6 @@ function unlicensedClaims(text, licensed) {
 function serviceAreaSentence(licensed) {
   const parts = [];
   if (licensed.includes('AL')) parts.push('Baldwin County, Alabama');
-  if (licensed.includes('FL')) parts.push('the Perdido Key and Pensacola corridor in Florida');
   if (!parts.length) return '';
   return parts.join(' and ');
 }
@@ -7291,7 +7290,7 @@ function agentSeoHtml(a, origin){
     areaServed.push('Gulf Shores, AL', 'Orange Beach, AL', 'Fairhope, AL', 'Daphne, AL',
                     'Foley, AL', 'Baldwin County, AL');
   if ((a.licensedStates || []).includes('FL'))
-    areaServed.push('Perdido Key, FL', 'Pensacola, FL');
+    areaServed.push('Baldwin County, AL');
 
   const ld = {
     '@context': 'https://schema.org',
@@ -7407,10 +7406,6 @@ const AREAS = [
   { slug:'robertsdale', name:'Robertsdale', city:'Robertsdale',
     blurb:'Central Baldwin County agricultural land and small-lot single-family, with '
         + 'more acreage per dollar than anywhere south of it.' },
-  { slug:'perdido-key', name:'Perdido Key', city:'Perdido Key',
-    blurb:'The Florida side of the state line \u2014 Gulf-front and sound-side condominium '
-        + 'towers along Perdido Key Drive, with a thin strip of detached houses between '
-        + 'the two waters.' },
   { slug:'magnolia-springs', name:'Magnolia Springs', city:'Magnolia Springs',
     blurb:'A small river town on the Magnolia River, known for waterfront homes with '
         + 'private docks and the live-oak canopy along Oak Street.' },
@@ -9654,7 +9649,7 @@ app.get('/homes', async (req, res) => {
   res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Where to buy on the Alabama Gulf Coast | ${esc(BROKERAGE_NAME)}</title>
-<meta name="description" content="Live listing counts and price ranges for every town we cover in Baldwin County and the Perdido Key corridor.">
+<meta name="description" content="Live listing counts and price ranges for every town we cover in Baldwin County.">
 <link rel="canonical" href="${origin}/homes">${priv ? '\n<meta name="robots" content="noindex,nofollow">' : ''}
 <style>body{margin:0;background:#FBFAF7;color:#141A3C;font-family:'Public Sans',system-ui,sans-serif;line-height:1.7}
 .w{max-width:760px;margin:0 auto;padding:38px 22px 70px}a{color:#141A3C;text-decoration:none}
