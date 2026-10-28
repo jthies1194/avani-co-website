@@ -860,8 +860,88 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+/* ==================== WHICH FILTERS ACTUALLY WORK (server 183) ====================
+   ⚠ The alert setup has always called this route to gray out filters the feed
+   leaves blank. The route did not exist. The fetch 404'd, the front end's
+   `r.ok` check failed open, and every filter rendered as usable — so the form
+   offered Pool and Garage against the Baldwin feed, which fills them in 0% and
+   1% of the time. An alert on either can never fire, and the client would simply
+   never hear from us again.
+
+   Measured, not assumed: a live sample, passed through the SAME mlsCovered()
+   filter the public search uses, so the percentages describe listings a visitor
+   can actually reach rather than the raw feed.
+
+   ⚠ A boolean counts as populated when it is present and false. 13% on
+   WaterfrontYN means 87% of listings say nothing either way, not that 87% are
+   inland — so filtering on it silently hides the unmarked ones. That is a real
+   limitation of the feed and the reason the threshold is a floor, not a promise. */
+const SEARCH_FIELD_MAP = {
+  pool:            { field: 'PoolPrivateYN',          label: 'Pool' },
+  waterfront:      { field: 'WaterfrontYN',           label: 'Waterfront' },
+  view:            { field: 'ViewYN',                 label: 'Has a view' },
+  newConstruction: { field: 'PropertyCondition',      label: 'New construction' },
+  garage:          { field: 'GarageSpaces',           label: 'Garage spaces' },
+  stories:         { field: 'StoriesTotal',           label: 'Stories' },
+  acres:           { field: 'LotSizeAcres',           label: 'Acres' },
+  sqft:            { field: 'LivingArea',             label: 'Sq ft, least' },
+  maxSqft:         { field: 'LivingArea',             label: 'Sq ft, most' },
+  yearBuilt:       { field: 'YearBuilt',              label: 'Built after' },
+  noHoa:           { field: 'AssociationYN',          label: 'No HOA' },
+  maxHoa:          { field: 'AssociationFee',         label: 'HOA under' },
+  beds:            { field: 'BedroomsTotal',          label: 'Bedrooms' },
+  baths:           { field: 'BathroomsTotalInteger',  label: 'Bathrooms' },
+};
+const FIELD_USABLE_PCT = 15;
+let searchFieldsCache = { data: null, at: 0 };
+
+app.get('/api/search/fields', async (req, res) => {
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+  if (searchFieldsCache.data && Date.now() - searchFieldsCache.at < 60 * 60 * 1000 && !req.query.fresh) {
+    return res.json({ ...searchFieldsCache.data, cached: true });
+  }
+  try {
+    const results = await Promise.all(mlsSources().map(s =>
+      mlsFetchOne(s, { $top: 200, $filter: ACTIVE_ONLY })));
+    const rows = [];
+    for (const r of results) if (r.ok) for (const row of r.rows) if (mlsCovered(row)) rows.push(row);
+
+    const fields = {};
+    for (const [key, def] of Object.entries(SEARCH_FIELD_MAP)) {
+      const n = rows.filter(x => x[def.field] !== undefined
+                              && x[def.field] !== null
+                              && x[def.field] !== '').length;
+      const pct = rows.length ? Math.round((n / rows.length) * 100) : 0;
+      /* ⚠ For a yes/no field, "filled in" is not the useful number — "says yes"
+         is. A waterfront box is worth offering if some listings are flagged
+         waterfront, and worthless if none are, however many carry the field.
+         Reported separately so the judgement is visible rather than buried in
+         the threshold. */
+      const trues = rows.filter(x => x[def.field] === true).length;
+      const truePct = rows.length ? Math.round((trues / rows.length) * 100) : 0;
+      fields[key] = {
+        field: def.field, label: def.label, pct,
+        ...(trues ? { truePct } : {}),
+        /* ⚠ No sample means "we could not ask", not "the field is empty". Marking
+           it unusable would gray out the whole form the moment a feed hiccups. */
+        usable: rows.length ? pct >= FIELD_USABLE_PCT : true,
+      };
+    }
+    const payload = {
+      fields, sampled: rows.length, threshold: FIELD_USABLE_PCT,
+      sources: results.map(r => ({ id: r.src.id, ok: r.ok, status: r.status, sampled: r.rows.length })),
+      at: new Date().toISOString(),
+    };
+    searchFieldsCache = { data: payload, at: Date.now() };
+    res.json(payload);
+  } catch (e) {
+    console.error('[search/fields] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Market statistics computed from our own live feed. These are Avani's numbers
-// from Gulf Coast MLS data, not a republication of anyone else's report.
+// from our own MLS feed, not a republication of anyone else's report.
 // Note: the feed carries Active and Pending only — no closed sales — so this is
 // list-side inventory, not sold statistics.
 const MARKET_CITIES = ['Gulf Shores','Orange Beach','Fairhope','Daphne','Foley',
@@ -6760,7 +6840,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v182',
+    serverVersion: 'v183',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
