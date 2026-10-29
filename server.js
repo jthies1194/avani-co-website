@@ -608,10 +608,18 @@ function mlsUrl(src, params) {
 /* One source, one request. Never throws — a feed that is down must not take the
    site down with it, so the failure is reported in the return value and the
    caller decides. */
-async function mlsFetchOne(src, params) {
+/* ⚠ NEVER LET THE PROXY DECIDE. A request that hangs until GoDaddy's CDN gives
+   up comes back as a 502 Bad Gateway HTML page, which tells the user nothing and
+   told us the wrong thing three times. A feed that is too slow must fail HERE,
+   as JSON, with a reason. */
+const MLS_TIMEOUT_MS = Number(process.env.MLS_TIMEOUT_MS || 9000);
+
+async function mlsFetchOne(src, params, { timeoutMs = MLS_TIMEOUT_MS } = {}) {
   const started = Date.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(mlsUrl(src, params));
+    const r = await fetch(mlsUrl(src, params), { signal: ctrl.signal });
     const text = await r.text().catch(() => '');
     const ms = Date.now() - started;
     if (!r.ok) {
@@ -631,8 +639,15 @@ async function mlsFetchOne(src, params) {
     return { src, ok: true, status: 200, ms, rows,
              count: json['@odata.count'] != null ? json['@odata.count'] : null };
   } catch (e) {
-    console.error(`[mls:${src.id}] threw: ${e.message}`);
-    return { src, ok: false, status: 0, ms: Date.now() - started, rows: [], count: null, detail: e.message };
+    const aborted = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
+    const ms = Date.now() - started;
+    console.error(`[mls:${src.id}] ${aborted ? `timed out after ${ms}ms` : 'threw: ' + e.message}`);
+    return { src, ok: false, status: aborted ? 504 : 0, ms, rows: [], count: null,
+             detail: aborted
+               ? `The MLS did not answer within ${Math.round(timeoutMs / 1000)}s.`
+               : e.message };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -769,7 +784,8 @@ function mlsMerge(results) {
 /* The one entry point. Returns { value, total, sources, partial, configured }.
    `partial` means at least one live feed failed and the results are incomplete —
    callers that show a count should say so rather than quietly under-reporting. */
-async function mlsQuery({ filter, top = 24, skip = 0, select, orderby = 'ModificationTimestamp desc', count = true } = {}) {
+async function mlsQuery({ filter, top = 24, skip = 0, select,
+    orderby = 'ModificationTimestamp desc', count = true, county = true } = {}) {
   const srcs = mlsSources();
   if (!srcs.length) return { value: [], total: 0, sources: [], partial: false, configured: false };
 
@@ -788,7 +804,12 @@ async function mlsQuery({ filter, top = 24, skip = 0, select, orderby = 'Modific
      feed that sits outside Baldwin County. */
   const want = skip + top;
   const need = Math.min(Math.ceil(want * 1.3) + 5, 400);
-  const params = { $filter: mlsWithCounty(filter), $top: need, $orderby: orderby };
+  /* ⚠ The county clause is a substring scan. Against ~5,000 active listings that
+     is free; against 153,558 closed ones it is not, and it is redundant when the
+     caller has already pinned an exact town. Callers that have done so pass
+     county:false. mlsCovered() still filters in JS, so nothing outside the
+     allowlist can slip through either way. */
+  const params = { $filter: county ? mlsWithCounty(filter) : filter, $top: need, $orderby: orderby };
   if (count)  params.$count = 'true';
   if (select) params.$select = select;
 
@@ -1166,8 +1187,11 @@ async function soldRows(months = 12) {
   const deadline = Date.now() + 20000;
   for (let skip = 0; skip < 1000; skip += PAGE) {
     if (Date.now() > deadline) { console.warn('[sold] stopped early on time'); break; }
+    /* ⚠ The exact count is asked for ONCE, on the first page only. Computing it
+       over 153,558 closed records is expensive and the answer does not change
+       between pages. */
     const attempt = await closedQuery([`StandardStatus eq 'Closed'`], cutoff,
-                                      { top: PAGE, skip });
+                                      { top: PAGE, skip, count: skip === 0 });
     mode = attempt.mode;
     if (total == null && attempt.r && attempt.r.total != null) total = attempt.r.total;
     const got = (attempt.r && attempt.r.value) ? attempt.r.value : [];
@@ -1276,7 +1300,8 @@ const CLOSED_SELECT = [
 
 let closedModeMemo = null;
 
-async function closedQuery(baseParts, cutoff, { top = 200, skip = 0, select = CLOSED_SELECT } = {}) {
+async function closedQuery(baseParts, cutoff,
+    { top = 200, skip = 0, select = CLOSED_SELECT, count = false, county = true } = {}) {
   const anyOk = r => r && r.sources && r.sources.some(s => s.ok);
   const attempts = [
     { mode: 'date+sort', filter: [...baseParts, `CloseDate ge ${cutoff}`].join(' and '),
@@ -1297,7 +1322,7 @@ async function closedQuery(baseParts, cutoff, { top = 200, skip = 0, select = CL
     : attempts);
   for (const a of ordered) {
     const r = await mlsQuery({ filter: a.filter, top, skip, orderby: a.orderby,
-                               count: true, select });
+                               count, select, county });
     last = { r, ...a };
     /* An attempt counts as working only if the feed answered AND gave rows —
        a 200 with nothing back is how this failed silently the first time. */
@@ -1312,6 +1337,18 @@ async function closedQuery(baseParts, cutoff, { top = 200, skip = 0, select = CL
     return last;                       // feed answered, genuinely nothing there
   }
   return last;
+}
+
+/* The towns the site itself offers. A value from the dropdown is known-good and
+   can use an indexed equality match; anything else falls back to contains(). */
+const CMP_KNOWN_TOWNS = new Set(['gulf shores','orange beach','fort morgan','ono island',
+  'perdido beach','bon secour','laguna key','fairhope','daphne','spanish fort','point clear',
+  'montrose','magnolia springs','barnwell','belforest','battles wharf','malbis','foley',
+  'robertsdale','loxley','summerdale','silverhill','elberta','bay minette','stapleton',
+  'seminole','lillian','josephine','rosinton','bromley','miflin','gulf highlands']);
+
+function cmpTownIsExact(city) {
+  return CMP_KNOWN_TOWNS.has(String(city || '').trim().toLowerCase());
 }
 
 function compDom(r) {
@@ -1390,7 +1427,14 @@ app.get('/api/comps', async (req, res) => {
   const keepBlanks = String(q.keepBlanks || '1') !== '0';
   const cutoff   = new Date(Date.now() - months * 30.44 * 86400000).toISOString().slice(0, 10);
 
-  const parts = [`StandardStatus eq 'Closed'`, `contains(City,'${esc(city)}')`];
+  /* ⚠ `eq`, NOT `contains`. A substring scan over 153,558 closed records took
+     long enough that GoDaddy's proxy gave up and returned a 502 before the app
+     ever answered. The town comes from a dropdown, so it is already exact and
+     an indexed equality match is the right tool. `contains` stays as a fallback
+     for a town typed by hand that does not match exactly. */
+  const exactCity = cmpTownIsExact(city);
+  const parts = [`StandardStatus eq 'Closed'`,
+                 exactCity ? `City eq '${esc(city)}'` : `contains(City,'${esc(city)}')`];
   if (ptype)   parts.push(`PropertyType eq '${esc(ptype)}'`);
   if (subType) parts.push(`PropertySubType eq '${esc(subType)}'`);
 
@@ -1401,21 +1445,26 @@ app.get('/api/comps', async (req, res) => {
        in the query — this feed already refused one filter it should have taken,
        and a rejected clause costs more than fetching a few hundred extra rows.
        That only works if the pool is big enough to filter, hence 600. */
-    let attempt = await closedQuery(parts, cutoff, { top: 200, skip: 0 });
+    /* ⚠ county:false because the town already pins it, and count:false because
+       an exact @odata.count over the closed set is itself expensive and nothing
+       on this screen needs it — the comps are counted from the rows. */
+    let attempt = await closedQuery(parts, cutoff,
+                                    { top: 150, skip: 0, count: false, county: false });
     const r = attempt.r;
     let pool = (r.value || []).slice();
     /* ⚠ Time budget. The extra pages are a nicety — a bigger set to filter — and
        not worth a 502. If the feed is slow, stop with what we have and say so
        rather than letting the proxy kill the whole request. */
-    const deadline = Date.now() + 12000;
-    if (pool.length >= 200) {
-      for (const skip of [200, 400]) {
+    const deadline = Date.now() + 10000;
+    if (pool.length >= 150) {
+      for (const skip of [150, 300]) {
         if (Date.now() > deadline) break;
-        const more = await closedQuery(parts, cutoff, { top: 200, skip });
+        const more = await closedQuery(parts, cutoff,
+                                       { top: 150, skip, count: false, county: false });
         const got = (more.r && more.r.value) ? more.r.value : [];
         if (!got.length) break;
         pool = pool.concat(got);
-        if (got.length < 200) break;
+        if (got.length < 150) break;
       }
     }
     /* ⚠ A FEED ERROR IS NOT "NO MATCHES". The first version of this returned an
@@ -7456,7 +7505,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v197',
+    serverVersion: 'v198',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
