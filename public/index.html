@@ -3982,7 +3982,7 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="cmp-wrap">
   <div class="cmp-form">
     <div class="cmp-row">
-      <label>Town <input id="cmp-city" placeholder="Gulf Shores" autocomplete="off"></label>
+      <label>Town <input id="cmp-city" list="city-options" placeholder="Gulf Shores" autocomplete="off"></label>
       <label>Beds <input id="cmp-beds" type="number" min="0" max="12" placeholder="3"></label>
       <label>Sq ft <input id="cmp-sqft" type="number" min="0" placeholder="1800"></label>
       <label>Kind
@@ -5422,7 +5422,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v378';
+window.BUILD = 'index-v380';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -23700,7 +23700,16 @@ async function cmpRun(fromSubject){
   try{
     const r = await fetch('/api/comps?' + p.toString());
     const d = await r.json();
-    if(!r.ok || !d.ok) throw new Error(d.error || 'Could not reach the feed.');
+    if(!r.ok || !d.ok){
+      /* ⚠ Show what the MLS actually said. "No results" and "the feed rejected
+         the query" look identical to an agent otherwise, and they sent us
+         debugging the wrong thing once already. */
+      let msg = escapeHtml(d.error || 'Could not reach the feed.');
+      if(d.feedDetail) msg += '<br><span class="cmp-legal">' + escapeHtml(String(d.feedDetail).slice(0,300)) + '</span>';
+      if(d.sentFilter) msg += '<br><span class="cmp-legal">Filter sent: ' + escapeHtml(d.sentFilter) + '</span>';
+      out.innerHTML = '<p class="cmp-note cmp-warn">' + msg + '</p>';
+      return;
+    }
     cmpRender(d);
   }catch(e){
     out.innerHTML = '<p class="cmp-note">' + escapeHtml(e.message || 'That did not work.') + '</p>';
@@ -23714,9 +23723,12 @@ function cmpRender(d){
   if(!out) return;
   const c = d.comps || [];
   if(!c.length){
-    out.innerHTML = '<p class="cmp-note">No closed sales matched that in the last '
-      + (d.criteria ? d.criteria.months : 12) + ' months. Try widening the time window, '
-      + 'or drop the beds and square footage and look at the whole town.</p>';
+    out.innerHTML = '<p class="cmp-note">The feed answered, but no closed sales matched '
+      + 'that in the last ' + (d.criteria ? d.criteria.months : 12) + ' months. Try a longer '
+      + 'window, or clear the beds and square footage and look at the whole town. '
+      + 'Check the town is spelled the way the MLS spells it.</p>'
+      + (d.sentFilter ? '<p class="cmp-note cmp-legal">Filter sent: '
+          + escapeHtml(d.sentFilter) + '</p>' : '');
     return;
   }
   const s = d.summary || {};
