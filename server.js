@@ -33,7 +33,7 @@ const BROKERAGE_LEGAL_ENTITY = 'Avani & Co Real Estate LLC';
 /* CAN-SPAM requires a real postal address in every commercial email. This is not
    decoration — an email without it is a violation on its own. */
 const BROKERAGE_ADDRESS = '191 Northshore Circle, Suite 100-D, Gulf Shores, AL 36542';
-/* \u26a0 A background sweep has no req, so it cannot build an origin the way every route
+/* ⚠ A background sweep has no req, so it cannot build an origin the way every route
    does. Set PUBLIC_ORIGIN in the host environment if the domain ever changes; the
    fallback is the live site. An origin that is wrong here breaks the unsubscribe
    link, which is the one link with a statutory penalty behind it. */
@@ -43,7 +43,7 @@ const BROKERAGE_PHONE = '251-229-3216';
 const app = express();
 
 /* ==================== HTTPS BEHIND THE PROXY ====================
-   \u26a0 GoDaddy terminates TLS in front of this process, so the request that arrives
+   ⚠ GoDaddy terminates TLS in front of this process, so the request that arrives
    here is plain HTTP. Without `trust proxy`, `req.protocol` returns "http" and the
    TWENTY-TWO places that build `${req.protocol}://${req.get('host')}` all emit
    http:// URLs. That was live and it was doing real damage:
@@ -59,7 +59,7 @@ const app = express();
    rather than editing twenty-two call sites and hoping the twenty-third remembers. */
 app.set('trust proxy', true);
 
-/* \u26a0 Belt and braces: if the proxy does not send X-Forwarded-Proto at all, trust proxy
+/* ⚠ Belt and braces: if the proxy does not send X-Forwarded-Proto at all, trust proxy
    has nothing to read and req.protocol stays "http". Anything that is not a local
    development host is served over https in practice, so force it. Shadows the getter
    on the request object itself, which keeps all twenty-two call sites untouched. */
@@ -289,10 +289,10 @@ app.get('/api/kv/:key', async (req, res) => {
       .eq('key', req.params.key)
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
-    /* \u26a0 A key that has never been written is a NORMAL state for a key-value store,
+    /* ⚠ A key that has never been written is a NORMAL state for a key-value store,
        not a failure. Answering 404 made the browser log a red error on every page
-       load for every feature nobody has set up yet \u2014 drip campaigns, tasks, deal
-       submissions, plan history \u2014 and five permanent red lines is how you stop
+       load for every feature nobody has set up yet — drip campaigns, tasks, deal
+       submissions, plan history — and five permanent red lines is how you stop
        reading the console at all. That is not free: the counters reading zero and the
        flyer autofill throwing both sat in that noise.
        storeGet() already turns 404 into null, so it keeps working either way. */
@@ -2094,9 +2094,40 @@ const TILE_SIZE = 256;
 const tileCache = new Map();            // "z/x/y" -> { at, data }
 const TILE_TTL  = 7 * 24 * 60 * 60 * 1000;
 const TILE_CACHE_MAX = 600;
-const TILE_HOST = process.env.MAP_TILE_HOST || 'https://tile.openstreetmap.org';
 const TILE_UA = process.env.MAP_TILE_UA ||
   'AvaniCoRealEstate-CMA/1.0 (+https://bamacoast.com; broker@bamacoast.com)';
+
+/* ⚠ TWO LAYERS, AND WHY THESE TWO.
+
+   street — OpenStreetMap. Free, no key, and its policy is satisfiable by a
+   server: one user agent, a cache, no bulk scraping.
+
+   aerial — USGS Imagery, from the United States Geological Survey's own
+   National Map service. Chosen over the commercial aerial basemaps because it
+   is a federal product in the PUBLIC DOMAIN: no key, no licence to breach, no
+   per-tile bill, and nobody can switch it off or start charging. It covers the
+   United States only, which is all this site serves.
+
+   An agent needs the aerial to read a lot — how deep the yard is, where the
+   water sits, what is behind the house. A street map cannot show that.
+
+   ⚠ Attribution is per layer and is rendered on the map by the client. It is
+   required by both providers. Do not drop it. */
+const TILE_LAYERS = {
+  street: {
+    url: (z, x, y) => `${process.env.MAP_TILE_HOST || 'https://tile.openstreetmap.org'}/${z}/${x}/${y}.png`,
+    attribution: '\u00a9 OpenStreetMap contributors',
+    maxZoom: 18,
+  },
+  aerial: {
+    /* Note the y/x order — ArcGIS REST is {z}/{row}/{col}, not {z}/{x}/{y}. */
+    url: (z, x, y) => `${process.env.MAP_AERIAL_HOST
+      || 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile'}/${z}/${y}/${x}`,
+    attribution: 'Imagery: USGS National Map',
+    maxZoom: 19,
+  },
+};
+const TILE_HOST = process.env.MAP_TILE_HOST || 'https://tile.openstreetmap.org';
 
 function lngToTileX(lng, z){ return (lng + 180) / 360 * Math.pow(2, z); }
 function latToTileY(lat, z){
@@ -2104,22 +2135,27 @@ function latToTileY(lat, z){
   return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z);
 }
 
-async function fetchTile(z, x, y){
-  const key = z + '/' + x + '/' + y;
+async function fetchTile(z, x, y, layerName){
+  const layer = TILE_LAYERS[layerName] || TILE_LAYERS.street;
+  const key = layerName + '/' + z + '/' + x + '/' + y;
   const hit = tileCache.get(key);
   if (hit && Date.now() - hit.at < TILE_TTL) return hit.data;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 7000);
   try {
-    const r = await fetch(`${TILE_HOST}/${z}/${x}/${y}.png`, {
+    const r = await fetch(layer.url(z, x, y), {
       signal: ctrl.signal,
       headers: { 'User-Agent': TILE_UA, 'Accept': 'image/png,image/*' },
     });
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
     if (!buf.length) return null;
-    const data = 'data:image/png;base64,' + buf.toString('base64');
+    /* The aerial service answers with JPEG. Using the response's own type keeps
+       both layers working without a second code path. */
+    const mime = (r.headers.get('content-type') || '').split(';')[0].trim();
+    const data = 'data:' + (mime.startsWith('image/') ? mime : 'image/png')
+               + ';base64,' + buf.toString('base64');
     if (tileCache.size >= TILE_CACHE_MAX) {
       /* Oldest first. A Map iterates in insertion order, so this is enough. */
       const first = tileCache.keys().next().value;
@@ -2138,29 +2174,50 @@ async function fetchTile(z, x, y){
    Returns the tiles that cover that box plus the pixel origin the client needs
    to place its own pins. The client does the projecting; this only moves PNGs. */
 app.get('/api/map-tiles', async (req, res) => {
-  const bb = String(req.query.bbox || '').split(',').map(Number);
-  if (bb.length !== 4 || bb.some(n => !isFinite(n))) {
-    return res.status(400).json({ error: 'bbox must be minLat,minLng,maxLat,maxLng' });
-  }
-  let [minLat, minLng, maxLat, maxLng] = bb;
-  if (minLat > maxLat) [minLat, maxLat] = [maxLat, minLat];
-  if (minLng > maxLng) [minLng, maxLng] = [maxLng, minLng];
+  const layerName = TILE_LAYERS[String(req.query.layer || 'street')]
+    ? String(req.query.layer || 'street') : 'street';
+  const layer = TILE_LAYERS[layerName];
 
   const W = Math.min(1400, Math.max(320, Number(req.query.w) || 760));
   const H = Math.min(1000, Math.max(220, Number(req.query.h) || 440));
 
-  /* Pick the largest zoom whose span still fits the requested pixel box. 18 is
-     OSM's practical limit; 9 keeps a runaway bbox from asking for the planet. */
-  let zoom = 9;
-  for (let z = 18; z >= 9; z--) {
-    const w = Math.abs(lngToTileX(maxLng, z) - lngToTileX(minLng, z)) * TILE_SIZE;
-    const h = Math.abs(latToTileY(minLat, z) - latToTileY(maxLat, z)) * TILE_SIZE;
-    if (w <= W && h <= H) { zoom = z; break; }
+  const askedLat = Number(req.query.centreLat);
+  const askedLng = Number(req.query.centreLng);
+  const askedZoom = Number(req.query.zoom);
+  const explicit = isFinite(askedLat) && isFinite(askedLng) && isFinite(askedZoom);
+
+  let zoom, cx, cy;
+
+  if (explicit) {
+    /* ⚠ The zoom ceiling is per layer. The aerial carries one level more
+       detail than the street map, and asking either for a level it does not
+       have returns blank tiles rather than an error — which on screen looks
+       exactly like a broken map. */
+    zoom = Math.min(layer.maxZoom, Math.max(9, Math.round(askedZoom)));
+    cx = lngToTileX(Math.min(180, Math.max(-180, askedLng)), zoom);
+    cy = latToTileY(Math.min(85, Math.max(-85, askedLat)), zoom);
+  } else {
+    const bb = String(req.query.bbox || '').split(',').map(Number);
+    if (bb.length !== 4 || bb.some(v => !isFinite(v))) {
+      return res.status(400).json({
+        error: 'Give bbox=minLat,minLng,maxLat,maxLng, or centreLat, centreLng and zoom.' });
+    }
+    let [minLat, minLng, maxLat, maxLng] = bb;
+    if (minLat > maxLat) [minLat, maxLat] = [maxLat, minLat];
+    if (minLng > maxLng) [minLng, maxLng] = [maxLng, minLng];
+
+    /* The largest zoom whose span still fits the requested pixel box. */
+    zoom = 9;
+    for (let z = layer.maxZoom; z >= 9; z--) {
+      const w = Math.abs(lngToTileX(maxLng, z) - lngToTileX(minLng, z)) * TILE_SIZE;
+      const h = Math.abs(latToTileY(minLat, z) - latToTileY(maxLat, z)) * TILE_SIZE;
+      if (w <= W && h <= H) { zoom = z; break; }
+    }
+    cx = (lngToTileX(minLng, zoom) + lngToTileX(maxLng, zoom)) / 2;
+    cy = (latToTileY(minLat, zoom) + latToTileY(maxLat, zoom)) / 2;
   }
 
   const n = Math.pow(2, zoom);
-  const cx = (lngToTileX(minLng, zoom) + lngToTileX(maxLng, zoom)) / 2;
-  const cy = (latToTileY(minLat, zoom) + latToTileY(maxLat, zoom)) / 2;
 
   /* World-pixel coordinate of the top-left corner of the viewport. */
   const originX = cx * TILE_SIZE - W / 2;
@@ -2182,17 +2239,25 @@ app.get('/api/map-tiles', async (req, res) => {
 
   const out = [];
   for (const t of wanted) {
-    const data = await fetchTile(zoom, t.x, t.y);
+    const data = await fetchTile(zoom, t.x, t.y, layerName);
     if (data) out.push({ left: Math.round(t.left), top: Math.round(t.top), data });
   }
 
   if (!out.length) return res.status(502).json({ error: 'The map service did not answer.' });
 
+  /* The centre is echoed back so the client can zoom around the same point
+     rather than recomputing it and drifting a little on every step. */
+  const centre = {
+    lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * (cy / n)))) * 180 / Math.PI,
+    lng: cx / n * 360 - 180,
+  };
+
   res.set('Cache-Control', 'public, max-age=86400');
   res.json({
-    ok: true, zoom, size: { w: W, h: H },
+    ok: true, zoom, layer: layerName, size: { w: W, h: H },
     origin: { x: originX, y: originY }, tileSize: TILE_SIZE,
-    attribution: '© OpenStreetMap contributors',
+    centre, minZoom: 9, maxZoom: layer.maxZoom,
+    attribution: layer.attribution,
     tiles: out,
   });
 });
@@ -2205,7 +2270,7 @@ app.get('/api/market-stats', async (req, res) => {
   }
 
   try {
-    /* \u26a0 One pull, shared with the monthly market letter. Two functions computing
+    /* ⚠ One pull, shared with the monthly market letter. Two functions computing
        "the market" from two separate fetches is how the letter says 47 homes and the
        website says 45 on the same morning. */
     const rows = await marketRows();
@@ -2288,7 +2353,7 @@ app.get('/api/market-stats', async (req, res) => {
       soldByCity,
       soldWindowMonths: 12,
     };
-    /* \u26a0 Merge, do not replace \u2014 reassigning the whole object dropped the shared
+    /* ⚠ Merge, do not replace — reassigning the whole object dropped the shared
        rows and made the next letter re-pull 1,200 records for nothing. */
     marketCache.data = payload; marketCache.at = Date.now();
     console.log(`[market-stats] ${priced.length} active Baldwin listings, median ${payload.overall.median}`);
@@ -2300,13 +2365,13 @@ app.get('/api/market-stats', async (req, res) => {
 });
 
 /* ================= FIND A LISTING BY ADDRESS (server 177) =================
-   \u26a0 For attaching a property photo to a deal. A deal is often typed up before anything
+   ⚠ For attaching a property photo to a deal. A deal is often typed up before anything
    is under contract, and just as often it is a buyer deal on somebody else's listing, so
    there may be no matching record at all. The rule the broker agreed: try to match, and
    if nothing comes back offer a search rather than failing silently. A blank photo with
    no explanation reads as broken.
 
-   \u26a0 Active listings only would miss most deals \u2014 by the time a deal exists the listing is
+   ⚠ Active listings only would miss most deals — by the time a deal exists the listing is
    frequently pending or sold. This searches every status. */
 /* One place that knows every shape a listing photo arrives in. */
 function pickPhoto(r) {
@@ -2326,8 +2391,8 @@ app.get('/api/listing-lookup', async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 3) return res.json({ ok: true, matches: [] });
   try {
-    /* \u26a0 THREE ATTEMPTS, WIDENING. The first version searched the whole string before the
-       comma, so "317 Beach Boulevard # 204A" found nothing \u2014 the feed does not store the
+    /* ⚠ THREE ATTEMPTS, WIDENING. The first version searched the whole string before the
+       comma, so "317 Beach Boulevard # 204A" found nothing — the feed does not store the
        unit that way, and a condo address is exactly the case this needs to handle on
        this coast. Now: the full string, then without the unit, then number and street
        name only. Stops at the first attempt that returns anything. */
@@ -2336,9 +2401,9 @@ app.get('/api/listing-lookup', async (req, res) => {
       .replace(/\s*(#|\bunit\b|\bapt\b|\bste\b|\bsuite\b)\s*[a-z0-9-]+\s*$/i, '').trim();
     const m = noUnit.match(
       /^(\d+)\s+([A-Za-z][A-Za-z\s]*?)(\s+(blvd|boulevard|st|street|ave|avenue|dr|drive|rd|road|ln|lane|way|ct|court|cir|circle|pkwy|parkway|hwy|highway))?$/i);
-    /* \u26a0 Two attempts, not three. Each one is a live MLS round trip and three of them
-       could take fifteen seconds, which reads as a frozen screen. The middle attempt \u2014
-       the address without its unit number \u2014 is the one that actually rescues condo
+    /* ⚠ Two attempts, not three. Each one is a live MLS round trip and three of them
+       could take fifteen seconds, which reads as a frozen screen. The middle attempt —
+       the address without its unit number — is the one that actually rescues condo
        addresses, so it is the one kept alongside the exact string. */
     const tries = [...new Set([first, noUnit || (m ? (m[1] + ' ' + m[2]).trim() : '')])]
       .filter(x => x && x.length >= 3).slice(0, 2);
@@ -2346,12 +2411,12 @@ app.get('/api/listing-lookup', async (req, res) => {
     let rows = [];
     for (const attempt of tries) {
       const esc = attempt.replace(/'/g, "''").slice(0, 60);
-      /* \u26a0 NO $select. Naming Media in a $select does not return it on this feed \u2014 it is
+      /* ⚠ NO $select. Naming Media in a $select does not return it on this feed — it is
          a collection rather than a plain field, so it came back empty and every match
          had no photo. The route that already works, /api/listing/:key, sends no $select
          at all and gets Media fine. Copying that is more reliable than guessing at
          $expand syntax the feed may or may not support.
-         \u26a0 The cost is a larger response. $top is 8, so it is eight full records rather
+         ⚠ The cost is a larger response. $top is 8, so it is eight full records rather
          than eight thin ones, which is acceptable for something a person triggers by
          hand. Do not raise $top without revisiting this. */
       const d = await mlsQuery({
@@ -2369,17 +2434,17 @@ app.get('/api/listing-lookup', async (req, res) => {
       city: r.City || '',
       status: r.StandardStatus || '',
       price: r.ListPrice || 0,
-      /* \u26a0 First photo only. A deal card needs one image, and returning forty URLs per
+      /* ⚠ First photo only. A deal card needs one image, and returning forty URLs per
          match would make this response enormous for no benefit. */
-      /* \u26a0 Feeds disagree about the shape of Media: an array of strings, an array of
+      /* ⚠ Feeds disagree about the shape of Media: an array of strings, an array of
          objects with MediaURL, or MediaUrl, or a sized variant. Some records also carry
          a plain photo field instead. Try each rather than assume one. */
       photo: pickPhoto(r),
     })).filter(m => m.address);
     res.json({ ok: true, matches });
   } catch (e) {
-    /* \u26a0 Answers 200 with an empty list rather than an error. The feed being down should
-       not stop somebody saving a deal \u2014 the photo is a nicety, the deal is the point. */
+    /* ⚠ Answers 200 with an empty list rather than an error. The feed being down should
+       not stop somebody saving a deal — the photo is a nicety, the deal is the point. */
     console.error('[listing-lookup]', e.message);
     res.json({ ok: true, matches: [], note: 'The listing feed did not answer.' });
   }
@@ -2488,7 +2553,7 @@ app.get('/api/listings', async (req, res) => {
     listingsCache = { data: ordered, at: Date.now(), totalAvailable };
     const beach = ordered.filter(r => marketRank(r) === 0).length;
     const baldwin = ordered.filter(r => marketRank(r) <= 2).length;
-    console.log(`[listings] ${ordered.length} of ${totalAvailable == null ? '?' : totalAvailable} active \u2014 ${beach} beach, ${baldwin} Baldwin, sorted market-first`);
+    console.log(`[listings] ${ordered.length} of ${totalAvailable == null ? '?' : totalAvailable} active — ${beach} beach, ${baldwin} Baldwin, sorted market-first`);
     res.json({ value: ordered, count: ordered.length, totalAvailable, beach, baldwin, cached: false });
   } catch (e) {
     console.error('[listings] FAILED:', e.message);
@@ -3146,7 +3211,7 @@ app.post('/api/tracker', async (req, res) => {
     address: clean(b.address),
     clientName: clean(b.clientName),
     clientEmail: clean(b.clientEmail),
-    /* A side of a transaction is rarely one person \u2014 spouses, partners, a parent
+    /* A side of a transaction is rarely one person — spouses, partners, a parent
        helping with the purchase. Emails are comma-separated, and a both-sides deal
        carries a second party as well. */
     clientName2: clean(b.clientName2),
@@ -3239,7 +3304,7 @@ app.post('/api/tracker/:id/notify', async (req, res) => {
   try {
     await mailer.sendMail({
       to: recipients,
-      subject: `${headline}${pending.length === 1 && t.address ? ' \u2014 ' + t.address : ''}`,
+      subject: `${headline}${pending.length === 1 && t.address ? ' — ' + t.address : ''}`,
       text: `Hi ${first},\n\n`
           + (pending.length === 1 ? `Progress:\n\n` : `A few things have moved:\n\n`)
           + lines
@@ -3261,7 +3326,7 @@ app.post('/api/tracker/:id/notify', async (req, res) => {
 });
 
 /* Add, rename, reorder or remove steps. A deal throws up things no template
-   predicts \u2014 addendums going back and forth, a survey, an HOA packet. */
+   predicts — addendums going back and forth, a survey, an HOA packet. */
 app.post('/api/tracker/:id/steps', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const key = 'tracker:' + sess.agentId + ':' + String(req.params.id || '');
@@ -3325,7 +3390,7 @@ app.delete('/api/tracker/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-/* The client's view. No session \u2014 the token is the key. */
+/* The client's view. No session — the token is the key. */
 app.get('/api/track/:token', async (req, res) => {
   const token = String(req.params.token || '').replace(/[^a-f0-9]/gi, '');
   if (token.length < 20) return res.status(404).json({ error: 'Not found.' });
@@ -3344,60 +3409,60 @@ app.get('/api/track/:token', async (req, res) => {
    Stored at settings:playbooks so a broker edits wording, timing and questions
    without anybody touching this file. These are the defaults it starts from.
 
-   \u26a0 Every question is one a person can answer in four words. That is the whole
+   ⚠ Every question is one a person can answer in four words. That is the whole
    trick: "Local or relocating?" gets a reply; "Would you like to schedule a
    buyer consultation?" does not. */
 const PLAYBOOK_DEFAULTS = [
   { id:'pb_prop', name:'Asked about one property', match:{ source:'listing' }, steps:[
-    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} \u2014 glad you spotted {address}, that's a good one to be looking at.\n\nWhat caught your eye about it, and what else are you weighing it against? Tell me what you liked and I'll give you my honest read on whether it's the right fit, or whether there's something out there that suits you better." },
-    { d:1,  ch:'email', s:'{address}', t:"Hi {first},\n\nThere's a fair bit about {address} that never makes the listing \u2014 what the building's actually like to live in, what those fees really cover, and what's sold nearby lately. We're happy to walk you through any of it.\n\nWhich of those would help most? And what else are you comparing it to?\n\nOne more so we know how best to help: how are you thinking of paying \u2014 cash, or financing? If financing, has a lender already put a number on it, or is that still to come? No judgment at all either way. It just changes how we'd write an offer and how quickly we'd need to move for you." },
-    { d:3,  ch:'sms',   t:"{first} \u2014 so we only send you places worth your time: which areas are you considering, and which have you already ruled out? Happy to tell you what each stretch is actually like to live in if that helps." },
-    { d:6,  ch:'task',  t:"Call them. Six days, no reply \u2014 a call gets through where texts don't. Open with what they've looked at since, not whether they're still looking." },
-    { d:10, ch:'sms',   t:"{first} \u2014 what's the one thing a place absolutely has to have for you, and what makes that the dealbreaker? Knowing it saves us both a lot of wasted looking." },
-    { d:18, ch:'email', s:'A few that are not just what came up first', t:"Hi {first},\n\nWe've pulled a few that aren't just whatever happened to come up first in the search \u2014 these are ones we'd actually point a friend at.\n\nBefore we send them over: what would you change about the ones you've seen so far? Tell us what's been missing and we'll aim better." },
-    { d:30, ch:'sms',   t:"{first} \u2014 we've been sending these about a month now and we don't want to be the ones cluttering your inbox. What works better from here: as soon as one hits the market, a weekly summary, or only the real standouts?" },
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} — glad you spotted {address}, that's a good one to be looking at.\n\nWhat caught your eye about it, and what else are you weighing it against? Tell me what you liked and I'll give you my honest read on whether it's the right fit, or whether there's something out there that suits you better." },
+    { d:1,  ch:'email', s:'{address}', t:"Hi {first},\n\nThere's a fair bit about {address} that never makes the listing — what the building's actually like to live in, what those fees really cover, and what's sold nearby lately. We're happy to walk you through any of it.\n\nWhich of those would help most? And what else are you comparing it to?\n\nOne more so we know how best to help: how are you thinking of paying — cash, or financing? If financing, has a lender already put a number on it, or is that still to come? No judgment at all either way. It just changes how we'd write an offer and how quickly we'd need to move for you." },
+    { d:3,  ch:'sms',   t:"{first} — so we only send you places worth your time: which areas are you considering, and which have you already ruled out? Happy to tell you what each stretch is actually like to live in if that helps." },
+    { d:6,  ch:'task',  t:"Call them. Six days, no reply — a call gets through where texts don't. Open with what they've looked at since, not whether they're still looking." },
+    { d:10, ch:'sms',   t:"{first} — what's the one thing a place absolutely has to have for you, and what makes that the dealbreaker? Knowing it saves us both a lot of wasted looking." },
+    { d:18, ch:'email', s:'A few that are not just what came up first', t:"Hi {first},\n\nWe've pulled a few that aren't just whatever happened to come up first in the search — these are ones we'd actually point a friend at.\n\nBefore we send them over: what would you change about the ones you've seen so far? Tell us what's been missing and we'll aim better." },
+    { d:30, ch:'sms',   t:"{first} — we've been sending these about a month now and we don't want to be the ones cluttering your inbox. What works better from here: as soon as one hits the market, a weekly summary, or only the real standouts?" },
   ]},
   { id:'pb_buyer', name:'New buyer, no property named', match:{ source:'new' }, steps:[
-    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} with {brokerage}.\n\nWe're glad you're considering a move down to our slice of the coast \u2014 it's a good one, and we'd love to help you land in the right spot.\n\nWhat's bringing you this way: work, family, retirement, or just ready for a change? And where are you coming from? Whatever the reason, there's usually more we can help with than just finding the house." },
-    { d:1,  ch:'sms',   t:"{first} \u2014 one more and then we'll get out of your way. Where's the budget landing: under $400k, $400\u2013500k, or $500k plus? And how are you thinking of paying \u2014 cash, or financing? If financing, has a lender already confirmed that number, or is that still on the list? Whichever it is, we can help." },
-    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nOne thing worth knowing early: the stretch from Fort Morgan to Orange Beach is really four or fix different markets, and the difference between them matters far more than people expect \u2014 price, crowds, rental rules, how it feels in February.\n\nTell us roughly what you're after and we'll tell you honestly which part fits. It's the sort of thing that's hard to work out from photos." },
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} with {brokerage}.\n\nWe're glad you're considering a move down to our slice of the coast — it's a good one, and we'd love to help you land in the right spot.\n\nWhat's bringing you this way: work, family, retirement, or just ready for a change? And where are you coming from? Whatever the reason, there's usually more we can help with than just finding the house." },
+    { d:1,  ch:'sms',   t:"{first} — one more and then we'll get out of your way. Where's the budget landing: under $400k, $400\u2013500k, or $500k plus? And how are you thinking of paying — cash, or financing? If financing, has a lender already confirmed that number, or is that still on the list? Whichever it is, we can help." },
+    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nOne thing worth knowing early: the stretch from Fort Morgan to Orange Beach is really four or fix different markets, and the difference between them matters far more than people expect — price, crowds, rental rules, how it feels in February.\n\nTell us roughly what you're after and we'll tell you honestly which part fits. It's the sort of thing that's hard to work out from photos." },
     { d:8,  ch:'task',  t:"Call them. Open with what they're struggling to find, not whether they're still in the market." },
-    { d:15, ch:'sms',   t:"{first} \u2014 what would have to line up for you to move on something? This year or someday, both are completely fine. It just changes what we send you, and how often." },
-    { d:30, ch:'sms',   t:"{first}, we're about a month in \u2014 how often would you like to hear from us? As they come up, once a week, or only when something really fits? We'd rather get the pace right than have you tune us out." },
+    { d:15, ch:'sms',   t:"{first} — what would have to line up for you to move on something? This year or someday, both are completely fine. It just changes what we send you, and how often." },
+    { d:30, ch:'sms',   t:"{first}, we're about a month in — how often would you like to hear from us? As they come up, once a week, or only when something really fits? We'd rather get the pace right than have you tune us out." },
   ]},
   { id:'pb_seller', name:'Asked what their home is worth', match:{ source:'value' }, steps:[
-    /* \u26a0 Rewritten at the broker's instruction after he read it as a customer.
+    /* ⚠ Rewritten at the broker's instruction after he read it as a customer.
        The old line was: "Before I send you automated numbers that may or may not be
        right…". Two things wrong with it. It told the seller this brokerage sends
        automated numbers — he does not, he works every valuation by hand, and that is
        the single thing separating him from a Zestimate. And it read as put-upon, as
        though the enquiry were an interruption. The first line a seller reads should
        sound glad they asked. */
-    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} \u2014 thanks for asking about {address}, happy to help.\n\nI work these up myself instead of running them through a calculator, so you'll get a number based on your place, not an average of the street.\n\nTwo things that'd help me get it right:\n\nWhat's the plan \u2014 are you thinking about selling, or mostly curious what it'd bring?\n\nAnd do you already have a number in your head for it? Tell me what you're thinking and I'll tell you straight whether I agree, or where I'd come out different and why." },
-    { d:1,  ch:'email', s:'About {address}', t:"Hi {first},\n\nHappy to put a proper number together for you. An accurate one needs three things a computer has no way of knowing: what you've done to the place, when you'd want to move, and what you think it's worth.\n\nThat last one matters more than people expect. If you already have a figure in mind, tell us and we'll show you exactly what's behind ours \u2014 whether we land in the same place or not. Either way you'll know how the number was reached." },
-    /* \u26a0 Shouty capitals removed. It read as a sales gimmick in the middle of an
+    { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} — thanks for asking about {address}, happy to help.\n\nI work these up myself instead of running them through a calculator, so you'll get a number based on your place, not an average of the street.\n\nTwo things that'd help me get it right:\n\nWhat's the plan — are you thinking about selling, or mostly curious what it'd bring?\n\nAnd do you already have a number in your head for it? Tell me what you're thinking and I'll tell you straight whether I agree, or where I'd come out different and why." },
+    { d:1,  ch:'email', s:'About {address}', t:"Hi {first},\n\nHappy to put a proper number together for you. An accurate one needs three things a computer has no way of knowing: what you've done to the place, when you'd want to move, and what you think it's worth.\n\nThat last one matters more than people expect. If you already have a figure in mind, tell us and we'll show you exactly what's behind ours — whether we land in the same place or not. Either way you'll know how the number was reached." },
+    /* ⚠ Shouty capitals removed. It read as a sales gimmick in the middle of an
        otherwise plain conversation. */
-    { d:4,  ch:'sms',   t:"{first} \u2014 would it help more to know what you'd actually walk away with after everything, rather than just a sale price? Happy to run that for you, no obligation." },
-    { d:9,  ch:'task',  t:'Call them. Sellers convert on the phone far more than by email \u2014 and a valuation is an easy reason to ring.' },
-    { d:16, ch:'sms',   t:"{first}, is selling still on your mind, or has it moved to a someday thing? Either is completely fine \u2014 we just don't want to keep sending you things you're not looking for." },
-    { d:30, ch:'email', s:'What has sold near you', t:"Hi {first},\n\nHere's what has actually sold near {address} recently \u2014 worth having whether you sell this year or in five.\n\nWhat's changed on your end since we last spoke? Happy to update the number for you any time, no strings." },
+    { d:4,  ch:'sms',   t:"{first} — would it help more to know what you'd actually walk away with after everything, rather than just a sale price? Happy to run that for you, no obligation." },
+    { d:9,  ch:'task',  t:'Call them. Sellers convert on the phone far more than by email — and a valuation is an easy reason to ring.' },
+    { d:16, ch:'sms',   t:"{first}, is selling still on your mind, or has it moved to a someday thing? Either is completely fine — we just don't want to keep sending you things you're not looking for." },
+    { d:30, ch:'email', s:'What has sold near you', t:"Hi {first},\n\nHere's what has actually sold near {address} recently — worth having whether you sell this year or in five.\n\nWhat's changed on your end since we last spoke? Happy to update the number for you any time, no strings." },
   ]},
   { id:'pb_oh', name:'Signed in at an open house', match:{ source:'open-house' }, steps:[
-    { d:0,  ch:'sms',   t:"Hey {first}, {agent} here \u2014 really glad you came by {address} today, thanks for taking the time.\n\nWhat'd you think of it? What worked for you, and what didn't? That tells us more about what to look for next than anything else, so be blunt \u2014 we won't take it personally." },
-    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through \u2014 it was good to have you.\n\nA couple of things and then we'll leave you to it. What would you change about the place? And what else have you seen that it's up against?\n\nAlso, if the right one did come up \u2014 would you be paying cash, or financing? And if financing, is a lender already lined up? Much better to sort that out now than when we're trying to move fast on something you love." },
-    { d:7,  ch:'sms',   t:"{first} \u2014 a couple more have come up in that range and we thought of you. What did {address} get right that we should be matching, and what should we steer clear of?" },
+    { d:0,  ch:'sms',   t:"Hey {first}, {agent} here — really glad you came by {address} today, thanks for taking the time.\n\nWhat'd you think of it? What worked for you, and what didn't? That tells us more about what to look for next than anything else, so be blunt — we won't take it personally." },
+    { d:2,  ch:'email', s:'After {address}', t:"Hi {first},\n\nThanks again for coming through — it was good to have you.\n\nA couple of things and then we'll leave you to it. What would you change about the place? And what else have you seen that it's up against?\n\nAlso, if the right one did come up — would you be paying cash, or financing? And if financing, is a lender already lined up? Much better to sort that out now than when we're trying to move fast on something you love." },
+    { d:7,  ch:'sms',   t:"{first} — a couple more have come up in that range and we thought of you. What did {address} get right that we should be matching, and what should we steer clear of?" },
     { d:14, ch:'task',  t:"Call them. Ask what they've seen since the open house and how it compared." },
-    { d:30, ch:'sms',   t:"{first} \u2014 what would be most useful from here: everything in that range as it comes up, a weekly summary, or only the ones close to what you saw? Happy to go at whatever pace suits you." },
+    { d:30, ch:'sms',   t:"{first} — what would be most useful from here: everything in that range as it comes up, a weekly summary, or only the ones close to what you saw? Happy to go at whatever pace suits you." },
   ]},
   { id:'pb_quiet', name:'Registered, then nothing', match:{ source:'exit-intent' }, steps:[
-    { d:0,  ch:'email', s:'Nothing to sign up for', t:"Hi {first},\n\nWelcome \u2014 glad to have you looking with us.\n\nYou asked to hear about new listings, so that's all we'll send. Nothing else, and you can stop them any time with one click.\n\nOne question so they're actually worth opening: what does the right place look like for you, and when would you like to be in it?" },
-    { d:5,  ch:'sms',   t:"{first} \u2014 house or condo, and what makes that the right fit for you? Helps us send things worth opening instead of everything." },
-    { d:12, ch:'sms',   t:"{first} \u2014 what's the plan looking like: this year, or doing your homework for later? Both are good reasons to be looking. And if the right one turned up next week, would you be paying cash, or would we want to get financing lined up first? Happy to point you at a couple of good local lenders either way." },
-    { d:28, ch:'sms',   t:"{first} \u2014 we've been sending these a few weeks now. What works better for you: as soon as they hit the market, a daily digest, or one summary a week? We'd rather get it right than have you mute us." },
+    { d:0,  ch:'email', s:'Nothing to sign up for', t:"Hi {first},\n\nWelcome — glad to have you looking with us.\n\nYou asked to hear about new listings, so that's all we'll send. Nothing else, and you can stop them any time with one click.\n\nOne question so they're actually worth opening: what does the right place look like for you, and when would you like to be in it?" },
+    { d:5,  ch:'sms',   t:"{first} — house or condo, and what makes that the right fit for you? Helps us send things worth opening instead of everything." },
+    { d:12, ch:'sms',   t:"{first} — what's the plan looking like: this year, or doing your homework for later? Both are good reasons to be looking. And if the right one turned up next week, would you be paying cash, or would we want to get financing lined up first? Happy to point you at a couple of good local lenders either way." },
+    { d:28, ch:'sms',   t:"{first} — we've been sending these a few weeks now. What works better for you: as soon as they hit the market, a daily digest, or one summary a week? We'd rather get it right than have you mute us." },
   ]},
   { id:'pb_back', name:'Went quiet, then came back', match:{ source:'reactivated' }, steps:[
-    { d:0,  ch:'sms',   t:"Hey {first} \u2014 good to see you back on the site.\n\nWhat's changed since we last talked, or are you picking up where you left off? Either way we're glad you're still looking, and happy to help wherever you're at with it." },
-    { d:2,  ch:'task',  t:'Call them. Somebody who comes back after months is worth a call the same week \u2014 something has changed on their end.' },
+    { d:0,  ch:'sms',   t:"Hey {first} — good to see you back on the site.\n\nWhat's changed since we last talked, or are you picking up where you left off? Either way we're glad you're still looking, and happy to help wherever you're at with it." },
+    { d:2,  ch:'task',  t:'Call them. Somebody who comes back after months is worth a call the same week — something has changed on their end.' },
   ]},
   /* ---------- past day 30 ----------
      Everything above stops at day 30, which left the long-term nurture lane with
@@ -3407,36 +3472,36 @@ const PLAYBOOK_DEFAULTS = [
      Syndicated newsletters lose here. Big Macs and bathroom plants could come
      from any agent in the country. Insurance costs, what a specific building's
      fees actually cover, and what sold in it last month could only come from
-     someone who works this coast \u2014 which is the whole point. */
-  { id:'pb_nurture', name:'Long-term nurture \u2014 monthly, local', match:{ lane:'slow' }, steps:[
+     someone who works this coast — which is the whole point. */
+  { id:'pb_nurture', name:'Long-term nurture — monthly, local', match:{ lane:'slow' }, steps:[
     { d:30,  ch:'email', s:'What insurance actually costs down here',
       t:"Hi {first},\n\nThe thing that catches most people out on this coast is not the price of the house, it is the insurance on it. Wind, flood and hail are usually three separate conversations, and the difference between a house a mile inland and one on the beach can be thousands a year.\n\nIf you want, tell me a street or a building and I will tell you roughly what people are paying there now.\n\n{agent}" },
     { d:60,  ch:'email', s:'What actually sold near you last month',
-      t:"Hi {first},\n\nNot a market report with charts \u2014 just what actually changed hands around {city} recently and what it went for.\n\nAsking prices tell you what sellers hope for. Sold prices tell you what the market actually agreed to.\n\nWhich street or building do you want the sold list for, and how far back should I go?\n\n{agent}" },
+      t:"Hi {first},\n\nNot a market report with charts — just what actually changed hands around {city} recently and what it went for.\n\nAsking prices tell you what sellers hope for. Sold prices tell you what the market actually agreed to.\n\nWhich street or building do you want the sold list for, and how far back should I go?\n\n{agent}" },
     { d:90,  ch:'email', s:'Condo fees: what you are really buying',
-      t:"Hi {first},\n\nTwo buildings on the same stretch of beach can have fees hundreds apart, and the higher one is sometimes the better deal \u2014 it depends entirely on what the fee covers and what the reserves look like.\n\nI keep notes on the buildings around here: what is included, what has gone up lately, and which ones have assessments coming.\n\nAny building you want the honest version on?\n\n{agent}" },
+      t:"Hi {first},\n\nTwo buildings on the same stretch of beach can have fees hundreds apart, and the higher one is sometimes the better deal — it depends entirely on what the fee covers and what the reserves look like.\n\nI keep notes on the buildings around here: what is included, what has gone up lately, and which ones have assessments coming.\n\nAny building you want the honest version on?\n\n{agent}" },
     { d:120, ch:'email', s:'Before hurricane season',
-      t:"Hi {first},\n\nA short and genuinely useful one. Whether you own here or are still looking, these are the things worth sorting before the season: check your wind mitigation certificate is current, photograph the property inside and out, and know your deductible \u2014 hurricane deductibles are usually a percentage, not a flat number, and people are surprised by that at the worst moment.\n\nHappy to look yours over.\n\n{agent}" },
-    { d:150, ch:'task', t:'Six months. Call them \u2014 not to sell, just to ask how the search is going.' },
+      t:"Hi {first},\n\nA short and genuinely useful one. Whether you own here or are still looking, these are the things worth sorting before the season: check your wind mitigation certificate is current, photograph the property inside and out, and know your deductible — hurricane deductibles are usually a percentage, not a flat number, and people are surprised by that at the worst moment.\n\nHappy to look yours over.\n\n{agent}" },
+    { d:150, ch:'task', t:'Six months. Call them — not to sell, just to ask how the search is going.' },
     { d:180, ch:'email', s:'Fort Morgan, Gulf Shores or Orange Beach?',
-      t:"Hi {first},\n\nPeople treat this as one beach. It is really five or six markets, and the difference matters more than most people expect \u2014 rental rules, traffic in season, how much house you get, how quiet it is in February.\n\nIf you tell me how you would actually use the place, I will tell you which stretch fits and which to skip.\n\n{agent}" },
+      t:"Hi {first},\n\nPeople treat this as one beach. It is really five or six markets, and the difference matters more than most people expect — rental rules, traffic in season, how much house you get, how quiet it is in February.\n\nIf you tell me how you would actually use the place, I will tell you which stretch fits and which to skip.\n\n{agent}" },
     { d:240, ch:'email', s:'What rentals actually bring in',
-      t:"Hi {first},\n\nIf a rental is any part of the plan, the numbers people quote are usually gross and the ones that matter are net \u2014 after management, fees, insurance, and the weeks you want it yourself.\n\nI can put real numbers on a specific building instead of the brochure version. Which one do you want me to run, and how many weeks a year would you keep it for yourself?\n\n{agent}" },
+      t:"Hi {first},\n\nIf a rental is any part of the plan, the numbers people quote are usually gross and the ones that matter are net — after management, fees, insurance, and the weeks you want it yourself.\n\nI can put real numbers on a specific building instead of the brochure version. Which one do you want me to run, and how many weeks a year would you keep it for yourself?\n\n{agent}" },
     { d:300, ch:'task', t:'Ten months. Worth a call to find out whether anything has changed.' },
-    { d:365, ch:'email', s:'A year on \u2014 still worth keeping an eye out?',
+    { d:365, ch:'email', s:'A year on — still worth keeping an eye out?',
       t:"Hi {first},\n\nIt has been about a year. I am still happy to keep watching for you, but I would rather ask than keep sending.\n\nStill worth it, or should I leave you be for a while?\n\n{agent}" },
   ]},
 
   { id:'pb_seller_slow', name:'Seller who is not ready yet', match:{ type:'seller' }, steps:[
-    /* \u26a0 Day 0 added so this can be used for somebody who has JUST asked what their
+    /* ⚠ Day 0 added so this can be used for somebody who has JUST asked what their
        home is worth and said they are only curious. Without it the sequence opened at
        day 30 and they heard nothing for a month after asking a direct question - the
        fastest way to look like a machine that ignored them. Answer today, no pitch,
        then leave them alone. */
-    { d:0, ch:'email', s:'Your home\u2019s value \u2014 no pitch',
-      t:"Hi {first},\n\nThanks for asking about {address}. You mentioned you're mostly curious rather than ready to sell, so I'll keep this short.\n\nI work these up by hand, so you'll get a number based on your place, not an average of the street.\n\nTwo things would help. What's the plan if the number came back higher than you expected \u2014 does that change anything, or is it still a someday? And do you already have a figure in mind? Tell me what you're thinking and I'll tell you straight whether I agree or where I'd differ.\n\nAnything a calculator would miss helps too \u2014 work you've had done, the view, anything unusual about the lot.\n\nNo timeline, no pressure. Curious is a perfectly good reason to ask.\n\n{agent}" },
-    { d:30, ch:'email', s:'No rush \u2014 but here is what your street is doing',
-      t:"Hi {first},\n\nNo pitch. You asked what the place was worth, and things have moved since.\n\nHere is what has sold near you and how long each took. If you are still a year out, that is fine \u2014 this is just so the number in your head stays roughly right.\n\n{agent}" },
+    { d:0, ch:'email', s:'Your home\u2019s value — no pitch',
+      t:"Hi {first},\n\nThanks for asking about {address}. You mentioned you're mostly curious rather than ready to sell, so I'll keep this short.\n\nI work these up by hand, so you'll get a number based on your place, not an average of the street.\n\nTwo things would help. What's the plan if the number came back higher than you expected — does that change anything, or is it still a someday? And do you already have a figure in mind? Tell me what you're thinking and I'll tell you straight whether I agree or where I'd differ.\n\nAnything a calculator would miss helps too — work you've had done, the view, anything unusual about the lot.\n\nNo timeline, no pressure. Curious is a perfectly good reason to ask.\n\n{agent}" },
+    { d:30, ch:'email', s:'No rush — but here is what your street is doing',
+      t:"Hi {first},\n\nNo pitch. You asked what the place was worth, and things have moved since.\n\nHere is what has sold near you and how long each took. If you are still a year out, that is fine — this is just so the number in your head stays roughly right.\n\n{agent}" },
     { d:90, ch:'email', s:'The three things that move the number most',
       t:"Hi {first},\n\nWhen you do sell, most of the difference comes down to three things: how it photographs, what the first week of pricing looks like, and whether the obvious objection is dealt with before anyone raises it.\n\nNone of that costs much if it is done early. Happy to walk through yours whenever.\n\n{agent}" },
     { d:180, ch:'task', t:'Six months since the valuation. Call and ask how the plan is looking.' },
@@ -3444,7 +3509,7 @@ const PLAYBOOK_DEFAULTS = [
       t:"Hi {first},\n\nJust checking whether selling is still on the table. If the timing has moved, tell me roughly when and I will stop guessing.\n\n{agent}" },
   ]},
 
-  { id:'pb_snowbird', name:'Snowbird \u2014 back in season', match:{ tag:'snowbird' }, steps:[
+  { id:'pb_snowbird', name:'Snowbird — back in season', match:{ tag:'snowbird' }, steps:[
     { d:30,  ch:'email', s:'Quiet season is the good season to buy',
       t:"Hi {first},\n\nCounterintuitive one: the stretch between November and February is usually when the better deals happen here. Less competition, sellers who have sat through a season, and you get to see the place when it is quiet rather than when it is at its best.\n\nWorth a look while you are down?\n\n{agent}" },
     { d:120, ch:'task', t:'Season is coming. Call before they book the trip, not after.' },
@@ -3452,12 +3517,12 @@ const PLAYBOOK_DEFAULTS = [
       t:"Hi {first},\n\nIf you are heading down this season, tell me the dates and roughly what you want to see and I will have a handful lined up rather than you spending the first two days working out where to look.\n\n{agent}" },
   ]},
 
-  { id:'pb_sphere', name:'Past client \u2014 stay in touch', match:{ type:'client' }, steps:[
-    { d:90,  ch:'task', t:'Three months in. Call \u2014 ask about the house, not about referrals.' },
+  { id:'pb_sphere', name:'Past client — stay in touch', match:{ type:'client' }, steps:[
+    { d:90,  ch:'task', t:'Three months in. Call — ask about the house, not about referrals.' },
     { d:180, ch:'email', s:'How is the place treating you?',
-      t:"Hi {first},\n\nNo agenda. Just wondering how the place is treating you and whether anything needs sorting.\n\nIf you ever need a name for anything \u2014 roofer, insurance, someone to look at the deck \u2014 I keep a list of people I would actually use myself.\n\n{agent}" },
+      t:"Hi {first},\n\nNo agenda. Just wondering how the place is treating you and whether anything needs sorting.\n\nIf you ever need a name for anything — roofer, insurance, someone to look at the deck — I keep a list of people I would actually use myself.\n\n{agent}" },
     { d:365, ch:'email', s:'A year in {city}',
-      t:"Hi {first},\n\nA year since you closed. Values around you have moved, so here is where things stand if you are curious \u2014 no pitch attached.\n\n{agent}" },
+      t:"Hi {first},\n\nA year since you closed. Values around you have moved, so here is where things stand if you are curious — no pitch attached.\n\n{agent}" },
   ]},
 ];
 
@@ -3466,7 +3531,7 @@ const PLAYBOOK_DEFAULTS = [
    prediction. Every point is traceable to an event, which is why the agent alert
    can say WHY somebody went hot rather than just that they did.
 
-   \u26a0 The score never sends anything on its own. It sorts the list and it decides
+   ⚠ The score never sends anything on its own. It sorts the list and it decides
    when to fetch a human. Automation starts conversations; agents have them. */
 const SCORE_EVENTS = {
   sms_reply:        { pts: 15, why: 'replied to a text' },
@@ -3480,7 +3545,7 @@ const SCORE_EVENTS = {
   /* ⚠ Between 'asked to see a property' (30) and 'has definite plans to sell'
      (25). Opening a valuation of your own house is not casual reading. */
   cma_open:         { pts: 22, why: 'opened the valuation of their home' },
-  /* \u26a0 Below cma_open. Watching a video you were sent is real interest, but opening a
+  /* ⚠ Below cma_open. Watching a video you were sent is real interest, but opening a
      valuation of your own house is a stronger signal than watching a walkthrough. */
   video_play:       { pts: 14, why: 'watched a video we sent' },
   favorited:        { pts:  8, why: 'saved a property' },
@@ -3558,8 +3623,8 @@ app.post('/api/lead/:id/event', async (req, res) => {
   if (!SCORE_EVENTS[k]) return res.status(400).json({ error: 'Unknown event.' });
 
   lead.events = Array.isArray(lead.events) ? lead.events : [];
-  /* \u26a0 `by` is who actually did it. Without it an event cannot be attributed, so a
-     per-agent goal has nothing to count \u2014 every event in this system was anonymous
+  /* ⚠ `by` is who actually did it. Without it an event cannot be attributed, so a
+     per-agent goal has nothing to count — every event in this system was anonymous
      until now. Older events have no `by`; anything counting them falls back to the
      lead's assigned agent, which is right often enough and honest about being a
      fallback. */
@@ -3739,7 +3804,7 @@ app.post('/api/search', async (req, res) => {
    alert engine, the criteria fields fixed in v210 and the matching in searchFilter()
    were all sitting there with no public door to them.
 
-   \u26a0 This is the only unauthenticated route that writes a savedSearch record, so it
+   ⚠ This is the only unauthenticated route that writes a savedSearch record, so it
    validates hard and rate-limits by IP. Everything it writes is owned by a real
    agent, resolved server-side from the slug — the visitor does not get to name an
    owner, they get to name the agent whose link they arrived on. */
@@ -3772,13 +3837,13 @@ function laneFromTimeline(t) {
    needs a gate rather than a plain text box: a public form is exactly where steering
    language does damage, and it does damage under the brokerage's licence.
 
-   \u26a0 The gate is a WARNING, not a veto. The broker knows fair housing and asked to be
-   shown flags and allowed to confirm \u2014 so a flagged save is refused ONCE, returns
+   ⚠ The gate is a WARNING, not a veto. The broker knows fair housing and asked to be
+   shown flags and allowed to confirm — so a flagged save is refused ONCE, returns
    what tripped and why, and goes through on a second request carrying acknowledged.
    Every acknowledged flag is logged with who confirmed it and when, because the value
    of the log is that it exists if anyone ever asks.
 
-   \u26a0 Nothing here can change the ANSWER SHAPES the rest of the system depends on.
+   ⚠ Nothing here can change the ANSWER SHAPES the rest of the system depends on.
    `key` is fixed to the known set: rewriting a key to something searchFilter() has
    never heard of would produce an alert quietly matching nothing. Wording is the
    broker's; plumbing is not. */
@@ -3860,7 +3925,7 @@ app.post('/api/quiz-config', async (req, res) => {
     ...out,
     updatedAt: new Date().toISOString(),
     updatedBy: sess.name || sess.agentId,
-    /* \u26a0 Kept on the record, not just in the log. If it is ever asked who approved
+    /* ⚠ Kept on the record, not just in the log. If it is ever asked who approved
        wording that got flagged, the answer is on the thing itself. */
     acknowledgedFlags: flags.length ? flags : undefined,
   };
@@ -3878,7 +3943,7 @@ app.post('/api/quiz-config', async (req, res) => {
 app.post('/api/quiz-config/reset', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
-  /* \u26a0 Same trap as the CMA delete: setSetting(key, null) upserts a null rather than
+  /* ⚠ Same trap as the CMA delete: setSetting(key, null) upserts a null rather than
      removing the row, and if that is rejected the failure is swallowed and the reset
      silently does nothing. Real delete, error checked. */
   try {
@@ -3908,7 +3973,7 @@ app.post('/api/alert-signup', async (req, res) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return res.status(400).json({ error: 'That email address does not look right.' });
   }
-  /* \u26a0 Consent is not decoration. The disclosure the visitor ticked is on the form;
+  /* ⚠ Consent is not decoration. The disclosure the visitor ticked is on the form;
      refusing without it here is what makes the record defensible later. */
   if (b.consent !== true) return res.status(400).json({ error: 'We need the consent box ticked.' });
 
@@ -3970,7 +4035,7 @@ app.post('/api/alert-signup', async (req, res) => {
     if (mailer && owner.email) {
       mailer.sendMail({
         to: owner.email,
-        subject: `New alert sign-up \u2014 ${rec.name || email}`,
+        subject: `New alert sign-up — ${rec.name || email}`,
         text: `${rec.name || '(no name)'} just set up listing alerts from the site.\n\n`
             + `Looking for: ${searchLabel(criteria)}\n`
             + `Email: ${email}\n`
@@ -4053,12 +4118,12 @@ app.post('/api/search/preview-email', async (req, res) => {
     agentName: sess.name || '',
     agentSlug: slugify(sess.name || ''),
     unsub: `${origin}/`,
-    more: rows.length > 6 ? `Plus ${rows.length - 6} more \u2014 reply and I will send them over.` : '',
+    more: rows.length > 6 ? `Plus ${rows.length - 6} more — reply and I will send them over.` : '',
   });
 
   res.json({ ok: true, count: rows.length, label, html: previewHtml,
-    subject: rows.length === 1 ? `One new listing \u2014 ${label}`
-           : `${rows.length} new listings \u2014 ${label}`,
+    subject: rows.length === 1 ? `One new listing — ${label}`
+           : `${rows.length} new listings — ${label}`,
     greeting: `Hi ${name},`,
     intro: `New since I last wrote, matching ${label}:`,
     items,
@@ -4069,7 +4134,7 @@ app.post('/api/search/preview-email', async (req, res) => {
        chose to fill in, and that is not always complete. */
     disclaimer: 'These come straight from the MLS feed. We match your criteria as closely as '
       + 'the data allows, but MLS records are entered by many different offices and are not '
-      + 'always complete \u2014 so an occasional listing may not fit, or a good one may be missed. '
+      + 'always complete — so an occasional listing may not fit, or a good one may be missed. '
       + 'Always worth asking us.',
   });
 });
@@ -4220,17 +4285,17 @@ function dripDue(lead, campaign, now){
   // a slower lane stretches the same steps out rather than dropping any of them
   const days = Math.floor((now - started) / (DAY * pace));
   const done = lead.drip.done || [];
-  /* \u26a0 A call or text reminder for somebody with NO PHONE NUMBER is a task nobody can
+  /* ⚠ A call or text reminder for somebody with NO PHONE NUMBER is a task nobody can
      do. Most of this brokerage's imported contacts arrived with an email and nothing
      else, so those steps were landing on the Today list as permanent, unactionable
-     items \u2014 and a Today list full of impossible tasks is how a person learns to stop
+     items — and a Today list full of impossible tasks is how a person learns to stop
      reading the Today list.
 
-     \u26a0 The step is SKIPPED, not marked done, and the sequence carries on to the next
+     ⚠ The step is SKIPPED, not marked done, and the sequence carries on to the next
      one. Add a phone number later and the remaining reminders start appearing again,
      which is the behaviour you want: the data improved, so the system does more.
 
-     \u26a0 Email steps are untouched. Those still work perfectly well without a number. */
+     ⚠ Email steps are untouched. Those still work perfectly well without a number. */
   const canCall = !!String(lead.phone || '').replace(/[^0-9]/g, '');
   return (campaign.steps || [])
     .filter(st => st.day <= days && !done.includes(st.id))
@@ -4399,12 +4464,12 @@ app.post('/api/article-draft', async (req, res) => {
   }
 });
 
-/* \u26a0 PUBLIC, no session. The homepage needs to show articles to a stranger, and the
+/* ⚠ PUBLIC, no session. The homepage needs to show articles to a stranger, and the
    route above requires a session because it can expose drafts and preview links. A
-   visitor could not reach a single article from the homepage before this existed \u2014
+   visitor could not reach a single article from the homepage before this existed —
    twenty pages indexed by Google and nothing on the site linking to them, which is
    bad for people and bad for how Google judges the pages.
-   \u26a0 Published only, and only the fields a card needs. No body, no preview token. */
+   ⚠ Published only, and only the fields a card needs. No body, no preview token. */
 app.get('/api/articles/public', async (req, res) => {
   try {
     const list = (await articlesPublic()).map(a => ({
@@ -4442,7 +4507,7 @@ app.get('/api/articles', async (req, res) => {
 
 app.post('/api/articles', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
-  /* \u26a0 isStaff() is broker OR ADMIN, so this route said "Broker only" in its own
+  /* ⚠ isStaff() is broker OR ADMIN, so this route said "Broker only" in its own
      error message while letting admins through. Hiding the buttons is not a control;
      this is. What goes out on a public page under the brokerage name is the broker's
      decision alone. */
@@ -4741,7 +4806,7 @@ app.post('/api/broadcast', async (req, res) => {
 
   const origin = `${req.protocol}://${req.get('host')}`;
   const senderSlug = slugify(sess.name || '');
-  /* \u26a0 Loaded ONCE before the send loop, not per lead. A brokerage sending to two
+  /* ⚠ Loaded ONCE before the send loop, not per lead. A brokerage sending to two
      hundred people would otherwise read the same profile two hundred times. */
   let senderBrand = {};
   try { senderBrand = (await getSetting('agentPublic:' + sess.agentId)) || {}; } catch (e) {}
@@ -4764,12 +4829,12 @@ app.post('/api/broadcast', async (req, res) => {
           to: lead.email,
           marketing: true,
           subject,
-          /* \u26a0 The agent's own team name signs above the brokerage, not instead of it.
+          /* ⚠ The agent's own team name signs above the brokerage, not instead of it.
              An agent running a team inside the brokerage wants their name on what they
              send; the brokerage name is a licensing requirement and stays regardless.
              Falls back cleanly to just the agent's name when no team is set. */
           text: `Hi ${first},\n\n${intro ? intro + '\n\n' : ''}${items}\n\n`
-              + `\u2014\n${sess.name || ''}\n`
+              + `—\n${sess.name || ''}\n`
               + `${senderBrand.teamName ? senderBrand.teamName + '\n' : ''}`
               + `${senderBrand.tagline ? senderBrand.tagline + '\n' : ''}`
               + `${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\n`
@@ -4798,7 +4863,7 @@ app.post('/api/broadcast', async (req, res) => {
     await setSetting(BROADCAST_LOG, arr.slice(0, 100));
   } catch (e) {}
 
-  console.log(`[broadcast] "${subject}" \u2014 ${sent} sent, ${failed} failed`);
+  console.log(`[broadcast] "${subject}" — ${sent} sent, ${failed} failed`);
   res.json({ ok: true, sent, failed, broadcastId: bid });
 });
 
@@ -4905,7 +4970,7 @@ function dripFill(text, lead, agent){
     .replace(/\{agent\}/g, agent.name || '')
     .replace(/\{brokerage\}/g, BROKERAGE_NAME)
     .replace(/\{phone\}/g, BROKERAGE_PHONE)
-    /* \u26a0 A SELLER never has listingLabel - that is set when somebody enquires about one
+    /* ⚠ A SELLER never has listingLabel - that is set when somebody enquires about one
        of OUR listings. Their address is what they typed on the quiz, at quiz.address.
        Without this fallback a valuation email said "Thanks for asking about the
        property", which is the one thing it must not be vague about: they gave you an
@@ -4914,18 +4979,18 @@ function dripFill(text, lead, agent){
       || (lead.quiz && lead.quiz.address)
       || (lead.criteria && lead.criteria.address)
       || 'the property')
-    /* \u26a0 {city} is used by the default openers and had NO replacement here, so an
+    /* ⚠ {city} is used by the default openers and had NO replacement here, so an
        automated message would have gone out reading "Staying around {city}, or open
-       to nearby?" \u2014 to a client, under the brokerage's name. leadTown() is declared
+       to nearby?" — to a client, under the brokerage's name. leadTown() is declared
        further down the file; function declarations hoist, so this is safe.
-       \u26a0 The fallback is deliberately a phrase that reads as English in the sentence
+       ⚠ The fallback is deliberately a phrase that reads as English in the sentence
        rather than an empty string, which would leave "Staying around , or open to". */
     .replace(/\{city\}/g, (function(){
       try { return leadTown(lead) || 'the area'; } catch (e) { return 'the area'; }
     })());
 }
 
-/* \u26a0 Any token the copy uses and dripFill does not know about would be delivered
+/* ⚠ Any token the copy uses and dripFill does not know about would be delivered
    literally. Belt and braces: strip anything left over rather than mail a curly
    brace to a buyer. Logged, because a token going missing is a content bug worth
    seeing rather than silently swallowing. */
@@ -4977,7 +5042,7 @@ app.post('/api/drip/tick', async (req, res) => {
             to: lead.email,
             subject: dripFill(step.subject, lead, sess),
             text: dripFill(step.body, lead, sess)
-                + `\n\n\u2014\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`
+                + `\n\n—\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`
                 + `\n${BROKERAGE_ADDRESS}`
                 + `\n\nIf you would rather not hear from us, unsubscribe here: ${unsub}`,
           });
@@ -5020,7 +5085,7 @@ app.post('/api/drip/tick', async (req, res) => {
                       r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' bath' : '']
                       .filter(Boolean).join(', ');
           const credit = listingCredit(r);
-          return `  ${price} \u2014 ${r.UnparsedAddress || 'Address on request'}`
+          return `  ${price} — ${r.UnparsedAddress || 'Address on request'}`
                + (r.City ? `, ${r.City}` : '') + (bb ? `\n    ${bb}` : '')
                + (credit ? `\n    ${credit}` : '')
                + `\n    ${origin}/?listing=${encodeURIComponent(r.ListingKey)}`;
@@ -5039,15 +5104,15 @@ app.post('/api/drip/tick', async (req, res) => {
           agentSlug: slugify(rec.agentName || ''),
           unsub: link,
           more: fresh.length > shown.length
-            ? `Plus ${fresh.length - shown.length} more \u2014 reply and I will send them over.`
+            ? `Plus ${fresh.length - shown.length} more — reply and I will send them over.`
             : '',
         });
         try {
           await mailer.sendMail({
             to: rec.email,
             subject: fresh.length === 1
-              ? `One new listing \u2014 ${searchLabel(rec.criteria)}`
-              : `${fresh.length} new listings \u2014 ${searchLabel(rec.criteria)}`,
+              ? `One new listing — ${searchLabel(rec.criteria)}`
+              : `${fresh.length} new listings — ${searchLabel(rec.criteria)}`,
             html,
             text: `Hi ${firstName},\n\n`
                 + `New since I last wrote, matching ${searchLabel(rec.criteria)}:\n\n${lines}\n\n`
@@ -5186,7 +5251,7 @@ app.post('/api/oh/:token/signin', async (req, res) => {
   rec.visitors.push(visitor);
   await setSetting(ptr.key, rec);
 
-  /* Anyone already working with an agent is recorded but not turned into a lead \u2014
+  /* Anyone already working with an agent is recorded but not turned into a lead —
      chasing another agent's client is how you end up in front of the association. */
   if (!visitor.hasAgent && email) {
     const lead = {
@@ -5201,7 +5266,7 @@ app.post('/api/oh/:token/signin', async (req, res) => {
     };
     try {
       await setSetting('lead:' + lead.id, lead);
-      console.log(`[openhouse] ${name} signed in \u2014 lead created for ${rec.agentName}`);
+      console.log(`[openhouse] ${name} signed in — lead created for ${rec.agentName}`);
     } catch (e) { console.error('[openhouse] lead failed:', e.message); }
   }
 
@@ -5252,13 +5317,13 @@ app.post('/api/oh/:token/signin', async (req, res) => {
       const link = `${origin}/?ohf=${token}.${visitor.id}`;
       mailer.sendMail({
         to: visitor.email,
-        subject: `Thanks for coming by${rec.address ? ' \u2014 ' + rec.address : ''}`,
+        subject: `Thanks for coming by${rec.address ? ' — ' + rec.address : ''}`,
         text: [
           `Hi ${first},`,
           '',
           `Thanks for stopping by${rec.address ? ' ' + rec.address : ' today'}.`,
           '',
-          'If you have thirty seconds, four quick questions would help me a lot \u2014 and',
+          'If you have thirty seconds, four quick questions would help me a lot — and',
           'it means I only send you places worth your time:',
           link,
           '',
@@ -5272,7 +5337,7 @@ app.post('/api/oh/:token/signin', async (req, res) => {
         .catch(e => console.error('[openhouse] visitor follow-up failed:', e.message));
     }
   } else {
-    console.warn('[openhouse] SKIPPED both emails \u2014 mailer not configured.');
+    console.warn('[openhouse] SKIPPED both emails — mailer not configured.');
   }
 
   res.json({ ok: true, visitorId: visitor.id });
@@ -5294,10 +5359,10 @@ app.post('/api/openhouse/:id/feedback', async (req, res) => {
     try {
       await mailer.sendMail({
         to: v.email,
-        subject: `Thanks for coming by${rec.address ? ' \u2014 ' + rec.address : ''}`,
+        subject: `Thanks for coming by${rec.address ? ' — ' + rec.address : ''}`,
         text: `Hi ${String(v.name).split(' ')[0]},\n\n`
             + `Thanks for stopping by${rec.address ? ' ' + rec.address : ''} today.\n\n`
-            + `Four quick questions, all checkboxes \u2014 it takes about ten seconds and it `
+            + `Four quick questions, all checkboxes — it takes about ten seconds and it `
             + `genuinely helps:\n${link}\n\n`
             + `And if you'd like to see it again, or see something else, just reply.\n\n`
             + `${rec.agentName}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`,
@@ -5349,7 +5414,7 @@ app.post('/api/ohf/:pair', async (req, res) => {
       .map(q => `  ${q.q}  ${answers[q.k]}`).join('\n');
     mailer.sendMail({
       to: rec.agentEmail,
-      subject: `Feedback from ${v.name}${rec.address ? ' \u2014 ' + rec.address : ''}`,
+      subject: `Feedback from ${v.name}${rec.address ? ' — ' + rec.address : ''}`,
       text: `${v.name} answered your open house questions.\n\n${lines}`
           + (answers.note ? `\n\n  "${answers.note}"` : '')
           + `\n\n${BROKERAGE_NAME}`,
@@ -5704,19 +5769,19 @@ app.post('/api/agent/forgot-password', async (req, res) => {
   // can't be used to check which emails have accounts.
   const genericReply = { ok: true, message: 'If that email has an account, a reset link has been sent.' };
   if (!normalizedEmail) return res.json(genericReply);
-  /* \u26a0 The generic reply above is correct and stays \u2014 it stops this route being used to
+  /* ⚠ The generic reply above is correct and stays — it stops this route being used to
      discover which addresses have accounts. But it was paired with NO logging and a
      swallowed send error, so when a reset produced no email there was no way to tell
      whether the address matched, whether mail was configured, or whether the send
      failed. Silent to the CALLER is right; silent to the LOG is not. */
   try {
-    /* \u26a0 ilike, not eq. Agent emails are lower-cased on creation, but any record made
-       before that or edited by hand in Supabase keeps its capitals \u2014 and an exact match
+    /* ⚠ ilike, not eq. Agent emails are lower-cased on creation, but any record made
+       before that or edited by hand in Supabase keeps its capitals — and an exact match
        then finds nothing and reports success. */
     const { data } = await supabase.from('agents')
       .select('id,name,email').ilike('email', normalizedEmail).maybeSingle();
     if (!data) {
-      console.warn(`[reset] no agent matches ${normalizedEmail} \u2014 nothing sent`);
+      console.warn(`[reset] no agent matches ${normalizedEmail} — nothing sent`);
       return res.json(genericReply);
     }
     const token = crypto.randomBytes(24).toString('hex');
@@ -5728,7 +5793,7 @@ app.post('/api/agent/forgot-password', async (req, res) => {
       return res.json(genericReply);
     }
     if (!mailer) {
-      console.error('[reset] SKIPPED \u2014 mailer not configured. Set RESEND_API_KEY.');
+      console.error('[reset] SKIPPED — mailer not configured. Set RESEND_API_KEY.');
       return res.json(genericReply);
     }
     const resetUrl = `${req.protocol}://${req.get('host')}/?reset=${token}`;
@@ -5810,8 +5875,8 @@ function normalizeRole(r) {
    An admin can do everything except touch the broker's own account. To do that
    they either request approval, or use a bypass code the broker has issued. */
 /* ==================== THE KEY-VALUE HELPERS ====================
-   \u26a0 These two are the single most load-bearing pair of functions in the file \u2014 55
-   call sites between them \u2014 and until server 127 they could not report a failure.
+   ⚠ These two are the single most load-bearing pair of functions in the file — 55
+   call sites between them — and until server 127 they could not report a failure.
 
    supabase-js does NOT throw on a database error. It resolves with `{ data, error }`.
    So the `catch` blocks these used to have never fired for the thing they were there
@@ -5821,7 +5886,7 @@ function normalizeRole(r) {
    That is behind at least three bugs found so far: a removed CMA that stayed on
    screen, a quiz reset that silently did nothing, and a password-reset token that was
    never stored. Only 3 of the 55 callers check the return value, so the log is the
-   only place a failure can surface \u2014 which is why every failure now logs. */
+   only place a failure can surface — which is why every failure now logs. */
 async function getSetting(key) {
   if (!supabase) return null;
   try {
@@ -5840,14 +5905,14 @@ async function getSetting(key) {
 
 async function setSetting(key, value) {
   if (!supabase) {
-    console.error(`[kv] WRITE SKIPPED for "${key}" \u2014 no database configured`);
+    console.error(`[kv] WRITE SKIPPED for "${key}" — no database configured`);
     return false;
   }
   try {
     const { error } = await supabase.from(KV_TABLE)
       .upsert({ key, value }, { onConflict: 'key' });
     if (error) {
-      /* \u26a0 The loud one. A write that fails silently is how a broker presses Save,
+      /* ⚠ The loud one. A write that fails silently is how a broker presses Save,
          sees "Saved", and finds the change gone tomorrow. */
       console.error(`[kv] WRITE FAILED for "${key}":`, error.message);
       return false;
@@ -5859,11 +5924,11 @@ async function setSetting(key, value) {
   }
 }
 
-/* \u26a0 A real delete, because setSetting(key, null) is NOT one \u2014 it upserts a null
+/* ⚠ A real delete, because setSetting(key, null) is NOT one — it upserts a null
    value and leaves the row. Use this. */
 /* Write, and answer 500 if it did not stick. Returns false once it has already sent
    the response, so a route reads:  if (!await mustSet(res, key, val)) return;
-   \u26a0 27 routes still report success without checking. They all LOG a failure now, which
+   ⚠ 27 routes still report success without checking. They all LOG a failure now, which
    is the safety net, but anywhere a person is told "Saved" should use this. */
 async function mustSet(res, key, value) {
   const ok = await setSetting(key, value);
@@ -6018,17 +6083,17 @@ app.post('/api/agent/create', async (req, res) => {
     const id = 'agent_' + Date.now();
     const password_hash = hashPassword(defaultPassword);
     const { error } = await supabase.from('agents').insert({ id, name, email: normalizedEmail, password_hash, phone: phone || '', role: normalizeRole(role) });
-    /* \u26a0 A new agent starts with NO public page. They can sign in, work leads and find
+    /* ⚠ A new agent starts with NO public page. They can sign in, work leads and find
        bugs straight away, but nothing about them is on the website until the broker
        switches it on under Agents. Written explicitly as false, because the default
-       for anyone absent from this map is public \u2014 which is what keeps existing agents
+       for anyone absent from this map is public — which is what keeps existing agents
        exactly as they are. */
     if (!error) {
       try {
         const map = await agentPublicMap();
         map[id] = false;
         const okMap = await setSetting(AGENT_LIVE, map);
-        if (okMap === false) console.error('[agent] could not mark', id, 'hidden \u2014 CHECK the switch before they go live');
+        if (okMap === false) console.error('[agent] could not mark', id, 'hidden — CHECK the switch before they go live');
       } catch (e) { console.error('[agent] hide-on-create failed:', e.message); }
     }
     if (error) return res.status(500).json({ error: error.message });
@@ -6211,7 +6276,7 @@ app.post('/api/agent/:id/alerts', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (sess.agentId !== req.params.id && !isStaff(sess)) return res.status(403).json({ error: 'Not permitted.' });
   const b = req.body || {};
-  /* \u26a0 The agent's OWN dialer, not the brokerage's. Stored as a URL template with
+  /* ⚠ The agent's OWN dialer, not the brokerage's. Stored as a URL template with
      {number} in it; blank means a plain tel: link. Validated to http(s) or a custom
      scheme with no spaces, so a paste of something odd cannot become a javascript:
      URL rendered into an href on the call screen. */
@@ -6224,7 +6289,7 @@ app.post('/api/agent/:id/alerts', async (req, res) => {
     smsAddress: String(b.smsAddress || '').trim().slice(0, 120),
     dialerUrl: dialer,
   });
-  /* \u26a0 setSetting returns false on a failed write. Telling the agent "saved" when it
+  /* ⚠ setSetting returns false on a failed write. Telling the agent "saved" when it
      was not is how a setting silently reverts and nobody knows why. */
   if (ok === false) return res.status(500).json({ error: 'That did not save. Try again.' });
   res.json({ ok: true });
@@ -6296,8 +6361,8 @@ It's yours now — log in at bamacoast.com to work it.`,
    The quiz asks that directly now. "As soon as I find the right one" and "just
    watching the market" are different phone calls and one of them is this afternoon.
 
-   \u26a0 This changes what the notification SAYS. It does not add any new automated
-   contact with the lead \u2014 everything here goes to the agent's own inbox and their
+   ⚠ This changes what the notification SAYS. It does not add any new automated
+   contact with the lead — everything here goes to the agent's own inbox and their
    own phone, which is why there is no TCPA question to answer. */
 
 const URGENCY = {
@@ -6334,7 +6399,7 @@ function speedToLeadHtml(b, origin) {
   const phone = String(b.phone || '').replace(/[^0-9+]/g, '');
   const tone = u && u.rank >= 3 ? '#8A2C22' : u && u.rank === 2 ? '#C9971F' : '#3D456B';
 
-  /* \u26a0 The claim link is the whole point of this email on a phone: one tap, no
+  /* ⚠ The claim link is the whole point of this email on a phone: one tap, no
      sign-in, no CRM. The token in the URL is the authorisation. */
   const claimUrl = b.id ? `${origin}/claim/${encodeURIComponent(b.id)}/${claimToken(b.id)}` : '';
 
@@ -6384,7 +6449,7 @@ function speedToLeadHtml(b, origin) {
 }
 
 /* The carrier gateway drops anything long or formatted, so this stays short, plain,
-   and leads with the timeline \u2014 the part that decides whether to pull over. */
+   and leads with the timeline — the part that decides whether to pull over. */
 function speedToLeadSms(b) {
   const u = URGENCY[(b.quiz || {}).timeline];
   const q = b.quiz || {};
@@ -6403,17 +6468,17 @@ function speedToLeadSms(b) {
    A lead arrives, the assigned agent gets an email with a Claim button. Tap it and it
    is theirs. Ignore it and after the window it comes back to the broker to decide.
 
-   \u26a0 The timer lives IN THIS PROCESS, not in a browser. The clocks on the CRM screen
-   \u2014 the timezone strip, the waiting badges \u2014 all tick in JavaScript on whoever has
+   ⚠ The timer lives IN THIS PROCESS, not in a browser. The clocks on the CRM screen
+   — the timezone strip, the waiting badges — all tick in JavaScript on whoever has
    the page open, and stop when the tab closes. They are displays, not schedulers.
    This is setInterval on the server, which runs whether or not anybody is looking.
 
-   \u26a0 The DEADLINE IS STORED ON THE LEAD, never held in memory. A deploy, a crash or a
+   ⚠ The DEADLINE IS STORED ON THE LEAD, never held in memory. A deploy, a crash or a
    platform recycle kills an in-process timer; it must not kill the rule. On restart
    the sweep reads deadlines off the records and carries on, having missed nothing but
    the minute it was down.
 
-   \u26a0 Claiming is not contact. It means "I am on it", not "I have spoken to them", so
+   ⚠ Claiming is not contact. It means "I am on it", not "I have spoken to them", so
    firstTouchAt is untouched and the waiting clock keeps running. Otherwise one tap
    makes somebody vanish off the call list without anyone having rung them. */
 
@@ -6431,7 +6496,7 @@ const CLAIM_START_HOUR = 8;    // Central
 const CLAIM_END_HOUR   = 20;
 
 function centralHour(d) {
-  /* \u26a0 Not the server's clock. This box could be anywhere; the rule is about whether
+  /* ⚠ Not the server's clock. This box could be anywhere; the rule is about whether
      it is a reasonable hour on the Gulf Coast. */
   return Number(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago', hour: 'numeric', hour12: false,
@@ -6439,7 +6504,7 @@ function centralHour(d) {
 }
 
 /* When the window should end for a lead arriving now.
-   \u26a0 Outside working hours the clock does not run \u2014 it starts at 8am. A lead at 2am
+   ⚠ Outside working hours the clock does not run — it starts at 8am. A lead at 2am
    is claimable from 8am, not lost at 2:15am while everyone is asleep. */
 function claimDeadline(from) {
   return afterBusinessMinutes(from, CLAIM_MINUTES);
@@ -6499,7 +6564,7 @@ border-radius:4px;font-weight:700;font-size:15px}</style></head><body><div class
 
   const origin = `${req.protocol}://${req.get('host')}`;
   if (lead.claimedBy) {
-    /* \u26a0 Says WHO has it. "Already claimed" with no name just leaves the person
+    /* ⚠ Says WHO has it. "Already claimed" with no name just leaves the person
        wondering, and they will ask anyway. */
     return page('Already claimed',
       `<p>${esc(lead.claimedByName || 'Somebody')} took this one`
@@ -6518,13 +6583,13 @@ border-radius:4px;font-weight:700;font-size:15px}</style></head><body><div class
   lead.contactDue = lead.firstTouchAt ? '' : contactDeadline(lead.claimedAt);
   await setSetting('lead:' + id, lead);
   console.log(`[claim] ${lead.name || id} claimed by ${lead.claimedByName || lead.claimedBy}`);
-  return page('Got it \u2014 this one is yours',
+  return page('Got it — this one is yours',
     `<p>${esc(lead.name || 'This lead')} is assigned to you and will not go back to the broker.</p>`
     /* ⚠ Said plainly, at the only moment they are certain to read it. Nothing in this
        system contacts a new lead for them, and an agent who assumes otherwise costs
        the brokerage the lead. */
     + `<p><strong>You make the first contact.</strong> Nothing is sent to this person`
-    + ` automatically \u2014 call or message them yourself within the hour, or this goes`
+    + ` automatically — call or message them yourself within the hour, or this goes`
     + ` back to the broker.</p>`
     + `<p>Once you have spoken to them, log it in the CRM and the follow-up sequence`
     + ` takes over from there.</p>`
@@ -6583,7 +6648,7 @@ async function claimSweep() {
         l.events.push({ k: 'uncontacted', at: new Date().toISOString(), note: heldByName });
         await setSetting(row.key, l);
         console.warn(`[contact] ${l.name || row.key} claimed by ${heldByName || heldById} `
-          + `but never contacted \u2014 back to ${broker.name}`);
+          + `but never contacted — back to ${broker.name}`);
 
         /* ⚠ Told, and told why. This one is sharper than the unclaimed note because
            they did take it on: the difference between missing an email and breaking
@@ -6599,10 +6664,10 @@ async function claimSweep() {
                 text: `You claimed ${l.name || 'a lead'}, but there is still nothing logged to show `
                     + `they have been contacted, so after ${CONTACT_MINUTES} minutes it has gone back `
                     + `to ${broker.name}.\n\n`
-                    + `First contact is always the agent's own \u2014 nothing in the system reaches out `
+                    + `First contact is always the agent's own — nothing in the system reaches out `
                     + `to a new lead for you. Once you have spoken to somebody, log it on their card `
                     + `and the follow-up runs by itself from there.\n\n`
-                    + `Nothing is lost \u2014 ask and it can come straight back to you.\n`,
+                    + `Nothing is lost — ask and it can come straight back to you.\n`,
               });
             }
           }
@@ -6619,7 +6684,7 @@ async function claimSweep() {
           .select('id,name,email,role,active').eq('role', 'broker');
         broker = (ags || []).find(a => a.active !== false) || null;
       }
-      if (!broker) { console.warn('[claim sweep] no broker on file \u2014 nothing to reassign to'); return; }
+      if (!broker) { console.warn('[claim sweep] no broker on file — nothing to reassign to'); return; }
 
       const wasId = l.assignedAgentId || '';
       const wasName = l.assignedAgentName || '';
@@ -6632,9 +6697,9 @@ async function claimSweep() {
       l.events = Array.isArray(l.events) ? l.events : [];
       l.events.push({ k: 'unclaimed', at: new Date().toISOString(), note: wasName });
       await setSetting(row.key, l);
-      console.warn(`[claim] ${l.name || row.key} went unclaimed by ${wasName || wasId} \u2014 back to ${broker.name}`);
+      console.warn(`[claim] ${l.name || row.key} went unclaimed by ${wasName || wasId} — back to ${broker.name}`);
 
-      /* \u26a0 The agent is told. Silently taking a lead back is how resentment builds,
+      /* ⚠ The agent is told. Silently taking a lead back is how resentment builds,
          and being told is what changes the behaviour. */
       try {
         if (mailer && wasId) {
@@ -6645,7 +6710,7 @@ async function claimSweep() {
               subject: `Unclaimed: ${l.name || 'a new lead'}`,
               text: `${l.name || 'A lead'} came in and was not claimed within ${CLAIM_MINUTES} minutes, `
                   + `so it has gone back to ${broker.name} to reassign.\n\n`
-                  + `Nothing is lost \u2014 ask and it can come straight back to you.\n`,
+                  + `Nothing is lost — ask and it can come straight back to you.\n`,
             });
           }
         }
@@ -6654,7 +6719,7 @@ async function claimSweep() {
   } catch (e) { console.error('[claim sweep]', e.message); }
 }
 
-/* \u26a0 Every minute, in-process. Node's own scheduler, not a browser and not cron. */
+/* ⚠ Every minute, in-process. Node's own scheduler, not a browser and not cron. */
 setInterval(() => { claimSweep().catch(() => {}); }, 60 * 1000);
 
 /* ---------- picking the sequence a lead belongs on ----------
@@ -6663,12 +6728,12 @@ setInterval(() => { claimSweep().catch(() => {}); }, 60 * 1000);
    go to somebody who asked what their house is worth - that is worse than sending
    nothing, because it proves nobody read it. */
 /* ---------- the built-in openers, as live sequences ----------
-   \u26a0 The broker's instruction: it has to work without anybody building anything
+   ⚠ The broker's instruction: it has to work without anybody building anything
    first. PLAYBOOK_DEFAULTS already holds real, written copy for every way a person
    comes in - it was only ever a gallery to copy from, so a brokerage that never
    opened that screen got no follow-up at all. These are live now.
 
-   \u26a0 Anything the broker builds himself WINS. This is the floor, not the ceiling:
+   ⚠ Anything the broker builds himself WINS. This is the floor, not the ceiling:
    the moment a real campaign matches, the default steps out of the way, so editing
    an opener still does exactly what it looks like it does.
 
@@ -6680,7 +6745,7 @@ function playbookToCampaign(pb) {
   return {
     id: 'pbdef:' + pb.id,
     name: pb.name || 'Follow-up',
-    /* \u26a0 'manual', NOT 'new', when a playbook has no source to match on. Four of the
+    /* ⚠ 'manual', NOT 'new', when a playbook has no source to match on. Four of the
        built-ins (monthly nurture, snowbird, past client, seller-not-ready) match on
        lane or tag instead and run for a YEAR. Defaulting them to "every new lead"
        made a brand-new buyer eligible for a 365-day monthly drip and nothing but
@@ -6692,7 +6757,7 @@ function playbookToCampaign(pb) {
   };
 }
 
-/* \u26a0 Subjects for the instant opener below. The playbook's day-0 step is written as a
+/* ⚠ Subjects for the instant opener below. The playbook's day-0 step is written as a
    TEXT, so it has no subject line - and an email with no subject is a spam filter's
    easiest decision. Short, human, and about them rather than about us. */
 const PB_SUBJECT = {
@@ -6707,7 +6772,7 @@ const PB_SUBJECT = {
 function pbSteps(pb) {
   const out = [];
   const mk = (st, i, suffix, type, subject, body) => ({
-    /* \u26a0 The id must be STABLE across restarts. drip.done stores these, so anything
+    /* ⚠ The id must be STABLE across restarts. drip.done stores these, so anything
        built from Date.now() would come back different after a deploy and every
        message would send a second time. Index into a fixed list is stable. */
     id: 'pbdef:' + pb.id + ':' + i + (suffix || ''),
@@ -6715,7 +6780,7 @@ function pbSteps(pb) {
     type, subject, body,
   });
 
-  /* \u26a0 THE INSTANT OPENER. Nine of the ten built-in sequences open with a TEXT step,
+  /* ⚠ THE INSTANT OPENER. Nine of the ten built-in sequences open with a TEXT step,
      and texting is never automated here - so out of the box the day-0 send was
      nothing at all, on every funnel that matters. Speed to lead was the entire point
      and it would have shipped doing nothing.
@@ -6735,7 +6800,7 @@ function pbSteps(pb) {
     out.push(mk(st, i, '',
       st.ch === 'email' ? 'email' : 'task',
       st.s || (st.ch === 'email' ? 'Following up' : 'Reach out'),
-      /* \u26a0 sms stays a TASK, never an automated send. Texting without prior written
+      /* ⚠ sms stays a TASK, never an automated send. Texting without prior written
          consent carries a penalty per message. Same rule the CRM applies. */
       st.ch === 'sms' ? 'Text them: ' + (st.t || '') : (st.t || '')));
   });
@@ -6751,7 +6816,7 @@ function livePlaybooks() {
 }
 
 /* Resolves a campaign id to a campaign, checking the broker's own first and then the
-   built-ins. \u26a0 The sweep needs this too - a lead enrolled on a default would
+   built-ins. ⚠ The sweep needs this too - a lead enrolled on a default would
    otherwise find no campaign and quietly stall forever. */
 async function campaignById(id, list) {
   if (!id) return null;
@@ -6761,7 +6826,7 @@ async function campaignById(id, list) {
 }
 
 /* ---------- what the site calls a source vs what a playbook matches on ----------
-   \u26a0 THESE DID NOT LINE UP AND IT PUT A SELLER ON A BUYER SEQUENCE. The quiz writes
+   ⚠ THESE DID NOT LINE UP AND IT PUT A SELLER ON A BUYER SEQUENCE. The quiz writes
    source 'quiz-seller'; the seller playbook matches on 'value'. No exact match, so it
    fell through to the "every new lead" catch-all - which is the BUYER opener. A seller
    asking what their home is worth was emailed "are you already local, or would this be
@@ -6784,7 +6849,7 @@ const SOURCE_TO_TRIGGER = {
 function triggerForSource(src) {
   const k = String(src || '').toLowerCase().trim();
   if (SOURCE_TO_TRIGGER[k]) return SOURCE_TO_TRIGGER[k];
-  /* \u26a0 Imported and referral sources - 'remax.com', 'propertyboost', 'manual add',
+  /* ⚠ Imported and referral sources - 'remax.com', 'propertyboost', 'manual add',
      'organic website' - have no funnel behind them. They fall to the catch-all
      deliberately rather than being force-fitted to a story we do not know. */
   return k;
@@ -6798,7 +6863,7 @@ async function pickSequenceFor(lead) {
   if (!Array.isArray(list)) list = [];
   const src = triggerForSource(lead.source);
 
-  /* \u26a0 A seller who says they are only curious must not get the same run as one who
+  /* ⚠ A seller who says they are only curious must not get the same run as one who
      says "I am ready now". Same doorway, completely different person: chase the
      curious one and you lose them, and they are the group most likely to be early
      enough to actually win. The built-ins already contain the right sequence for
@@ -6810,7 +6875,7 @@ async function pickSequenceFor(lead) {
   const curious = q.timeline === 'looking' || sit.includes('just curious');
   if (curious && (lead.type === 'seller' || src === 'value')) {
     const slow = livePlaybooks().find(c => c.id === 'pbdef:pb_seller_slow');
-    /* \u26a0 The broker's own beats the built-in here too, if he has written one. */
+    /* ⚠ The broker's own beats the built-in here too, if he has written one. */
     const own = list.find(c => c && !c.paused && String(c.trigger).toLowerCase() === 'value-curious');
     if (own || slow) return own || slow;
   }
@@ -6824,16 +6889,16 @@ async function pickSequenceFor(lead) {
 }
 
 /* ---------- the drip sweep (server 137) ----------
-   \u26a0 THIS IS WHAT MAKES FIVE MINUTES POSSIBLE. Until now the only thing that advanced
+   ⚠ THIS IS WHAT MAKES FIVE MINUTES POSSIBLE. Until now the only thing that advanced
    a sequence was POST /api/drip/tick, which the CRM calls when an agent loads it. So a
    lead arriving at 2am - or at 2pm while everyone is out showing houses - got nothing
    until somebody happened to open a browser. A speed-to-lead promise that depends on a
    tab being open is not a promise.
 
    Same shape as claimSweep: in-process setInterval, deadlines read off the record, no
-   session. \u26a0 It deliberately does NOT filter by agent. The session-bound route had to,
+   session. ⚠ It deliberately does NOT filter by agent. The session-bound route had to,
    because it was acting as somebody; this is the house acting on its own behalf. */
-/* \u26a0 Proof the timer is alive. Without this the only way to tell a sweep that is not
+/* ⚠ Proof the timer is alive. Without this the only way to tell a sweep that is not
    running from a sweep that ran and found nothing was to read the host logs, which is
    not something the broker can do. */
 let DRIP_RUNS = 0, DRIP_LAST_AT = null, DRIP_LAST_SENT = 0, DRIP_LAST_ERR = '';
@@ -6851,7 +6916,7 @@ async function dripSweep() {
     let campaigns = [];
     try { campaigns = (await getSetting('settings:dripCampaigns')) || []; } catch (e) { campaigns = []; }
     if (!Array.isArray(campaigns)) campaigns = [];
-    /* \u26a0 Do NOT bail when the broker has built nothing. The built-in openers are live
+    /* ⚠ Do NOT bail when the broker has built nothing. The built-in openers are live
        sequences now, so an empty list is the normal state, not an idle one. This
        early return is what would have made "works out of the box" ship inert. */
     const { data, error } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
@@ -6859,7 +6924,7 @@ async function dripSweep() {
     const now = Date.now();
     let sent = 0;
 
-    /* \u26a0 Resolved ONCE per sweep, not per lead - a lookup inside the loop would hit the
+    /* ⚠ Resolved ONCE per sweep, not per lead - a lookup inside the loop would hit the
        database once for every lead every minute. Used only when a lead has no assigned
        agent name, so the email is still signed by a human. */
     let sweepBrokerName = '';
@@ -6874,7 +6939,7 @@ async function dripSweep() {
       const lead = row.value;
       if (!lead || !lead.drip || !lead.drip.campaignId || lead.drip.stopped) continue;
       if (lead.unsubscribed) continue;
-      /* \u26a0 Through the resolver, not a plain find(): a lead enrolled on a built-in
+      /* ⚠ Through the resolver, not a plain find(): a lead enrolled on a built-in
          opener is not in the broker's own list and would otherwise stall forever
          with no error anywhere. */
       const camp = await campaignById(lead.drip.campaignId, campaigns);
@@ -6885,7 +6950,7 @@ async function dripSweep() {
 
       let changed = false;
       for (const step of due) {
-        /* \u26a0 A task step is a reminder for the AGENT and must never be mailed to the
+        /* ⚠ A task step is a reminder for the AGENT and must never be mailed to the
            lead. The session route pushes it to a task list; here there is nobody to
            hand it to, so it is marked done and left for the CRM to surface. Sending
            it would post "Call them. Six days, no reply" to the client. */
@@ -6896,11 +6961,11 @@ async function dripSweep() {
         }
         if (!lead.email) continue;
         {
-          /* \u26a0 Same footer the session route sends: real address and a working
+          /* ⚠ Same footer the session route sends: real address and a working
              unsubscribe. This one has a statutory penalty attached to getting it
              wrong, and an automated sender is exactly where it would get forgotten. */
           const unsub = PUBLIC_ORIGIN + '/unsub/' + lead.id + '.' + unsubToken(lead.id);
-          /* \u26a0 {agent} is a PERSON. Falling back to the brokerage name signed the email
+          /* ⚠ {agent} is a PERSON. Falling back to the brokerage name signed the email
              "Avani & Co Real Estate Southern Sands" and opened it "it's Avani & Co
              Real Estate Southern Sands" - which reads as a machine, in the one message
              whose whole job is to sound like somebody wrote it. Assigned agent first,
@@ -6908,20 +6973,20 @@ async function dripSweep() {
           const agent = { name: lead.assignedAgentName || sweepBrokerName || BROKERAGE_NAME };
           try {
             await mailer.sendMail({
-              /* \u26a0 marketing:true, or this goes out from the TRANSACTIONAL sender -
+              /* ⚠ marketing:true, or this goes out from the TRANSACTIONAL sender -
                  the same address password resets and claim alerts use. Automated
                  follow-up burning that domain's reputation is how the mail that HAS
                  to arrive stops arriving. */
               marketing: true,
               to: lead.email,
               subject: dripClean(dripFill(step.subject, lead, agent), 'subject'),
-              /* \u26a0 The phone number is not optional. Alabama requires real estate
+              /* ⚠ The phone number is not optional. Alabama requires real estate
                  advertising to identify the brokerage, and the broker's instruction is
                  that a contact number goes on anything that goes out. The session-side
                  drip already carried it; this one did not, so the automated sends were
                  the only mail leaving without a way to phone back. */
               text: dripClean(dripFill(step.body, lead, agent), 'body')
-                  + '\n\n\u2014\n' + (agent.name ? agent.name + '\n' : '')
+                  + '\n\n—\n' + (agent.name ? agent.name + '\n' : '')
                   + BROKERAGE_NAME + '\n'
                   + BROKERAGE_PHONE + '\n'
                   + BROKERAGE_ADDRESS + '\n\n'
@@ -6930,7 +6995,7 @@ async function dripSweep() {
             sent++;
           } catch (e) { console.error('[drip sweep] send failed:', e.message); continue; }
         }
-        /* \u26a0 dripDue decides what is outstanding from lead.drip.done - an array of
+        /* ⚠ dripDue decides what is outstanding from lead.drip.done - an array of
            step IDS - and ignores lead.drip.step entirely. Advancing `step` marks
            nothing as done, so the same message would go out again on the next tick,
            and the next, once a minute forever. Record the id. */
@@ -6945,23 +7010,23 @@ async function dripSweep() {
   } catch (e) { DRIP_LAST_ERR = e.message; console.error('[drip sweep]', e.message); }
 }
 
-/* \u26a0 Every minute, so the day-0 message lands inside the five-minute window rather
+/* ⚠ Every minute, so the day-0 message lands inside the five-minute window rather
    than whenever somebody next happens to sign in. */
 setInterval(() => { dripSweep().catch(() => {}); }, 60 * 1000);
 
 /* ---------- Settings > Check the follow-up system ----------
-   \u26a0 Built for the same reason as the MLS feed prober: three rounds were spent
+   ⚠ Built for the same reason as the MLS feed prober: three rounds were spent
    guessing why no follow-up arrived, because from the outside a sequence that never
    enrolled, one that enrolled but has nothing due, and one that tried to send and was
    refused all look identical - silence. This asks the system instead of reasoning
    about it. A dashboard is not a source of truth. */
 /* ---------- putting EXISTING leads on a follow-up (server 153) ----------
-   \u26a0 Enrolment happens at arrival, which means every lead already in the book when
+   ⚠ Enrolment happens at arrival, which means every lead already in the book when
    that was built - the CSV imports, anyone added by hand, anyone from before - can
    never be enrolled by it. They did not come through the intake route and never will
    again. Eighteen real people sat in this system uncontacted for exactly that reason.
 
-   \u26a0 This is the first thing in the CRM that starts an automated send to a list of
+   ⚠ This is the first thing in the CRM that starts an automated send to a list of
    real people on purpose. It is capped, it previews before it acts, and it refuses
    anyone unsubscribed, without an email, or already running. */
 app.post('/api/drip/enrol/preview', async (req, res) => {
@@ -6991,7 +7056,7 @@ app.post('/api/drip/enrol/preview', async (req, res) => {
 app.post('/api/drip/enrol', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const campaignId = String((req.body || {}).campaignId || '');
-  /* \u26a0 Hard ceiling of 25 regardless of what the client asks for. A new sending domain
+  /* ⚠ Hard ceiling of 25 regardless of what the client asks for. A new sending domain
      that suddenly mails a stale list looks like a spammer to every filter there is,
      and the client is not the right place to enforce that. */
   const cap = Math.max(1, Math.min(25, parseInt((req.body || {}).cap, 10) || 5));
@@ -7015,7 +7080,7 @@ app.post('/api/drip/enrol', async (req, res) => {
       if (l.drip && l.drip.campaignId && !l.drip.stopped) continue;
       l.drip = { campaignId: camp.id, step: 0,
                  startedAt: new Date().toISOString(), stopped: false, enrolledBy: sess.name || '' };
-      /* \u26a0 setSetting returns false on a failed write rather than throwing. Counting an
+      /* ⚠ setSetting returns false on a failed write rather than throwing. Counting an
          enrolment that never saved is how the screen says 5 and the sweep sends 3. */
       const ok = await setSetting(row.key, l);
       if (ok === false) { failed++; continue; }
@@ -7030,22 +7095,22 @@ app.post('/api/drip/enrol', async (req, res) => {
 
 /* ================= AGENT GOALS (server 161) =================
    Each agent sets a weekly target for calls, emails and new leads, and sees where they
-   are against it. Set by the agent, not imposed by the broker \u2014 the broker asked for
+   are against it. Set by the agent, not imposed by the broker — the broker asked for
    "self goal", and a number somebody chose is one they argue with less.
 
-   \u26a0 THE COUNT MUST BE HONEST OR THE FEATURE IS WORSE THAN NOTHING. An agent who works
+   ⚠ THE COUNT MUST BE HONEST OR THE FEATURE IS WORSE THAN NOTHING. An agent who works
    hard and sees 3 of 25 will stop looking at it by Thursday. So:
      - only real, recorded actions count
      - automated follow-up does NOT count as the agent's email. The machine sent it.
      - events carry `by` from server 161 onward; older ones fall back to the lead's
        assigned agent, which is a guess and is treated as one.
 
-   \u26a0 The week runs Monday to Sunday in CENTRAL time, because that is the working week
+   ⚠ The week runs Monday to Sunday in CENTRAL time, because that is the working week
    of the brokerage. Using UTC would roll the counter over at 6pm on Sunday. */
 
 const GOALS_KEY = 'settings:agentGoals';
 
-/* \u26a0 Starting numbers, not targets handed down. Deliberately modest: a goal that is
+/* ⚠ Starting numbers, not targets handed down. Deliberately modest: a goal that is
    obviously unreachable gets ignored in week one, and the point is the habit. The
    agent edits these to whatever they actually intend to do. */
 const GOAL_DEFAULTS = { calls: 20, emails: 15, leads: 4 };
@@ -7086,20 +7151,20 @@ const GOAL_CALL_EVENTS  = /^call_/;                       // from the call list
 const GOAL_EMAIL_EVENTS = /^(welcomed|letter_sent|listings_sent|email_sent)$/;
 
 /* ================= ANALYTICS (server 175) =================
-   \u26a0 FIRST PARTY ON PURPOSE, not Google Analytics.
+   ⚠ FIRST PARTY ON PURPOSE, not Google Analytics.
 
    Three reasons. GA needs a cookie banner in most of the world and the broker does not
    want another consent popup on a lead-capture page. GA data lives in a separate console
    the agents will never open, and the broker's whole reason for asking was "it motivates
-   them to see what is working" \u2014 data they cannot see motivates nobody. And GA would tell
+   them to see what is working" — data they cannot see motivates nobody. And GA would tell
    us about visitors while telling us nothing about which AGENT's link brought them.
 
-   \u26a0 NO COOKIES, NO IP ADDRESSES, NO PERSONAL DATA. This counts page views by path, by
+   ⚠ NO COOKIES, NO IP ADDRESSES, NO PERSONAL DATA. This counts page views by path, by
    referrer host, and by agent slug when a link carried one. That is enough to answer
    "what is working" and it keeps the site out of consent-banner territory. Do not extend
    this to store anything that identifies a person without talking to the attorney first.
 
-   \u26a0 COUNTERS ARE HELD IN MEMORY AND FLUSHED ONCE A MINUTE. A database write per page view
+   ⚠ COUNTERS ARE HELD IN MEMORY AND FLUSHED ONCE A MINUTE. A database write per page view
    would be both slow and expensive, and this site does not need per-visit detail. The
    cost is that a restart loses up to a minute of counts, which is an acceptable trade for
    something nobody is billing against. */
@@ -7110,7 +7175,7 @@ let PV_LAST_FLUSH = 0;
 
 function pvToday() { return new Date().toISOString().slice(0, 10); }
 
-/* \u26a0 Paths are normalized so /insights/a-long-slug and /homes/gulf-shores stay useful
+/* ⚠ Paths are normalized so /insights/a-long-slug and /homes/gulf-shores stay useful
    but query strings and ids do not explode the key count. */
 function pvCleanPath(p) {
   let s = String(p || '/').split('?')[0].split('#')[0].slice(0, 160);
@@ -7158,7 +7223,7 @@ async function pvFlush() {
     try {
       const key = PV_PREFIX + day;
       const cur = (await getSetting(key)) || { paths: {}, refs: {}, agents: {}, total: 0 };
-      /* \u26a0 Merged, not replaced. Two flushes in one day must add up rather than the second
+      /* ⚠ Merged, not replaced. Two flushes in one day must add up rather than the second
          wiping the first. */
       for (const g of ['paths', 'refs', 'agents']) {
         cur[g] = cur[g] || {};
@@ -7166,7 +7231,7 @@ async function pvFlush() {
       }
       cur.total = (cur.total || 0) + add.total;
       const ok = await setSetting(key, cur);
-      /* \u26a0 Put the counts back in the buffer if the write failed, or they are gone. */
+      /* ⚠ Put the counts back in the buffer if the write failed, or they are gone. */
       if (ok === false) PV_BUFFER[day] = add;
     } catch (e) { PV_BUFFER[day] = add; }
   }
@@ -7195,8 +7260,8 @@ app.get('/api/analytics', async (req, res) => {
     }
   } catch (e) { return res.status(500).json({ error: 'Could not read the numbers.' }); }
 
-  /* \u26a0 An agent sees the whole site's traffic \u2014 that is the point, it shows them what is
-     working \u2014 but the per-agent breakdown is the broker's. Seeing another agent's link
+  /* ⚠ An agent sees the whole site's traffic — that is the point, it shows them what is
+     working — but the per-agent breakdown is the broker's. Seeing another agent's link
      performance is a different thing from seeing which articles people read. */
   if (!staff) {
     const mine = out.agents[slugify(sess.name || '')] || 0;
@@ -7211,7 +7276,7 @@ app.get('/api/analytics', async (req, res) => {
 });
 
 /* ================= BROKER WEEKLY STATS =================
-   \u26a0 The broker asked for this in his own words: "I don't want to baby them but helps me
+   ⚠ The broker asked for this in his own words: "I don't want to baby them but helps me
    help them be accountable." So: he sees everyone, each agent sees only themselves, and
    there is no public leaderboard. Ranking colleagues against each other publicly
    motivates the top two and demoralizes everybody else, and that was not what he asked
@@ -7306,7 +7371,7 @@ app.get('/api/goals', async (req, res) => {
       for (const ev of (Array.isArray(l.events) ? l.events : [])) {
         if (!ev || !ev.at) continue;
         if (new Date(ev.at).getTime() < since) continue;
-        /* \u26a0 `by` when we have it; the lead's owner only as a fallback for events
+        /* ⚠ `by` when we have it; the lead's owner only as a fallback for events
            recorded before attribution existed. */
         const actor = ev.by || l.assignedAgentId || '';
         if (actor !== who) continue;
@@ -7333,7 +7398,7 @@ app.post('/api/goals', async (req, res) => {
   if (who !== sess.agentId && !isStaff(sess))
     return res.status(403).json({ error: 'Not permitted.' });
 
-  /* \u26a0 Clamped. A goal of 0 makes the bar meaningless and a goal of 9999 makes it
+  /* ⚠ Clamped. A goal of 0 makes the bar meaningless and a goal of 9999 makes it
      depressing; neither is a number anybody chose on purpose. */
   const clamp = (v, d) => {
     const n = parseInt(v, 10);
@@ -7397,8 +7462,8 @@ app.get('/api/drip/status', async (req, res) => {
         stopped: !!(l.drip && l.drip.stopped),
         sentSoFar: (l.drip && Array.isArray(l.drip.done)) ? l.drip.done.length : 0,
         dueNow: due,
-        /* \u26a0 Reported explicitly, because a missing call reminder otherwise looks like a
-           bug. It is not \u2014 the lead has no phone number, so the reminder is skipped
+        /* ⚠ Reported explicitly, because a missing call reminder otherwise looks like a
+           bug. It is not — the lead has no phone number, so the reminder is skipped
            rather than sitting on the Today list where nobody can act on it. */
         noPhone: !String(l.phone || '').replace(/[^0-9]/g, ''),
         wouldMatch: campId ? null : ((await pickSequenceFor(l)) || {}).name || 'nothing',
@@ -7423,7 +7488,7 @@ app.post('/api/notify-lead', async (req, res) => {
   const camp = campaignLabel(cleanCampaign(campaign));
 
   /* ---------- SPEED TO LEAD: attach the follow-up, unconditionally ----------
-     \u26a0 This runs for EVERY new lead. It used to sit inside the agent-notification
+     ⚠ This runs for EVERY new lead. It used to sit inside the agent-notification
      branch, gated on there being an assigned agent with alerts enabled whose address
      differed from the notification address - so an unassigned lead, or one belonging
      to the broker himself, was never enrolled. It looked correct in review and did
@@ -7431,7 +7496,7 @@ app.post('/api/notify-lead', async (req, res) => {
 
      Enrolment is not a notification concern. Nothing below this may gate it.
 
-     \u26a0 It does NOT set firstTouchAt, and must never be changed to. The automated email
+     ⚠ It does NOT set firstTouchAt, and must never be changed to. The automated email
      is an opener, not a conversation - the agent's own call is still owed within the
      hour, and firstTouchAt is what proves it happened. Wire this to firstTouchAt and
      the contact deadline silently stops meaning anything. */
@@ -7444,7 +7509,7 @@ app.post('/api/notify-lead', async (req, res) => {
         rec.drip = { campaignId: seq.id, step: 0,
                      startedAt: new Date().toISOString(), stopped: false };
         const ok = await setSetting(leadKey, rec);
-        /* \u26a0 setSetting returns false on failure rather than throwing. An enrolment
+        /* ⚠ setSetting returns false on failure rather than throwing. An enrolment
            reported to the log but never written is exactly the class of bug this
            project keeps paying for. */
         if (ok === false) console.error('[drip] enrolment WRITE FAILED for ' + leadKey);
@@ -7505,8 +7570,8 @@ app.post('/api/notify-lead', async (req, res) => {
                timeline belongs in it. "New lead: Dawn Whitfield" and "READY NOW
                — Dawn Whitfield" get opened at different speeds. */
             const _stlU = URGENCY[((req.body || {}).quiz || {}).timeline];
-            /* \u26a0 The window opens when the notification goes out, not when the record
-               was written \u2014 you cannot fail to answer something you were never told
+            /* ⚠ The window opens when the notification goes out, not when the record
+               was written — you cannot fail to answer something you were never told
                about. Stored on the lead so the sweep survives a restart. */
             try {
               const _lk = 'lead:' + (req.body || {}).id;
@@ -7514,7 +7579,7 @@ app.post('/api/notify-lead', async (req, res) => {
               if (_l && !_l.claimedBy && !_l.claimDue) {
                 _l.claimDue = claimDeadline(new Date());
                 _l.assignedAgentName = ag.name || '';
-                /* \u26a0 Enrolment used to live HERE and it was wrong. This block sits four
+                /* ⚠ Enrolment used to live HERE and it was wrong. This block sits four
                    conditions deep - there must be an assigned agent, the agent must be
                    active with an email, email alerts must be on, AND the agent's address
                    must differ from the notification address. That last one alone excludes
@@ -7528,7 +7593,7 @@ app.post('/api/notify-lead', async (req, res) => {
             for (const to of extra) {
               await mailer.sendMail({
                 to,
-                subject: (_stlU ? _stlU.label + ' \u2014 ' : 'New lead: ') + (name || 'Unknown'),
+                subject: (_stlU ? _stlU.label + ' — ' : 'New lead: ') + (name || 'Unknown'),
                 html: speedToLeadHtml(req.body || {}, `${req.protocol}://${req.get('host')}`),
                 text: `${name || 'Someone'} just inquired through bamacoast.com.
 
@@ -7666,11 +7731,11 @@ Keep replies short (2-4 sentences), warm, and conversational — never robotic o
    might do it anyway, and checks both what came in and what went out. Two
    independent guards, because a prompt is guidance and this is a rule.
 
-   \u26a0 FAIR HOUSING. Steering does not require intent. Answering "is this a good
+   ⚠ FAIR HOUSING. Steering does not require intent. Answering "is this a good
    area for families?" or "what are the schools like?" with anything other than a
    pointer to public data is a violation, and it is the brokerage's license.
 
-   \u26a0 LICENSED ADVICE. Opining on price, contract terms, or what somebody should
+   ⚠ LICENSED ADVICE. Opining on price, contract terms, or what somebody should
    offer is licensed activity in Alabama and Florida. Software is not licensed. */
 const FH_TOPICS = [
   /\bschool(s|ing|ed)?\b/i, /\bschool district\b/i,
@@ -7729,7 +7794,7 @@ app.post('/api/chat', async (req, res) => {
   /* Guard 1: what they asked. Caught before the model ever sees it. */
   const asked = guardTopic(message);
   if (asked) {
-    console.log(`[chat] ${asked} topic caught on the way in \u2014 handed to an agent`);
+    console.log(`[chat] ${asked} topic caught on the way in — handed to an agent`);
     return res.json({ reply: GUARD_REPLY[asked], handoff: true, reason: asked });
   }
 
@@ -7744,7 +7809,7 @@ app.post('/api/chat', async (req, res) => {
        brokerage's license and a prompt is not a guarantee. */
     const said = guardTopic(reply);
     if (said) {
-      console.warn(`[chat] model output tripped the ${said} guard \u2014 replaced`);
+      console.warn(`[chat] model output tripped the ${said} guard — replaced`);
       return res.json({ reply: GUARD_REPLY[said], handoff: true, reason: said });
     }
 
@@ -8183,13 +8248,13 @@ app.get('/api/mls-test', async (req, res) => {
 });
 
 app.get('/api/health', async (req, res) => {
-  /* \u26a0 Never cached. This route exists to answer "what is actually running", and a
-     cached answer to that question is worse than no answer \u2014 it sent us chasing a
+  /* ⚠ Never cached. This route exists to answer "what is actually running", and a
+     cached answer to that question is worse than no answer — it sent us chasing a
      deploy that had already worked. */
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v206',
+    serverVersion: 'v207',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -8272,7 +8337,7 @@ app.get('/', async (req, res, next) => {
 
   // Social platforms render og:title large and bold and og:description in small
   // gray text, so the brokerage name leads the title — AREC 790-X-3-.16.
-  const title = `${BROKERAGE_NAME} \u2014 ${listing.UnparsedAddress || ''}`
+  const title = `${BROKERAGE_NAME} — ${listing.UnparsedAddress || ''}`
               + `${listing.City ? ', ' + listing.City : ''}`
               + `${price ? ' \u00b7 $' + price.toLocaleString() : ''}`;
   const desc = bits || 'View this listing at bamacoast.com';
@@ -8432,7 +8497,7 @@ app.post('/api/marketing/email', async (req, res) => {
         reply_to: sess.email || undefined,
         subject: String(subject || '').slice(0, 200) || 'Documents from ' + BROKERAGE_NAME,
         text: (String(message || '').slice(0, 4000) || 'Attached.') +
-              `\n\n\u2014 ${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\nbamacoast.com`,
+              `\n\n— ${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}\nbamacoast.com`,
         ...(htmlBody ? { html: htmlBody } : {}),
         ...(attachments.length ? { attachments } : {}),
       }),
@@ -8492,8 +8557,8 @@ app.get('/api/agent/by-slug/:slug', async (req, res) => {
       .select('id,name,email,phone,role,active').order('name');
     const match = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(req.params.slug));
     if (!match) return res.status(404).json({ error: 'No agent by that name.' });
-    /* \u26a0 An agent whose profile is not live must 404 exactly like one who does not
-       exist. Anything softer \u2014 a stub page, a redirect \u2014 confirms they are there. */
+    /* ⚠ An agent whose profile is not live must 404 exactly like one who does not
+       exist. Anything softer — a stub page, a redirect — confirms they are there. */
     if (!agentIsPublic(await agentPublicMap(), match.id))
       return res.status(404).json({ error: 'No agent by that name.' });
     const profile = await getSetting('agentPublic:' + match.id) || {};
@@ -8605,20 +8670,20 @@ app.post('/api/agent/:id/public-profile', async (req, res) => {
                                   : (existing.licenseNumbers || {}),
     specialties: clean(b.specialties), languages: clean(b.languages),
     facebook: clean(b.facebook), instagram: clean(b.instagram),
-    /* \u26a0 PERSONAL BRANDING (server 176). Agents on a team have their own logo and colors
+    /* ⚠ PERSONAL BRANDING (server 176). Agents on a team have their own logo and colors
        and were re-uploading them into every flyer and newsletter. Saved once here, then
        reused wherever their name appears.
-       \u26a0 The logo goes through cleanPhoto, the same validator the headshot uses, so it is
+       ⚠ The logo goes through cleanPhoto, the same validator the headshot uses, so it is
        a data URL of a known image type and nothing else. A raw URL from anywhere would
        let somebody point the brokerage's pages at a host we do not control.
-       \u26a0 teamName is separate from the brokerage name. An agent may run "The Smith Group"
-       inside Avani & Co, and both have to appear \u2014 the brokerage name is a licensing
+       ⚠ teamName is separate from the brokerage name. An agent may run "The Smith Group"
+       inside Avani & Co, and both have to appear — the brokerage name is a licensing
        requirement, not a design choice. */
     logo: cleanPhoto(b.logo),
     teamName: clean(b.teamName).slice(0, 80),
     brandColor: /^#[0-9a-f]{6}$/i.test(String(b.brandColor || '').trim())
       ? String(b.brandColor).trim() : (existing.brandColor || ''),
-    /* \u26a0 Two colors. One cannot be both a heading and a button \u2014 a pale gold heading
+    /* ⚠ Two colors. One cannot be both a heading and a button — a pale gold heading
        reads fine and a pale gold button disappears. */
     brandAccent: /^#[0-9a-f]{6}$/i.test(String(b.brandAccent || '').trim())
       ? String(b.brandAccent).trim() : (existing.brandAccent || ''),
@@ -8648,7 +8713,7 @@ function agentSeoHtml(a, origin){
   const url = `${origin}/${a.slug}`;
   const role = a.role === 'broker' ? 'Qualifying Broker' : (a.title || 'REALTOR\u00AE');
   const area = a.serviceArea ? ` serving ${a.serviceArea}` : '';
-  const title = `${a.name} \u2014 ${role} | ${BROKERAGE_NAME}`;
+  const title = `${a.name} — ${role} | ${BROKERAGE_NAME}`;
   const desc = (a.bio && a.bio.trim())
     ? a.bio.trim().replace(/\s+/g, ' ').slice(0, 300)
     : `${a.name}, ${role} with ${BROKERAGE_NAME}${area}. Call ${a.phone} or search every active listing at bamacoast.com.`;
@@ -8695,7 +8760,7 @@ function agentSeoHtml(a, origin){
 <script type="application/ld+json">${JSON.stringify(ld)}</script>
 </head><body>
 <h1>${esc(BROKERAGE_NAME)}</h1>
-<h2>${esc(a.name)} \u2014 ${esc(role)}</h2>
+<h2>${esc(a.name)} — ${esc(role)}</h2>
 ${a.serviceArea ? `<p>Serving ${esc(a.serviceArea)}.</p>` : ''}
 <p>${esc(desc)}</p>
 <p><a href="${esc(url)}">${esc(url)}</a> \u00b7 ${esc(a.phone)}</p>
@@ -8727,14 +8792,14 @@ async function loadAgentForSeo(slug){
    and articles. Nothing on this site answered "homes for sale in Gulf Shores" — the
    highest-intent unpaid search in this market — so that traffic went to Zillow.
 
-   \u26a0 SCALED CONTENT. Google's spam policy targets pages generated at volume to rank.
+   ⚠ SCALED CONTENT. Google's spam policy targets pages generated at volume to rank.
    The defence here is not word count, it is that every page is anchored to LIVE
    inventory from the feed: real active counts, a real price range, real property
    types, updated hourly. A page that tells you there are 47 condos in Orange Beach
    between $310k and $1.2m right now is not thin content, and no competitor's
    template can say it. Twelve towns, hand-written intros, no generation loop.
 
-   \u26a0 FAIR HOUSING. Area pages are exactly where steering language appears — "great
+   ⚠ FAIR HOUSING. Area pages are exactly where steering language appears — "great
    for families", "safe", "good schools". Every intro below is about GEOGRAPHY and
    HOUSING STOCK only, and each one is run through fhScan() at boot so a careless
    edit later gets caught rather than published. */
@@ -8750,7 +8815,7 @@ const AREAS = [
         + 'inventory. Marina and boat-slip properties trade here more than anywhere else '
         + 'on this coast.' },
   { slug:'fort-morgan', name:'Fort Morgan', city:'Fort Morgan',
-    blurb:'The peninsula west of Gulf Shores \u2014 low-density, largely stilted beach '
+    blurb:'The peninsula west of Gulf Shores — low-density, largely stilted beach '
         + 'houses on the Gulf and Mobile Bay sides, with far fewer mid-rise buildings '
         + 'than the towns to the east. Rental-history properties are common.' },
   { slug:'fairhope', name:'Fairhope', city:'Fairhope',
@@ -8784,12 +8849,12 @@ const AREAS = [
         + 'operating on the water.' },
 ];
 
-/* \u26a0 Boot-time check on our own copy. If somebody edits a blurb later and reaches
+/* ⚠ Boot-time check on our own copy. If somebody edits a blurb later and reaches
    for the language that gets brokerages sued, the log says so on the next restart. */
 AREAS.forEach(a => {
   const hits = fhScan(a.blurb + ' ' + a.name);
   if (hits.length) {
-    console.error(`[areas] \u26a0 FAIR HOUSING in "${a.name}" copy: `
+    console.error(`[areas] ⚠ FAIR HOUSING in "${a.name}" copy: `
       + hits.map(h => `"${h.phrase}" (${h.why})`).join(', '));
   }
 });
@@ -8823,7 +8888,7 @@ async function areaStats(city) {
         out.types[t] = (out.types[t] || 0) + 1;
       });
       /* A handful of real listings, newest-priced-first, each carrying its IDX
-         credit. Not a full search result \u2014 the point of the page is the town. */
+         credit. Not a full search result — the point of the page is the town. */
       out.sample = rows.slice(0, 6).map(r => ({
         key: r.ListingKey || r.ListingId || '',
         addr: r.UnparsedAddress || '',
@@ -8971,7 +9036,7 @@ ${esc(BROKERAGE_ADDRESS)}<br>
 
 /* ==================== CMA DELIVERY (server 117) ====================
    The report itself is produced in RPR. Nothing here analyses anything, adds a cover
-   page, or touches the numbers \u2014 the RPR PDF already carries the subject photo, both
+   page, or touches the numbers — the RPR PDF already carries the subject photo, both
    licence numbers, the brokerage details and the "this is not an appraisal" wording
    that Alabama requires. Wrapping our own cover around that would give the seller two
    cover pages and make it look assembled rather than produced.
@@ -8981,7 +9046,7 @@ ${esc(BROKERAGE_ADDRESS)}<br>
    three times on a Sunday evening is the strongest buying signal a seller ever gives,
    and it currently vanishes.
 
-   \u26a0 LICENSING, UNRESOLVED. Emailing an RPR PDF to your own client is the intended
+   ⚠ LICENSING, UNRESOLVED. Emailing an RPR PDF to your own client is the intended
    use and nobody would question it. Storing it, serving it from our domain behind a
    token and recording engagement is a different act, and the report also contains
    MLS-derived data reaching us through RPR's licence rather than through Bridge.
@@ -8999,16 +9064,16 @@ function cmaToken(id) {
 /* ---------- the agent uploads what RPR produced ---------- */
 
 /* ==================== VIDEO PROMOS (server 122) ====================
-   A library of videos \u2014 listing walkthroughs, marketing pieces \u2014 and a tracked link
+   A library of videos — listing walkthroughs, marketing pieces — and a tracked link
    per person you send one to.
 
-   \u26a0 Nothing is hosted here. The video stays on YouTube or Vimeo, where it is already
+   ⚠ Nothing is hosted here. The video stays on YouTube or Vimeo, where it is already
    paid for, already transcoded and already served fast. This stores a link and wraps
    it in a page we control so the open can be counted. Hosting video out of this
    Express process would be slow, expensive and pointless.
 
-   \u26a0 The embed URL is BUILT by us from a parsed id, never taken from what was pasted.
-   An <iframe src> that a user can set is an open door \u2014 anything from a phishing page
+   ⚠ The embed URL is BUILT by us from a parsed id, never taken from what was pasted.
+   An <iframe src> that a user can set is an open door — anything from a phishing page
    to a keylogger, framed inside a page carrying the brokerage name. Two providers,
    both matched against a strict pattern, and anything else is refused. */
 
@@ -9041,15 +9106,15 @@ function promoToken(promoId, leadId) {
 /* ---------- the library ---------- */
 /* ==================== OUTSIDE TOOLS (server 124) ====================
    Asked for a long time ago and never built: tabs for ShowingTime, Redex, Paragon,
-   GCMLS, Perchwell. They cannot be embedded \u2014 every one of them sends
+   GCMLS, Perchwell. They cannot be embedded — every one of them sends
    X-Frame-Options or a frame-ancestors policy precisely to stop that, and getting
    round it would mean proxying somebody's authenticated session, which is not
    something to do to an MLS. So they open in a new tab with the saved link.
 
-   \u26a0 The value is small and real: one place to launch from, the same links for
+   ⚠ The value is small and real: one place to launch from, the same links for
    everybody, and a new agent who does not yet know which of five systems does what.
 
-   \u26a0 Broker writes, everyone reads. An agent adding a link that everyone sees is a
+   ⚠ Broker writes, everyone reads. An agent adding a link that everyone sees is a
    way to put an arbitrary destination in front of the whole brokerage. */
 function cleanLinks(raw) {
   const out = [];
@@ -9057,7 +9122,7 @@ function cleanLinks(raw) {
     const label = String(l.label || '').slice(0, 24).trim();
     let url = String(l.url || '').slice(0, 400).trim();
     if (!label || !url) continue;
-    /* \u26a0 Upgrade http, prepend when there is no scheme at all, and leave anything with
+    /* ⚠ Upgrade http, prepend when there is no scheme at all, and leave anything with
        a different scheme to be rejected below. Prepending blindly turned
        http://x into https://http://x. */
     if (/^http:\/\//i.test(url)) url = 'https://' + url.slice(7);
@@ -9075,14 +9140,14 @@ function cleanLinks(raw) {
    first real week unreadable: "12 new leads" means nothing if eleven are invented, and
    the counters on Today go back to being numbers nobody trusts.
 
-   \u26a0 THIS DELETES THINGS AND CANNOT BE UNDONE. Three guards, in this order:
-   1. Broker only. Not isStaff \u2014 an admin should not be able to empty the database.
+   ⚠ THIS DELETES THINGS AND CANNOT BE UNDONE. Three guards, in this order:
+   1. Broker only. Not isStaff — an admin should not be able to empty the database.
    2. A preview endpoint that COUNTS what would go, per category, changing nothing.
       A destructive action with no preview is how the wrong category gets picked.
-   3. The word DELETE, typed. Not a checkbox, not an "are you sure" \u2014 both of those
+   3. The word DELETE, typed. Not a checkbox, not an "are you sure" — both of those
       get clicked through.
 
-   \u26a0 WHAT IS DELIBERATELY NEVER TOUCHED, whatever is selected:
+   ⚠ WHAT IS DELIBERATELY NEVER TOUCHED, whatever is selected:
    agents, agent profiles and HR records, per-agent tab preferences and notification
    settings, articles, quiz wording, outside-tool links, site mode, award tiers,
    playbooks, the reel, testimonials, resource links, drip campaign definitions, and
@@ -9122,8 +9187,8 @@ const RESET_GROUPS = {
   },
 };
 
-/* \u26a0 A key must match a prefix EXACTLY at the start. 'cma:' must not sweep up
-   'cmafile:' by accident \u2014 they are listed separately on purpose, and a startsWith
+/* ⚠ A key must match a prefix EXACTLY at the start. 'cma:' must not sweep up
+   'cmafile:' by accident — they are listed separately on purpose, and a startsWith
    on a shorter prefix elsewhere is how a delete quietly takes more than it named. */
 async function resetScan(groups) {
   if (!supabase) return { rows: [], counts: {} };
@@ -9178,7 +9243,7 @@ app.post('/api/reset', async (req, res) => {
     return res.json({ ok: true, deleted: 0, note: 'There was nothing there to remove.' });
   }
 
-  /* \u26a0 Logged BEFORE the delete and in full. If this ever removes something it should
+  /* ⚠ Logged BEFORE the delete and in full. If this ever removes something it should
      not have, the log is the only record of what was there. */
   console.warn(`[reset] ${sess.name || sess.agentId} is deleting ${rows.length} record(s) `
     + `across [${groups.join(', ')}]`);
@@ -9193,7 +9258,7 @@ app.post('/api/reset', async (req, res) => {
     }
     deleted += chunk.length;
   }
-  console.warn(`[reset] done \u2014 ${deleted} record(s) removed by ${sess.name || sess.agentId}`);
+  console.warn(`[reset] done — ${deleted} record(s) removed by ${sess.name || sess.agentId}`);
   res.json({ ok: true, deleted });
 });
 
@@ -9203,23 +9268,23 @@ app.post('/api/reset', async (req, res) => {
    about the town they told us they care about, built from live inventory at the moment
    of sending.
 
-   \u26a0 Why this and not another lead source: the scoring engine, the lane engine and the
+   ⚠ Why this and not another lead source: the scoring engine, the lane engine and the
    click tracking are all built and all idle, because nothing goes out. A database
    nobody touches produces no signals, so the machinery that finds warm people has
    nothing to work with. Someone who opens three months running and then clicks two
-   listings is a person about to move \u2014 and that is a daily viable lead the agent
+   listings is a person about to move — and that is a daily viable lead the agent
    already knows, rather than a stranger who has to be bought.
 
-   \u26a0 ACTIVE DATA ONLY. Everything here \u2014 counts, ranges, new this month, price cuts,
-   days on market \u2014 comes from active listings, because that is the feed we have. It
+   ⚠ ACTIVE DATA ONLY. Everything here — counts, ranges, new this month, price cuts,
+   days on market — comes from active listings, because that is the feed we have. It
    never says what anything SOLD for. Sellers want that number most; it needs the
    closed data we declined to buy, and inventing it is not an option.
 
-   \u26a0 Nothing sends itself without being asked. There is no cron on this host, so this
+   ⚠ Nothing sends itself without being asked. There is no cron on this host, so this
    is a route the broker triggers. That is a feature, not a gap: a letter that goes out
    monthly on its own, to a list nobody re-read, is how a brokerage ends up apologising. */
 
-/* \u26a0 ONE PLACE. What the figures in the letter actually cover. When the Baldwin feed
+/* ⚠ ONE PLACE. What the figures in the letter actually cover. When the Baldwin feed
    is approved, change this line and nothing else needs finding. */
 /* Timely, local, and self-expiring. Returns [] when there is nothing worth saying,
    so the letter closes up cleanly rather than leaving a gap. */
@@ -9234,21 +9299,21 @@ function marketLetterNote(origin) {
         'Baldwin County is opening a down payment assistance program on '
         + '21 September. It helps income-qualified buyers cover the gap between what '
         + 'they can afford and what a home costs. If you know somebody who has been '
-        + 'priced out, this is worth their time \u2014 the details and the meeting dates '
+        + 'priced out, this is worth their time — the details and the meeting dates '
         + 'are here: ' + origin + '/help/down-payment-assistance');
     }
   } catch (e) {}
   return out;
 }
 
-/* \u26a0 Rewritten when Baldwin was approved (server 185). The old wording told
+/* ⚠ Rewritten when Baldwin was approved (server 185). The old wording told
    clients we were still waiting on this feed, which stopped being true the
-   moment it connected \u2014 and it was going out monthly under the brokerage's
+   moment it connected — and it was going out monthly under the brokerage's
    name. Still does not claim to be every listing in existence: Baldwin is the
    main book for this county, not the only place a property can be listed. */
 const MARKET_SOURCE_NOTE =
   'Counted live from the Baldwin REALTORS\u00AE feed this morning, not estimated. '
-  + 'That is the main book for this county, so it is close to the whole picture \u2014 '
+  + 'That is the main book for this county, so it is close to the whole picture — '
   + 'but if you see a listing elsewhere that is not in here, ask me and I will pull it up.';
 
 const LETTER_LOG = 'settings:marketLetters';
@@ -9354,7 +9419,7 @@ function letterText(s, first, sender, origin, unsub) {
     s.cut ? `\u00b7 ${s.cut} ${s.cut === 1 ? 'has' : 'have'} dropped their asking price` : '',
     s.medianDom ? `\u00b7 The typical one has been listed about ${s.medianDom} days` : '',
     '',
-    /* \u26a0 It once said "That is every active listing, counted this morning." That
+    /* ⚠ It once said "That is every active listing, counted this morning." That
        was not true and it went out under the brokerage's name. Baldwin is connected
        now and the figures are far closer to complete, but the principle holds: a
        homeowner can check the number on any portal in ten seconds, and being caught
@@ -9365,19 +9430,19 @@ function letterText(s, first, sender, origin, unsub) {
     `See them: ${origin}/homes/${slugify(s.town)}`,
     '',
     'If you want to know what any particular one would mean for you, just reply.',
-    /* \u26a0 A monthly letter needs a reason to be opened, and a dated local fact is worth
+    /* ⚠ A monthly letter needs a reason to be opened, and a dated local fact is worth
        more than another inventory count. Driven from PROGRAM_DATES and it removes
-       itself once the date passes \u2014 a letter still advertising a closed deadline is
+       itself once the date passes — a letter still advertising a closed deadline is
        worse than one that never mentioned it. */
     ...marketLetterNote(origin),
     '',
-    '\u2014',
+    '—',
     sender.name || '',
     BROKERAGE_NAME,
     BROKERAGE_PHONE,
     BROKERAGE_ADDRESS,
     '',
-    /* \u26a0 Said plainly, because a market letter that omits it implies sold prices are in
+    /* ⚠ Said plainly, because a market letter that omits it implies sold prices are in
        there somewhere. They are not. */
     'These figures cover homes currently for sale. They do not include sale prices.',
     '',
@@ -9385,23 +9450,23 @@ function letterText(s, first, sender, origin, unsub) {
     '',
     `No longer want these? ${unsub}`,
   ];
-  return lines.filter(l => l !== '').join('\n').replace(/\n\u2014\n/, '\n\n\u2014\n');
+  return lines.filter(l => l !== '').join('\n').replace(/\n—\n/, '\n\n—\n');
 }
 
 /* Who would get it, and what each of them would see. Changes nothing. */
 
 /* ==================== THE WELCOME (server 131) ====================
    An introduction for people who are already in the database but have never heard
-   from the site \u2014 imports from a previous system, an old spreadsheet, anybody added
+   from the site — imports from a previous system, an old spreadsheet, anybody added
    by hand. Everything built so far assumes a lead arrived through the site and knows
    what it is. Eighteen imported names do not.
 
-   \u26a0 Sent once per person, ever. `welcomedAt` on the record is the guard, so an import
+   ⚠ Sent once per person, ever. `welcomedAt` on the record is the guard, so an import
    run twice or a second press of the button cannot introduce somebody twice.
 
-   \u26a0 This is a marketing send under CAN-SPAM: real postal address, honest subject,
+   ⚠ This is a marketing send under CAN-SPAM: real postal address, honest subject,
    working unsubscribe. All three below, none of them optional. It goes only to people
-   already in the database with an existing relationship \u2014 never a purchased list. */
+   already in the database with an existing relationship — never a purchased list. */
 
 app.post('/api/welcome/preview', async (req, res) => {
   if (!requireSupabase(res)) return;
@@ -9430,14 +9495,14 @@ function welcomeText(lead, sender, origin, slug, unsub) {
     '',
     link,
     '',
-    `You can search every active listing on the coast${town ? ', including ' + town : ''} \u2014 no`,
+    `You can search every active listing on the coast${town ? ', including ' + town : ''} — no`,
     `sign-in needed to look around. If you make a free account it will remember your`,
     `favorites and email you when something new comes up that fits.`,
     '',
     `No obligation and nothing automated at you. If you would rather I just called when`,
     `something good turns up, reply and say so and I will.`,
     '',
-    '\u2014',
+    '—',
     sender.name || '',
     BROKERAGE_NAME,
     BROKERAGE_PHONE,
@@ -9483,7 +9548,7 @@ app.post('/api/welcome/send', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!mailer) return res.status(503).json({ error: 'Email is not configured.' });
 
-  /* \u26a0 Capped, like the market letter. This is very often the first real send from a
+  /* ⚠ Capped, like the market letter. This is very often the first real send from a
      brand-new domain, which is exactly when a large batch does the most damage. */
   const cap = Math.min(Math.max(parseInt((req.body || {}).cap, 10) || 25, 1), 200);
   const only = Array.isArray((req.body || {}).leadIds) ? (req.body || {}).leadIds : null;
@@ -9572,7 +9637,7 @@ app.post('/api/market-letter/send', async (req, res) => {
   const b = req.body || {};
   const towns = (Array.isArray(b.towns) ? b.towns : []).map(t => String(t).slice(0, 60));
   if (!towns.length) return res.status(400).json({ error: 'Pick at least one town.' });
-  /* \u26a0 A ceiling, on purpose. The brokerage's sending domain is new and has no
+  /* ⚠ A ceiling, on purpose. The brokerage's sending domain is new and has no
      reputation; the first months should be tens, not hundreds. Raise it deliberately
      rather than discovering the limit through a spam folder. */
   const cap = Math.min(Math.max(parseInt(b.cap, 10) || 30, 1), 400);
@@ -9592,7 +9657,7 @@ app.post('/api/market-letter/send', async (req, res) => {
     if (!isStaff(sess) && l.assignedAgentId !== sess.agentId) continue;
     const town = leadTown(l);
     if (!town || !towns.includes(town)) continue;
-    /* \u26a0 Once per person per month, whatever else happens. Pressing the button twice
+    /* ⚠ Once per person per month, whatever else happens. Pressing the button twice
        must not send the same letter twice. */
     if (l.lastLetter === month) continue;
     const s = letterTownStats(rows, town);
@@ -9615,7 +9680,7 @@ app.post('/api/market-letter/send', async (req, res) => {
         await mailer.sendMail({
           to: lead.email,
           marketing: true,
-          subject: `${stats.town} \u2014 ${stats.count} homes on the market right now`,
+          subject: `${stats.town} — ${stats.count} homes on the market right now`,
           text: letterText(stats, first, sess, origin, unsub),
         });
         sent++;
@@ -9645,10 +9710,10 @@ app.post('/api/market-letter/send', async (req, res) => {
 app.get('/api/quick-links', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   const shared = await getSetting('settings:quickLinks');
-  /* \u26a0 An agent's own links are keyed to their id and returned separately, so the
+  /* ⚠ An agent's own links are keyed to their id and returned separately, so the
      client can show them apart and so nobody ever receives anybody else's.
 
-     \u26a0 VIEW AS: this reads the REAL session, so a broker previewing an agent sees their
+     ⚠ VIEW AS: this reads the REAL session, so a broker previewing an agent sees their
      own personal links rather than that agent's. Colors and layout deliberately follow
      the previewed agent; these deliberately do not. Personal means personal, including
      from the broker, and nobody asked for the ability to read everyone's bookmarks. */
@@ -9658,7 +9723,7 @@ app.get('/api/quick-links', async (req, res) => {
     mine: Array.isArray(mine) ? mine : [] });
 });
 
-/* Their own. No role check \u2014 a personal link is only ever in front of the person who
+/* Their own. No role check — a personal link is only ever in front of the person who
    typed it, which is exactly why this one does not need the broker gate below. */
 app.post('/api/quick-links/mine', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
@@ -9679,7 +9744,7 @@ app.post('/api/quick-links', async (req, res) => {
   if (!Array.isArray((req.body || {}).links)) {
     return res.status(400).json({ error: 'Send a links array.' });
   }
-  /* \u26a0 Same cleaner as the personal list. https only, and it must parse: a javascript:
+  /* ⚠ Same cleaner as the personal list. https only, and it must parse: a javascript:
      or data: URL on a row the whole brokerage clicks only has to work once. */
   const clean = cleanLinks(req.body.links);
   await setSetting('settings:quickLinks', clean);
@@ -9707,7 +9772,7 @@ app.post('/api/promo', async (req, res) => {
     kind: ['listing', 'marketing'].includes(b.kind) ? b.kind : 'marketing',
     address: clean(b.address, 140),
     ...parsed,
-    /* \u26a0 CANONICAL, built from the parsed id \u2014 not what was pasted. People paste the
+    /* ⚠ CANONICAL, built from the parsed id — not what was pasted. People paste the
        provider's EMBED CODE, not a link: a whole <div><iframe src=...> blob. The
        regex finds the id inside it happily, but storing the blob and then putting it
        in an href produced bamacoast.com/<div style="padding:56.25%... and a 400 from
@@ -9769,8 +9834,8 @@ app.post('/api/promo/:id/send', async (req, res) => {
   const lead = await loadOwnLead(sess, (req.body || {}).leadId);
   if (!lead) return res.status(404).json({ error: 'Not your lead, or no longer there.' });
 
-  /* \u26a0 The token is derived from the two ids rather than stored, so sending the same
-     video to the same person twice gives the SAME link \u2014 which means the open count
+  /* ⚠ The token is derived from the two ids rather than stored, so sending the same
+     video to the same person twice gives the SAME link — which means the open count
      keeps adding up instead of starting again and quietly under-reporting. */
   const tok = promoToken(rec.id, lead.id);
   await setSetting('promoTok:' + tok, {
@@ -9863,7 +9928,7 @@ app.post('/api/cma', async (req, res) => {
   const data = String(b.dataBase64 || '');
   if (!data) return res.status(400).json({ error: 'No file came through.' });
 
-  /* \u26a0 Check the bytes, not the file name. A PDF starts %PDF-, which is JVBERi0 once
+  /* ⚠ Check the bytes, not the file name. A PDF starts %PDF-, which is JVBERi0 once
      base64-encoded. Renaming a .exe does not get past this. */
   if (!/^JVBERi0/.test(data.replace(/^data:[^,]*,/, ''))) {
     return res.status(400).json({ error: 'That does not look like a PDF.' });
@@ -9871,7 +9936,7 @@ app.post('/api/cma', async (req, res) => {
   const raw = data.replace(/^data:[^,]*,/, '');
   const bytes = Math.ceil(raw.length * 3 / 4);
   if (bytes > CMA_MAX_BYTES) {
-    return res.status(413).json({ error: 'That PDF is too big \u2014 9MB is the ceiling.' });
+    return res.status(413).json({ error: 'That PDF is too big — 9MB is the ceiling.' });
   }
 
   /* Ownership decided here, on the real session, same rule as everywhere else. */
@@ -9892,7 +9957,7 @@ app.post('/api/cma', async (req, res) => {
     createdAt: new Date().toISOString(),
     opens: [],
   };
-  /* \u26a0 The file lives under its OWN key prefix. Anything that lists 'cma:' to show the
+  /* ⚠ The file lives under its OWN key prefix. Anything that lists 'cma:' to show the
      agent what has been sent would otherwise drag several megabytes of base64 back on
      every render. */
   await setSetting('cmafile:' + id, { b64: raw });
@@ -9911,13 +9976,13 @@ app.get('/cma/:tok', async (req, res, next) => {
   const rec = await getSetting('cma:' + map.id);
   if (!rec) return next();
 
-  /* \u26a0 Never indexed. This is one seller's valuation of one house, reachable only by
-     the token in their email \u2014 the same rule the article previews follow. */
+  /* ⚠ Never indexed. This is one seller's valuation of one house, reachable only by
+     the token in their email — the same rule the article previews follow. */
   res.set('X-Robots-Tag', 'noindex, nofollow');
   res.set('Cache-Control', 'no-store');
 
   /* Record the open, then score it. Wrapped so a scoring failure cannot stop the
-     seller seeing their report \u2014 but logged, because a silent failure here means the
+     seller seeing their report — but logged, because a silent failure here means the
      tracking quietly stops being true. */
   try {
     rec.opens = Array.isArray(rec.opens) ? rec.opens : [];
@@ -10029,9 +10094,9 @@ app.delete('/api/cma/:id', async (req, res) => {
   if (!isStaff(sess) && rec.agentId !== sess.agentId) {
     return res.status(403).json({ error: 'Not yours to remove.' });
   }
-  /* \u26a0 setSetting(key, null) is NOT a delete. It upserts a null value, and if the
+  /* ⚠ setSetting(key, null) is NOT a delete. It upserts a null value, and if the
      value column rejects null the upsert throws, setSetting swallows it and returns
-     false, and the row survives untouched \u2014 while this route cheerfully reported
+     false, and the row survives untouched — while this route cheerfully reported
      success and the agent watched a removed valuation stay on screen.
      A real delete, with the error actually checked, the way /api/kv/:key does it. */
   const keys = ['cma:' + id, 'cmafile:' + id, 'cmaTok:' + cmaToken(id)];
@@ -10223,7 +10288,7 @@ app.post('/api/receipt', async (req, res) => {
 
   const bytes = Math.ceil(raw.length * 3 / 4);
   if (bytes > RECEIPT_MAX_BYTES) {
-    return res.status(413).json({ error: 'That file is too big \u2014 9MB is the ceiling.' });
+    return res.status(413).json({ error: 'That file is too big — 9MB is the ceiling.' });
   }
 
   const list = await getSetting('settings:expenses');
@@ -10309,7 +10374,7 @@ app.delete('/api/receipt/:id', async (req, res) => {
 });
 
 /* ==================== SHARING A LISTING (server 126) ====================
-   \u26a0 The share buttons sent `/?listing=KEY` \u2014 the app shell with a query string. A
+   ⚠ The share buttons sent `/?listing=KEY` — the app shell with a query string. A
    social crawler does not run JavaScript, so Facebook fetched that, found the site's
    generic tags, and rendered a grey box reading "bamacoast.com". No address, no price,
    no photo. Sharing a listing produced a post nobody would click.
@@ -10317,7 +10382,7 @@ app.delete('/api/receipt/:id', async (req, res) => {
    Anything meant to be shared has to be a real page the server renders, with its own
    og:title, og:description and og:image. Same lesson as the article pages.
 
-   \u26a0 noindex on purpose. Whether every listing in the feed should become an indexable
+   ⚠ noindex on purpose. Whether every listing in the feed should become an indexable
    page on this domain is an IDX question for Baldwin REALTORS, not one to answer by
    accident while fixing a share button. Crawlers read og: tags regardless of
    noindex, so sharing works either way. */
@@ -10342,7 +10407,7 @@ app.get('/listing/:key', async (req, res, next) => {
     console.error('[listing share] feed:', e.message);
     return next();
   }
-  /* Gone off market between the post and the click \u2014 which is normal, and better
+  /* Gone off market between the post and the click — which is normal, and better
      handled by sending them to the search than by a dead page. */
   if (!r) return res.redirect(302, origin + '/#listings');
 
@@ -10358,7 +10423,7 @@ app.get('/listing/:key', async (req, res, next) => {
   const img = listingPhotoUrl(r, origin);
   const credit = listingCredit(r);
   const remarks = String(r.PublicRemarks || '').replace(/\s+/g, ' ').trim();
-  const desc = [price, bits, remarks].filter(Boolean).join(' \u2014 ').slice(0, 300);
+  const desc = [price, bits, remarks].filter(Boolean).join(' — ').slice(0, 300);
   const canon = `${origin}/listing/${encodeURIComponent(r.ListingKey || key)}`
     + (who ? `?agent=${encodeURIComponent(who)}` : '');
   const into = `${origin}/?listing=${encodeURIComponent(r.ListingKey || key)}`
@@ -10370,19 +10435,19 @@ app.get('/listing/:key', async (req, res, next) => {
   res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,follow">
-<title>${e(addr)} \u2014 ${e(price)}</title>
+<title>${e(addr)} — ${e(price)}</title>
 <meta name="description" content="${e(desc)}">
 <link rel="canonical" href="${e(canon)}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${e(BROKERAGE_NAME)}">
-<meta property="og:title" content="${e(addr)} \u2014 ${e(price)}">
+<meta property="og:title" content="${e(addr)} — ${e(price)}">
 <meta property="og:description" content="${e(desc)}">
 <meta property="og:url" content="${e(canon)}">
 ${img ? `<meta property="og:image" content="${e(img)}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="800">` : ''}
 <meta name="twitter:card" content="${img ? 'summary_large_image' : 'summary'}">
-<meta name="twitter:title" content="${e(addr)} \u2014 ${e(price)}">
+<meta name="twitter:title" content="${e(addr)} — ${e(price)}">
 <meta name="twitter:description" content="${e(desc)}">
 ${img ? `<meta name="twitter:image" content="${e(img)}">` : ''}
 <style>
@@ -10505,10 +10570,10 @@ function programPage(opts) {
 <meta property="og:description" content="${esc(opts.desc)}">
 <meta property="og:url" content="${url}">
 <meta property="og:site_name" content="${esc(BROKERAGE_NAME)}">
-<!-- \u26a0 Without og:image a shared link renders as a grey card with no picture, which is
+<!-- ⚠ Without og:image a shared link renders as a grey card with no picture, which is
      what these pages did while being posted to Facebook. 1200x630 is the size every
      platform crops to. The file must live in public/ and be reachable, or the card
-     falls back to grey again \u2014 test with Facebook's sharing debugger after deploying. -->
+     falls back to grey again — test with Facebook's sharing debugger after deploying. -->
 <meta property="og:image" content="${origin}${opts.image}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -10601,7 +10666,7 @@ async function pSend(){
 }
 
 /* ================= THE POSTING CALENDAR (server 157) =================
-   \u26a0 What this is and is not. Google's Business Profile LocalPosts API can publish
+   ⚠ What this is and is not. Google's Business Profile LocalPosts API can publish
    posts directly, and now supports recurring ones. But the Business Profile APIs are
    NOT open by default: a new Cloud project starts with zero quota and access has to be
    formally requested and approved. Until that approval lands, nothing here can publish
@@ -10609,19 +10674,19 @@ async function pSend(){
 
    So this is the half that works today: the calendar remembers, and emails the broker
    the exact text on the morning it should go out. He pastes it. That removes the
-   "remember to post" problem, which is the actual problem \u2014 the pasting is ten seconds.
+   "remember to post" problem, which is the actual problem — the pasting is ten seconds.
 
-   \u26a0 When API access is approved, postSweep is where publishing goes. The schedule, the
+   ⚠ When API access is approved, postSweep is where publishing goes. The schedule, the
    text, the dates and the "already sent" record all already exist; only the delivery
    changes. Do not rebuild the calendar to add the API.
 
-   \u26a0 Dated posts expire. A post advertising a deadline that has passed is worse than no
+   ⚠ Dated posts expire. A post advertising a deadline that has passed is worse than no
    post, so anything with an `until` date stops being offered after it. */
 
 const POST_LOG = 'settings:postCalendar';
 
 /* The standing calendar. Dates are ISO; `every` is for things that recur.
-   \u26a0 Edited here rather than in a screen on purpose \u2014 there are four of them and a
+   ⚠ Edited here rather than in a screen on purpose — there are four of them and a
    posting calendar nobody maintains is worse than a short one that is correct. */
 function postCalendar(origin) {
   const hap = origin + '/help/down-payment-assistance';
@@ -10635,8 +10700,8 @@ function postCalendar(origin) {
 + 'income-qualified households cover the gap between what they can afford and what a home '
 + 'actually costs.\n\n'
 + 'Two public meetings first, both open to anyone:\n'
-+ '\u2022 Tuesday 15 September, 5:00pm \u2014 Foley Satellite Courthouse\n'
-+ '\u2022 Wednesday 16 September, 10:00am \u2014 Fairhope Satellite Courthouse\n\n'
++ '\u2022 Tuesday 15 September, 5:00pm — Foley Satellite Courthouse\n'
++ '\u2022 Wednesday 16 September, 10:00am — Fairhope Satellite Courthouse\n\n'
 + 'We have put the dates, who may qualify and what to have ready in one place.' },
 
     { id: 'hap-week', on: '2026-09-14', until: '2026-09-20', link: hap,
@@ -10645,7 +10710,7 @@ function postCalendar(origin) {
 'One week until Baldwin County opens its down payment assistance portal.\n\n'
 + 'It opens Monday 21 September. Assistance like this is usually limited, so being ready '
 + 'on the day matters more than anything else you can do.\n\n'
-+ 'The single most useful step now is starting a mortgage pre-approval \u2014 the county '
++ 'The single most useful step now is starting a mortgage pre-approval — the county '
 + 'publishes a preferred vendor list. Get your ID, household income and recent tax returns '
 + 'together this week, not on the morning.\n\n'
 + 'Public meetings are on the 15th in Foley and the 16th in Fairhope if you want help with '
@@ -10657,10 +10722,10 @@ function postCalendar(origin) {
 'Baldwin County down payment assistance is open today.\n\n'
 + 'If you have been waiting on this one, today is the day. Assistance is limited and '
 + 'applications are taken in the order they arrive.\n\n'
-+ 'Everything you need \u2014 who may qualify, the income limits, and what to have ready '
++ 'Everything you need — who may qualify, the income limits, and what to have ready '
 + 'before you start:' },
 
-    /* \u26a0 Quarterly, five days before each Baldwin window. Recurs forever rather than
+    /* ⚠ Quarterly, five days before each Baldwin window. Recurs forever rather than
        being a list of dates somebody has to keep extending. */
     { id: 'fortified', every: 'quarterly', on: '2026-10-04', link: fort,
       what: 'Warn people before the next FORTIFIED roof grant window',
@@ -10676,7 +10741,7 @@ function postCalendar(origin) {
   ];
 }
 
-/* \u26a0 Runs once a day, not once a minute. A reminder that arrives twice is worse than one
+/* ⚠ Runs once a day, not once a minute. A reminder that arrives twice is worse than one
    that arrives once, and the sweep below is the only thing writing the sent record. */
 let POST_LAST_DAY = '';
 
@@ -10736,10 +10801,10 @@ async function postSweep() {
         console.log('[posts] reminder sent:', p.id);
       } catch (e) { console.error('[posts] reminder failed:', e.message); }
     }
-    /* \u26a0 Written only after the sends. If this fails the reminder repeats tomorrow, which
-       is the right way round \u2014 a duplicate nudge beats a post that never happens. */
+    /* ⚠ Written only after the sends. If this fails the reminder repeats tomorrow, which
+       is the right way round — a duplicate nudge beats a post that never happens. */
     const ok = await setSetting(POST_LOG, log);
-    if (ok === false) console.error('[posts] sent-log write FAILED \u2014 reminders may repeat');
+    if (ok === false) console.error('[posts] sent-log write FAILED — reminders may repeat');
   } catch (e) { console.error('[posts sweep]', e.message); }
 }
 
@@ -10839,7 +10904,7 @@ recent tax returns, and anything documenting where you were living at the time o
           + 'program page.' },
       { q: 'Do I have to be a first-time buyer?',
         a: 'The program supports first-time and income-qualified buyers, but the qualifying routes '
-          + 'are tied to the storm events \u2014 having remained in the county, having relocated and '
+          + 'are tied to the storm events — having remained in the county, having relocated and '
           + 'wanting to return, or having been mid-purchase on a storm-impacted home. Check the '
           + 'county\u2019s own eligibility wording before assuming either way.' },
       { q: 'How much assistance does HAP provide?',
@@ -10849,7 +10914,7 @@ recent tax returns, and anything documenting where you were living at the time o
       { q: 'Can I use HAP on any house in Baldwin County?',
         a: 'The program has its own property and purchase requirements, and a home has to pass '
           + 'them as well as the buyer qualifying. That is worth knowing before you fall in love '
-          + 'with something \u2014 it is one of the things we can check with you early.' },
+          + 'with something — it is one of the things we can check with you early.' },
       { q: 'Does it cost anything to apply?',
         a: 'Applying to the county program is not something we charge for and we are not paid by '
           + 'the county. We help because a buyer who can complete a purchase is a client.' },
@@ -10858,7 +10923,7 @@ recent tax returns, and anything documenting where you were living at the time o
     ctaBody: 'We will email you a few days before 21 September, and again the morning it opens, '
            + 'with the link and what to have ready. Nothing else.',
     ctaBtn: 'Remind me',
-    ctaDone: 'Done \u2014 we will be in touch before the portal opens.',
+    ctaDone: 'Done — we will be in touch before the portal opens.',
     ctaFine: 'We are a real estate brokerage, not the county. We do not administer this program, '
            + 'we cannot decide who qualifies, and we are not paid by it. By sending this you agree '
            + 'we may contact you about the program and about buying a home here. Every email has a '
@@ -10901,7 +10966,7 @@ carriers will not write it. Wind is usually the largest single line on a coastal
 reductions for qualifying FORTIFIED homes, on policies that include wind coverage. Wind is
 usually the largest single line on a coastal premium, so that is money back every year
 rather than a one-off.</p>
-<!-- \u26a0 NO PERCENTAGE. An earlier version said "reported 20-30%", which is a number this
+<!-- ⚠ NO PERCENTAGE. An earlier version said "reported 20-30%", which is a number this
      brokerage cannot stand behind for any particular house or carrier. Somebody reads it,
      budgets for it, gets less, and it was our page that said so. We are not insurance
      agents and the page now says where that question belongs. -->
@@ -10938,7 +11003,7 @@ on day one. It is one of the first things we check on a coastal property.</p>`,
           + 'on your carrier and your policy, so ask your insurance agent for the actual figure.' },
       { q: 'Does a metal roof count as FORTIFIED?',
         a: 'Not by itself. The roof has to be installed to the specific standard and certified '
-          + 'through the FORTIFIED program \u2014 the material alone does not qualify it.' },
+          + 'through the FORTIFIED program — the material alone does not qualify it.' },
       { q: 'Does the FORTIFIED certificate transfer when the house is sold?',
         a: 'A designation is attached to the home and is worth asking about when you buy, because '
           + 'it affects what you will pay to insure it. Confirm the certificate and its date as '
@@ -10951,7 +11016,7 @@ on day one. It is one of the first things we check on a coastal property.</p>`,
     ctaBody: 'We will email you a few days before the next Baldwin County window opens, and again '
            + 'the morning of, so you are not finding out afterwards.',
     ctaBtn: 'Remind me',
-    ctaDone: 'Done \u2014 we will warn you before the next one.',
+    ctaDone: 'Done — we will warn you before the next one.',
     ctaFine: 'We are a real estate brokerage. We do not administer this grant, we do not decide '
            + 'who receives it, and we are not paid by it or by any contractor. By sending this you '
            + 'agree we may contact you about the program and about property here. Every email '
@@ -11042,18 +11107,18 @@ ${AREAS.map(a => `<a class="it" href="${origin}/homes/${a.slug}">
 });
 
 /* ================= PUBLIC PROFILE SWITCH (server 159) =================
-   \u26a0 An agent can now exist in the CRM \u2014 sign in, work leads, find bugs \u2014 without a
+   ⚠ An agent can now exist in the CRM — sign in, work leads, find bugs — without a
    public page. Their profile goes live only when the broker says so.
 
-   \u26a0 Stored in settings, not as a column on the agents table, because adding a column
+   ⚠ Stored in settings, not as a column on the agents table, because adding a column
    means a Supabase migration the broker has to run by hand. A map of id -> boolean
    needs no schema change and works the moment this deploys.
 
-   \u26a0 ANYONE NOT IN THE MAP IS PUBLIC. That is deliberate: every agent who exists today
+   ⚠ ANYONE NOT IN THE MAP IS PUBLIC. That is deliberate: every agent who exists today
    stays live exactly as they are. Only agents created from here on are hidden, and
    they are written into the map as false at creation. Flip that default and you take
    the broker's own page off the internet without telling him. */
-/* \u26a0 NOT 'settings:agentPublic'. There is already a per-agent key of the form
+/* ⚠ NOT 'settings:agentPublic'. There is already a per-agent key of the form
    'agentPublic:<id>' holding public phone, email and licensed states. Two keys one
    character apart, holding different shapes, is a trap for whoever reads this next. */
 const AGENT_LIVE = 'settings:agentProfileLive';
@@ -11133,9 +11198,9 @@ const DISCLAIMER_GENERAL =
   + 'not advice about any specific property or situation. Market conditions change. '
   + 'Nothing here creates an agency relationship.';
 
-/* \u26a0 The same disclaimer, minus the word "article". DISCLAIMER_GENERAL was written
+/* ⚠ The same disclaimer, minus the word "article". DISCLAIMER_GENERAL was written
    for blog posts and then pasted onto the welcome email and the market letter, neither
-   of which is an article \u2014 so an introduction to the site arrived describing itself as
+   of which is an article — so an introduction to the site arrived describing itself as
    one, and the broker read it and reasonably asked where the article was. A disclaimer
    that misnames the thing it is attached to undermines the disclaimer. */
 const DISCLAIMER_EMAIL =
@@ -11147,7 +11212,7 @@ const DISCLAIMER_REGULATED =
   'We are licensed real estate agents. We are not insurance agents, mortgage '
   + 'brokers, lenders, attorneys or tax advisers, and nothing here is insurance, '
   + 'lending, legal or tax advice. Figures are general estimates that vary by '
-  + 'property, carrier, lender and individual circumstances \u2014 they are not quotes '
+  + 'property, carrier, lender and individual circumstances — they are not quotes '
   + 'and should not be relied on. Get quotes and advice from a licensed professional '
   + 'in the relevant field before making any decision.';
 
@@ -11170,7 +11235,7 @@ function previewToken(slug) {
    without one simply renders without a header image. */
 const ARTICLE_ART = {
   /* ⚠ Details verified August 2026 against the resorts' own material and Historic Hotels
-     of America. Room counts, amenities and unit sizes change with renovations \u2014 re-check
+     of America. Room counts, amenities and unit sizes change with renovations — re-check
      before re-publishing rather than assuming these stay true. */
   art_landmarks: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two tall towers beside a long low resort building under live oaks">
 <rect width="720" height="260" fill="#F6EEDC"/>
@@ -11654,7 +11719,7 @@ It has also been a Civil War hospital and a World War Two military training grou
 
 The resort came through a three-year, thirty-five million dollar transformation and reopened in 2018 as part of Marriott's Autograph Collection, with just over four hundred rooms. It is also a member of Historic Hotels of America.
 
-What is actually there: two championship golf courses at the Lakewood Club, both on the Robert Trent Jones Golf Trail. A twenty thousand square foot spa. Ten lit tennis courts, eleven pickleball courts, and two croquet lawns \u2014 croquet has been played there since the mid-1940s. A marina. Two beaches and several pools. Seven restaurants and bars, including a garden-to-glass cocktail bar named 1847 that uses herbs from the resort's own gardens, and Bucky's Lounge, named after a man who worked there for sixty years and who has a statue.
+What is actually there: two championship golf courses at the Lakewood Club, both on the Robert Trent Jones Golf Trail. A twenty thousand square foot spa. Ten lit tennis courts, eleven pickleball courts, and two croquet lawns — croquet has been played there since the mid-1940s. A marina. Two beaches and several pools. Seven restaurants and bars, including a garden-to-glass cocktail bar named 1847 that uses herbs from the resort's own gardens, and Bucky's Lounge, named after a man who worked there for sixty years and who has a statue.
 
 You do not need to be staying there to appreciate it. Sunset from the bayfront, with a drink, under those oaks, is one of the genuinely great things about living on the Eastern Shore.
 
@@ -11668,17 +11733,17 @@ Every residence is Gulf-front. There are no interior units and no side views. Ho
 
 The balconies are the signature. Each one has a private hot tub and a proper outdoor kitchen with a gas grill and a sink, looking straight out over the Gulf. Very little else on this coast does that.
 
-The amenities deck is a small resort in itself \u2014 indoor and outdoor pools, a lazy river, a three-hundred-foot water slide, a putting green, an outdoor movie area, a splash pad, sauna and steam room, tennis and a fitness center.
+The amenities deck is a small resort in itself — indoor and outdoor pools, a lazy river, a three-hundred-foot water slide, a putting green, an outdoor movie area, a splash pad, sauna and steam room, tennis and a fitness center.
 
 WHAT ELSE ANCHORS THE COAST
 
-The Beach Club, out on the Fort Morgan peninsula, is the quieter version of the same idea \u2014 a full resort with a spa, well away from the crowds, with the peninsula's isolation as part of the point.
+The Beach Club, out on the Fort Morgan peninsula, is the quieter version of the same idea — a full resort with a spa, well away from the crowds, with the peninsula's isolation as part of the point.
 
 The Wharf in Orange Beach is not somewhere you live, but it shapes what living nearby is like: marina, shops, restaurants, an amphitheater that brings national acts, and a Ferris wheel you can see from the water.
 
 Ono Island sits behind a gate on its own island between Perdido Bay and the Intracoastal, and is about as private as this coast gets.
 
-Kiva Dunes and the golf communities around Craft Farms are the inland version of the same buyer \u2014 space, quiet, and a course rather than a beach at the end of the street.
+Kiva Dunes and the golf communities around Craft Farms are the inland version of the same buyer — space, quiet, and a course rather than a beach at the end of the street.
 
 IF YOU ARE THINKING OF BUYING IN ONE
 
@@ -11694,7 +11759,7 @@ What the rental rules actually allow, if income is part of your plan, and what t
 
 None of that is a reason not to buy. It is a reason to ask before you make an offer, and it is the part of the job we care most about.
 
-If there is a specific building you have your eye on, tell us which one. We will pull what actually sold there, what is on the market, and what the documents say \u2014 before you fall in love with a view.`,
+If there is a specific building you have your eye on, tell us which one. We will pull what actually sold there, what is on the market, and what the documents say — before you fall in love with a view.`,
     updatedAt: '2026-08-31T00:00:00.000Z' },
 
   { id: 'art_food', published: false, deliver: true,
@@ -11742,7 +11807,7 @@ BUY IT YOURSELF
 
 This is the part people who move here discover late, and it changes how you eat.
 
-There are seafood markets all along the coast selling what came in that day \u2014 shrimp, Royal Reds when they are running, crab claws, crab meat, oysters, seasonal fish, sometimes crawfish in spring. Several will season and steam it for you while you wait.
+There are seafood markets all along the coast selling what came in that day — shrimp, Royal Reds when they are running, crab claws, crab meat, oysters, seasonal fish, sometimes crawfish in spring. Several will season and steam it for you while you wait.
 
 Bon Secour Fisheries has been processing seafood since 1892 and supplies a lot of what you eat in restaurants here. The bayside communities were fishing villages long before they were anything else.
 
@@ -11760,7 +11825,7 @@ The beach places get very busy from March through October and go quiet after. So
 
 Crawfish is a spring thing. Royal Reds come and go. Snapper has a season. If you eat here for a year you will learn the calendar without trying.
 
-Restaurants open and close, so treat the names above as a starting point rather than a fixed list. If you want to know what is actually good right now, ask us \u2014 we eat out here constantly and we will tell you the truth, including which famous places are coasting.`,
+Restaurants open and close, so treat the names above as a starting point rather than a fixed list. If you want to know what is actually good right now, ask us — we eat out here constantly and we will tell you the truth, including which famous places are coasting.`,
     updatedAt: '2026-08-31T00:00:00.000Z' },
 
   { id: 'art_fishing', published: false, deliver: true,
@@ -11784,7 +11849,7 @@ If you are fishing the Delta or upper Mobile Bay, which side of the line you are
 
 THE REEF ENDORSEMENT PEOPLE MISS
 
-If you are fishing for reef species in Alabama's Gulf waters \u2014 snapper and the rest \u2014 you need the Gulf Reef Fish Endorsement on top of your saltwater license. It has been ten dollars a year, or around two hundred and twenty for a lifetime version.
+If you are fishing for reef species in Alabama's Gulf waters — snapper and the rest — you need the Gulf Reef Fish Endorsement on top of your saltwater license. It has been ten dollars a year, or around two hundred and twenty for a lifetime version.
 
 Here is the part that catches people. You need it even if you hold a lifetime saltwater license, even if you are sixty-five or older and exempt from the basic license, and even if you are fishing from a licensed pier. The exemptions that cover the license do not cover the endorsement.
 
@@ -11796,7 +11861,7 @@ Anyone under sixteen fishes free, resident or not, fresh or salt.
 
 Alabama residents aged sixty-five and over are exempt from the basic license, though as above, not from the reef endorsement.
 
-There is a pier license as a cheaper option \u2014 a few dollars a year for residents and around ten for non-residents \u2014 which covers pier fishing only.
+There is a pier license as a cheaper option — a few dollars a year for residents and around ten for non-residents — which covers pier fishing only.
 
 THE CHARTER TRAP
 
@@ -11812,7 +11877,7 @@ Save a copy offline. Cell coverage out on the water is not reliable, and a licen
 
 Season dates, size limits and creel limits change, sometimes at short notice. The license is the easy part; the rules on what you can keep are the part worth checking the week you go.
 
-All fees above were current in August 2026 and are subject to change. Outdoor Alabama is the authority \u2014 confirm there before you buy.`,
+All fees above were current in August 2026 and are subject to change. Outdoor Alabama is the authority — confirm there before you buy.`,
     updatedAt: '2026-08-31T00:00:00.000Z' },
 
   { id: 'art_jobs', published: false, deliver: true,
@@ -11838,7 +11903,7 @@ The catch is seasonality. Plenty of coastal work swings hard between summer and 
 
 Aerospace is the second story. Collins Aerospace in Foley is the county's largest manufacturing employer, making thrust reversers and nacelle components, and it supplies Airbus across the bay. Segers Aerospace in Fairhope has grown steadily. Airbus itself is in Mobile.
 
-Manufacturing and distribution have grown fast. Novelis is building a multi-billion dollar aluminum mill at the mega site in Bay Minette \u2014 reportedly the first fully integrated aluminum mill built in the United States in decades \u2014 with roughly a thousand jobs expected. ALDI opened a large distribution center in Loxley. Quincy Compressor is headquartered in Bay Minette, and Vulcan and Ace Hardware have significant operations in Foley and Loxley.
+Manufacturing and distribution have grown fast. Novelis is building a multi-billion dollar aluminum mill at the mega site in Bay Minette — reportedly the first fully integrated aluminum mill built in the United States in decades — with roughly a thousand jobs expected. ALDI opened a large distribution center in Loxley. Quincy Compressor is headquartered in Bay Minette, and Vulcan and Ace Hardware have significant operations in Foley and Loxley.
 
 Healthcare and education are large and stable. The Baldwin County school system is among the biggest employers in the area, and Infirmary Health, Baldwin Health and USA Health all have substantial presences.
 
@@ -11882,7 +11947,7 @@ Gulf Shores and Orange Beach have the most going on in season and the sharpest d
 
 Foley is where the family entertainment concentrates, and OWA has made it a genuine destination in its own right. Less a night out, more an evening with kids.
 
-Fairhope has the most consistent year-round evening life in the county, and it is a different kind entirely \u2014 restaurants, wine bars, galleries, a walkable downtown that does not empty in January. If you want somewhere that feels alive on a Tuesday in February, this is the honest answer.
+Fairhope has the most consistent year-round evening life in the county, and it is a different kind entirely — restaurants, wine bars, galleries, a walkable downtown that does not empty in January. If you want somewhere that feels alive on a Tuesday in February, this is the honest answer.
 
 Daphne and Spanish Fort lean toward restaurants and shopping rather than a night out, and both are close enough to Mobile to borrow its evenings.
 
@@ -11894,7 +11959,7 @@ The Hangout Music Festival in Gulf Shores each spring is the largest single even
 
 Mardi Gras runs through the winter on both sides of the bay, and it is a bigger deal here than people from outside the region realize. It is also, usefully, in the quiet season.
 
-Snowbird season from roughly January to March brings its own social calendar \u2014 a great deal of organized activity aimed at people wintering here, and it keeps more open than you would otherwise expect.
+Snowbird season from roughly January to March brings its own social calendar — a great deal of organized activity aimed at people wintering here, and it keeps more open than you would otherwise expect.
 
 Fishing tournaments, the shrimp festival in Gulf Shores in October, and a steady run of smaller town events through the year.
 
@@ -11904,7 +11969,7 @@ If evenings out matter to you, visit in February before you buy. Everybody visit
 
 If you want beach and quiet in winter, the beach towns are excellent. If you want somewhere that hums year-round, look hard at Fairhope and the Eastern Shore.
 
-Specific venues open and close, so this is deliberately about places rather than names. Ask us what has changed recently \u2014 we are out in it.`,
+Specific venues open and close, so this is deliberately about places rather than names. Ask us what has changed recently — we are out in it.`,
     updatedAt: '2026-08-31T00:00:00.000Z' },
 
   { id: 'art_funfacts', published: false, deliver: true,
@@ -11996,7 +12061,7 @@ WHERE THE LONG-TERM RENTALS ACTUALLY ARE
 
 Inland and north. Foley, Robertsdale, Loxley and Bay Minette have far more conventional rental stock, and it is cheaper.
 
-The Eastern Shore \u2014 Daphne, Spanish Fort, Fairhope \u2014 has a proper year-round rental market, because those towns are commuter towns for Mobile rather than vacation towns. If your plan is to rent for a year while you look, the Eastern Shore is the easiest place in the county to do it.
+The Eastern Shore — Daphne, Spanish Fort, Fairhope — has a proper year-round rental market, because those towns are commuter towns for Mobile rather than vacation towns. If your plan is to rent for a year while you look, the Eastern Shore is the easiest place in the county to do it.
 
 Gulf Shores and Orange Beach have annual rentals, but you will work harder for them and pay more.
 
@@ -12028,7 +12093,7 @@ All figures here were current in August 2026 and rents move constantly. Check wh
   { id: 'art_healthcare', published: false, deliver: true,
     title: 'Healthcare on the coast: where the hospitals actually are',
     teaser: 'There is no full hospital in Gulf Shores or Orange Beach. There is a 24-hour emergency department, which is not the same thing, and the difference matters if you are moving here in retirement.',
-    body: `This is the question that comes up most from people moving here later in life, and it usually comes up too late \u2014 after the house, rather than before it.
+    body: `This is the question that comes up most from people moving here later in life, and it usually comes up too late — after the house, rather than before it.
 
 Here is the honest picture, checked in August 2026.
 
@@ -12084,13 +12149,13 @@ And if healthcare access is genuinely one of your top three considerations, tell
   { id: 'art_utilities', published: false, deliver: true,
     title: 'What it actually costs to run a house here',
     teaser: 'Who supplies your power depends on your address rather than your city, you do not get to choose, and electricity on this coast is well below the national average. Here is the whole picture before you set anything up.',
-    body: `People moving here spend a long time on the price of the house and almost no time on what it costs to run. That is the wrong way round, because two of the numbers are unusual on this coast \u2014 one in your favor and one against.
+    body: `People moving here spend a long time on the price of the house and almost no time on what it costs to run. That is the wrong way round, because two of the numbers are unusual on this coast — one in your favor and one against.
 
 WHO SUPPLIES YOUR POWER IS DECIDED BY YOUR ADDRESS
 
 Alabama has a regulated electricity market. You do not shop for a provider. Where you live determines who bills you, and that is the end of the discussion.
 
-Baldwin EMC covers all of Gulf Shores and Orange Beach, plus most of the unincorporated county \u2014 which includes the Fort Morgan peninsula.
+Baldwin EMC covers all of Gulf Shores and Orange Beach, plus most of the unincorporated county — which includes the Fort Morgan peninsula.
 
 Riviera Utilities covers the electric side for Daphne, Spanish Fort, Point Clear, Loxley, Silverhill, Summerdale, Foley, Elberta, Lillian, Bon Secour and Magnolia Springs.
 
@@ -12446,7 +12511,7 @@ Work out where you will actually spend your time before you choose a town. The p
    deliberately. The seeds ship as drafts to be reviewed, not as live pages. */
 async function articlesAll() {
   const saved = await getSetting(ARTICLES_KEY);
-  /* \u26a0 Saved articles override the defaults entirely, so a new article shipped in
+  /* ⚠ Saved articles override the defaults entirely, so a new article shipped in
      ARTICLE_DEFAULTS would never appear on any site where the broker has ever pressed
      save in Content. This is the same trap the quiz had: the built-in list is only a
      fallback, and a fallback is not a delivery mechanism.
@@ -12455,12 +12520,12 @@ async function articlesAll() {
      draft, so it turns up in Content to be read and published rather than appearing on
      the website unannounced.
 
-     \u26a0 Matched on id. A default the broker has deleted on purpose will come back \u2014 the
+     ⚠ Matched on id. A default the broker has deleted on purpose will come back — the
      alternative is new writing silently never arriving, which is worse. If deletions
      need to stick, record the removed ids rather than dropping this merge. */
   const savedList = Array.isArray(saved) ? saved : [];
   const have = new Set(savedList.map(a => a && a.id).filter(Boolean));
-  /* \u26a0 ONLY defaults flagged `deliver` are merged. Without that flag this resurrects
+  /* ⚠ ONLY defaults flagged `deliver` are merged. Without that flag this resurrects
      every built-in article the broker has ever deleted from Content, which is a worse
      problem than the one it solves. Set `deliver: true` deliberately on genuinely new
      writing, and it can be removed once the article has been seen. */
@@ -12497,11 +12562,11 @@ async function siteIsPrivate() {
    handed back. */
 function articleSeoHtml(a, origin, agentSlug, noindex, others) {
   const url = `${origin}/insights/${a.slug}`;
-  /* \u26a0 `image` was stored on every article and validated on save, and rendered NOWHERE
-     \u2014 not on the page, not in the share card. Another field written with no reader,
+  /* ⚠ `image` was stored on every article and validated on save, and rendered NOWHERE
+     — not on the page, not in the share card. Another field written with no reader,
      which is the oldest bug in this codebase. A shared article showed a grey box with
      no picture, exactly as the grant pages did before server 158.
-     \u26a0 A relative path is made absolute: a social crawler cannot resolve "/x.png". */
+     ⚠ A relative path is made absolute: a social crawler cannot resolve "/x.png". */
   const rawImg = String(a.image || '').trim();
   const artImg = !rawImg ? ''
     : /^https?:\/\//i.test(rawImg) ? rawImg
@@ -12630,7 +12695,7 @@ h1{font-family:Georgia,serif;font-size:34px;font-weight:400;margin:0 0 26px}
   font-weight:700;margin-bottom:8px">${esc(BROKERAGE_NAME)}</div>
 <h1>Guides to buying and selling here</h1>
 <p style="font-size:15px;color:#3D456B;margin:0 0 26px;max-width:620px">Straight answers
-  about the Alabama Gulf Coast \u2014 what insurance really costs, what condo fees cover,
+  about the Alabama Gulf Coast — what insurance really costs, what condo fees cover,
   and where to actually live. Written by people who work here.</p>
 ${list.length ? list.map(a => `<div class="it"><a href="${origin}/insights/${a.slug}">
   <h2>${esc(a.title)}</h2><p>${esc(a.teaser)}</p></a></div>`).join('\n')
@@ -12687,9 +12752,9 @@ app.post('/api/site-mode', async (req, res) => {
 
 app.get('/robots.txt', async (req, res) => {
   const origin = `${req.protocol}://${req.get('host')}`;
-  /* \u26a0 Never cache this. It is one line long, it changes the moment the broker presses
+  /* ⚠ Never cache this. It is one line long, it changes the moment the broker presses
      a button, and a stale copy sitting in a CDN says "Disallow: /" to every crawler
-     long after the site went live \u2014 which looks exactly like the switch not working. */
+     long after the site went live — which looks exactly like the switch not working. */
   res.set('Cache-Control', 'no-store, must-revalidate');
   if (await siteIsPrivate()) {
     return res.type('text/plain').send('User-agent: *\nDisallow: /\n');
@@ -12705,7 +12770,7 @@ app.get('/sitemap.xml', async (req, res) => {
   try {
     if (supabase) {
       const { data } = await supabase.from('agents').select('id,name,active').order('name');
-      /* \u26a0 A hidden profile must not be advertised in the sitemap either. Gating the page
+      /* ⚠ A hidden profile must not be advertised in the sitemap either. Gating the page
          but leaving the URL in here tells Google exactly where to look. */
       const liveMap = await agentPublicMap();
       (data || []).filter(a => a.active !== false && agentIsPublic(liveMap, a.id)).forEach(a => {
@@ -12720,7 +12785,7 @@ app.get('/sitemap.xml', async (req, res) => {
       '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>\n');
   }
   try {
-    /* \u26a0 The grant pages are the only pages on this site that carry a hard date, so they
+    /* ⚠ The grant pages are the only pages on this site that carry a hard date, so they
        are the ones most worth crawling promptly. Listed high, and above the articles. */
     urls.push({ loc: origin + '/help/down-payment-assistance', pri: '0.9' });
     urls.push({ loc: origin + '/help/fortified-roof-grant', pri: '0.9' });
