@@ -1082,8 +1082,36 @@ app.get('/api/search/fields', async (req, res) => {
 // from our own MLS feed, not a republication of anyone else's report.
 // Note: the feed carries Active and Pending only — no closed sales — so this is
 // list-side inventory, not sold statistics.
-const MARKET_CITIES = ['Gulf Shores','Orange Beach','Fairhope','Daphne','Foley',
-                       'Spanish Fort','Robertsdale','Bay Minette','Elberta','Summerdale'];
+/* ⚠ WAS A HARD-CODED LIST OF TEN, which is why the market section showed exactly
+   ten towns however many had listings. Loxley, Silverhill, Magnolia Springs,
+   Stapleton, Lillian, Bon Secour, Fort Morgan, Point Clear and the rest of
+   Baldwin County were simply absent — not because they had no inventory, but
+   because they were not on this list.
+
+   Derived from the data now. Every town the feed actually returns appears, in
+   descending order of inventory, with a floor so a single listing does not
+   produce a "median" of one. Kept as a fallback only for the case where the
+   feed gives nothing back. */
+const MARKET_CITIES_FALLBACK = ['Gulf Shores','Orange Beach','Fairhope','Daphne','Foley',
+                                'Spanish Fort','Robertsdale','Bay Minette','Elberta','Summerdale'];
+const MARKET_CITY_MIN = 3;        // a median below this is noise, not a statistic
+
+function marketCitiesFrom(rows, min = MARKET_CITY_MIN) {
+  const counts = new Map();
+  for (const r of rows) {
+    const c = String(r.City || '').trim();
+    if (!c) continue;
+    /* Keyed on the lower-cased name so "GULF SHORES" and "Gulf Shores" are one
+       town, but the first spelling seen is what gets displayed. */
+    const k = c.toLowerCase();
+    const cur = counts.get(k);
+    if (cur) cur.n++; else counts.set(k, { name: c, n: 1 });
+  }
+  return [...counts.values()]
+    .filter(x => x.n >= min)
+    .sort((a, b) => b.n - a.n)
+    .map(x => x.name);
+}
 let marketCache = { data: null, at: 0 };
 
 function median(nums) {
@@ -1225,8 +1253,11 @@ app.get('/api/market-stats', async (req, res) => {
       };
     };
 
+    /* Every town with real inventory, biggest first — not a fixed list of ten. */
+    const activeCities = marketCitiesFrom(priced);
+    const cityList = activeCities.length ? activeCities : MARKET_CITIES_FALLBACK;
     const byCity = {};
-    MARKET_CITIES.forEach(c => {
+    cityList.forEach(c => {
       const subset = priced.filter(r => String(r.City || '').toLowerCase() === c.toLowerCase());
       if (subset.length) byCity[c] = statsFor(subset);
     });
@@ -1245,9 +1276,11 @@ app.get('/api/market-stats', async (req, res) => {
       const sRows = await soldRows(12);
       sold = soldStats(sRows);
       soldByCity = {};
-      MARKET_CITIES.forEach(c => {
+      /* Towns with enough CLOSED sales to mean something — a different set from
+         the active one, because a town can have inventory and no recent sales. */
+      marketCitiesFrom(sRows, 5).forEach(c => {
         const subset = sRows.filter(r => String(r.City || '').toLowerCase() === c.toLowerCase());
-        if (subset.length >= 5) soldByCity[c] = soldStats(subset);   // below 5 a median is noise
+        if (subset.length >= 5) soldByCity[c] = soldStats(subset);
       });
     } catch (e) {
       console.error('[market-stats] sold pull failed:', e.message);
@@ -2279,7 +2312,7 @@ const PLAYBOOK_DEFAULTS = [
   { id:'pb_buyer', name:'New buyer, no property named', match:{ source:'new' }, steps:[
     { d:0,  ch:'sms',   t:"Hey {first}, it's {agent} with {brokerage}.\n\nWe're glad you're considering a move down to our slice of the coast \u2014 it's a good one, and we'd love to help you land in the right spot.\n\nWhat's bringing you this way: work, family, retirement, or just ready for a change? And where are you coming from? Whatever the reason, there's usually more we can help with than just finding the house." },
     { d:1,  ch:'sms',   t:"{first} \u2014 one more and then we'll get out of your way. Where's the budget landing: under $400k, $400\u2013500k, or $500k plus? And how are you thinking of paying \u2014 cash, or financing? If financing, has a lender already confirmed that number, or is that still on the list? Whichever it is, we can help." },
-    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nOne thing worth knowing early: the stretch from Fort Morgan to Perdido Key is really five or six different markets, and the difference between them matters far more than people expect \u2014 price, crowds, rental rules, how it feels in February.\n\nTell us roughly what you're after and we'll tell you honestly which part fits. It's the sort of thing that's hard to work out from photos." },
+    { d:4,  ch:'email', s:'Where to actually look', t:"Hi {first},\n\nOne thing worth knowing early: the stretch from Fort Morgan to Orange Beach is really four or fix different markets, and the difference between them matters far more than people expect \u2014 price, crowds, rental rules, how it feels in February.\n\nTell us roughly what you're after and we'll tell you honestly which part fits. It's the sort of thing that's hard to work out from photos." },
     { d:8,  ch:'task',  t:"Call them. Open with what they're struggling to find, not whether they're still in the market." },
     { d:15, ch:'sms',   t:"{first} \u2014 what would have to line up for you to move on something? This year or someday, both are completely fine. It just changes what we send you, and how often." },
     { d:30, ch:'sms',   t:"{first}, we're about a month in \u2014 how often would you like to hear from us? As they come up, once a week, or only when something really fits? We'd rather get the pace right than have you tune us out." },
@@ -2337,7 +2370,7 @@ const PLAYBOOK_DEFAULTS = [
     { d:120, ch:'email', s:'Before hurricane season',
       t:"Hi {first},\n\nA short and genuinely useful one. Whether you own here or are still looking, these are the things worth sorting before the season: check your wind mitigation certificate is current, photograph the property inside and out, and know your deductible \u2014 hurricane deductibles are usually a percentage, not a flat number, and people are surprised by that at the worst moment.\n\nHappy to look yours over.\n\n{agent}" },
     { d:150, ch:'task', t:'Six months. Call them \u2014 not to sell, just to ask how the search is going.' },
-    { d:180, ch:'email', s:'Fort Morgan, Gulf Shores or Perdido Key?',
+    { d:180, ch:'email', s:'Fort Morgan, Gulf Shores or Orange Beach?',
       t:"Hi {first},\n\nPeople treat this as one beach. It is really five or six markets, and the difference matters more than most people expect \u2014 rental rules, traffic in season, how much house you get, how quiet it is in February.\n\nIf you tell me how you would actually use the place, I will tell you which stretch fits and which to skip.\n\n{agent}" },
     { d:240, ch:'email', s:'What rentals actually bring in',
       t:"Hi {first},\n\nIf a rental is any part of the plan, the numbers people quote are usually gross and the ones that matter are net \u2014 after management, fees, insurance, and the weeks you want it yourself.\n\nI can put real numbers on a specific building instead of the brochure version. Which one do you want me to run, and how many weeks a year would you keep it for yourself?\n\n{agent}" },
@@ -7108,7 +7141,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v190',
+    serverVersion: 'v191',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -10408,8 +10441,8 @@ const ARTICLE_ART = {
 <g transform="translate(632 196)"><circle r="9" fill="#fff" stroke="#0E1433" stroke-width="3"/>
 <path d="M0 -9 L0 -40" stroke="#0E1433" stroke-width="2.5"/>
 <rect x="-50" y="-64" width="100" height="24" rx="3" fill="#fff" stroke="#0E1433" stroke-width="2.5"/>
-<text y="-47">Perdido Key</text></g></g>
-<text x="20" y="30" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">FORTY MILES, FIVE MARKETS</text></svg>`,
+<text y="-47">Orange Beach</text></g></g>
+<text x="20" y="30" font-family="sans-serif" font-size="12" letter-spacing="2.5" font-weight="700" fill="#C89B4E">THIRTY MILES, FOUR MARKETS</text></svg>`,
 
   art_firsttime: `<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four numbered steps along a path toward a house">
 <rect width="720" height="260" fill="#F6EEDC"/>
@@ -11118,9 +11151,9 @@ Dauphin Island allows leashed dogs on its beaches, with the exception of West En
 
 The Hugh S. Branyon Backcountry Trail inside Gulf State Park is dog friendly, paved, and about twelve miles of it. It is also accessible for wheelchairs and strollers, which makes it one of the more genuinely usable public spaces in the county.
 
-There are dog parks in Gulf Shores, Orange Beach and at Lake Shelby, plus one on Perdido Key.
+There are dog parks in Gulf Shores, Orange Beach and at Lake Shelby.
 
-If you are crossing into Florida, note that Escambia County beaches are also closed to dogs, so Perdido Key is not the workaround people assume. Leashed dogs are allowed on some of the trails, including the Discovery Trail at Johnson Beach, but not on the sand.
+If you are crossing into Florida, note that Escambia County beaches are closed to dogs as well, so heading over the state line is not the workaround people assume.
 
 THE PRACTICAL VERSION
 
@@ -11259,18 +11292,16 @@ Rental rules matter as much as money if any part of the plan is renting it out. 
 The short version: ask what the fee covers, what the reserves look like, and what the rental rules are. Those three answers tell you more than the fee itself.`,
     updatedAt: '2026-08-01T00:00:00.000Z' },
 
-  { id: 'art_wherelive', slug: 'fort-morgan-gulf-shores-orange-beach-perdido-key',
-    title: 'Fort Morgan, Gulf Shores, Orange Beach or Perdido Key?',
-    teaser: 'People treat this as one beach. It is really five or six markets, and the difference matters more than most expect.',
-    body: `From Fort Morgan to Perdido Key is about forty miles of coast, and choosing between them is the decision that most affects whether you enjoy the place.
+  { id: 'art_wherelive', slug: 'fort-morgan-gulf-shores-orange-beach',
+    title: 'Fort Morgan, Gulf Shores or Orange Beach?',
+    teaser: 'People treat this as one beach. It is really four or five markets, and the difference matters more than most expect.',
+    body: `From Fort Morgan to the Florida line is about thirty miles of coast, and choosing between them is the decision that most affects whether you enjoy the place.
 
 Fort Morgan is the quiet end. Fewer people, fewer restaurants, a longer drive for groceries, and the beach largely to yourself in February. If quiet is the point, this is the answer. If you want to walk to dinner, it is not.
 
 Gulf Shores is the center of gravity. The most amenities, the most rental demand, the most traffic in July. Good if you want things open year round and you accept the season.
 
 Orange Beach has the bigger buildings and the marinas. If boating matters, this is usually where the answer lands. It also has some of the strongest rental performance on the coast.
-
-Perdido Key sits across the Florida line, which changes the tax picture and the licensing, and it is quieter than Orange Beach without being as remote as Fort Morgan.
 
 Inland — Foley, Elberta, Robertsdale — is where the same money buys substantially more house and land, at the cost of a fifteen to thirty minute drive to the water. A lot of people who arrive certain they want beachfront end up here once they see the difference in what they get.
 
