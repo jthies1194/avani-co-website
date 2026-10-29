@@ -1295,6 +1295,7 @@ const CLOSED_SELECT = [
   'ClosePrice','ListPrice','OriginalListPrice','CloseDate','OnMarketDate',
   'BedroomsTotal','BathroomsTotalInteger','LivingArea','LotSizeAcres','YearBuilt',
   'ListOfficeName','ListAgentFullName','ListOfficePhone','ListOfficeEmail',
+  'Latitude','Longitude',
   'InternetEntireListingDisplayYN','InternetAddressDisplayYN','ModificationTimestamp',
 ].join(',');
 
@@ -1357,6 +1358,82 @@ function compDom(r) {
   return (n >= 0 && n < 1825) ? n : null;
 }
 
+/* ==================== FIND THE SUBJECT PROPERTY (server 200) ====================
+   ⚠ A CMA starts with a property, not a town. The first build asked for a town,
+   returned comps for nothing in particular, and left the agent to type the
+   subject address afterwards — which made the comps a list of sold homes rather
+   than comparables for anything.
+
+   This looks the address up in the feed across EVERY status. With 153,558 closed
+   sales in Baldwin County, most homes have been sold at some point, so the feed
+   usually already knows the beds, baths, size, year, lot and coordinates — and a
+   seller's own home is almost never currently listed, which is why this cannot
+   be restricted to active listings.
+
+   ⚠ Returns FACTS ABOUT THE PROPERTY, not a value. No estimate, no "worth",
+   nothing derived. That line is Firm Valuation and it is not ours to cross. */
+app.get('/api/property-lookup', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const q = String(req.query.q || '').trim();
+  if (q.length < 4) return res.status(400).json({ error: 'Give me a bit more of the address.' });
+  const esc = q.replace(/'/g, "''").slice(0, 80);
+
+  /* Street number and name only. "412 Sandpiper Ln, Gulf Shores AL 36542" will
+     not substring-match a record stored as "412 Sandpiper Lane", so the search
+     uses the leading part and lets the agent pick from what comes back. */
+  const lead = esc.split(',')[0].trim();
+
+  try {
+    const r = await mlsQuery({
+      filter: `contains(UnparsedAddress,'${lead}')`,
+      top: 25, skip: 0, count: false, county: false,
+      orderby: 'ModificationTimestamp desc',
+      select: CLOSED_SELECT,
+    });
+    if (r.sources && r.sources.length && !r.sources.some(x => x.ok)) {
+      const first = r.sources.find(x => !x.ok) || {};
+      return res.status(502).json({ error: 'The MLS refused that lookup.',
+                                    feedDetail: first.detail, sentFilter: lead });
+    }
+    /* One row per property, keeping the most recent record for each — a house
+       that sold three times should appear once, with what is known now. */
+    const seen = new Set();
+    const hits = [];
+    for (const x of (r.value || [])) {
+      const k = mlsDedupeKey(x) || x.ListingKey;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      hits.push({
+        key: x.ListingKey,
+        address: x.UnparsedAddress || '',
+        city: x.City || '',
+        county: x.CountyOrParish || '',
+        status: x.StandardStatus || '',
+        beds: x.BedroomsTotal || null,
+        baths: x.BathroomsTotalInteger || null,
+        sqft: x.LivingArea || null,
+        acres: x.LotSizeAcres || null,
+        yearBuilt: x.YearBuilt || null,
+        ptype: x.PropertyType || '',
+        subType: x.PropertySubType || '',
+        lat: Number(x.Latitude) || null,
+        lng: Number(x.Longitude) || null,
+        lastClosePrice: Number(x.ClosePrice) || null,
+        lastCloseDate: x.CloseDate || '',
+        listPrice: Number(x.ListPrice) || null,
+      });
+      if (hits.length >= 12) break;
+    }
+    res.json({ ok: true, query: q, matches: hits });
+  } catch (e) {
+    console.error('[property-lookup] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/comps', async (req, res) => {
   /* ⚠ Never cached. Before this route existed, requests to it fell through to
      the SPA catch-all and came back as index.html — and with no cache header,
@@ -1401,6 +1478,7 @@ app.get('/api/comps', async (req, res) => {
           sqft: s.LivingArea || null, ptype: s.PropertyType || '',
           subType: s.PropertySubType || '', acres: s.LotSizeAcres || null,
           yearBuilt: s.YearBuilt || null, listPrice: s.ListPrice || null,
+          lat: Number(s.Latitude) || null, lng: Number(s.Longitude) || null,
         };
         /* Seeded ranges the agent can then edit — ±1 bed and ±25% on size is a
            sane starting point, not a rule. Only fills what was left blank. */
@@ -1417,9 +1495,22 @@ app.get('/api/comps', async (req, res) => {
     } catch (e) { console.error('[comps] subject lookup:', e.message); }
   }
 
-  if (!city) return res.status(400).json({ error: 'Which town? Give me a city or a subject listing.' });
-
   const months   = Math.min(Math.max(num(q.months) || 12, 1), 60);   // matches the form's 1-60
+  /* ⚠ Comps near the SUBJECT, not merely in the same town. A town is a blunt
+     instrument — Gulf Shores runs from the beach to the back roads and a sale
+     four miles inland is not a comparable for a Gulf-front condo. When the
+     subject's coordinates are known, a radius does the work the town used to. */
+  const subLat = parseFloat(q.lat) || null;
+  const subLng = parseFloat(q.lng) || null;
+  const radius = Math.min(Math.max(parseFloat(q.radius) || 0, 0), 25);   // miles, 0 = off
+
+  /* A town is only required when there are no coordinates to search around. */
+  if (!city && !(subLat && subLng && radius)) {
+    return res.status(400).json({
+      error: 'Tell me which property, or at least which town.' });
+  }
+
+
   const limit    = Math.min(num(q.limit) || 50, 200);
   /* Include rows where the field is blank rather than dropping them. The feed
      leaves LivingArea empty on well over half of everything, so a strict size
@@ -1433,8 +1524,22 @@ app.get('/api/comps', async (req, res) => {
      an indexed equality match is the right tool. `contains` stays as a fallback
      for a town typed by hand that does not match exactly. */
   const exactCity = cmpTownIsExact(city);
-  const parts = [`StandardStatus eq 'Closed'`,
-                 exactCity ? `City eq '${esc(city)}'` : `contains(City,'${esc(city)}')`];
+  const parts = [`StandardStatus eq 'Closed'`];
+  /* ⚠ A bounding box, not a geo function. OData spatial operators are not
+     dependable across feeds and this one has already refused a filter it should
+     have taken; a numeric range on two columns is plain arithmetic that any
+     implementation handles. The box is deliberately generous and the true
+     circular distance is applied in JS afterwards. */
+  if (subLat && subLng && radius) {
+    const dLat = radius / 69;
+    const dLng = radius / (69 * Math.max(0.2, Math.cos(subLat * Math.PI / 180)));
+    parts.push(`Latitude ge ${(subLat - dLat).toFixed(6)}`,
+               `Latitude le ${(subLat + dLat).toFixed(6)}`,
+               `Longitude ge ${(subLng - dLng).toFixed(6)}`,
+               `Longitude le ${(subLng + dLng).toFixed(6)}`);
+  } else {
+    parts.push(exactCity ? `City eq '${esc(city)}'` : `contains(City,'${esc(city)}')`);
+  }
   if (ptype)   parts.push(`PropertyType eq '${esc(ptype)}'`);
   if (subType) parts.push(`PropertySubType eq '${esc(subType)}'`);
 
@@ -1510,6 +1615,25 @@ app.get('/api/comps', async (req, res) => {
       if (r.max != null && n > r.max) return false;
       return true;
     };
+    /* Circular distance, applied after the box. A box corner is 1.41x the radius
+       away, so without this a "one mile" search quietly returns sales 1.4 miles
+       out in the diagonals. */
+    const milesBetween = (aLat, aLng, bLat, bLng) => {
+      const R = 3958.8, toR = d => d * Math.PI / 180;
+      const dLa = toR(bLat - aLat), dLo = toR(bLng - aLng);
+      const h = Math.sin(dLa / 2) ** 2
+              + Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * Math.sin(dLo / 2) ** 2;
+      return R * 2 * Math.asin(Math.sqrt(h));
+    };
+    if (subLat && subLng) {
+      rows.forEach(x => {
+        x._miles = (x.Latitude && x.Longitude)
+          ? milesBetween(subLat, subLng, Number(x.Latitude), Number(x.Longitude)) : null;
+      });
+      if (radius) rows = rows.filter(x => x._miles == null || x._miles <= radius);
+      rows.sort((a, b) => (a._miles == null ? 9e9 : a._miles) - (b._miles == null ? 9e9 : b._miles));
+    }
+
     const near = rows.filter(x =>
          inRange(x.BedroomsTotal, bedsR)
       && inRange(x.BathroomsTotalInteger, bathsR)
@@ -1538,6 +1662,9 @@ app.get('/api/comps', async (req, res) => {
       sqft: x.LivingArea || null,
       yearBuilt: x.YearBuilt || null,
       acres: x.LotSizeAcres || null,
+      lat: Number(x.Latitude) || null,
+      lng: Number(x.Longitude) || null,
+      miles: (x._miles == null ? null : Math.round(x._miles * 100) / 100),
       ptype: x.PropertyType || '',
       subType: x.PropertySubType || '',
       dom: compDom(x),
@@ -1552,6 +1679,7 @@ app.get('/api/comps', async (req, res) => {
       ok: true,
       subject,
       criteria: { city, ptype, subType, months, limit, keepBlanks,
+                  lat: subLat, lng: subLng, radius,
                   beds: bedsR, baths: bathsR, sqft: sqftR,
                   acres: acresR, yearBuilt: yearR, price: priceR },
       narrowed: tight,
@@ -1572,6 +1700,104 @@ app.get('/api/comps', async (req, res) => {
     console.error('[comps] FAILED:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+/* ==================== SAVED CMAs (server 199) ====================
+   A CMA an agent builds has real work in it — chosen comps, their adjustments
+   and the reasoning. Losing that on a page refresh makes the tool unusable for
+   anything but a one-sitting job.
+
+   ⚠ Stored under `cmar:` — NOT `cma:`, which already holds uploaded CMA PDFs
+   attached to leads. Two different features, two different key prefixes, and
+   mixing them would have the PDF list trying to render report JSON.
+
+   ⚠ Scoped to the agent who made it. The broker sees everyone's; an agent sees
+   only their own, the same rule the rest of the CRM uses. */
+const CMAR_MAX_BYTES = 900 * 1024;      // a report with a photo, not a photo album
+
+app.post('/api/cma-report', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+  const b = req.body || {};
+  const body = JSON.stringify(b.report || {});
+  if (body.length > CMAR_MAX_BYTES) {
+    return res.status(413).json({ error: 'That report is too large to save — try a smaller subject photo.' });
+  }
+  const id = String(b.id || '').trim()
+    || 'cmar_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+
+  /* ⚠ Re-saving someone else's report must not be possible by passing its id. */
+  if (b.id) {
+    const existing = await getSetting('cmar:' + id);
+    if (existing && existing.agentId !== sess.agentId && !isStaff(sess)) {
+      return res.status(403).json({ error: 'That report belongs to another agent.' });
+    }
+  }
+  const rec = {
+    id,
+    agentId: sess.agentId,
+    agentName: sess.name || '',
+    address: String(b.address || '').slice(0, 160) || 'Untitled CMA',
+    city: String(b.city || '').slice(0, 80),
+    price: Number(b.price) || null,
+    compCount: Array.isArray(b.report && b.report.rows) ? b.report.rows.length : 0,
+    report: b.report || {},
+    createdAt: (b.createdAt || new Date().toISOString()),
+    updatedAt: new Date().toISOString(),
+  };
+  await setSetting('cmar:' + id, rec);
+  console.log(`[cma] ${sess.name || sess.agentId} saved "${rec.address}" (${rec.compCount} comps)`);
+  res.json({ ok: true, id, savedAt: rec.updatedAt });
+});
+
+app.get('/api/cma-report', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+  try {
+    /* Same shape the uploaded-CMA list uses — ilike on the key prefix. */
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'cmar:%');
+    const mine = (data || [])
+      .map(x => x && x.value)
+      .filter(Boolean)
+      .filter(r => isStaff(sess) ? true : r.agentId === sess.agentId)
+      /* The list view never carries the report body — it is the heavy part and
+         nothing on a list of names needs it. */
+      .map(r => ({ id: r.id, address: r.address, city: r.city, price: r.price,
+                   compCount: r.compCount, agentName: r.agentName,
+                   createdAt: r.createdAt, updatedAt: r.updatedAt }))
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    res.json({ ok: true, reports: mine });
+  } catch (e) {
+    console.error('[cma] list failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/cma-report/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+  const rec = await getSetting('cmar:' + String(req.params.id || '').slice(0, 80));
+  if (!rec) return res.status(404).json({ error: 'No such report.' });
+  if (rec.agentId !== sess.agentId && !isStaff(sess)) {
+    return res.status(403).json({ error: 'That report belongs to another agent.' });
+  }
+  res.json({ ok: true, report: rec });
+});
+
+app.delete('/api/cma-report/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = 'cmar:' + String(req.params.id || '').slice(0, 80);
+  const rec = await getSetting(key);
+  if (!rec) return res.json({ ok: true });
+  if (rec.agentId !== sess.agentId && !isStaff(sess)) {
+    return res.status(403).json({ error: 'That report belongs to another agent.' });
+  }
+  await delSetting(key);
+  res.json({ ok: true });
 });
 
 app.get('/api/market-stats', async (req, res) => {
@@ -7505,7 +7731,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v198',
+    serverVersion: 'v200',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
