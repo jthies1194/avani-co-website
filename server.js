@@ -1149,27 +1149,31 @@ async function soldRows(months = 12) {
 
   const cutoff = new Date(Date.now() - months * 30.44 * 86400000)
     .toISOString().slice(0, 10);
-  const filter = mlsWithCounty(`StandardStatus eq 'Closed' and CloseDate ge ${cutoff}`);
+  /* ⚠ Same fallback ladder as the comps route: this feed may refuse a date bound
+     or a sort on CloseDate, and a silently empty sold pull is how the market
+     section would quietly revert to active-listings-only without anyone noticing.
+     Going through closedQuery() also routes these rows through mlsMerge, which
+     applies the seller opt-out — the hand-rolled loop this replaced did not. */
   const rows = [];
   const PAGE = 200;
   const seenAddr = new Set();
+  let mode = null;
   for (let skip = 0; skip < 2000; skip += PAGE) {
-    const params = { $filter: filter, $orderby: 'CloseDate desc', $top: PAGE, $skip: skip };
-    const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, params)));
-    const okr = results.filter(r => r.ok);
-    if (!okr.length) break;
-    let maxPage = 0;
-    for (const r of okr) {
-      maxPage = Math.max(maxPage, r.rows.length);
-      for (const row of r.rows) {
-        if (!mlsCovered(row)) continue;
-        const a = mlsDedupeKey(row);
-        if (a) { if (seenAddr.has(a)) continue; seenAddr.add(a); }
-        rows.push(row);
-      }
+    const attempt = await closedQuery([`StandardStatus eq 'Closed'`], cutoff,
+                                      { top: PAGE, skip });
+    mode = attempt.mode;
+    const got = (attempt.r && attempt.r.value) ? attempt.r.value : [];
+    if (!got.length) break;
+    for (const row of got) {
+      if (attempt.jsDate && !(row.CloseDate && String(row.CloseDate).slice(0, 10) >= cutoff)) continue;
+      const a = mlsDedupeKey(row);
+      if (a) { if (seenAddr.has(a)) continue; seenAddr.add(a); }
+      rows.push(row);
     }
-    if (maxPage < PAGE) break;
+    if (got.length < PAGE) break;
   }
+  rows.sort((a, b) => String(b.CloseDate || '').localeCompare(String(a.CloseDate || '')));
+  if (mode && mode !== 'date+sort') console.warn(`[sold] feed needed fallback: ${mode}`);
   soldCache = { rows, at: Date.now(), months };
   console.log(`[sold] ${rows.length} closed sales in the last ${months} months`);
   return rows;
@@ -1235,6 +1239,41 @@ function soldStats(rows) {
 
    ⚠ Same display rules as anywhere else: seller opt-outs honoured, county
    restricted, and attribution travels with the data. */
+/* ⚠ NOT EVERY FEED ACCEPTS A DATE FILTER OR SORTS ON CloseDate. Bridge took
+   `StandardStatus eq 'Closed'` happily on its own, and the comps query — which
+   added `CloseDate ge <date>` and `$orderby=CloseDate desc` — came back with
+   nothing. Rather than guess which of the two it dislikes, this tries the ideal
+   query, then degrades: drop the date bound, then drop the ordering, filtering
+   and sorting in JS instead. Slower in the fallback, correct in all three.
+
+   The mode it succeeded with is reported, so the next session knows what this
+   feed actually supports instead of rediscovering it. */
+async function closedQuery(baseParts, cutoff, { top = 200, skip = 0 } = {}) {
+  const anyOk = r => r && r.sources && r.sources.some(s => s.ok);
+  const attempts = [
+    { mode: 'date+sort', filter: [...baseParts, `CloseDate ge ${cutoff}`].join(' and '),
+      orderby: 'CloseDate desc', jsDate: false },
+    { mode: 'sort-only', filter: baseParts.join(' and '),
+      orderby: 'CloseDate desc', jsDate: true },
+    { mode: 'plain',     filter: baseParts.join(' and '),
+      orderby: 'ModificationTimestamp desc', jsDate: true },
+  ];
+  let last = null;
+  for (const a of attempts) {
+    const r = await mlsQuery({ filter: a.filter, top, skip, orderby: a.orderby, count: true });
+    last = { r, ...a };
+    /* An attempt counts as working only if the feed answered AND gave rows —
+       a 200 with nothing back is how this failed silently the first time. */
+    if (anyOk(r) && (r.value || []).length) {
+      if (a.mode !== 'date+sort') console.warn(`[closed] feed needed fallback: ${a.mode}`);
+      return last;
+    }
+    if (!anyOk(r)) continue;          // feed refused it — try the next shape
+    return last;                       // feed answered, genuinely nothing there
+  }
+  return last;
+}
+
 function compDom(r) {
   if (!r.OnMarketDate || !r.CloseDate) return null;
   const n = Math.round((new Date(r.CloseDate) - new Date(r.OnMarketDate)) / 86400000);
@@ -1283,18 +1322,38 @@ app.get('/api/comps', async (req, res) => {
   const limit    = Math.min(num(q.limit) || 25, 100);
   const cutoff   = new Date(Date.now() - months * 30.44 * 86400000).toISOString().slice(0, 10);
 
-  const parts = [`StandardStatus eq 'Closed'`, `CloseDate ge ${cutoff}`,
-                 `contains(City,'${esc(city)}')`];
+  const parts = [`StandardStatus eq 'Closed'`, `contains(City,'${esc(city)}')`];
   if (ptype) parts.push(`PropertyType eq '${esc(ptype)}'`);
 
   try {
     /* Over-fetch, then narrow in JS: beds and square footage are range matches
        that OData handles clumsily, and the set per town is small enough. */
-    const r = await mlsQuery({
-      filter: parts.join(' and '),
-      top: 200, skip: 0, orderby: 'CloseDate desc', count: true,
-    });
+    const attempt = await closedQuery(parts, cutoff, { top: 200 });
+    const r = attempt.r;
+    /* ⚠ A FEED ERROR IS NOT "NO MATCHES". The first version of this returned an
+       empty comps array either way, so a rejected filter arrived in the CRM as
+       "No closed sales matched that" — which sent us looking at the search
+       criteria when the feed had actually refused the query. The feed's own
+       words come back now, and the panel shows them. */
+    if (r.sources && r.sources.length && !r.sources.some(x => x.ok)) {
+      const first = r.sources.find(x => !x.ok) || {};
+      console.error(`[comps] every feed failed: ${first.status} ${first.detail || ''}`);
+      return res.status(502).json({
+        error: 'The MLS refused that query.',
+        feedStatus: first.status,
+        feedDetail: first.detail,
+        sentFilter: attempt.filter,
+        queryMode: attempt.mode,
+        sources: r.sources,
+      });
+    }
+
     let rows = (r.value || []).filter(x => Number(x.ClosePrice) > 0);
+    /* When the feed would not take the date bound, apply it here instead. */
+    if (attempt.jsDate) {
+      rows = rows.filter(x => x.CloseDate && String(x.CloseDate).slice(0, 10) >= cutoff);
+      rows.sort((a, b) => String(b.CloseDate || '').localeCompare(String(a.CloseDate || '')));
+    }
 
     const near = rows.filter(x => {
       if (beds) {
@@ -1344,6 +1403,12 @@ app.get('/api/comps', async (req, res) => {
       narrowed: tight,
       matchedInTown: rows.length,
       matchedNarrow: near.length,
+      /* Echoed so a zero-result answer can be read rather than guessed at: the
+         exact filter that went to the MLS, and what each feed said back. */
+      sentFilter: attempt.filter,
+      /* Which query shape this feed accepted: date+sort, sort-only, or plain. */
+      queryMode: attempt.mode,
+      sources: r.sources,
       comps,
       summary: soldStats(use),
       source: mlsAttribution(),
@@ -7277,7 +7342,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v192',
+    serverVersion: 'v194',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
