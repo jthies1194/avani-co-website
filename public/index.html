@@ -4039,6 +4039,18 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
           <em>months</em>
         </span>
       </label>
+      <!-- ⚠ Closed is ticked and the other two are not, on purpose. A closed sale
+           is what somebody PAID; an active listing is what somebody is ASKING,
+           which is an opinion until it closes. Both belong on a CMA on this
+           coast — a seller is competing with what is on the market this week —
+           but they are never averaged together. See liveQuery in server.js. -->
+      <label class="cmp-status">Include
+        <span class="cmp-statuses">
+          <label><input type="checkbox" id="cmp-st-closed" checked> Sold</label>
+          <label><input type="checkbox" id="cmp-st-pending"> Under contract</label>
+          <label><input type="checkbox" id="cmp-st-active"> For sale now</label>
+        </span>
+      </label>
       <button class="cmp-go" onclick="cmpRun()">Find comps</button>
       <button class="cmp-more" onclick="cmpToggleMore()" id="cmp-more-btn">More filters</button>
     </div>
@@ -5556,7 +5568,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v392';
+window.BUILD = 'index-v393';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -19582,7 +19594,7 @@ function commToggle(){
 .mkt-towns-h{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
   color:var(--driftwood);margin-bottom:12px}
 .mkt-chips{display:flex;gap:9px;flex-wrap:wrap}
-.cmp-wrap{padding:4px 0}.cmp-form{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:16px 18px;margin-bottom:18px}.cmp-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}.cmp-row label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-row input,.cmp-row select{border:1px solid var(--line);border-radius:2px;padding:9px 10px;font-family:'Public Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--sand-light);text-transform:none;letter-spacing:0;min-width:96px}.cmp-go,.cmp-sub{background:var(--marsh);color:var(--sand-light);border:1px solid var(--marsh);border-radius:2px;padding:10px 20px;font-weight:600;font-size:12px;letter-spacing:.07em;text-transform:uppercase}.cmp-sub{background:transparent;color:var(--marsh);padding:7px 14px;margin-left:6px}.cmp-hint{margin:14px 0 0;font-size:13px;color:var(--driftwood)}.cmp-hint input{border:1px solid var(--line);border-radius:2px;padding:6px 8px;font-size:13px;margin:0 4px}.cmp-subject{background:var(--sand-light);border-left:3px solid var(--gold);padding:10px 14px;margin-bottom:14px}.cmp-subject strong{display:block;font-size:15px}.cmp-subject span{font-size:13px;color:var(--driftwood)}.cmp-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}.cmp-stat{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:14px 16px}.cmp-stat .l{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-stat .n{font-family:'Fraunces',serif;font-size:23px;margin:3px 0 2px}.cmp-stat .s{font-size:12px;color:var(--driftwood)}.cmp-note{font-size:13px;color:var(--driftwood);line-height:1.6;margin:10px 0}.cmp-warn{color:var(--coral)}.cmp-legal{font-size:12px;opacity:.85}.cmp-table td.pick,.cmp-table th.pick{width:40px;text-align:center}.cmp-link{background:none;border:0;padding:0;color:var(--marsh);font:inherit;text-align:left;text-decoration:underline;text-underline-offset:2px;cursor:pointer}.cmp-link:hover{color:var(--gold-deep)}.subj-step{border:1px solid var(--gold-pale);background:#FDFBF5;border-radius:3px;padding:14px 16px;margin-bottom:16px}.subj-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold-deep);font-weight:700;margin:0 0 9px}.subj-row{display:flex;gap:9px;flex-wrap:wrap}.subj-row input{flex:1;min-width:220px;border:1px solid var(--line);border-radius:2px;padding:10px 11px;font-size:15px;background:var(--white);color:var(--ink)}.subj-input{position:relative;flex:1;min-width:220px;display:block}.subj-input input{width:100%}.subj-sug{display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);z-index:40;background:var(--white);border:1px solid var(--marsh);border-radius:3px;box-shadow:0 14px 30px rgba(21,65,196,.16);max-height:320px;overflow:auto}.subj-sug.on{display:block}.sug-row{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-light);padding:9px 12px;cursor:pointer}.sug-row:last-child{border-bottom:0}.sug-row:hover,.sug-row.on{background:var(--sand-light)}.sug-row b{display:block;font-size:14px;color:var(--ink)}.sug-row span{display:block;font-size:12.5px;color:var(--driftwood)}.sug-wait,.sug-none{padding:10px 12px;font-size:13px;color:var(--driftwood)}.subj-hits{display:grid;gap:6px;margin:10px 0}.subj-hit{text-align:left;background:var(--white);border:1px solid var(--line);border-radius:2px;padding:9px 12px;cursor:pointer}.subj-hit:hover{border-color:var(--marsh);background:var(--sand-light)}.subj-hit b{display:block;font-size:14px}.subj-hit span{display:block;font-size:12.5px;color:var(--driftwood)}.subj-hit em{display:block;font-size:12px;color:var(--marsh);font-style:normal;margin-top:2px}.subj-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--white);border:1px solid var(--marsh);border-radius:2px;padding:11px 14px;margin-top:8px}.subj-card b{display:block;font-size:15px}.subj-card span{display:block;font-size:12.5px;color:var(--driftwood)}.subj-card em{display:block;font-size:12px;color:var(--marsh);font-style:normal;margin-top:2px}.subj-manual{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-light)}.cmp-map-box{margin:14px 0 4px;padding:14px;background:var(--white);border:1px solid var(--line);border-radius:3px}.cmp-map-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);font-weight:600;margin-bottom:9px}.cmp-build-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0 4px}.cmp-detail-wrap{display:none;position:fixed;inset:0;background:rgba(14,20,51,.55);z-index:90;align-items:flex-start;justify-content:center;padding:28px 16px;overflow:auto}.cmp-detail-wrap.on{display:flex}.cmp-detail{background:var(--white);border-radius:4px;max-width:960px;width:100%;padding:22px 24px;position:relative}.cmp-detail-x{position:absolute;top:10px;right:12px;background:none;border:0;font-size:26px;line-height:1;color:var(--driftwood);cursor:pointer}.cd-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;flex-wrap:wrap}.cd-head h3{font-size:20px;margin:0 0 2px}.cd-head p{margin:0;font-size:13px;color:var(--driftwood)}.cd-price{font-family:'Fraunces',serif;font-size:26px;color:var(--marsh);text-align:right}.cd-price span{display:block;font-family:'Public Sans',sans-serif;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--driftwood)}.cd-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin-bottom:16px}.cd-photos img{width:100%;height:110px;object-fit:cover;border-radius:2px;background:var(--sand-light)}.cd-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px 18px;margin-bottom:12px}.cd-f{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line-light);padding-bottom:5px}.cd-f span{font-size:12px;color:var(--driftwood)}.cd-f b{font-size:13.5px;font-weight:600}.cd-remarks{font-size:13.5px;line-height:1.6;color:var(--ink);margin:10px 0}/* ===== CMA builder: editor chrome ===== */.cma-controls{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:18px 20px;margin-bottom:22px}.cma-ctl-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}.cma-ctl-head h3{margin:0;font-size:19px}.cma-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:18px}.cma-col h4{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);margin:0 0 8px}.cma-col label{display:block;font-size:12px;color:var(--driftwood);margin-bottom:9px}.cma-col input,.cma-col textarea{width:100%;border:1px solid var(--line);border-radius:2px;padding:8px 9px;font-family:'Public Sans',sans-serif;font-size:14px;background:var(--sand-light);color:var(--ink);margin-top:3px}.cma-two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.cma-four{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.cma-chk,.cma-col label.cma-chk{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ink);margin-bottom:7px}.cma-chk input{width:auto;margin:0;flex:0 0 auto}.cma-photo-lab input{font-size:12px;background:none;padding:4px 0;border:0}/* ===== adjustment sliders ===== */.cma-adjcards{display:grid;gap:12px}.cma-adjcard{border:1px solid var(--line);border-radius:3px;background:var(--sand-light);padding:12px 14px}.cma-adjcard-h{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:11px}.cma-adjcard-id{flex:1;min-width:190px}.cma-adjcard-h b{display:block;font-size:14px;font-weight:600}.cma-adjcard-h span{display:block;font-size:12.5px;color:var(--driftwood);line-height:1.5}.cma-adjcard-h span.sold{color:var(--ink);font-weight:600}.cma-adjcard-h em{font-style:normal;font-family:'Fraunces',serif;font-size:19px;color:var(--marsh);margin-left:auto;white-space:nowrap}.cma-adjthumb{position:relative;flex:0 0 104px;width:104px;height:78px;padding:0;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--white);cursor:pointer;display:block}.cma-adjthumb img{width:100%;height:100%;object-fit:cover;display:block}.cma-adjthumb:hover{border-color:var(--marsh);box-shadow:0 2px 10px rgba(21,65,196,.18)}.cma-adjthumb-no{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--driftwood)}.cma-adjthumb i{position:absolute;top:5px;left:5px;width:21px;height:21px;border-radius:50%;background:#1B3670;color:#fff;font-size:11px;font-weight:700;font-style:normal;display:flex;align-items:center;justify-content:center}.cma-link{background:none;border:0;padding:0;font:inherit;color:var(--marsh);text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--gold-pale);text-underline-offset:2px}.cma-link:hover{color:var(--gold-deep);text-decoration-color:var(--gold)}.cma-slider-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.cma-slider-row .lo,.cma-slider-row .hi{font-size:11px;color:var(--driftwood);white-space:nowrap}.cma-slider{-webkit-appearance:none;appearance:none;flex:1;min-width:180px;height:22px;background:transparent;margin:0}.cma-slider::-webkit-slider-runnable-track{height:5px;border-radius:3px;background:linear-gradient(90deg,rgba(210,96,74,.55),var(--line) 50%,rgba(46,140,90,.6))}.cma-slider::-moz-range-track{height:5px;border-radius:3px;background:linear-gradient(90deg,rgba(210,96,74,.55),var(--line) 50%,rgba(46,140,90,.6))}.cma-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:var(--white);border:2px solid var(--marsh);box-shadow:0 1px 4px rgba(14,20,51,.25);cursor:grab}.cma-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--white);border:2px solid var(--marsh);box-shadow:0 1px 4px rgba(14,20,51,.25);cursor:grab}.cma-adj-amt{width:118px;border:1px solid var(--line);border-radius:2px;padding:7px 8px;font-size:13.5px;background:var(--white);color:var(--ink);text-align:right}.cma-adj-why{width:100%;border:1px solid var(--line);border-radius:2px;padding:7px 8px;font-size:13.5px;background:var(--white);color:var(--ink);margin-top:9px}.cma-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}.cma-chips button{border:1px solid var(--line);background:var(--white);color:var(--driftwood);border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:600;cursor:pointer}.cma-chips button:hover{border-color:var(--marsh);color:var(--marsh)}.cma-chips button.z{border-style:dashed}.cma-adj-net{font-size:12px;color:var(--driftwood);margin-top:8px}.cma-adj-net b{color:var(--ink)}/* ===== the report itself ===== */.cma-paper{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:0;color:var(--ink)}.cma-page{padding:34px 38px 38px;border-bottom:1px solid var(--line)}.cma-page:last-child{border-bottom:0}.cma-eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700}.cma-h{font-family:'Fraunces',serif;font-size:24px;margin:0 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line);position:relative}.cma-h:after{content:'';position:absolute;left:0;bottom:-1px;width:62px;height:3px;background:var(--gold)}.cma-p{font-size:13.5px;line-height:1.7;color:var(--driftwood);margin:10px 0 0;max-width:62em}.cma-date{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);margin-top:20px}/* cover */.cma-cover-page{padding:0 0 30px}.cma-hero-wrap{position:relative;overflow:hidden;border-radius:3px 3px 0 0}.cma-hero{display:block;width:100%;height:430px;object-fit:cover;background:var(--sand-light)}.cma-hero-cap{position:absolute;left:0;right:0;bottom:0;padding:70px 38px 26px;  background:linear-gradient(180deg,rgba(14,20,51,0) 0%,rgba(14,20,51,.28) 38%,rgba(14,20,51,.86) 100%);color:#fff}.cma-hero-cap .cma-eyebrow{color:var(--gold-pale)}.cma-hero-cap h1{font-family:'Fraunces',serif;font-size:36px;line-height:1.12;margin:7px 0 3px;color:#fff}.cma-hero-cap h2{font-size:16px;font-weight:400;margin:0;color:rgba(255,255,255,.86);letter-spacing:.02em}.cma-cover-plain{padding:120px 38px 90px;background:linear-gradient(135deg,#14224A 0%,#1B3670 58%,#24497F 100%);color:#fff;border-radius:3px 3px 0 0}.cma-cover-plain .cma-eyebrow{color:var(--gold-pale)}.cma-cover-plain h1{font-family:'Fraunces',serif;font-size:34px;line-height:1.14;margin:8px 0 3px;color:#fff}.cma-cover-plain h2{font-size:16px;font-weight:400;margin:0;color:rgba(255,255,255,.84)}.cma-cover-sum{display:flex;gap:30px;align-items:stretch;flex-wrap:wrap;padding:26px 38px 0}.cma-cover-price{flex:0 0 268px;background:var(--sand-light);border-left:3px solid var(--gold);padding:18px 20px}.cma-cover-price span{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--driftwood);font-weight:700}.cma-cover-price b{display:block;font-family:'Fraunces',serif;font-size:38px;line-height:1.1;color:var(--marsh);margin:5px 0 2px}.cma-cover-price em{display:block;font-style:normal;font-size:13px;color:var(--driftwood)}.cma-cover-facts{flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 28px;align-content:start}.cma-fact{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line-light);padding:8px 0}.cma-fact span{font-size:12.5px;color:var(--driftwood)}.cma-fact b{font-size:13.5px;font-weight:600;text-align:right;white-space:nowrap}.cma-cover-page .cma-date,.cma-cover-page .cma-agent{margin-left:38px;margin-right:38px}/* comp cards */.cma-shots{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:20px}.cma-shot{height:124px;border-radius:3px;overflow:hidden;background:var(--sand-light)}.cma-shot.big{grid-row:span 2;height:256px}.cma-shot img{width:100%;height:100%;object-fit:cover;display:block}.cma-subj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0 30px}.cma-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:16px}.cma-card{border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--white);break-inside:avoid;page-break-inside:avoid}.cma-card-open{display:block;width:100%;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}.cma-card:hover{border-color:var(--marsh);box-shadow:0 3px 14px rgba(21,65,196,.13)}.cma-card-open:focus-visible{outline:2px solid var(--marsh);outline-offset:-2px}.cma-card-img{position:relative;height:150px;background:var(--sand-light)}.cma-card-img img{width:100%;height:100%;object-fit:cover;display:block}.cma-card-noimg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood)}.cma-card-n{position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:50%;background:#1B3670;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}.cma-card-b{padding:11px 13px 13px}.cma-card-price{font-family:'Fraunces',serif;font-size:21px;color:var(--marsh);line-height:1.1}.cma-card-addr{font-size:13.5px;font-weight:600;margin:3px 0 4px}.cma-card-meta{font-size:12px;color:var(--driftwood);line-height:1.5}.cma-card-adj{margin-top:8px;padding-top:7px;border-top:1px solid var(--line-light);font-size:12.5px;font-weight:600}.cma-card-adj.neg{color:var(--coral)}.cma-card-adj.pos{color:#2E8C5A}.cma-card-adj em{display:block;font-style:normal;font-weight:400;font-size:12px;color:var(--driftwood);margin:1px 0}.cma-card-adj b{display:block;color:var(--ink);font-size:13px}/* tables */.cma-table{width:100%;border-collapse:collapse;font-size:12.5px}.cma-table th,.cma-table td{padding:9px 10px;border-bottom:1px solid var(--line-light);text-align:left;vertical-align:top}.cma-table thead th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);border-bottom:1px solid var(--line);background:var(--sand-light)}.cma-table thead th.subj{background:#1B3670;color:#fff}.cma-table tbody th{font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--driftwood);font-weight:700;width:124px}.cma-table tbody tr:nth-child(even) td,.cma-table tbody tr:nth-child(even) th{background:rgba(0,0,0,.015)}.cma-table td.subj{background:var(--sand-light);font-weight:600}.cma-table .neg{color:var(--coral)}.cma-table .pos{color:#2E8C5A}.cma-table tr.tot td{border-top:2px solid var(--marsh);font-weight:600;background:var(--sand-light)}.cma-adjtable td:nth-child(2),.cma-adjtable td:nth-child(3),.cma-adjtable td:nth-child(5){white-space:nowrap}/* recommendation */.cma-price-big{font-family:'Fraunces',serif;font-size:52px;line-height:1.05;color:var(--marsh);text-align:center;margin:18px 0 6px}.cma-range{display:flex;align-items:center;gap:14px;justify-content:center;font-size:15px;color:var(--driftwood)}.cma-range i{flex:0 0 180px;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--gold-pale),var(--gold))}.cma-price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 28px;margin:26px 0 4px}.cma-notes{margin-top:20px;background:var(--sand-light);border-left:3px solid var(--gold-pale);padding:14px 16px}.cma-notes h3{margin:0 0 5px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood)}.cma-notes p{margin:0;font-size:13.5px;line-height:1.65}/* agent block */.cma-agent{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px;margin-top:26px}.cma-face{width:74px;height:74px;border-radius:3px;object-fit:cover}.cma-agent-name{font-family:'Fraunces',serif;font-size:19px}.cma-agent-title{font-size:12.5px;color:var(--driftwood)}.cma-agent-lic{font-size:11.5px;color:var(--driftwood);margin-top:3px}.cma-agent-c{font-size:12.5px;margin-top:2px}.cma-firm{margin-left:auto;text-align:right}.cma-logo{max-height:38px;margin-bottom:6px}.cma-firm-name{font-weight:600;font-size:13.5px}.cma-firm-addr{font-size:12px;color:var(--driftwood);line-height:1.5}.cma-legal{font-size:10.5px;color:var(--driftwood);line-height:1.5;margin:8px 0 0}/* map */.cma-map{width:100%;height:auto;border:1px solid var(--line);border-radius:3px;background:#F3F1EA}.cma-tmap{position:relative;width:100%;padding-top:58%;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:#E8E4D8}.cma-tmap-in{position:absolute;inset:0}.cma-tmap-in img{position:absolute;width:256px;height:256px;display:block}.cma-tmap-pins{position:absolute;inset:0;width:100%;height:100%}.cma-tmap-cred{position:absolute;right:0;bottom:0;background:rgba(255,255,255,.82);font-size:9.5px;color:#444;padding:1px 5px;border-radius:2px 0 0 0}.cma-map-key{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:12px;color:var(--driftwood)}.cma-map-key span{display:flex;align-items:center;gap:6px}.cma-map-key i{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:#fff;border:2px solid #2E8C5A;color:#2E8C5A;font-size:10px;font-weight:700;font-style:normal;flex:0 0 19px}.cma-map-key i.s{background:#1B3670;border-color:#1B3670;color:#fff}/* saved list */.cma-saved-h{font-size:19px;margin:16px 0 10px}.cma-saved{border:1px solid var(--line);border-radius:3px;background:var(--white)}.cma-saved-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 15px;border-bottom:1px solid var(--line-light);flex-wrap:wrap}.cma-saved-row:last-child{border-bottom:0}.cma-saved-row b{display:block;font-size:14.5px}.cma-saved-row span{display:block;font-size:12.5px;color:var(--driftwood)}.cma-saved-row em{display:block;font-size:11.5px;color:var(--driftwood);font-style:normal;margin-top:2px}.cma-saved-act{display:flex;gap:7px}.cmp-sub.danger{color:var(--coral);border-color:rgba(210,96,74,.4)}@media(max-width:700px){  .cma-page{padding:22px 18px 26px}  .cma-hero{height:260px}.cma-hero-cap{padding:48px 18px 20px}.cma-hero-cap h1{font-size:26px}  .cma-cover-sum{padding:20px 18px 0;gap:18px}.cma-cover-price{flex:1 1 100%}  .cma-cover-page .cma-date,.cma-cover-page .cma-agent{margin-left:18px;margin-right:18px}  .cma-price-big{font-size:38px}  .cma-slider-row{gap:9px}.cma-adj-amt{width:100%}}#cma-print-host{display:none}@media print{  html.cma-printing body > *{display:none!important}  html.cma-printing #cma-print-host{display:block!important}  html.cma-printing #cma-print-host .cma-paper{border:0;background:transparent}  .no-print{display:none!important}  /* ⚠ One section per sheet was the old rule and it is why the report printed a page with four cards and eight inches of nothing under them. Sections now flow and break only when they will not fit; the cover keeps a page to itself because a cover shares with nothing. */  .cma-page{border-bottom:0;padding:0 0 22px}  .cma-h{break-after:avoid;page-break-after:avoid}  .cma-cards,.cma-shots{break-inside:avoid;page-break-inside:avoid}  .cma-cover-page{padding:0;break-after:page;page-break-after:always;min-height:96vh;display:flex;flex-direction:column}  .cma-cover-page .cma-agent{margin-top:auto}  .cma-cover-sum,.cma-cover-page .cma-date,.cma-cover-page .cma-agent{margin-left:0;margin-right:0;padding-left:0;padding-right:0}  .cma-hero{height:300px}  .cma-hero-cap,.cma-cover-plain{-webkit-print-color-adjust:exact;print-color-adjust:exact}  .cma-table{font-size:10.5px}  .cma-table th,.cma-table td{padding:6px 7px}  .cma-cards{grid-template-columns:repeat(3,1fr);gap:11px}  .cma-card-img{height:118px}  .cma-card,.cma-adjcard,.cma-table tr{break-inside:avoid;page-break-inside:avoid}  .cma-card:hover{border-color:var(--line);box-shadow:none}  .cma-card-open{cursor:auto}  .cma-link{color:inherit;text-decoration:none}  .cma-h{font-size:20px}  .cma-price-big{font-size:44px}  @page{margin:12mm}}.cmp-raw{background:#1B2440;color:#D7DEF2;border-radius:3px;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;overflow-x:auto;margin:8px 0 0}.cmp-months{display:flex;align-items:center;gap:6px}.cmp-months input{width:62px;border:1px solid var(--line);border-radius:2px;padding:9px 8px;font-size:14px;background:var(--sand-light);color:var(--ink);text-align:center}.cmp-months em{font-style:normal;font-size:12px;color:var(--driftwood);text-transform:none;letter-spacing:0}.cmp-quick{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}.cmp-quick button{border:1px solid var(--line);background:transparent;color:var(--driftwood);border-radius:2px;padding:3px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.cmp-quick button:hover{border-color:var(--marsh);color:var(--marsh)}.cmp-more{background:transparent;color:var(--marsh);border:1px solid var(--line);border-radius:2px;padding:10px 16px;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase}.cmp-adv{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}.cmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.cmp-pair{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.cmp-pair span{flex:0 0 118px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-pair input{width:78px;border:1px solid var(--line);border-radius:2px;padding:8px 9px;font-size:13.5px;background:var(--sand-light);color:var(--ink)}.cmp-pair em{font-style:normal;font-size:12px;color:var(--driftwood)}.cmp-blank{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--ink)}.cmp-adv-actions{display:flex;gap:10px;margin-top:4px}@media(max-width:700px){.cmp-pair span{flex:0 0 100%}}.cmp-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--white)}.cmp-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:720px}.cmp-table th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}.cmp-table td{padding:11px 12px;border-bottom:1px solid var(--line-light);vertical-align:top}.cmp-table tr:last-child td{border-bottom:none}.cmp-table td.a{min-width:230px}.cmp-table td.p{font-weight:600}.cmp-table .cr{display:block;font-size:12px;color:var(--driftwood);margin-top:3px}@media(max-width:700px){.cmp-row label{flex:1 1 44%}.cmp-go{flex:1 1 100%}}.mkt-sold{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.mkt-sold .mkt-top{margin-top:12px}.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
+.cmp-wrap{padding:4px 0}.cmp-form{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:16px 18px;margin-bottom:18px}.cmp-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}.cmp-row label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-row input,.cmp-row select{border:1px solid var(--line);border-radius:2px;padding:9px 10px;font-family:'Public Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--sand-light);text-transform:none;letter-spacing:0;min-width:96px}.cmp-go,.cmp-sub{background:var(--marsh);color:var(--sand-light);border:1px solid var(--marsh);border-radius:2px;padding:10px 20px;font-weight:600;font-size:12px;letter-spacing:.07em;text-transform:uppercase}.cmp-sub{background:transparent;color:var(--marsh);padding:7px 14px;margin-left:6px}.cmp-hint{margin:14px 0 0;font-size:13px;color:var(--driftwood)}.cmp-hint input{border:1px solid var(--line);border-radius:2px;padding:6px 8px;font-size:13px;margin:0 4px}.cmp-subject{background:var(--sand-light);border-left:3px solid var(--gold);padding:10px 14px;margin-bottom:14px}.cmp-subject strong{display:block;font-size:15px}.cmp-subject span{font-size:13px;color:var(--driftwood)}.cmp-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}.cmp-stat{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:14px 16px}.cmp-stat .l{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-stat .n{font-family:'Fraunces',serif;font-size:23px;margin:3px 0 2px}.cmp-stat .s{font-size:12px;color:var(--driftwood)}.cmp-note{font-size:13px;color:var(--driftwood);line-height:1.6;margin:10px 0}.cmp-warn{color:var(--coral)}.cmp-legal{font-size:12px;opacity:.85}.cmp-table td.pick,.cmp-table th.pick{width:40px;text-align:center}.cmp-link{background:none;border:0;padding:0;color:var(--marsh);font:inherit;text-align:left;text-decoration:underline;text-underline-offset:2px;cursor:pointer}.cmp-link:hover{color:var(--gold-deep)}.subj-step{border:1px solid var(--gold-pale);background:#FDFBF5;border-radius:3px;padding:14px 16px;margin-bottom:16px}.subj-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold-deep);font-weight:700;margin:0 0 9px}.subj-row{display:flex;gap:9px;flex-wrap:wrap}.subj-row input{flex:1;min-width:220px;border:1px solid var(--line);border-radius:2px;padding:10px 11px;font-size:15px;background:var(--white);color:var(--ink)}.subj-input{position:relative;flex:1;min-width:220px;display:block}.subj-input input{width:100%}.subj-sug{display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);z-index:40;background:var(--white);border:1px solid var(--marsh);border-radius:3px;box-shadow:0 14px 30px rgba(21,65,196,.16);max-height:320px;overflow:auto}.subj-sug.on{display:block}.sug-row{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-light);padding:9px 12px;cursor:pointer}.sug-row:last-child{border-bottom:0}.sug-row:hover,.sug-row.on{background:var(--sand-light)}.sug-row b{display:block;font-size:14px;color:var(--ink)}.sug-row span{display:block;font-size:12.5px;color:var(--driftwood)}.sug-wait,.sug-none{padding:10px 12px;font-size:13px;color:var(--driftwood)}.subj-hits{display:grid;gap:6px;margin:10px 0}.subj-hit{text-align:left;background:var(--white);border:1px solid var(--line);border-radius:2px;padding:9px 12px;cursor:pointer}.subj-hit:hover{border-color:var(--marsh);background:var(--sand-light)}.subj-hit b{display:block;font-size:14px}.subj-hit span{display:block;font-size:12.5px;color:var(--driftwood)}.subj-hit em{display:block;font-size:12px;color:var(--marsh);font-style:normal;margin-top:2px}.subj-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--white);border:1px solid var(--marsh);border-radius:2px;padding:11px 14px;margin-top:8px}.subj-card b{display:block;font-size:15px}.subj-card span{display:block;font-size:12.5px;color:var(--driftwood)}.subj-card em{display:block;font-size:12px;color:var(--marsh);font-style:normal;margin-top:2px}.subj-manual{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-light)}.cmp-map-box{margin:14px 0 4px;padding:14px;background:var(--white);border:1px solid var(--line);border-radius:3px}.cmp-map-h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);font-weight:600;margin-bottom:9px}.cmp-build-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0 4px}.cmp-detail-wrap{display:none;position:fixed;inset:0;background:rgba(14,20,51,.55);z-index:90;align-items:flex-start;justify-content:center;padding:28px 16px;overflow:auto}.cmp-detail-wrap.on{display:flex}.cmp-detail{background:var(--white);border-radius:4px;max-width:960px;width:100%;padding:22px 24px;position:relative}.cmp-detail-x{position:absolute;top:10px;right:12px;background:none;border:0;font-size:26px;line-height:1;color:var(--driftwood);cursor:pointer}.cd-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;flex-wrap:wrap}.cd-head h3{font-size:20px;margin:0 0 2px}.cd-head p{margin:0;font-size:13px;color:var(--driftwood)}.cd-price{font-family:'Fraunces',serif;font-size:26px;color:var(--marsh);text-align:right}.cd-price span{display:block;font-family:'Public Sans',sans-serif;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--driftwood)}.cd-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin-bottom:16px}.cd-photos img{width:100%;height:110px;object-fit:cover;border-radius:2px;background:var(--sand-light)}.cd-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px 18px;margin-bottom:12px}.cd-f{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line-light);padding-bottom:5px}.cd-f span{font-size:12px;color:var(--driftwood)}.cd-f b{font-size:13.5px;font-weight:600}.cd-remarks{font-size:13.5px;line-height:1.6;color:var(--ink);margin:10px 0}/* ===== CMA builder: editor chrome ===== */.cma-controls{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:18px 20px;margin-bottom:22px}.cma-ctl-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}.cma-ctl-head h3{margin:0;font-size:19px}.cma-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:18px}.cma-col h4{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);margin:0 0 8px}.cma-col label{display:block;font-size:12px;color:var(--driftwood);margin-bottom:9px}.cma-col input,.cma-col textarea{width:100%;border:1px solid var(--line);border-radius:2px;padding:8px 9px;font-family:'Public Sans',sans-serif;font-size:14px;background:var(--sand-light);color:var(--ink);margin-top:3px}.cma-two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.cma-four{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.cma-chk,.cma-col label.cma-chk{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ink);margin-bottom:7px}.cma-chk input{width:auto;margin:0;flex:0 0 auto}.cma-photo-lab input{font-size:12px;background:none;padding:4px 0;border:0}/* ===== adjustment sliders ===== */.cma-adjcards{display:grid;gap:12px}.cma-adjcard{border:1px solid var(--line);border-radius:3px;background:var(--sand-light);padding:12px 14px}.cma-adjcard-h{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:11px}.cma-adjcard-id{flex:1;min-width:190px}.cma-adjcard-h b{display:block;font-size:14px;font-weight:600}.cma-adjcard-h span{display:block;font-size:12.5px;color:var(--driftwood);line-height:1.5}.cma-adjcard-h span.sold{color:var(--ink);font-weight:600}.cma-adjcard-h em{font-style:normal;font-family:'Fraunces',serif;font-size:19px;color:var(--marsh);margin-left:auto;white-space:nowrap}.cma-adjgal{flex:0 0 258px;width:258px}.cma-adjmain{position:relative;height:172px;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--white)}.cma-adjmain img{width:100%;height:100%;object-fit:cover;display:block}.cma-adjmain i{position:absolute;top:7px;left:7px;width:23px;height:23px;border-radius:50%;background:#1B3670;color:#fff;font-size:12px;font-weight:700;font-style:normal;display:flex;align-items:center;justify-content:center}.cma-galnav{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:38px;border:0;background:rgba(14,20,51,.46);color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:0}.cma-galnav:hover{background:rgba(14,20,51,.76)}.cma-galnav.prev{left:0;border-radius:0 3px 3px 0}.cma-galnav.next{right:0;border-radius:3px 0 0 3px}.cma-galcount{position:absolute;right:6px;bottom:6px;background:rgba(14,20,51,.62);color:#fff;font-size:10.5px;letter-spacing:.04em;padding:2px 7px;border-radius:999px}.cma-adjstrip{display:flex;gap:5px;margin-top:6px;overflow-x:auto;padding-bottom:3px;scrollbar-width:thin}.cma-adjthumb{flex:0 0 52px;width:52px;height:40px;padding:0;border:1px solid var(--line);border-radius:2px;overflow:hidden;background:var(--white);cursor:pointer;opacity:.62}.cma-adjthumb img{width:100%;height:100%;object-fit:cover;display:block}.cma-adjthumb.on,.cma-adjthumb:hover{opacity:1;border-color:var(--marsh)}.cma-adjthumb-no{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--driftwood);text-align:center;padding:0 8px}.cma-link{background:none;border:0;padding:0;font:inherit;color:var(--marsh);text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--gold-pale);text-underline-offset:2px}.cma-link:hover{color:var(--gold-deep);text-decoration-color:var(--gold)}.cma-slider-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.cma-slider-row .lo,.cma-slider-row .hi{font-size:11px;color:var(--driftwood);white-space:nowrap}.cma-slider{-webkit-appearance:none;appearance:none;flex:1;min-width:180px;height:22px;background:transparent;margin:0}.cma-slider::-webkit-slider-runnable-track{height:5px;border-radius:3px;background:linear-gradient(90deg,rgba(210,96,74,.55),var(--line) 50%,rgba(46,140,90,.6))}.cma-slider::-moz-range-track{height:5px;border-radius:3px;background:linear-gradient(90deg,rgba(210,96,74,.55),var(--line) 50%,rgba(46,140,90,.6))}.cma-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:var(--white);border:2px solid var(--marsh);box-shadow:0 1px 4px rgba(14,20,51,.25);cursor:grab}.cma-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--white);border:2px solid var(--marsh);box-shadow:0 1px 4px rgba(14,20,51,.25);cursor:grab}.cma-adj-amt{width:118px;border:1px solid var(--line);border-radius:2px;padding:7px 8px;font-size:13.5px;background:var(--white);color:var(--ink);text-align:right}.cma-adj-why{width:100%;border:1px solid var(--line);border-radius:2px;padding:7px 8px;font-size:13.5px;background:var(--white);color:var(--ink);margin-top:9px}.cma-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}.cma-chips button{border:1px solid var(--line);background:var(--white);color:var(--driftwood);border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:600;cursor:pointer}.cma-chips button:hover{border-color:var(--marsh);color:var(--marsh)}.cma-chips button.z{border-style:dashed}.cmp-badge,.cma-badge{display:inline-block;font-style:normal;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap}.cmp-badge.sold,.cma-badge.sold{background:#E6EFE9;color:#236B45}.cmp-badge.pend,.cma-badge.pend{background:#FBEEDC;color:#95641A}.cmp-badge.act,.cma-badge.act{background:#E4EAF8;color:#1B3670}.cmp-sum-live{margin-top:-4px}.cmp-sum-live .cmp-stat{background:#FBF9F3;border-style:dashed}.cmp-status{min-width:230px}.cmp-statuses{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.cmp-statuses label{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink);margin:0}.cmp-statuses input{min-width:0;width:auto;padding:0;margin:0}.cma-card-st{position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:#fff;color:#1B3670;box-shadow:0 1px 3px rgba(0,0,0,.2)}.cma-card-st.sold{color:#236B45}.cma-card-st.pend{color:#95641A}.cma-card-price small{font-family:'Public Sans',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);margin-left:5px}.cma-table .ask{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);margin-left:4px}.cma-sub{font-family:'Fraunces',serif;font-size:17px;margin:26px 0 4px}.cma-adj-net{font-size:12px;color:var(--driftwood);margin-top:8px}.cma-adj-net b{color:var(--ink)}/* ===== the report itself ===== */.cma-paper{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:0;color:var(--ink)}.cma-page{padding:34px 38px 38px;border-bottom:1px solid var(--line)}.cma-page:last-child{border-bottom:0}.cma-eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700}.cma-h{font-family:'Fraunces',serif;font-size:24px;margin:0 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line);position:relative}.cma-h:after{content:'';position:absolute;left:0;bottom:-1px;width:62px;height:3px;background:var(--gold)}.cma-p{font-size:13.5px;line-height:1.7;color:var(--driftwood);margin:10px 0 0;max-width:62em}.cma-date{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);margin-top:20px}/* cover */.cma-cover-page{padding:0 0 30px}.cma-hero-wrap{position:relative;overflow:hidden;border-radius:3px 3px 0 0}.cma-hero{display:block;width:100%;height:430px;object-fit:cover;background:var(--sand-light)}.cma-hero-cap{position:absolute;left:0;right:0;bottom:0;padding:70px 38px 26px;  background:linear-gradient(180deg,rgba(14,20,51,0) 0%,rgba(14,20,51,.28) 38%,rgba(14,20,51,.86) 100%);color:#fff}.cma-hero-cap .cma-eyebrow{color:var(--gold-pale)}.cma-hero-cap h1{font-family:'Fraunces',serif;font-size:36px;line-height:1.12;margin:7px 0 3px;color:#fff}.cma-hero-cap h2{font-size:16px;font-weight:400;margin:0;color:rgba(255,255,255,.86);letter-spacing:.02em}.cma-cover-plain{padding:120px 38px 90px;background:linear-gradient(135deg,#14224A 0%,#1B3670 58%,#24497F 100%);color:#fff;border-radius:3px 3px 0 0}.cma-cover-plain .cma-eyebrow{color:var(--gold-pale)}.cma-cover-plain h1{font-family:'Fraunces',serif;font-size:34px;line-height:1.14;margin:8px 0 3px;color:#fff}.cma-cover-plain h2{font-size:16px;font-weight:400;margin:0;color:rgba(255,255,255,.84)}.cma-cover-sum{display:flex;gap:30px;align-items:stretch;flex-wrap:wrap;padding:26px 38px 0}.cma-cover-price{flex:0 0 268px;background:var(--sand-light);border-left:3px solid var(--gold);padding:18px 20px}.cma-cover-price span{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--driftwood);font-weight:700}.cma-cover-price b{display:block;font-family:'Fraunces',serif;font-size:38px;line-height:1.1;color:var(--marsh);margin:5px 0 2px}.cma-cover-price em{display:block;font-style:normal;font-size:13px;color:var(--driftwood)}.cma-cover-facts{flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 28px;align-content:start}.cma-fact{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line-light);padding:8px 0}.cma-fact span{font-size:12.5px;color:var(--driftwood)}.cma-fact b{font-size:13.5px;font-weight:600;text-align:right;white-space:nowrap}.cma-cover-page .cma-date,.cma-cover-page .cma-agent{margin-left:38px;margin-right:38px}/* comp cards */.cma-shots{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:20px}.cma-shot{height:124px;border-radius:3px;overflow:hidden;background:var(--sand-light)}.cma-shot.big{grid-row:span 2;height:256px}.cma-shot img{width:100%;height:100%;object-fit:cover;display:block}.cma-subj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0 30px}.cma-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:16px}.cma-card{border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--white);break-inside:avoid;page-break-inside:avoid}.cma-card-open{display:block;width:100%;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}.cma-card:hover{border-color:var(--marsh);box-shadow:0 3px 14px rgba(21,65,196,.13)}.cma-card-open:focus-visible{outline:2px solid var(--marsh);outline-offset:-2px}.cma-card-img{position:relative;height:150px;background:var(--sand-light)}.cma-card-img img{width:100%;height:100%;object-fit:cover;display:block}.cma-card-noimg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood)}.cma-card-n{position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:50%;background:#1B3670;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}.cma-card-b{padding:11px 13px 13px}.cma-card-price{font-family:'Fraunces',serif;font-size:21px;color:var(--marsh);line-height:1.1}.cma-card-addr{font-size:13.5px;font-weight:600;margin:3px 0 4px}.cma-card-meta{font-size:12px;color:var(--driftwood);line-height:1.5}.cma-card-adj{margin-top:8px;padding-top:7px;border-top:1px solid var(--line-light);font-size:12.5px;font-weight:600}.cma-card-adj.neg{color:var(--coral)}.cma-card-adj.pos{color:#2E8C5A}.cma-card-adj em{display:block;font-style:normal;font-weight:400;font-size:12px;color:var(--driftwood);margin:1px 0}.cma-card-adj b{display:block;color:var(--ink);font-size:13px}/* tables */.cma-table{width:100%;border-collapse:collapse;font-size:12.5px}.cma-table th,.cma-table td{padding:9px 10px;border-bottom:1px solid var(--line-light);text-align:left;vertical-align:top}.cma-table thead th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);border-bottom:1px solid var(--line);background:var(--sand-light)}.cma-table thead th.subj{background:#1B3670;color:#fff}.cma-table tbody th{font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--driftwood);font-weight:700;width:124px}.cma-table tbody tr:nth-child(even) td,.cma-table tbody tr:nth-child(even) th{background:rgba(0,0,0,.015)}.cma-table td.subj{background:var(--sand-light);font-weight:600}.cma-table .neg{color:var(--coral)}.cma-table .pos{color:#2E8C5A}.cma-table tr.tot td{border-top:2px solid var(--marsh);font-weight:600;background:var(--sand-light)}.cma-adjtable td:nth-child(2),.cma-adjtable td:nth-child(3),.cma-adjtable td:nth-child(5){white-space:nowrap}/* recommendation */.cma-price-big{font-family:'Fraunces',serif;font-size:52px;line-height:1.05;color:var(--marsh);text-align:center;margin:18px 0 6px}.cma-range{display:flex;align-items:center;gap:14px;justify-content:center;font-size:15px;color:var(--driftwood)}.cma-range i{flex:0 0 180px;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--gold-pale),var(--gold))}.cma-price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 28px;margin:26px 0 4px}.cma-notes{margin-top:20px;background:var(--sand-light);border-left:3px solid var(--gold-pale);padding:14px 16px}.cma-notes h3{margin:0 0 5px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood)}.cma-notes p{margin:0;font-size:13.5px;line-height:1.65}/* agent block */.cma-agent{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px;margin-top:26px}.cma-face{width:74px;height:74px;border-radius:3px;object-fit:cover}.cma-agent-name{font-family:'Fraunces',serif;font-size:19px}.cma-agent-title{font-size:12.5px;color:var(--driftwood)}.cma-agent-lic{font-size:11.5px;color:var(--driftwood);margin-top:3px}.cma-agent-c{font-size:12.5px;margin-top:2px}.cma-firm{margin-left:auto;text-align:right}.cma-logo{max-height:38px;margin-bottom:6px}.cma-firm-name{font-weight:600;font-size:13.5px}.cma-firm-addr{font-size:12px;color:var(--driftwood);line-height:1.5}.cma-legal{font-size:10.5px;color:var(--driftwood);line-height:1.5;margin:8px 0 0}/* map */.cma-map{width:100%;height:auto;border:1px solid var(--line);border-radius:3px;background:#F3F1EA}.cma-tmap{position:relative;width:100%;padding-top:58%;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:#E8E4D8}.cma-tmap-in{position:absolute;inset:0}.cma-tmap-in img{position:absolute;width:256px;height:256px;display:block}.cma-tmap-pins{position:absolute;inset:0;width:100%;height:100%}.cma-tmap-cred{position:absolute;right:0;bottom:0;background:rgba(255,255,255,.82);font-size:9.5px;color:#444;padding:1px 5px;border-radius:2px 0 0 0}.cma-map-key{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:12px;color:var(--driftwood)}.cma-map-key span{display:flex;align-items:center;gap:6px}.cma-map-key i{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:#fff;border:2px solid #2E8C5A;color:#2E8C5A;font-size:10px;font-weight:700;font-style:normal;flex:0 0 19px}.cma-map-key i.s{background:#1B3670;border-color:#1B3670;color:#fff}/* saved list */.cma-saved-h{font-size:19px;margin:16px 0 10px}.cma-saved{border:1px solid var(--line);border-radius:3px;background:var(--white)}.cma-saved-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 15px;border-bottom:1px solid var(--line-light);flex-wrap:wrap}.cma-saved-row:last-child{border-bottom:0}.cma-saved-row b{display:block;font-size:14.5px}.cma-saved-row span{display:block;font-size:12.5px;color:var(--driftwood)}.cma-saved-row em{display:block;font-size:11.5px;color:var(--driftwood);font-style:normal;margin-top:2px}.cma-saved-act{display:flex;gap:7px}.cmp-sub.danger{color:var(--coral);border-color:rgba(210,96,74,.4)}@media(max-width:700px){  .cma-page{padding:22px 18px 26px}  .cma-hero{height:260px}.cma-hero-cap{padding:48px 18px 20px}.cma-hero-cap h1{font-size:26px}  .cma-cover-sum{padding:20px 18px 0;gap:18px}.cma-cover-price{flex:1 1 100%}  .cma-cover-page .cma-date,.cma-cover-page .cma-agent{margin-left:18px;margin-right:18px}  .cma-price-big{font-size:38px}  .cma-slider-row{gap:9px}.cma-adj-amt{width:100%}}#cma-print-host{display:none}@media print{  html.cma-printing body > *{display:none!important}  html.cma-printing #cma-print-host{display:block!important}  html.cma-printing #cma-print-host .cma-paper{border:0;background:transparent}  .no-print{display:none!important}  /* ⚠ One section per sheet was the old rule and it is why the report printed a page with four cards and eight inches of nothing under them. Sections now flow and break only when they will not fit; the cover keeps a page to itself because a cover shares with nothing. */  .cma-page{border-bottom:0;padding:0 0 22px}  .cma-h{break-after:avoid;page-break-after:avoid}  .cma-cards,.cma-shots{break-inside:avoid;page-break-inside:avoid}  .cma-cover-page{padding:0;break-after:page;page-break-after:always;min-height:96vh;display:flex;flex-direction:column}  .cma-cover-page .cma-agent{margin-top:auto}  .cma-cover-sum,.cma-cover-page .cma-date,.cma-cover-page .cma-agent{margin-left:0;margin-right:0;padding-left:0;padding-right:0}  .cma-hero{height:300px}  .cma-hero-cap,.cma-cover-plain{-webkit-print-color-adjust:exact;print-color-adjust:exact}  .cma-table{font-size:10.5px}  .cma-table th,.cma-table td{padding:6px 7px}  .cma-cards{grid-template-columns:repeat(3,1fr);gap:11px}  .cma-card-img{height:118px}  .cma-card,.cma-adjcard,.cma-table tr{break-inside:avoid;page-break-inside:avoid}  .cma-card:hover{border-color:var(--line);box-shadow:none}  .cma-card-open{cursor:auto}  .cma-link{color:inherit;text-decoration:none}  .cma-h{font-size:20px}  .cma-price-big{font-size:44px}  @page{margin:12mm}}.cmp-raw{background:#1B2440;color:#D7DEF2;border-radius:3px;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;overflow-x:auto;margin:8px 0 0}.cmp-months{display:flex;align-items:center;gap:6px}.cmp-months input{width:62px;border:1px solid var(--line);border-radius:2px;padding:9px 8px;font-size:14px;background:var(--sand-light);color:var(--ink);text-align:center}.cmp-months em{font-style:normal;font-size:12px;color:var(--driftwood);text-transform:none;letter-spacing:0}.cmp-quick{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}.cmp-quick button{border:1px solid var(--line);background:transparent;color:var(--driftwood);border-radius:2px;padding:3px 8px;font-size:11.5px;font-weight:600;cursor:pointer}.cmp-quick button:hover{border-color:var(--marsh);color:var(--marsh)}.cmp-more{background:transparent;color:var(--marsh);border:1px solid var(--line);border-radius:2px;padding:10px 16px;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase}.cmp-adv{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}.cmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.cmp-pair{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.cmp-pair span{flex:0 0 118px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-pair input{width:78px;border:1px solid var(--line);border-radius:2px;padding:8px 9px;font-size:13.5px;background:var(--sand-light);color:var(--ink)}.cmp-pair em{font-style:normal;font-size:12px;color:var(--driftwood)}.cmp-blank{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--ink)}.cmp-adv-actions{display:flex;gap:10px;margin-top:4px}@media(max-width:700px){.cmp-pair span{flex:0 0 100%}}.cmp-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--white)}.cmp-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:720px}.cmp-table th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}.cmp-table td{padding:11px 12px;border-bottom:1px solid var(--line-light);vertical-align:top}.cmp-table tr:last-child td{border-bottom:none}.cmp-table td.a{min-width:230px}.cmp-table td.p{font-weight:600}.cmp-table .cr{display:block;font-size:12px;color:var(--driftwood);margin-top:3px}@media(max-width:700px){.cmp-row label{flex:1 1 44%}.cmp-go{flex:1 1 100%}}.mkt-sold{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.mkt-sold .mkt-top{margin-top:12px}.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
   border:1px solid rgba(27,32,67,.14);border-radius:11px;padding:10px 14px;
   font:inherit;cursor:pointer;transition:.15s;text-align:left}
 .mkt-chip:hover{border-color:#2E3CB0;transform:translateY(-1px);
@@ -24156,11 +24168,11 @@ function cmbBboxKey(pts){
    prints, and it survives being saved into a stored report. Pins are drawn on
    top in SVG using the same Web Mercator maths the server used, which is why
    both halves must stay in step if either is ever touched. */
-async function cmbLoadMap(){
-  const pts = cmbPoints();
-  if (pts.length < 1) { cmbMapData = null; return; }
+async function cmbLoadMap(pts){
+  pts = pts || cmbPoints();
+  if (pts.length < 1) { cmbMapData = null; return null; }
   const key = cmbBboxKey(pts);
-  if (cmbMapData && cmbMapData.key === key) return;
+  if (cmbMapData && cmbMapData.key === key) return cmbMapData;
 
   const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
   /* Pad the box so no pin sits on the edge, with a floor for a single point. */
@@ -24176,6 +24188,7 @@ async function cmbLoadMap(){
     const d = await r.json().catch(() => null);
     cmbMapData = (r.ok && d && d.ok && d.tiles && d.tiles.length) ? { ...d, key } : null;
   }catch(e){ cmbMapData = null; }
+  return cmbMapData;
 }
 
 function cmbLngX(lng, z){ return (lng + 180) / 360 * Math.pow(2, z); }
@@ -24831,7 +24844,7 @@ function cmbRenderAdj(){
   if(!cmbRows.length){ adj.innerHTML = '<p class="cmp-note">No comparables selected.</p>'; return; }
 
   adj.innerHTML = '<div class="cma-adjcards">' + cmbRows.map((c, i) => {
-    const sold = Number(c.closePrice) || 0;
+    const sold = Number(c.price != null ? c.price : c.closePrice) || 0;
     const cur  = (cmbAdj[c.key] && cmbAdj[c.key].amount) || 0;
     const why  = (cmbAdj[c.key] && cmbAdj[c.key].reason) || '';
     const span = cmbAdjSpan(sold);
@@ -24842,26 +24855,42 @@ function cmbRenderAdj(){
        house, and judging it from an address alone means clicking back to the
        comps list and losing your place. Thumbnail and address both open the full
        listing, photos and all, over the top — the builder stays where it is. */
-    const thumb = cmbCompPhoto(c);
+    const shots = (cmbPhotos[c.key] || []).slice(0, 24);
     const meta = [
       c.beds ? c.beds + ' bd' : '', c.baths ? c.baths + ' ba' : '',
       c.sqft ? Number(c.sqft).toLocaleString() + ' sq ft' : '',
       c.yearBuilt ? 'built ' + c.yearBuilt : '',
-      c.closeDate ? 'sold ' + escapeHtml(c.closeDate) : '',
+      c.sold === false
+        ? (c.daysOnMarket == null ? '' : c.daysOnMarket + ' days listed')
+        : (c.closeDate ? 'sold ' + escapeHtml(c.closeDate) : ''),
       c.miles == null ? '' : Number(c.miles).toFixed(2) + ' mi away',
     ].filter(Boolean).join(' · ');
     return `
     <div class="cma-adjcard">
       <div class="cma-adjcard-h">
-        <button type="button" class="cma-adjthumb" onclick="cmpOpenListing(${k})"
-                title="Open this listing and its photos">
-          ${thumb ? cmbImg(thumb, '', name) : '<span class="cma-adjthumb-no">No photo</span>'}
-          <i>${i + 1}</i>
-        </button>
+        <div class="cma-adjgal">
+          <div class="cma-adjmain" id="adj-main-${escapeHtml(c.key)}" data-n="0">
+            ${shots.length ? cmbImg(shots[0], '', name)
+                           : '<span class="cma-adjthumb-no">No photo in the feed</span>'}
+            <i>${i + 1}</i>
+            ${shots.length > 1 ? `
+              <button type="button" class="cma-galnav prev" aria-label="Previous photo"
+                      onclick="cmbGal(${k},-1)">&#8249;</button>
+              <button type="button" class="cma-galnav next" aria-label="Next photo"
+                      onclick="cmbGal(${k},1)">&#8250;</button>
+              <span class="cma-galcount" id="adj-count-${escapeHtml(c.key)}">1 / ${shots.length}</span>` : ''}
+          </div>
+          ${shots.length > 1 ? `<div class="cma-adjstrip" id="adj-strip-${escapeHtml(c.key)}">
+            ${shots.map((u, n2) => `<button type="button" class="cma-adjthumb${n2 === 0 ? ' on' : ''}"
+                data-n="${n2}" onclick="cmbGalTo(${k},${n2})"
+                aria-label="Photo ${n2 + 1}">${cmbImg(u, '', '')}</button>`).join('')}
+          </div>` : ''}
+        </div>
         <div class="cma-adjcard-id">
           <b><button type="button" class="cma-link" onclick="cmpOpenListing(${k})"
              >${name}</button></b>
-          <span class="sold">Sold ${cmbMoney(sold)}</span>
+          <span class="sold">${c.sold === false ? 'Asking' : 'Sold'} ${cmbMoney(sold)}
+            <em class="cma-badge ${cmpStatusClass(c)}">${cmpStatusWord(c)}</em></span>
           <span>${meta}</span>
         </div>
         <em id="adj-net-${escapeHtml(c.key)}">${cmbMoney(sold + cur)}</em>
@@ -24890,6 +24919,49 @@ function cmbRenderAdj(){
         right if it is <b>worse</b>. The adjusted figure is what it suggests the subject is worth.</div>
     </div>`;
   }).join('') + '</div>';
+}
+
+/* ⚠ The gallery lives in the adjustment card rather than behind a popup,
+   because the judgement being made IS a judgement about the pictures: is this
+   one in better condition, is the yard bigger, is the view worth money. A popup
+   that covers the slider makes you close it to act on what you just saw.
+
+   The current photo is held on the DOM node rather than in a variable, so that
+   re-rendering the report while somebody is on photo nine does not snap them
+   back to photo one. */
+function cmbGalShots(key){ return (cmbPhotos[key] || []).slice(0, 24); }
+
+function cmbGalTo(key, n){
+  const shots = cmbGalShots(key);
+  if(!shots.length) return;
+  const i = ((n % shots.length) + shots.length) % shots.length;
+  const main = document.getElementById('adj-main-' + key);
+  if(!main) return;
+  const img = main.querySelector('img');
+  if(img){
+    img.setAttribute('data-fallback', '/api/listing-photo?u=' + encodeURIComponent(shots[i]));
+    img.onerror = function(){ cmbImgFallback(this); };
+    img.src = shots[i];
+    img.style.display = '';
+  }
+  main.dataset.n = String(i);
+  const cnt = document.getElementById('adj-count-' + key);
+  if(cnt) cnt.textContent = (i + 1) + ' / ' + shots.length;
+  const strip = document.getElementById('adj-strip-' + key);
+  if(strip){
+    strip.querySelectorAll('.cma-adjthumb').forEach(b =>
+      b.classList.toggle('on', Number(b.dataset.n) === i));
+    const on = strip.querySelector('.cma-adjthumb.on');
+    if(on && on.scrollIntoView){
+      try{ on.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'smooth' }); }catch(e){}
+    }
+  }
+}
+
+function cmbGal(key, step){
+  const main = document.getElementById('adj-main-' + key);
+  const at = main ? Number(main.dataset.n || 0) : 0;
+  cmbGalTo(key, at + step);
 }
 
 /* ⚠ Slider travel. The first attempt gave a $489,000 sale a ±$150,000 range,
@@ -24999,16 +25071,31 @@ function cmbPaper(){
   const notes = cmbStr('cma-notes');
   const hero  = cmbHero();
 
-  const adjusted = cmbRows.map(c => ({
-    ...c, adj: (cmbAdj[c.key] && cmbAdj[c.key].amount) || 0,
-    reason: (cmbAdj[c.key] && cmbAdj[c.key].reason) || '',
-    net: (Number(c.closePrice) || 0) + ((cmbAdj[c.key] && cmbAdj[c.key].amount) || 0),
-  }));
-  const avgRaw = adjusted.length
-    ? Math.round(adjusted.reduce((s2, c) => s2 + (Number(c.closePrice) || 0), 0) / adjusted.length) : 0;
-  const avgNet = adjusted.length
-    ? Math.round(adjusted.reduce((s2, c) => s2 + c.net, 0) / adjusted.length) : 0;
-  const totalAdj = adjusted.reduce((s2, c) => s2 + c.adj, 0);
+  /* ⚠ cmbPrice is the ONE place that decides what a comp's number is: a closed
+     sale's ClosePrice, or a live listing's asking price. Older saved reports
+     predate the `price` field, so closePrice is the fallback. */
+  const adjusted = cmbRows.map(c => {
+    const base = Number(c.price != null ? c.price : c.closePrice) || 0;
+    const adj = (cmbAdj[c.key] && cmbAdj[c.key].amount) || 0;
+    /* A report saved before statuses existed has no `sold` flag; it was closed
+       by definition, because nothing else could be selected then. */
+    const sold = (c.sold === undefined) ? true : !!c.sold;
+    return { ...c, base, sold, adj,
+      reason: (cmbAdj[c.key] && cmbAdj[c.key].reason) || '',
+      net: base + adj };
+  });
+  /* ⚠ THE AVERAGES ARE OF SOLD COMPS ONLY. An average that folds asking prices
+     into sale prices looks authoritative and is not true, and it is the seller
+     who pays for that. Live listings appear on the report as context, labelled,
+     and are counted separately below. */
+  const soldRows = adjusted.filter(c => c.sold);
+  const liveRows = adjusted.filter(c => !c.sold);
+  const avg = (arr, f) => arr.length
+    ? Math.round(arr.reduce((s2, c) => s2 + f(c), 0) / arr.length) : 0;
+  const avgRaw   = avg(soldRows, c => c.base);
+  const avgNet   = avg(soldRows, c => c.net);
+  const totalAdj = soldRows.reduce((s2, c) => s2 + c.adj, 0);
+  const liveAsks = liveRows.map(c => c.base).filter(Boolean).sort((a, b) => a - b);
 
   const sub = {
     beds: cmbNum('cma-beds'), baths: cmbNum('cma-baths'),
@@ -25072,7 +25159,8 @@ function cmbPaper(){
           ${fact('Living area', sub.sqft ? sub.sqft.toLocaleString() + ' sq ft' : '')}
           ${fact('Lot', sub.acres ? sub.acres + ' acres' : '')}
           ${fact('Year built', sub.year)}
-          ${fact('Comparables', adjusted.length || '')}
+          ${fact('Comparable sales', soldRows.length || '')}
+          ${liveRows.length ? fact('On the market now', liveRows.length) : ''}
         </div>
       </div>
       <div class="cma-date">Prepared ${new Date().toLocaleDateString('en-US',
@@ -25122,17 +25210,21 @@ function cmbPaper(){
               ${ph ? cmbImg(ph, '', 'Comparable ' + (i + 1))
                    : '<div class="cma-card-noimg">No photo</div>'}
               <span class="cma-card-n">${i + 1}</span>
+              <span class="cma-card-st ${cmpStatusClass(c)}">${cmpStatusWord(c)}</span>
             </div>
             <div class="cma-card-b">
-              <div class="cma-card-price">${cmbMoney(c.closePrice)}</div>
+              <div class="cma-card-price">${cmbMoney(c.base)}
+                <small>${c.sold ? 'sold' : 'asking'}</small></div>
               <div class="cma-card-addr">${escapeHtml(c.addressWithheld ? 'Address withheld' : (c.address || '').split(',')[0])}</div>
               <div class="cma-card-meta">${[
                 c.beds ? c.beds + ' bd' : '', c.baths ? c.baths + ' ba' : '',
                 c.sqft ? Number(c.sqft).toLocaleString() + ' sq ft' : '',
                 c.yearBuilt ? 'built ' + c.yearBuilt : ''].filter(Boolean).join(' · ')}</div>
               <div class="cma-card-meta">${[
-                c.closeDate ? 'Sold ' + escapeHtml(c.closeDate) : '',
-                c.dom == null ? '' : c.dom + ' days',
+                c.sold ? (c.closeDate ? 'Sold ' + escapeHtml(c.closeDate) : '')
+                       : (c.onMarketDate ? 'Listed ' + escapeHtml(c.onMarketDate) : ''),
+                c.sold ? (c.dom == null ? '' : c.dom + ' days to sell')
+                       : (c.daysOnMarket == null ? '' : c.daysOnMarket + ' days on the market'),
                 c.miles == null ? '' : c.miles.toFixed(2) + ' mi away'].filter(Boolean).join(' · ')}</div>
               ${c.adj ? `<div class="cma-card-adj ${c.adj < 0 ? 'neg' : 'pos'}">
                   ${c.adj > 0 ? '+' : ''}${cmbMoney(c.adj)}
@@ -25152,8 +25244,9 @@ function cmbPaper(){
           ${adjusted.map((c, i) => `<th>Comp ${i + 1}</th>`).join('')}</tr></thead>
         <tbody>
           ${row('Address', escapeHtml(addr), c => escapeHtml((c.addressWithheld ? 'Withheld' : (c.address || '')).split(',')[0]))}
-          ${row('Sold price', '—', c => cmbMoney(c.closePrice))}
-          ${row('Sold date', '—', c => escapeHtml(c.closeDate || ''))}
+          ${row('Status', 'Subject', c => cmpStatusWord(c))}
+          ${row('Price', '—', c => cmbMoney(c.base) + (c.sold ? '' : ' <em class="ask">asking</em>'))}
+          ${row('Date', '—', c => escapeHtml(c.sold ? (c.closeDate || '') : (c.onMarketDate || '')))}
           ${row('Distance', '—', c => (c.miles == null ? '' : c.miles.toFixed(2) + ' mi'))}
           ${row('Beds', sub.beds || '', c => c.beds || '')}
           ${row('Baths', sub.baths || '', c => c.baths || '')}
@@ -25161,7 +25254,8 @@ function cmbPaper(){
           ${row('Lot, acres', sub.acres || '', c => c.acres ? Number(c.acres).toFixed(2) : '')}
           ${row('Year built', sub.year || '', c => c.yearBuilt || '')}
           ${row('$ per sq ft', '—', c => c.pricePerSqft ? '$' + c.pricePerSqft : '')}
-          ${row('Days on market', '—', c => (c.dom == null ? '' : c.dom))}
+          ${row('Days on market', '—', c => c.sold
+            ? (c.dom == null ? '' : c.dom) : (c.daysOnMarket == null ? '' : c.daysOnMarket))}
           ${row('Sold vs asking', '—', c => (c.saleToList == null ? '' : c.saleToList + '%'))}
           ${row('Listed by', '—', c => escapeHtml((c.credit || '').replace(/^Listed by:\s*/, '')))}
         </tbody>
@@ -25181,14 +25275,16 @@ function cmbPaper(){
       <h2 class="cma-h">Adjustments</h2>
       <p class="cma-p">Each sale adjusted for how it differs from ${escapeHtml(addr)}.
         These are the agent's judgements about condition, updates, lot and location
-        &mdash; not a calculation.</p>
+        &mdash; not a calculation.${liveRows.length
+          ? ' Listings that have not closed are set out separately below: an asking'
+            + ' price is not evidence of value and is not averaged in.' : ''}</p>
       <table class="cma-table cma-adjtable">
         <thead><tr><th>Comparable</th><th>Sold for</th><th>Adjustment</th><th>Why</th><th>Adjusted</th></tr></thead>
         <tbody>
-          ${adjusted.map(c => `<tr>
+          ${soldRows.map(c => `<tr>
             <td><button type="button" class="cma-link" onclick="cmpOpenListing(${cmbKeyLit(c.key)})"
               >${escapeHtml((c.addressWithheld ? 'Address withheld' : (c.address || '—')).split(',')[0])}</button></td>
-            <td>${cmbMoney(c.closePrice)}</td>
+            <td>${cmbMoney(c.base)}</td>
             <td class="${c.adj < 0 ? 'neg' : (c.adj > 0 ? 'pos' : '')}">${c.adj ? (c.adj > 0 ? '+' : '') + cmbMoney(c.adj) : '—'}</td>
             <td>${escapeHtml(c.reason || '—')}</td>
             <td><b>${cmbMoney(c.net)}</b></td>
@@ -25197,13 +25293,33 @@ function cmbPaper(){
             /* ⚠ The averages row shows the AVERAGE adjustment, not the total.
                It used to show the total, which made the row stop adding up:
                $480,250 and a "−$20,000" that does not give $475,250. */
-            const avgAdj = adjusted.length ? Math.round(totalAdj / adjusted.length) : 0;
-            return `<tr class="tot"><td>Average of ${adjusted.length}</td><td>${cmbMoney(avgRaw)}</td>
+            const avgAdj = soldRows.length ? Math.round(totalAdj / soldRows.length) : 0;
+            return `<tr class="tot"><td>Average of ${soldRows.length} sold</td><td>${cmbMoney(avgRaw)}</td>
             <td>${avgAdj ? (avgAdj > 0 ? '+' : '') + cmbMoney(avgAdj) : '—'}</td>
             <td></td><td><b>${cmbMoney(avgNet)}</b></td></tr>`;
           })()}
         </tbody>
       </table>
+      ${liveRows.length ? `
+        <h3 class="cma-sub">What the subject is competing with</h3>
+        <p class="cma-p">These have not sold. The figures are what the sellers are
+          asking, which is an opinion until a buyer agrees with it &mdash; so they
+          shape the strategy, not the arithmetic above.</p>
+        <table class="cma-table">
+          <thead><tr><th>Listing</th><th>Status</th><th>Asking</th><th>$ / sq ft</th>
+            <th>Sq ft</th><th>Days listed</th></tr></thead>
+          <tbody>
+            ${liveRows.map(c => `<tr>
+              <td><button type="button" class="cma-link" onclick="cmpOpenListing(${cmbKeyLit(c.key)})"
+                >${escapeHtml((c.addressWithheld ? 'Address withheld' : (c.address || '—')).split(',')[0])}</button></td>
+              <td>${cmpStatusWord(c)}</td>
+              <td><b>${cmbMoney(c.base)}</b></td>
+              <td>${c.pricePerSqft ? '$' + c.pricePerSqft : '—'}</td>
+              <td>${c.sqft ? Number(c.sqft).toLocaleString() : '—'}</td>
+              <td>${c.daysOnMarket == null ? '—' : c.daysOnMarket}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : ''}
     </section>` : ''}
 
   ${cmbOn.market && adjusted.length ? (() => {
@@ -25216,11 +25332,11 @@ function cmbPaper(){
         if(!a.length) return 0;
         const h = Math.floor(a.length / 2);
         return a.length % 2 ? a[h] : Math.round((a[h - 1] + a[h]) / 2); };
-      const sold = med(adjusted.map(c => Number(c.closePrice) || 0));
-      const ppsf = med(adjusted.map(c => Number(c.pricePerSqft) || 0));
-      const dom  = med(adjusted.map(c => c.dom == null ? null : Number(c.dom)));
-      const stl  = med(adjusted.map(c => c.saleToList == null ? null : Number(c.saleToList)));
-      const dates = adjusted.map(c => c.closeDate).filter(Boolean).sort();
+      const sold = med(soldRows.map(c => c.base));
+      const ppsf = med(soldRows.map(c => Number(c.pricePerSqft) || 0));
+      const dom  = med(soldRows.map(c => c.dom == null ? null : Number(c.dom)));
+      const stl  = med(soldRows.map(c => c.saleToList == null ? null : Number(c.saleToList)));
+      const dates = soldRows.map(c => c.closeDate).filter(Boolean).sort();
       return `
     <section class="cma-page">
       <h2 class="cma-h">What the market did</h2>
@@ -25230,9 +25346,18 @@ function cmbPaper(){
         ${dom ? fact('Median days on market', dom + ' days') : ''}
         ${stl ? fact('Median sold vs asking', stl + '%') : ''}
       </div>
-      <p class="cma-p">Drawn from the ${adjusted.length} sales in this report${
+      <p class="cma-p">Drawn from the ${soldRows.length} closed sale${soldRows.length === 1 ? '' : 's'} in this report${
         dates.length ? ', which closed between ' + escapeHtml(dates[0]) + ' and ' + escapeHtml(dates[dates.length - 1]) : ''}.
         Every figure here can be checked against the table above.</p>
+      ${liveRows.length ? `
+        <h3 class="cma-sub">On the market now</h3>
+        <div class="cma-price-grid">
+          ${fact('Listings competing', liveRows.length)}
+          ${fact('Asking range', cmbMoney(liveAsks[0]) + ' – ' + cmbMoney(liveAsks[liveAsks.length - 1]))}
+          ${fact('Median asking', cmbMoney(med(liveAsks)))}
+        </div>
+        <p class="cma-p">Asking prices, not sales. They say what the subject is up
+          against this week; the sold figures above say what buyers have actually paid.</p>` : ''}
     </section>`;
     })() : ''}
 
@@ -25244,14 +25369,18 @@ function cmbPaper(){
         <span>${low ? cmbMoney(low) : ''}</span><i></i><span>${high ? cmbMoney(high) : ''}</span>
       </div>` : ''}
       <div class="cma-price-grid">
-        ${fact('Average of comps', cmbMoney(avgRaw))}
+        ${fact('Average of sold comps', cmbMoney(avgRaw))}
         ${fact('After adjustments', cmbMoney(avgNet))}
         ${sub.sqft && price ? fact('Per square foot', cmbMoney(price / sub.sqft)) : ''}
-        ${fact('Comparables used', adjusted.length)}
+        ${fact('Sold comps used', soldRows.length)}
+        ${liveRows.length ? fact('Listings competing', liveRows.length) : ''}
       </div>
-      <p class="cma-p">Based on ${adjusted.length} comparable sale${adjusted.length === 1 ? '' : 's'},
-        adjusted for the differences set out above. This is a comparative market
-        analysis prepared by a licensed agent. It is not an appraisal.</p>
+      <p class="cma-p">Based on ${soldRows.length} comparable sale${soldRows.length === 1 ? '' : 's'},
+        adjusted for the differences set out above${liveRows.length
+          ? ', and read against the ' + liveRows.length + ' listing'
+            + (liveRows.length === 1 ? '' : 's') + ' the property is competing with' : ''}.
+        This is a comparative market analysis prepared by a licensed agent. It is
+        not an appraisal.</p>
       ${notes && cmbOn.notes && !cmbOn.subject ? `<div class="cma-notes"><h3>Notes</h3>
         <p>${escapeHtml(notes).replace(/\n/g, '<br>')}</p></div>` : ''}
       ${brandBar}
@@ -25422,7 +25551,7 @@ async function cmpRun(fromSubject){
   try{ if(city) localStorage.setItem('cmpCity', city); }catch(e){}
 
   cmpBusy = true;
-  out.innerHTML = '<p class="cmp-note">Looking at closed sales…</p>';
+  out.innerHTML = '<p class="cmp-note">Looking at the MLS…</p>';
   const p = new URLSearchParams();
   if(subject) p.set('subject', subject);
   if(city)    p.set('city', city);
@@ -25439,6 +25568,13 @@ async function cmpRun(fromSubject){
   });
   const kb = document.getElementById('cmp-keepBlanks');
   if(kb && !kb.checked) p.set('keepBlanks','0');
+
+  /* Which statuses to pull. Unticking everything would silently return nothing,
+     so an empty set falls back to sold — the one an agent always wants. */
+  const sts = ['closed','pending','active']
+    .filter(k => (document.getElementById('cmp-st-' + k) || {}).checked);
+  if(!sts.length) sts.push('closed');
+  p.set('statuses', sts.join(','));
 
   try{
     p.set('_', Date.now());          // defeat any cached HTML from before the route existed
@@ -25495,12 +25631,35 @@ async function cmpRun(fromSubject){
 
 function cmpMoney(n){ return (n || n === 0) ? '$' + Number(n).toLocaleString() : '—'; }
 
+/* ⚠ One place that decides what a row is called, used by the table, the comp
+   cards and the report, so the three can never disagree about whether a figure
+   is a sale or an ask. */
+function cmpStatusWord(x){
+  /* ⚠ Absent means sold. Comps saved before live listings existed carry no
+     status at all, and a closed sale labelled "Listed" would be a lie about a
+     report somebody already handed to a seller. */
+  if(!x || x.sold !== false) return 'Sold';
+  const st = String((x && x.status) || '');
+  if(st === 'Pending') return 'Under contract';
+  if(st === 'Active')  return 'For sale';
+  return st || 'Listed';
+}
+function cmpStatusClass(x){
+  if(!x || x.sold !== false) return 'sold';
+  return String((x && x.status) || '') === 'Pending' ? 'pend' : 'act';
+}
+/* The price plus what kind of price it is. Never one without the other. */
+function cmpPriceLabel(x){ return (x && x.sold) ? 'Sold' : 'Asking'; }
+
 function cmpRender(d){
   const out = document.getElementById('cmp-out');
   if(!out) return;
   const c = d.comps || [];
   if(!c.length){
-    out.innerHTML = '<p class="cmp-note">The feed answered, but no closed sales matched '
+    const askedFor = (d.statuses || ['closed']).map(k =>
+      ({ closed:'closed sales', pending:'listings under contract', active:'active listings' }[k] || k));
+    out.innerHTML = '<p class="cmp-note">The feed answered, but no '
+      + askedFor.join(' or ') + ' matched '
       + 'that in the last ' + (d.criteria ? d.criteria.months : 12) + ' months. Try a longer '
       + 'window, or clear the beds and square footage and look at the whole town. '
       + 'Check the town is spelled the way the MLS spells it.</p>'
@@ -25509,6 +25668,7 @@ function cmpRender(d){
     return;
   }
   const s = d.summary || {};
+  const lv = d.liveSummary || {};
 
   /* If narrowing by beds/sq ft left fewer than three, the server widened back to
      the whole town. Say which set is on screen rather than quietly showing a
@@ -25526,12 +25686,24 @@ function cmpRender(d){
 
   out.innerHTML = subj + `
     <div class="cmp-sum">
-      ${cmpStat('Comps', c.length.toLocaleString(), 'Closed sales')}
-      ${cmpStat('Median sale', cmpMoney(s.median), 'What they sold for')}
-      ${s.pricePerSqft ? cmpStat('Per sq ft', '$' + s.pricePerSqft, 'Median') : ''}
-      ${s.medianDaysOnMarket != null ? cmpStat('Days on market', s.medianDaysOnMarket, 'Median') : ''}
+      ${cmpStat('Sold', (s.count || 0).toLocaleString(), 'Closed sales found')}
+      ${s.count ? cmpStat('Median sale', cmpMoney(s.median), 'What they actually paid') : ''}
+      ${s.pricePerSqft ? cmpStat('Per sq ft', '$' + s.pricePerSqft, 'Median, sold') : ''}
+      ${s.medianDaysOnMarket != null ? cmpStat('Days on market', s.medianDaysOnMarket, 'Median, sold') : ''}
       ${s.saleToList != null ? cmpStat('Sold vs asking', s.saleToList + '%', 'Of final asking price') : ''}
     </div>
+    ${lv.count ? `
+    <!-- ⚠ A SEPARATE STRIP, never merged into the one above. These are asking
+         prices. Putting a median ask next to a median sale as though they were
+         the same measure is the single easiest way to mislead a seller. -->
+    <div class="cmp-sum cmp-sum-live">
+      ${cmpStat('On the market', lv.count.toLocaleString(),
+        [lv.active ? lv.active + ' for sale' : '', lv.pending ? lv.pending + ' under contract' : '']
+          .filter(Boolean).join(', '))}
+      ${cmpStat('Median asking', cmpMoney(lv.median), 'Not a sale price')}
+      ${cmpStat('Asking range', cmpMoney(lv.low) + ' \u2013 ' + cmpMoney(lv.high), 'Low to high')}
+      ${lv.medianDaysListed != null ? cmpStat('Days listed', lv.medianDaysListed, 'Median, still unsold') : ''}
+    </div>` : ''}
     ${s.saleToOriginal != null ? `<p class="cmp-note">
       Against the <strong>original</strong> asking price these sold at a median of
       <strong>${s.saleToOriginal}%</strong>${s.pctReducedBeforeSale != null
@@ -25544,25 +25716,32 @@ function cmpRender(d){
     <div class="cmp-table-wrap">
       <table class="cmp-table">
         <thead><tr>
-          <th class="pick">Use</th><th>Address</th><th>Miles</th><th>Sold</th><th>Price</th><th>$/sq ft</th>
+          <th class="pick">Use</th><th>Status</th><th>Address</th><th>Miles</th><th>Date</th><th>Price</th><th>$/sq ft</th>
           <th>Beds</th><th>Sq ft</th><th>Acres</th><th>Days</th><th>vs asking</th>
         </tr></thead>
         <tbody>
           ${c.map(x => `<tr>
             <td class="pick"><input type="checkbox" aria-label="Use as a comp"
               onchange="cmbToggleComp('${x.key}', this)"></td>
+            <td><span class="cmp-badge ${cmpStatusClass(x)}">${cmpStatusWord(x)}</span></td>
             <td class="a">
               <button class="cmp-link" onclick="cmpOpenListing('${x.key}')"
                 title="Open this listing with its photos">${escapeHtml(x.addressWithheld ? 'Address withheld by seller' : (x.address || '—'))}</button>
               ${x.credit ? `<span class="cr">${escapeHtml(x.credit)}</span>` : ''}</td>
             <td>${x.miles == null ? '—' : x.miles.toFixed(2)}</td>
-            <td>${x.closeDate ? escapeHtml(x.closeDate) : '—'}</td>
-            <td class="p">${cmpMoney(x.closePrice)}</td>
+            <td>${escapeHtml(x.closeDate || x.onMarketDate || '')
+                  || '—'}${x.sold ? '' : '<span class="cr">listed</span>'}</td>
+            <!-- ⚠ An asking price is labelled on the row itself. A column of
+                 figures where some are sales and some are asks, with nothing to
+                 tell them apart, is how a CMA ends up wrong. -->
+            <td class="p">${cmpMoney(x.price != null ? x.price : x.closePrice)}${
+              x.sold ? '' : '<span class="cr">asking</span>'}</td>
             <td>${x.pricePerSqft ? '$' + x.pricePerSqft : '—'}</td>
             <td>${x.beds || '—'}</td>
             <td>${x.sqft ? Number(x.sqft).toLocaleString() : '—'}</td>
             <td>${x.acres ? Number(x.acres).toFixed(2) : '—'}</td>
-            <td>${x.dom == null ? '—' : x.dom}</td>
+            <td>${x.sold ? (x.dom == null ? '—' : x.dom)
+                  : (x.daysOnMarket == null ? '—' : x.daysOnMarket)}</td>
             <td>${x.saleToList == null ? '—' : x.saleToList + '%'}</td>
           </tr>`).join('')}
         </tbody>
@@ -25581,18 +25760,48 @@ function cmpRender(d){
 /* ⚠ The map existed only inside the finished report, so there was no way to
    see where the comps were while choosing them — which is when it matters most.
    Same drawing, shown as soon as there are coordinates. */
-function cmpMapInline(comps){
+/* ⚠ THE COMPS MAP IS THE SAME STREET MAP AS THE REPORT'S. It used to be the
+   bare schematic — a grey grid with dots — and on this coast that is close to
+   useless: a sale a quarter of a mile away across a bayou, or on the wrong side
+   of the Intracoastal, is not a comparable, and a grid cannot show you that.
+
+   It renders the schematic first so the table is never held up by the map, then
+   swaps in the tiles when they arrive. */
+function cmpMapPoints(comps){
   const pts = [];
   if(subjPicked && subjPicked.lat && subjPicked.lng)
     pts.push({ lat:subjPicked.lat, lng:subjPicked.lng, subject:true, label:'S' });
   (comps || []).forEach((c, i) => {
     if(c.lat && c.lng) pts.push({ lat:c.lat, lng:c.lng, subject:false, label:String(i+1) });
   });
+  return pts;
+}
+
+function cmpMapInline(comps){
+  const pts = cmpMapPoints(comps);
   if(pts.length < 2) return '';
+  setTimeout(() => cmpMapUpgrade(comps), 0);
   return `<div class="cmp-map-box">
       <div class="cmp-map-h">Where these are</div>
-      ${cmbDrawMap(pts, comps || [])}
+      <div id="cmp-map-slot">${cmbDrawMap(pts, comps || [])}</div>
     </div>`;
+}
+
+async function cmpMapUpgrade(comps){
+  const pts = cmpMapPoints(comps);
+  if(pts.length < 2) return;
+  const m = await cmbLoadMap(pts);
+  const slot = document.getElementById('cmp-map-slot');
+  if(!slot) return;                      // the agent moved on; nothing to update
+  if(m && m.key === cmbBboxKey(pts)){
+    slot.innerHTML = cmbTileMap(pts, comps || [], m);
+  }else{
+    /* ⚠ Say so rather than leaving the grey grid looking like the finished
+       article. A map with no streets on it is a symptom, not a design. */
+    slot.insertAdjacentHTML('beforeend',
+      '<p class="cmp-note cmp-legal">The street map did not load, so this is a ' +
+      'relative plot. Distances are correct; the background is not available.</p>');
+  }
 }
 
 function cmpStat(l, v, sub){
@@ -29986,5 +30195,46 @@ function plEmailAll(){
     + '?subject=' + encodeURIComponent(subject);
 }
 </script>
+<style>
+/* ===== CRM PRINTING (index v393) =====
+   ⚠ Printing any CRM screen used to put the whole application on paper: the
+   navigation rail, the search form, every button, the banners. Four sheets to
+   get one table. Paper costs money. This strips the application and leaves the
+   content, and it applies to every CRM screen, not only the comps one.
+   The CMA report has its own print rules and is untouched by this. */
+@media print{
+  #crm-rail,#crm-top,#impersonation-banner,#arr-banner,#celebrations,
+  #crm-signed-in-as,#agent-switcher,#crm-version,.idea-btn,#find-res,
+  .crm-nav,.cmp-form,.cmp-adv,.cmp-hint,.cmp-build-bar,.subj-step,
+  .cma-controls,.cmp-detail-wrap,.cmp-quick,.cmp-adv-actions,
+  .no-print,.toast,.fab,.chat-fab{display:none!important}
+
+  html,body{background:#fff!important}
+  #crm-main.crm-wrap{display:block!important;max-width:none!important;padding:0!important}
+  #crm-body,#crm-inner{display:block!important;margin:0!important;padding:0!important;
+    max-width:none!important;width:100%!important;height:auto!important;overflow:visible!important}
+
+  /* Buttons that are really links read as plain text on paper. */
+  .cmp-link,.cma-link{color:inherit!important;text-decoration:none!important}
+  .cmp-table .pick,.cmp-table th.pick,.cmp-table td.pick{display:none!important}
+
+  /* Ink and space. A dashed box and a drop shadow cost toner and buy nothing. */
+  .cmp-stat,.cmp-map-box,.cmp-table-wrap,.crm-sec,.card,.panel{
+    box-shadow:none!important;border-radius:0!important;break-inside:avoid;page-break-inside:avoid}
+  .cmp-sum{gap:8px!important;margin-bottom:10px!important}
+  .cmp-stat{padding:7px 9px!important}
+  .cmp-stat .n{font-size:17px!important;margin:1px 0 0!important}
+  .cmp-map-box{padding:0!important;border:0!important;margin:10px 0!important}
+  .cmp-table{font-size:10.5px!important;min-width:0!important}
+  .cmp-table th,.cmp-table td{padding:5px 6px!important}
+  .cmp-table tr{break-inside:avoid;page-break-inside:avoid}
+  .cmp-table-wrap{overflow:visible!important;border:0!important}
+  .cmp-note{margin:5px 0!important;font-size:10.5px!important}
+  h1,h2,h3{break-after:avoid;page-break-after:avoid;margin-top:8px!important}
+
+  @page{margin:10mm}
+}
+</style>
+
 </body>
 </html>
