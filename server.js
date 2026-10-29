@@ -1219,6 +1219,142 @@ function soldStats(rows) {
   };
 }
 
+/* ==================== COMPARABLE SALES (server 192) ====================
+   What an agent used to leave the system to do. Closed sales near a subject
+   property, matched on the things that actually make a comp: same town, same
+   property type, similar size and bedroom count, sold recently.
+
+   ⚠ THIS IS NOT A VALUATION AND MUST NOT BECOME ONE. Displaying sold listings
+   is inside the IDX licence. Producing a number that says what a property is
+   worth — an AVM, a BPO, an automated CMA delivered to a third party — is Firm
+   Valuation under Exhibit B, a separate licence tier with its own fee, its own
+   terms-of-use obligations and its own audit trail requirements. So this returns
+   COMPS and the medians of those comps, and never an estimated value for the
+   subject property. The agent's judgement is the valuation. Do not add a
+   "suggested price" field here without the Firm Valuation licence in hand.
+
+   ⚠ Same display rules as anywhere else: seller opt-outs honoured, county
+   restricted, and attribution travels with the data. */
+function compDom(r) {
+  if (!r.OnMarketDate || !r.CloseDate) return null;
+  const n = Math.round((new Date(r.CloseDate) - new Date(r.OnMarketDate)) / 86400000);
+  return (n >= 0 && n < 1825) ? n : null;
+}
+
+app.get('/api/comps', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const q = req.query || {};
+  const esc = v => String(v).replace(/'/g, "''");
+  const num = v => { const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10); return isNaN(n) ? null : n; };
+
+  let city   = String(q.city || '').trim();
+  let beds   = num(q.beds);
+  let sqft   = num(q.sqft);
+  let ptype  = String(q.ptype || '').trim();
+  let subject = null;
+
+  /* Seed the criteria straight off a listing, so an agent working a specific
+     property does not retype what the feed already knows. */
+  if (q.subject) {
+    try {
+      const s = await mlsFindByKey(String(q.subject).slice(0, 128));
+      if (s) {
+        subject = {
+          key: s.ListingKey, address: s.UnparsedAddress || '', city: s.City || '',
+          beds: s.BedroomsTotal || null, baths: s.BathroomsTotalInteger || null,
+          sqft: s.LivingArea || null, ptype: s.PropertyType || '',
+          listPrice: s.ListPrice || null,
+        };
+        if (!city)  city  = subject.city;
+        if (!beds)  beds  = subject.beds;
+        if (!sqft)  sqft  = subject.sqft;
+        if (!ptype) ptype = subject.ptype;
+      }
+    } catch (e) { console.error('[comps] subject lookup:', e.message); }
+  }
+
+  if (!city) return res.status(400).json({ error: 'Which town? Give me a city or a subject listing.' });
+
+  const months   = Math.min(Math.max(num(q.months) || 12, 1), 36);
+  const bedSlop  = Math.min(Math.max(num(q.bedSlop) == null ? 1 : num(q.bedSlop), 0), 3);
+  const sqftPct  = Math.min(Math.max(num(q.sqftPct) || 25, 5), 75) / 100;
+  const limit    = Math.min(num(q.limit) || 25, 100);
+  const cutoff   = new Date(Date.now() - months * 30.44 * 86400000).toISOString().slice(0, 10);
+
+  const parts = [`StandardStatus eq 'Closed'`, `CloseDate ge ${cutoff}`,
+                 `contains(City,'${esc(city)}')`];
+  if (ptype) parts.push(`PropertyType eq '${esc(ptype)}'`);
+
+  try {
+    /* Over-fetch, then narrow in JS: beds and square footage are range matches
+       that OData handles clumsily, and the set per town is small enough. */
+    const r = await mlsQuery({
+      filter: parts.join(' and '),
+      top: 200, skip: 0, orderby: 'CloseDate desc', count: true,
+    });
+    let rows = (r.value || []).filter(x => Number(x.ClosePrice) > 0);
+
+    const near = rows.filter(x => {
+      if (beds) {
+        const b = Number(x.BedroomsTotal);
+        if (b && Math.abs(b - beds) > bedSlop) return false;
+      }
+      if (sqft) {
+        const a = Number(x.LivingArea);
+        if (a && (a < sqft * (1 - sqftPct) || a > sqft * (1 + sqftPct))) return false;
+      }
+      return true;
+    });
+
+    /* ⚠ If narrowing leaves almost nothing, say so and fall back to the wider
+       set rather than returning three comps as though they were the answer.
+       An agent needs to know which of the two they are looking at. */
+    const tight = near.length >= 3;
+    const use = (tight ? near : rows).slice(0, limit);
+
+    const comps = use.map(x => ({
+      key: x.ListingKey,
+      address: x.UnparsedAddress || '',
+      addressWithheld: !!x._addressWithheld,
+      city: x.City || '',
+      closePrice: Number(x.ClosePrice) || null,
+      listPrice: Number(x.ListPrice) || null,
+      originalListPrice: Number(x.OriginalListPrice) || null,
+      closeDate: x.CloseDate || '',
+      beds: x.BedroomsTotal || null,
+      baths: x.BathroomsTotalInteger || null,
+      sqft: x.LivingArea || null,
+      yearBuilt: x.YearBuilt || null,
+      ptype: x.PropertyType || '',
+      subType: x.PropertySubType || '',
+      dom: compDom(x),
+      pricePerSqft: (Number(x.ClosePrice) > 0 && Number(x.LivingArea) > 250)
+        ? Math.round(Number(x.ClosePrice) / Number(x.LivingArea)) : null,
+      saleToList: (Number(x.ClosePrice) > 0 && Number(x.ListPrice) > 0)
+        ? Math.round(Number(x.ClosePrice) / Number(x.ListPrice) * 1000) / 10 : null,
+      credit: listingCredit(x),
+    }));
+
+    res.json({
+      ok: true,
+      subject,
+      criteria: { city, beds, sqft, ptype, months, bedSlop, sqftPct: Math.round(sqftPct * 100), limit },
+      narrowed: tight,
+      matchedInTown: rows.length,
+      matchedNarrow: near.length,
+      comps,
+      summary: soldStats(use),
+      source: mlsAttribution(),
+      disclaimer: mlsIdxDisclaimer(),
+    });
+  } catch (e) {
+    console.error('[comps] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/market-stats', async (req, res) => {
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
@@ -7141,7 +7277,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v191',
+    serverVersion: 'v192',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
