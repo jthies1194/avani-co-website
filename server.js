@@ -1281,6 +1281,12 @@ function compDom(r) {
 }
 
 app.get('/api/comps', async (req, res) => {
+  /* ⚠ Never cached. Before this route existed, requests to it fell through to
+     the SPA catch-all and came back as index.html — and with no cache header,
+     that HTML stuck. The server was then upgraded, the route started working,
+     and the browser carried on being served the stale HTML, which the front end
+     correctly but misleadingly reported as "your server is too old". */
+  res.set('Cache-Control', 'no-store, must-revalidate');
   const sess = await requireSession(req, res); if (!sess) return;
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
@@ -1336,7 +1342,7 @@ app.get('/api/comps', async (req, res) => {
 
   if (!city) return res.status(400).json({ error: 'Which town? Give me a city or a subject listing.' });
 
-  const months   = Math.min(Math.max(num(q.months) || 12, 1), 36);
+  const months   = Math.min(Math.max(num(q.months) || 12, 1), 60);   // matches the form's 1-60
   const limit    = Math.min(num(q.limit) || 50, 200);
   /* Include rows where the field is blank rather than dropping them. The feed
      leaves LivingArea empty on well over half of everything, so a strict size
@@ -7396,7 +7402,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v195',
+    serverVersion: 'v196',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
