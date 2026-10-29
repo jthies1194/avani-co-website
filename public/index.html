@@ -5395,7 +5395,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v375';
+window.BUILD = 'index-v376';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -11599,20 +11599,59 @@ async function loadMarketStats(){
           </div>
         </div>` : ''}
 
+      ${mktSold(d)}
+
       <p class="mkt-note">
         ${escapeHtml(d.basis)} Data courtesy of ${escapeHtml(d.source)}.
         Updated ${new Date(d.generatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}.
         Information is deemed reliable but not guaranteed.
       </p>
-      <p class="mkt-note">Looking for sold comparables or a valuation on a specific property?
+      <p class="mkt-note">Want to know what your own place would sell for?
         <a href="#contact" style="color:var(--gold-deep);text-decoration:underline;">Ask us</a> &mdash;
-        that takes a broker, not a chart.</p>`;
+        these are county-wide medians, and your street is not the county.</p>`;
   }catch(e){
     el.innerHTML = '<p class="market-loading">Market data is unavailable just now. Call 251-229-3216 and we\'ll walk you through it.</p>';
   }
 }
 function mktStat(label, value, sub){
   return `<div class="mkt-stat"><div class="l">${label}</div><div class="n">${value}</div><div class="s">${sub}</div></div>`;
+}
+
+/* ⚠ WHAT ACTUALLY SOLD. The site could only ever show asking prices, because the
+   old feed carried no closed sales. This one does, and these four numbers are
+   what a seller conversation turns on — particularly the gap between
+   sale-to-list and sale-to-ORIGINAL-list, which is what over-pricing costs.
+
+   ⚠ Renders nothing at all when the sold pull failed or came back thin. A
+   half-filled row of dashes reads as broken software, and a median drawn from a
+   handful of sales is worse than no median. */
+function mktSold(d){
+  const s = d && d.sold;
+  if(!s || !s.count || s.count < 10) return '';
+  const months = d.soldWindowMonths || 12;
+  const cut = s.saleToList != null && s.saleToOriginal != null
+    ? Math.round((s.saleToList - s.saleToOriginal) * 10) / 10 : null;
+  return `
+    <div class="mkt-sold">
+      <div class="mkt-towns-h">What actually sold &mdash; last ${months} months</div>
+      <div class="mkt-top">
+        ${mktStat('Homes sold', s.count.toLocaleString(), 'Closed sales in Baldwin County')}
+        ${mktStat('Median sale price', fmtMoney(s.median), 'What buyers actually paid')}
+        ${s.medianDaysOnMarket != null
+          ? mktStat('Days on market', s.medianDaysOnMarket.toLocaleString(),
+                    'Median, listing to closing') : ''}
+        ${s.saleToList != null
+          ? mktStat('Sold vs asking', s.saleToList + '%', 'Of the final asking price') : ''}
+      </div>
+      ${s.saleToOriginal != null ? `
+        <p class="mkt-note">
+          Against the <strong>original</strong> asking price the median sale came in at
+          <strong>${s.saleToOriginal}%</strong>${cut ? ` &mdash; ${cut} points lower` : ''}.
+          ${s.pctReducedBeforeSale != null
+            ? `${s.pctReducedBeforeSale}% of these homes cut their price before they sold.` : ''}
+          Pricing it right the first time is the whole difference.
+        </p>` : ''}
+    </div>`;
 }
 </script>
 <script>
@@ -19376,7 +19415,7 @@ function commToggle(){
 .mkt-towns-h{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
   color:var(--driftwood);margin-bottom:12px}
 .mkt-chips{display:flex;gap:9px;flex-wrap:wrap}
-.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
+.mkt-sold{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.mkt-sold .mkt-top{margin-top:12px}.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
   border:1px solid rgba(27,32,67,.14);border-radius:11px;padding:10px 14px;
   font:inherit;cursor:pointer;transition:.15s;text-align:left}
 .mkt-chip:hover{border-color:#2E3CB0;transform:translateY(-1px);
