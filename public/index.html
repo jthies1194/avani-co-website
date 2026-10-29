@@ -5578,7 +5578,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v397';
+window.BUILD = 'index-v398';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -14510,7 +14510,7 @@ async function renderMarketingSection(){
         Anything written for Facebook, a Google post or Instagram lives here, with the
         picture and the link that go with it. Copy it when you need it instead of
         hunting for where you put it. Your agents can use these too.</p>
-      <div id="ml-body">Loading&hellip;</div>
+      <div id="mlib-body">Loading&hellip;</div>
     </div></div>
     ` + ohPanelHtml() + `<div class="card" style="margin-top:14px"><div style="padding:18px">
       <p style="margin:0 0 14px;color:rgba(27,32,67,.72);max-width:640px">
@@ -24689,6 +24689,7 @@ async function cmbOpen(id){
     cmbPhotos = rep.photos || {};
     cmbBrandOver = Object.assign({ photo: '', logo: '' }, rep.brand || {});
     cmbFrames = Object.assign({ face:{zoom:1,x:50,y:18}, hero:{zoom:1,x:50,y:50} }, rep.frames || {});
+    cmbFramesTouched = !!rep.frames;
     cmbMapData = null;
     cmbCurrentId = d.report.id;
     cmbSel = new Set(cmbRows.map(c => c.key));
@@ -24857,6 +24858,10 @@ function cmpPhotos(r){
 }
 
 /* ---------- the report ---------- */
+/* ⚠ CHECKS THE CONTENT TYPE. This asked for a route that did not exist for
+   weeks; the SPA catch-all answered with the index page, r.ok was true, the
+   JSON parse threw, the catch swallowed it and every CMA came up unbranded with
+   no sign anything was wrong. A 200 is not an answer — the content type is. */
 async function cmbLoadBrand(){
   if(cmbBrand) return cmbBrand;
   try{
@@ -24864,11 +24869,58 @@ async function cmbLoadBrand(){
     if(id){
       const r = await fetch('/api/agent/' + encodeURIComponent(id) + '/public?_=' + Date.now(),
                             { cache: 'no-store' });
-      if(r.ok) cmbBrand = await r.json();
+      const ct = r.headers.get('content-type') || '';
+      if(r.ok && ct.includes('json')){
+        cmbBrand = await r.json();
+      }else{
+        console.warn('[cma] branding did not load:', r.status, ct.slice(0, 40));
+      }
     }
-  }catch(e){}
+  }catch(e){ console.warn('[cma] branding failed:', e.message); }
   cmbBrand = cmbBrand || {};
+  /* The crop the agent saved last time, unless this report carries its own. */
+  if(cmbBrand.cmaFrame && !cmbFramesTouched){
+    cmbFrames.face = Object.assign({}, cmbFrames.face, cmbBrand.cmaFrame);
+  }
   return cmbBrand;
+}
+
+/* Set once a report has been opened with its own saved crop, so loading the
+   agent's default cannot overwrite it. */
+let cmbFramesTouched = false;
+
+/* ⚠ Saves to the AGENT, not to this report — that is the whole point. Uploading
+   a headshot into every CMA one at a time is the complaint this answers. */
+async function cmbSaveBrandToProfile(){
+  const id = (typeof currentAgent !== 'undefined' && currentAgent) ? currentAgent.id : '';
+  if(!id){ showToast && showToast('Sign in first.'); return; }
+  const body = {};
+  if(cmbBrandOver.photo) body.photo = cmbBrandOver.photo;
+  if(cmbBrandOver.logo)  body.logo  = cmbBrandOver.logo;
+  body.cmaFrame = cmbFrames.face;
+  if(!body.photo && !body.logo){
+    /* Still worth saving the crop on its own — the picture may already be theirs. */
+  }
+  const btn = document.getElementById('cma-brand-save');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+  try{
+    const r = await fetch('/api/agent/' + encodeURIComponent(id) + '/brand', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      cache:'no-store', body: JSON.stringify(body) });
+    const ct = r.headers.get('content-type') || '';
+    const d = ct.includes('json') ? await r.json() : {};
+    if(!r.ok || !d.ok) throw new Error(d.error || 'That did not save.');
+    /* Now that it is the profile's, it is no longer an override. */
+    if(body.photo) { cmbBrand.photo = body.photo; cmbBrandOver.photo = ''; }
+    if(body.logo)  { cmbBrand.logo  = body.logo;  cmbBrandOver.logo  = ''; }
+    cmbBrand.cmaFrame = body.cmaFrame;
+    showToast && showToast('Saved to your profile. Every report will use it now.');
+    cmbRender();
+  }catch(e){
+    showToast && showToast(e.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = 'Save to my profile'; }
+  }
 }
 
 /* ==================== PHOTOS FOR THE REPORT (index 391) ====================
@@ -25043,10 +25095,13 @@ function cmbEditor(){
           <label class="cma-chk"><input type="checkbox" id="cma-brand-logo" checked
             onchange="cmbRender()"> Show a logo</label>
           <div class="cma-brandrow" id="cma-brand-logo-row"></div>
+          <button type="button" class="cmp-sub" id="cma-brand-save"
+            onclick="cmbSaveBrandToProfile()">Save to my profile</button>
           <p class="cmp-note cmp-legal">Your name and the brokerage always appear —
             a report that does not say who prepared it is not one you can hand over.
-            The headshot and logo come from your profile under My details; anything
-            you add here replaces them on this report only.</p>
+            <b>Save to my profile</b> keeps the headshot, the logo and the crop for
+            every future report, so you only do this once. Without it, anything you
+            upload here applies to this report alone.</p>
         </div>
       </div>
 
@@ -27436,7 +27491,7 @@ function cmaRender(){
        often.</p>
      <div class="cma-f">
        <label>Which property</label>
-       <input id="cma-addr" placeholder="11746 Wentwood Ct, Daphne AL 36526"
+       <input id="cmapdf-addr" placeholder="11746 Wentwood Ct, Daphne AL 36526"
          value="${escapeHtml(cmaFor.addr)}">
      </div>
      <div class="cma-f">
@@ -27482,7 +27537,7 @@ function cmaPick(input){
 
 async function cmaUpload(){
   if(cmaBusy || !cmaFile) return;
-  const addr = (document.getElementById('cma-addr')?.value || '').trim();
+  const addr = (document.getElementById('cmapdf-addr')?.value || '').trim();
   if(!addr){ showToast('Which property is it for?'); return; }
   cmaBusy = true;
   const go = document.getElementById('cma-go');
@@ -29966,7 +30021,7 @@ async function mlLoad(){
 }
 
 function mlRender(){
-  const host = document.getElementById('ml-body');
+  const host = document.getElementById('mlib-body');
   if(!host) return;
   const staff = (typeof isAdminOrOwner === 'function') && isAdminOrOwner();
   host.innerHTML = (ML.length ? ML.map((m,i) => `
