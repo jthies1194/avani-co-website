@@ -1358,6 +1358,79 @@ function compDom(r) {
   return (n >= 0 && n < 1825) ? n : null;
 }
 
+/* ==================== ADDRESS SUGGESTIONS (server 203) ====================
+   Type-ahead for the subject address. The hard part is speed: contains() over
+   159,000 records takes seconds, which is useless while somebody is typing.
+
+   ⚠ So it keys on the STREET NUMBER, which is an indexed equality match and
+   therefore fast. A street number returns at most a few dozen properties across
+   the whole county, and those are handed to the browser ONCE and filtered there
+   as the agent keeps typing. That is what makes misspelling survivable: the
+   fuzzy matching happens locally against a small set, so "callway", "calaway"
+   and "Callaway Dr" all land on the same property without another round trip.
+
+   Falls back to a street-name search when no number has been typed yet, which is
+   slower and deliberately needs more characters before it will run. */
+app.get('/api/address-suggest', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const num  = String(req.query.num || '').trim().slice(0, 12);
+  const name = String(req.query.name || '').trim().slice(0, 40);
+  const esc  = v => String(v).replace(/'/g, "''");
+
+  let filter = '', how = '';
+  if (/^\d+[A-Za-z]?$/.test(num)) {
+    filter = `StreetNumber eq '${esc(num)}'`;
+    how = 'street number';
+  } else if (name.length >= 4) {
+    /* Title Case first — see the note on case sensitivity in the lookup route. */
+    const t = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+    filter = `contains(StreetName,'${esc(t)}')`;
+    how = 'street name';
+  } else {
+    return res.json({ ok: true, how: 'too short', suggestions: [] });
+  }
+
+  try {
+    const r = await mlsQuery({
+      filter, top: 120, skip: 0, count: false, county: false,
+      orderby: 'ModificationTimestamp desc', select: CLOSED_SELECT,
+    });
+    if (r.sources && r.sources.length && !r.sources.some(x => x.ok)) {
+      const first = r.sources.find(x => !x.ok) || {};
+      return res.json({ ok: true, how, suggestions: [], feedDetail: first.detail });
+    }
+    const seen = new Set();
+    const out = [];
+    for (const x of (r.value || [])) {
+      const k = mlsDedupeKey(x) || x.ListingKey;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({
+        key: x.ListingKey,
+        address: x.UnparsedAddress || '',
+        streetNumber: x.StreetNumber || '',
+        streetName: x.StreetName || '',
+        city: x.City || '',
+        status: x.StandardStatus || '',
+        beds: x.BedroomsTotal || null, baths: x.BathroomsTotalInteger || null,
+        sqft: x.LivingArea || null, acres: x.LotSizeAcres || null,
+        yearBuilt: x.YearBuilt || null,
+        ptype: x.PropertyType || '', subType: x.PropertySubType || '',
+        lat: Number(x.Latitude) || null, lng: Number(x.Longitude) || null,
+        lastClosePrice: Number(x.ClosePrice) || null, lastCloseDate: x.CloseDate || '',
+        listPrice: Number(x.ListPrice) || null,
+      });
+    }
+    res.json({ ok: true, how, filter, suggestions: out });
+  } catch (e) {
+    console.error('[address-suggest] FAILED:', e.message);
+    res.json({ ok: true, how, suggestions: [], error: e.message });
+  }
+});
+
 /* ==================== FIND THE SUBJECT PROPERTY (server 200) ====================
    ⚠ A CMA starts with a property, not a town. The first build asked for a town,
    returned comps for nothing in particular, and left the agent to type the
@@ -1426,21 +1499,52 @@ app.get('/api/property-lookup', async (req, res) => {
   const firstWord = (streetWords[0] && /^(n|s|e|w|ne|nw|se|sw|north|south|east|west)$/i.test(streetWords[0])
                       ? streetWords[1] : streetWords[0]) || '';
 
+  /* ⚠ CASE. contains() on this feed is case-SENSITIVE, and the agent types
+     "2400 callaway" while the MLS stores "2400 Callaway Dr". Passing their
+     capitalisation straight through meant every address search failed while an
+     MLS number — an exact key match that never touches case — worked fine.
+     That is precisely the symptom reported.
+
+     So each shape is tried in the capitalisations the data actually uses:
+     Title Case first because that is how nearly all MLS text is stored, then
+     the word as typed, then UPPER for the feeds that shout. */
+  const caseVariants = w => {
+    if (!w) return [];
+    const title = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    const upper = w.toUpperCase();
+    return [...new Set([title, w, upper, w.toLowerCase()])];
+  };
+
   const attempts = [];
   if (streetNo && firstWord) {
-    attempts.push({ how: 'number+street field',
-                    filter: `StreetNumber eq '${streetNo}' and contains(StreetName,'${firstWord}')` });
-    attempts.push({ how: 'number+street text',
-                    filter: `contains(UnparsedAddress,'${streetNo} ${firstWord}')` });
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `number+street field (${v})`,
+                      filter: `StreetNumber eq '${streetNo}' and contains(StreetName,'${v}')` });
+    });
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `number+street text (${v})`,
+                      filter: `contains(UnparsedAddress,'${streetNo} ${v}')` });
+    });
   }
   if (firstWord && !streetNo) {
-    attempts.push({ how: 'street name', filter: `contains(StreetName,'${firstWord}')` });
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `street name (${v})`, filter: `contains(StreetName,'${v}')` });
+    });
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `address text (${v})`, filter: `contains(UnparsedAddress,'${v}')` });
+    });
   }
   attempts.push({ how: 'whole string', filter: `contains(UnparsedAddress,'${lead}')` });
 
   try {
     let r = null, used = null, tried = [];
+    /* ⚠ Budget. Case variants multiply the attempts, and the loose ones are
+       substring scans over 159,000 records. Better to stop and say "not found"
+       than to sit there until the proxy returns a 502, which is the failure
+       mode that has already cost this project an evening. */
+    const deadline = Date.now() + 14000;
     for (const a of attempts) {
+      if (Date.now() > deadline) { tried.push('(stopped on time)'); break; }
       tried.push(a.how);
       const got = await mlsQuery({
         filter: a.filter, top: 25, skip: 0, count: false, county: false,
@@ -7794,7 +7898,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v201',
+    serverVersion: 'v203',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
