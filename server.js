@@ -1289,10 +1289,22 @@ app.get('/api/comps', async (req, res) => {
   const num = v => { const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10); return isNaN(n) ? null : n; };
 
   let city   = String(q.city || '').trim();
-  let beds   = num(q.beds);
-  let sqft   = num(q.sqft);
   let ptype  = String(q.ptype || '').trim();
+  let subType = String(q.subType || '').trim();
   let subject = null;
+
+  /* ⚠ RANGES, not a single value with a tolerance baked in. The first version
+     took one bed count and one square footage and silently widened them by ±1
+     and ±25%, which is fine as a default and useless when an agent wants to say
+     "1,800 to 2,400, three beds or more". Every one of these is optional and a
+     blank simply does not constrain. */
+  const rng = (a, b) => ({ min: num(q[a]), max: num(q[b]) });
+  let bedsR  = rng('bedsMin', 'bedsMax');
+  let bathsR = rng('bathsMin', 'bathsMax');
+  let sqftR  = rng('sqftMin', 'sqftMax');
+  let acresR = { min: parseFloat(q.acresMin) || null, max: parseFloat(q.acresMax) || null };
+  let yearR  = rng('yearMin', 'yearMax');
+  let priceR = rng('priceMin', 'priceMax');
 
   /* Seed the criteria straight off a listing, so an agent working a specific
      property does not retype what the feed already knows. */
@@ -1304,12 +1316,20 @@ app.get('/api/comps', async (req, res) => {
           key: s.ListingKey, address: s.UnparsedAddress || '', city: s.City || '',
           beds: s.BedroomsTotal || null, baths: s.BathroomsTotalInteger || null,
           sqft: s.LivingArea || null, ptype: s.PropertyType || '',
-          listPrice: s.ListPrice || null,
+          subType: s.PropertySubType || '', acres: s.LotSizeAcres || null,
+          yearBuilt: s.YearBuilt || null, listPrice: s.ListPrice || null,
         };
+        /* Seeded ranges the agent can then edit — ±1 bed and ±25% on size is a
+           sane starting point, not a rule. Only fills what was left blank. */
         if (!city)  city  = subject.city;
-        if (!beds)  beds  = subject.beds;
-        if (!sqft)  sqft  = subject.sqft;
         if (!ptype) ptype = subject.ptype;
+        if (!subType && subject.subType) subType = subject.subType;
+        if (bedsR.min == null && bedsR.max == null && subject.beds) {
+          bedsR = { min: Math.max(0, subject.beds - 1), max: subject.beds + 1 };
+        }
+        if (sqftR.min == null && sqftR.max == null && subject.sqft) {
+          sqftR = { min: Math.round(subject.sqft * 0.75), max: Math.round(subject.sqft * 1.25) };
+        }
       }
     } catch (e) { console.error('[comps] subject lookup:', e.message); }
   }
@@ -1317,19 +1337,36 @@ app.get('/api/comps', async (req, res) => {
   if (!city) return res.status(400).json({ error: 'Which town? Give me a city or a subject listing.' });
 
   const months   = Math.min(Math.max(num(q.months) || 12, 1), 36);
-  const bedSlop  = Math.min(Math.max(num(q.bedSlop) == null ? 1 : num(q.bedSlop), 0), 3);
-  const sqftPct  = Math.min(Math.max(num(q.sqftPct) || 25, 5), 75) / 100;
-  const limit    = Math.min(num(q.limit) || 25, 100);
+  const limit    = Math.min(num(q.limit) || 50, 200);
+  /* Include rows where the field is blank rather than dropping them. The feed
+     leaves LivingArea empty on well over half of everything, so a strict size
+     filter would quietly bin most of the market. RPR offers the same choice. */
+  const keepBlanks = String(q.keepBlanks || '1') !== '0';
   const cutoff   = new Date(Date.now() - months * 30.44 * 86400000).toISOString().slice(0, 10);
 
   const parts = [`StandardStatus eq 'Closed'`, `contains(City,'${esc(city)}')`];
-  if (ptype) parts.push(`PropertyType eq '${esc(ptype)}'`);
+  if (ptype)   parts.push(`PropertyType eq '${esc(ptype)}'`);
+  if (subType) parts.push(`PropertySubType eq '${esc(subType)}'`);
 
   try {
     /* Over-fetch, then narrow in JS: beds and square footage are range matches
        that OData handles clumsily, and the set per town is small enough. */
-    const attempt = await closedQuery(parts, cutoff, { top: 200 });
+    /* ⚠ Three pages, not one. Numeric ranges are applied in JS below rather than
+       in the query — this feed already refused one filter it should have taken,
+       and a rejected clause costs more than fetching a few hundred extra rows.
+       That only works if the pool is big enough to filter, hence 600. */
+    let attempt = await closedQuery(parts, cutoff, { top: 200, skip: 0 });
     const r = attempt.r;
+    let pool = (r.value || []).slice();
+    if (pool.length >= 200) {
+      for (const skip of [200, 400]) {
+        const more = await closedQuery(parts, cutoff, { top: 200, skip });
+        const got = (more.r && more.r.value) ? more.r.value : [];
+        if (!got.length) break;
+        pool = pool.concat(got);
+        if (got.length < 200) break;
+      }
+    }
     /* ⚠ A FEED ERROR IS NOT "NO MATCHES". The first version of this returned an
        empty comps array either way, so a rejected filter arrived in the CRM as
        "No closed sales matched that" — which sent us looking at the search
@@ -1348,24 +1385,38 @@ app.get('/api/comps', async (req, res) => {
       });
     }
 
-    let rows = (r.value || []).filter(x => Number(x.ClosePrice) > 0);
+    let rows = pool.filter(x => Number(x.ClosePrice) > 0);
     /* When the feed would not take the date bound, apply it here instead. */
     if (attempt.jsDate) {
       rows = rows.filter(x => x.CloseDate && String(x.CloseDate).slice(0, 10) >= cutoff);
-      rows.sort((a, b) => String(b.CloseDate || '').localeCompare(String(a.CloseDate || '')));
     }
-
-    const near = rows.filter(x => {
-      if (beds) {
-        const b = Number(x.BedroomsTotal);
-        if (b && Math.abs(b - beds) > bedSlop) return false;
-      }
-      if (sqft) {
-        const a = Number(x.LivingArea);
-        if (a && (a < sqft * (1 - sqftPct) || a > sqft * (1 + sqftPct))) return false;
-      }
-      return true;
+    rows.sort((a, b) => String(b.CloseDate || '').localeCompare(String(a.CloseDate || '')));
+    /* De-dupe across pages. */
+    const seenK = new Set();
+    rows = rows.filter(x => {
+      const k = x.ListingKey || x.ListingId;
+      if (!k) return true;
+      if (seenK.has(k)) return false;
+      seenK.add(k); return true;
     });
+
+    /* One range test, used for every numeric field. A blank value passes when
+       keepBlanks is on — see the note above about LivingArea coverage. */
+    const inRange = (v, r) => {
+      if (r.min == null && r.max == null) return true;
+      const n = Number(v);
+      if (!n && n !== 0) return keepBlanks;
+      if (r.min != null && n < r.min) return false;
+      if (r.max != null && n > r.max) return false;
+      return true;
+    };
+    const near = rows.filter(x =>
+         inRange(x.BedroomsTotal, bedsR)
+      && inRange(x.BathroomsTotalInteger, bathsR)
+      && inRange(x.LivingArea, sqftR)
+      && inRange(x.LotSizeAcres, acresR)
+      && inRange(x.YearBuilt, yearR)
+      && inRange(x.ClosePrice, priceR));
 
     /* ⚠ If narrowing leaves almost nothing, say so and fall back to the wider
        set rather than returning three comps as though they were the answer.
@@ -1386,6 +1437,7 @@ app.get('/api/comps', async (req, res) => {
       baths: x.BathroomsTotalInteger || null,
       sqft: x.LivingArea || null,
       yearBuilt: x.YearBuilt || null,
+      acres: x.LotSizeAcres || null,
       ptype: x.PropertyType || '',
       subType: x.PropertySubType || '',
       dom: compDom(x),
@@ -1399,7 +1451,9 @@ app.get('/api/comps', async (req, res) => {
     res.json({
       ok: true,
       subject,
-      criteria: { city, beds, sqft, ptype, months, bedSlop, sqftPct: Math.round(sqftPct * 100), limit },
+      criteria: { city, ptype, subType, months, limit, keepBlanks,
+                  beds: bedsR, baths: bathsR, sqft: sqftR,
+                  acres: acresR, yearBuilt: yearR, price: priceR },
       narrowed: tight,
       matchedInTown: rows.length,
       matchedNarrow: near.length,
@@ -7342,7 +7396,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v194',
+    serverVersion: 'v195',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
