@@ -1341,6 +1341,32 @@ async function closedQuery(baseParts, cutoff,
   return last;
 }
 
+/* ==================== LIVE COMPS (server v205) ====================
+   ⚠ A sold comp and a live listing are not the same evidence and this code must
+   never blur them. A closed sale is what somebody PAID. An active listing is
+   what somebody is ASKING, which is an opinion until it closes, and a pending
+   is a price two parties agreed but no one has verified.
+
+   They are fetched here because an agent pricing a house on this coast needs to
+   know what the seller is competing against this week, not only what sold in
+   March. Every row carries its status, the report labels it, and the medians
+   and the sale-to-list figures are computed from CLOSED ROWS ONLY. If you are
+   changing this, keep that rule — an average that mixes asking prices into sold
+   prices is a number that looks authoritative and is not true. */
+const LIVE_SELECT = CLOSED_SELECT;
+
+async function liveQuery(baseParts, statuses, { top = 150, skip = 0, county = false } = {}) {
+  const clause = statuses.length === 1
+    ? `StandardStatus eq '${statuses[0]}'`
+    : '(' + statuses.map(x => `StandardStatus eq '${x}'`).join(' or ') + ')';
+  const filter = [clause, ...baseParts].join(' and ');
+  /* No date bound: a listing that has sat for two years is still competition.
+     Sorted by the one timestamp every feed has agreed to order by. */
+  const r = await mlsQuery({ filter, top, skip, orderby: 'ModificationTimestamp desc',
+                             count: false, select: LIVE_SELECT, county });
+  return { r, filter, mode: 'live' };
+}
+
 /* The towns the site itself offers. A value from the dropdown is known-good and
    can use an indexed equality match; anything else falls back to contains(). */
 const CMP_KNOWN_TOWNS = new Set(['gulf shores','orange beach','fort morgan','ono island',
@@ -1351,6 +1377,28 @@ const CMP_KNOWN_TOWNS = new Set(['gulf shores','orange beach','fort morgan','ono
 
 function cmpTownIsExact(city) {
   return CMP_KNOWN_TOWNS.has(String(city || '').trim().toLowerCase());
+}
+
+/* ⚠ Deliberately NOT a mirror of soldStats. There is no sale-to-list and no
+   days-to-close on a listing that has not closed; inventing either would put a
+   number on a page that means nothing. What a live listing tells you is the
+   asking range and how long the market has ignored it. */
+function liveStats(rows) {
+  const live = (rows || []).filter(r => Number(r.ListPrice) > 0);
+  if (!live.length) return { count: 0 };
+  const asks = live.map(r => Number(r.ListPrice)).sort((a, b) => a - b);
+  const mid = a => a.length % 2 ? a[(a.length - 1) / 2]
+    : Math.round((a[a.length / 2 - 1] + a[a.length / 2]) / 2);
+  const days = live.filter(r => r.OnMarketDate)
+    .map(r => Math.round((Date.now() - new Date(r.OnMarketDate)) / 86400000))
+    .filter(n => n >= 0 && n < 1825).sort((a, b) => a - b);
+  return {
+    count: live.length,
+    low: asks[0], high: asks[asks.length - 1], median: mid(asks),
+    pending: live.filter(r => String(r.StandardStatus) === 'Pending').length,
+    active: live.filter(r => String(r.StandardStatus) === 'Active').length,
+    medianDaysListed: days.length ? mid(days) : null,
+  };
 }
 
 function compDom(r) {
@@ -1691,8 +1739,17 @@ app.get('/api/comps', async (req, res) => {
      ever answered. The town comes from a dropdown, so it is already exact and
      an indexed equality match is the right tool. `contains` stays as a fallback
      for a town typed by hand that does not match exactly. */
+  /* ⚠ Defaults to closed alone, so every existing caller and saved CMA behaves
+     exactly as before. Active and pending are opt-in. */
+  const STATUS_WORDS = { closed: 'Closed', pending: 'Pending', active: 'Active' };
+  const wantStatuses = [...new Set(String(q.statuses || 'closed').toLowerCase()
+    .split(',').map(x => x.trim()).filter(x => STATUS_WORDS[x]))];
+  if (!wantStatuses.length) wantStatuses.push('closed');
+  const wantClosed = wantStatuses.includes('closed');
+  const liveWanted = wantStatuses.filter(x => x !== 'closed').map(x => STATUS_WORDS[x]);
+
   const exactCity = cmpTownIsExact(city);
-  const parts = [`StandardStatus eq 'Closed'`];
+  const parts = [];
   /* ⚠ A bounding box, not a geo function. OData spatial operators are not
      dependable across feeds and this one has already refused a filter it should
      have taken; a numeric range on two columns is plain arithmetic that any
@@ -1721,24 +1778,38 @@ app.get('/api/comps', async (req, res) => {
     /* ⚠ county:false because the town already pins it, and count:false because
        an exact @odata.count over the closed set is itself expensive and nothing
        on this screen needs it — the comps are counted from the rows. */
-    let attempt = await closedQuery(parts, cutoff,
-                                    { top: 150, skip: 0, count: false, county: false });
+    /* ⚠ Two queries, not one filter with an `or`. Mixing a CloseDate bound into
+       a clause that also matches active listings excludes every active listing,
+       because an active listing has no CloseDate — and the result reads as "no
+       actives nearby" rather than "you asked a question that cannot be true". */
+    let attempt = wantClosed
+      ? await closedQuery([`StandardStatus eq 'Closed'`, ...parts], cutoff,
+                          { top: 150, skip: 0, count: false, county: false })
+      : await liveQuery(parts, liveWanted, { top: 150, skip: 0 });
     const r = attempt.r;
     let pool = (r.value || []).slice();
     /* ⚠ Time budget. The extra pages are a nicety — a bigger set to filter — and
        not worth a 502. If the feed is slow, stop with what we have and say so
        rather than letting the proxy kill the whole request. */
     const deadline = Date.now() + 10000;
-    if (pool.length >= 150) {
+    if (wantClosed && pool.length >= 150) {
       for (const skip of [150, 300]) {
         if (Date.now() > deadline) break;
-        const more = await closedQuery(parts, cutoff,
+        const more = await closedQuery([`StandardStatus eq 'Closed'`, ...parts], cutoff,
                                        { top: 150, skip, count: false, county: false });
         const got = (more.r && more.r.value) ? more.r.value : [];
         if (!got.length) break;
         pool = pool.concat(got);
         if (got.length < 150) break;
       }
+    }
+
+    /* The live listings, when asked for, on top of whatever came back above. */
+    let liveAttempt = null;
+    if (wantClosed && liveWanted.length && Date.now() < deadline) {
+      liveAttempt = await liveQuery(parts, liveWanted, { top: 150, skip: 0 });
+      const got = (liveAttempt.r && liveAttempt.r.value) ? liveAttempt.r.value : [];
+      pool = pool.concat(got);
     }
     /* ⚠ A FEED ERROR IS NOT "NO MATCHES". The first version of this returned an
        empty comps array either way, so a rejected filter arrived in the CRM as
@@ -1758,12 +1829,27 @@ app.get('/api/comps', async (req, res) => {
       });
     }
 
-    let rows = pool.filter(x => Number(x.ClosePrice) > 0);
-    /* When the feed would not take the date bound, apply it here instead. */
+    /* ⚠ The price a row is judged on depends on what the row IS. A closed sale
+       is its ClosePrice; a listing that has not closed has only an asking price.
+       Everything downstream — the price filter, the sort, the report — uses this
+       one function so the two can never be confused for each other. */
+    const isClosed = x => String(x.StandardStatus || '') === 'Closed' && Number(x.ClosePrice) > 0;
+    const rowPrice = x => isClosed(x) ? Number(x.ClosePrice) : (Number(x.ListPrice) || 0);
+
+    let rows = pool.filter(x => rowPrice(x) > 0);
+    /* When the feed would not take the date bound, apply it here instead — to
+       the closed rows only, since a live listing has no close date to bound. */
     if (attempt.jsDate) {
-      rows = rows.filter(x => x.CloseDate && String(x.CloseDate).slice(0, 10) >= cutoff);
+      rows = rows.filter(x => !isClosed(x)
+        || (x.CloseDate && String(x.CloseDate).slice(0, 10) >= cutoff));
     }
-    rows.sort((a, b) => String(b.CloseDate || '').localeCompare(String(a.CloseDate || '')));
+    /* Sold first, newest first; then what is still on the market. */
+    rows.sort((a, b) => {
+      const ac = isClosed(a), bc = isClosed(b);
+      if (ac !== bc) return ac ? -1 : 1;
+      if (ac) return String(b.CloseDate || '').localeCompare(String(a.CloseDate || ''));
+      return String(b.ModificationTimestamp || '').localeCompare(String(a.ModificationTimestamp || ''));
+    });
     /* De-dupe across pages. */
     const seenK = new Set();
     rows = rows.filter(x => {
@@ -1808,7 +1894,7 @@ app.get('/api/comps', async (req, res) => {
       && inRange(x.LivingArea, sqftR)
       && inRange(x.LotSizeAcres, acresR)
       && inRange(x.YearBuilt, yearR)
-      && inRange(x.ClosePrice, priceR));
+      && inRange(rowPrice(x), priceR));
 
     /* ⚠ If narrowing leaves almost nothing, say so and fall back to the wider
        set rather than returning three comps as though they were the answer.
@@ -1821,7 +1907,14 @@ app.get('/api/comps', async (req, res) => {
       address: x.UnparsedAddress || '',
       addressWithheld: !!x._addressWithheld,
       city: x.City || '',
-      closePrice: Number(x.ClosePrice) || null,
+      /* ⚠ `status` is 'Closed' | 'Pending' | 'Active'. `price` is what the row is
+         worth as evidence and `sold` says whether that price is a fact or an
+         asking price. The front end must label every non-closed row — a card
+         that shows $540,000 without saying "asking" is a lie by omission. */
+      status: x.StandardStatus || '',
+      sold: isClosed(x),
+      price: rowPrice(x) || null,
+      closePrice: isClosed(x) ? (Number(x.ClosePrice) || null) : null,
       listPrice: Number(x.ListPrice) || null,
       originalListPrice: Number(x.OriginalListPrice) || null,
       closeDate: x.CloseDate || '',
@@ -1836,10 +1929,15 @@ app.get('/api/comps', async (req, res) => {
       ptype: x.PropertyType || '',
       subType: x.PropertySubType || '',
       dom: compDom(x),
-      pricePerSqft: (Number(x.ClosePrice) > 0 && Number(x.LivingArea) > 250)
-        ? Math.round(Number(x.ClosePrice) / Number(x.LivingArea)) : null,
-      saleToList: (Number(x.ClosePrice) > 0 && Number(x.ListPrice) > 0)
+      onMarketDate: x.OnMarketDate || '',
+      pricePerSqft: (rowPrice(x) > 0 && Number(x.LivingArea) > 250)
+        ? Math.round(rowPrice(x) / Number(x.LivingArea)) : null,
+      /* Sale-to-list is meaningless on a listing that has not sold. Null, not 100. */
+      saleToList: (isClosed(x) && Number(x.ListPrice) > 0)
         ? Math.round(Number(x.ClosePrice) / Number(x.ListPrice) * 1000) / 10 : null,
+      /* How long a live listing has been sitting — the active equivalent of DOM. */
+      daysOnMarket: (!isClosed(x) && x.OnMarketDate)
+        ? Math.max(0, Math.round((Date.now() - new Date(x.OnMarketDate)) / 86400000)) : null,
       credit: listingCredit(x),
     }));
 
@@ -1856,11 +1954,20 @@ app.get('/api/comps', async (req, res) => {
       /* Echoed so a zero-result answer can be read rather than guessed at: the
          exact filter that went to the MLS, and what each feed said back. */
       sentFilter: attempt.filter,
+      liveFilter: liveAttempt ? liveAttempt.filter : null,
       /* Which query shape this feed accepted: date+sort, sort-only, or plain. */
       queryMode: attempt.mode,
       sources: r.sources,
       comps,
-      summary: soldStats(use),
+      statuses: wantStatuses,
+      counts: {
+        closed:  use.filter(x => isClosed(x)).length,
+        pending: use.filter(x => String(x.StandardStatus) === 'Pending').length,
+        active:  use.filter(x => String(x.StandardStatus) === 'Active').length,
+      },
+      /* ⚠ CLOSED ROWS ONLY. See the note on liveQuery. */
+      summary: soldStats(use.filter(x => isClosed(x))),
+      liveSummary: liveStats(use.filter(x => !isClosed(x))),
       source: mlsAttribution(),
       disclaimer: mlsIdxDisclaimer(),
     });
@@ -8082,7 +8189,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v204',
+    serverVersion: 'v205',
     photoHosts: [...photoHostsSeen],
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
