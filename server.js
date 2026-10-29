@@ -721,6 +721,33 @@ function mlsCovered(row) {
   return COVERED_COUNTIES.some(x => c.startsWith(x));
 }
 
+/* ⚠ The SAME restriction expressed as an OData clause, so the feed does the work.
+   Filtering only in JS meant a request for 24 listings fetched 24, threw away the
+   ~22% outside Baldwin County, and rendered about 19 — and `total` came back as
+   the unfiltered count, overstating every result header on the site. Asking for
+   one listing could return none at all, which is how this surfaced.
+
+   ⚠ Live county values are inconsistent: "Baldwin", "Mobile County",
+   "Escambia County, AL". contains() rather than eq for that reason.
+
+   ⚠ A listing with an EMPTY CountyOrParish is excluded by this clause, where
+   mlsCovered() in JS would keep it. Accepted deliberately: a correct count is
+   worth more than the rare blank-county record, and the field is populated on
+   every row sampled from this feed. mlsCovered() stays as the backstop. */
+function mlsCountyClause() {
+  if (!COVERED_COUNTIES.length) return '';
+  const esc = s => String(s).replace(/'/g, "''");
+  const parts = COVERED_COUNTIES.map(c => `contains(CountyOrParish,'${esc(c.replace(/\b\w/g, m => m.toUpperCase()))}')`);
+  return parts.length === 1 ? parts[0] : `(${parts.join(' or ')})`;
+}
+
+/* Bolt the county clause onto a caller's filter. */
+function mlsWithCounty(filter) {
+  const c = mlsCountyClause();
+  if (!c) return filter || '';
+  return filter ? `${filter} and ${c}` : c;
+}
+
 function mlsMerge(results) {
   const seen = new Set();
   const out = [];
@@ -747,20 +774,28 @@ async function mlsQuery({ filter, top = 24, skip = 0, select, orderby = 'Modific
   if (!srcs.length) return { value: [], total: 0, sources: [], partial: false, configured: false };
 
   const multi = srcs.length > 1;
-  /* ⚠ $skip cannot be passed through to more than one feed. Page three of the
-     merged list is not page three of either feed, so with two sources each is
-     asked for everything up to the end of the requested page and the slice happens
-     after the merge. Capped, because that cost grows as you page deeper. */
-  const need = multi ? Math.min(skip + top, 400) : top;
-  const params = { $filter: filter, $top: need, $orderby: orderby };
-  if (!multi && skip) params.$skip = skip;
+  /* ⚠ $skip is not passed through to the feeds any more, for either count of
+     sources. Page three of the merged, filtered list is not page three of any
+     feed: rows still drop out after the fetch (seller opt-outs, and the dedupe
+     when two feeds overlap), so the slice has to happen here. Each source is
+     asked for everything up to the end of the requested page, and OVER-ASKED by
+     a margin so those drop-outs do not leave the page short. That is the bug
+     this replaced — top=1 returned nothing at all because the single row fetched
+     was then filtered away.
+
+     The county restriction now goes to the feed instead, which is what makes
+     this affordable: the margin only has to cover opt-outs, not the ~22% of the
+     feed that sits outside Baldwin County. */
+  const want = skip + top;
+  const need = Math.min(Math.ceil(want * 1.3) + 5, 400);
+  const params = { $filter: mlsWithCounty(filter), $top: need, $orderby: orderby };
   if (count)  params.$count = 'true';
   if (select) params.$select = select;
 
   const results = await Promise.all(srcs.map(s => mlsFetchOne(s, params)));
   const okResults = results.filter(r => r.ok);
   const merged = mlsMerge(results);
-  const value = multi ? merged.slice(skip, skip + top) : merged;
+  const value = merged.slice(skip, skip + top);
 
   let total = null;
   if (okResults.some(r => r.count != null)) {
@@ -1058,6 +1093,104 @@ function median(nums) {
   return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
 }
 
+/* ==================== SOLD DATA (server 190) ====================
+   ⚠ This feed carries closed sales — 153,558 of them — and the site has been
+   saying "Active listings only. Sold data is not included in this feed" since
+   the first build. That was true of the old Gulf Coast feed and is not true of
+   this one. Everything that was blocked on sold data is possible now: real
+   days-on-market, sale-to-list, and what a price cut actually costs.
+
+   ⚠ Permitted: the IDX agreement's feed is defined as containing "active and
+   sold listings", s.18.3.12 allows display of off-market listings, and both
+   "Sold Price" and "Closed Date" are on BRMLS's authorised public-display field
+   list. What is NOT covered here is Firm Valuation — an automated valuation or
+   AVM sold to a Registrant is a separate licence tier under Exhibit B with its
+   own fee and its own terms-of-use obligations. Market statistics are not that,
+   but an automated "what's my home worth" number delivered to a third party
+   would be. Do not cross that line without checking the licence.
+
+   ⚠ DaysOnMarket is NOT a field in this feed. It is computed from OnMarketDate
+   to CloseDate, and listings missing either are left out of that median rather
+   than defaulted to zero, which would drag it down and look like good news. */
+let soldCache = { rows: null, at: 0, months: 0 };
+
+async function soldRows(months = 12) {
+  if (!mlsConfigured()) throw new Error('MLS not configured.');
+  if (soldCache.rows && soldCache.months === months
+      && Date.now() - soldCache.at < 6 * 60 * 60 * 1000) return soldCache.rows;
+
+  const cutoff = new Date(Date.now() - months * 30.44 * 86400000)
+    .toISOString().slice(0, 10);
+  const filter = mlsWithCounty(`StandardStatus eq 'Closed' and CloseDate ge ${cutoff}`);
+  const rows = [];
+  const PAGE = 200;
+  const seenAddr = new Set();
+  for (let skip = 0; skip < 2000; skip += PAGE) {
+    const params = { $filter: filter, $orderby: 'CloseDate desc', $top: PAGE, $skip: skip };
+    const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, params)));
+    const okr = results.filter(r => r.ok);
+    if (!okr.length) break;
+    let maxPage = 0;
+    for (const r of okr) {
+      maxPage = Math.max(maxPage, r.rows.length);
+      for (const row of r.rows) {
+        if (!mlsCovered(row)) continue;
+        const a = mlsDedupeKey(row);
+        if (a) { if (seenAddr.has(a)) continue; seenAddr.add(a); }
+        rows.push(row);
+      }
+    }
+    if (maxPage < PAGE) break;
+  }
+  soldCache = { rows, at: Date.now(), months };
+  console.log(`[sold] ${rows.length} closed sales in the last ${months} months`);
+  return rows;
+}
+
+/* The numbers a seller consultation actually turns on. */
+function soldStats(rows) {
+  const closed = rows.filter(r => Number(r.ClosePrice) > 0);
+  if (!closed.length) return { count: 0 };
+
+  const prices = closed.map(r => Number(r.ClosePrice));
+
+  /* Sale-to-list against the CURRENT asking price, and separately against the
+     ORIGINAL one. The gap between the two is the cost of over-pricing and then
+     cutting, which is the single most useful thing to show a seller. */
+  const vsList = closed
+    .filter(r => Number(r.ListPrice) > 0)
+    .map(r => Number(r.ClosePrice) / Number(r.ListPrice) * 100);
+  const vsOriginal = closed
+    .filter(r => Number(r.OriginalListPrice) > 0)
+    .map(r => Number(r.ClosePrice) / Number(r.OriginalListPrice) * 100);
+
+  const dom = closed
+    .filter(r => r.OnMarketDate && r.CloseDate)
+    .map(r => Math.round((new Date(r.CloseDate) - new Date(r.OnMarketDate)) / 86400000))
+    .filter(n => n >= 0 && n < 1825);        // guard against bad dates, not against slow sales
+
+  const cut = closed.filter(r => Number(r.OriginalListPrice) > 0
+                             && Number(r.ListPrice) > 0
+                             && Number(r.OriginalListPrice) > Number(r.ListPrice));
+
+  const ppsf = closed
+    .filter(r => Number(r.LivingArea) > 250)
+    .map(r => Number(r.ClosePrice) / Number(r.LivingArea));
+
+  return {
+    count: closed.length,
+    median: median(prices),
+    low: Math.min(...prices),
+    high: Math.max(...prices),
+    pricePerSqft: ppsf.length ? Math.round(median(ppsf)) : 0,
+    saleToList: vsList.length ? Math.round(median(vsList) * 10) / 10 : null,
+    saleToOriginal: vsOriginal.length ? Math.round(median(vsOriginal) * 10) / 10 : null,
+    medianDaysOnMarket: dom.length ? median(dom) : null,
+    domSample: dom.length,
+    pctReducedBeforeSale: closed.length ? Math.round(cut.length / closed.length * 100) : null,
+  };
+}
+
 app.get('/api/market-stats', async (req, res) => {
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
@@ -1104,15 +1237,36 @@ app.get('/api/market-stats', async (req, res) => {
       if (subset.length) byType[t] = { count: subset.length, median: median(subset.map(r => Number(r.ListPrice))) };
     });
 
+    /* ⚠ Sold is fetched separately and must never take the page down with it.
+       Active inventory is the headline; closed sales are an enrichment, so a
+       failure here degrades to sold:null rather than a 500. */
+    let sold = null, soldByCity = null;
+    try {
+      const sRows = await soldRows(12);
+      sold = soldStats(sRows);
+      soldByCity = {};
+      MARKET_CITIES.forEach(c => {
+        const subset = sRows.filter(r => String(r.City || '').toLowerCase() === c.toLowerCase());
+        if (subset.length >= 5) soldByCity[c] = soldStats(subset);   // below 5 a median is noise
+      });
+    } catch (e) {
+      console.error('[market-stats] sold pull failed:', e.message);
+    }
+
     const payload = {
       ok: true,
       generatedAt: new Date().toISOString(),
       area: 'Baldwin County, Alabama',
       source: mlsAttribution(),
-      basis: 'Active listings only. Sold data is not included in this feed.',
+      basis: sold && sold.count
+        ? `Active inventory plus ${sold.count.toLocaleString()} closed sales from the last 12 months.`
+        : 'Active listings only.',
       overall: statsFor(priced),
       byCity,
       byType,
+      sold,
+      soldByCity,
+      soldWindowMonths: 12,
     };
     /* \u26a0 Merge, do not replace \u2014 reassigning the whole object dropped the shared
        rows and made the next letter re-pull 1,200 records for nothing. */
@@ -1281,7 +1435,7 @@ app.get('/api/listings', async (req, res) => {
 
     try {
       // 1. Baldwin County first — this is the market the site is built around
-      const baldwinFilter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
+      const baldwinFilter = mlsWithCounty(ACTIVE_ONLY);
       for (let skip = 0; skip < 400; skip += PAGE) {
         const json = await fetchPage(baldwinFilter, skip, false);
         collect(json.value || []);
@@ -1296,7 +1450,10 @@ app.get('/api/listings', async (req, res) => {
     for (let skip = 0; skip < WANT; skip += PAGE) {
       let json;
       try {
-        json = await fetchPage(ACTIVE_ONLY, skip, skip === 0);
+        /* ⚠ County-restricted too. This was the raw feed, so the top-up spent
+           its pages on Mobile and Escambia listings that were then thrown away
+           in collect() — the reason the homepage could come back short. */
+        json = await fetchPage(mlsWithCounty(ACTIVE_ONLY), skip, skip === 0);
       } catch (e) {
         if (all.length) break;
         return res.status(502).json({ error: e.message, detail: e.detail });
@@ -6951,7 +7108,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v189',
+    serverVersion: 'v190',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -8013,7 +8170,7 @@ async function marketRows() {
      and the market letter quotes it to clients. */
   const seenAddr = new Set();
   for (let skip = 0; skip < 1200; skip += PAGE) {
-    const filter = ACTIVE_ONLY + " and contains(CountyOrParish,'Baldwin')";
+    const filter = mlsWithCounty(ACTIVE_ONLY);
     const params = { $filter: filter, $orderby: 'ModificationTimestamp desc',
                      $top: PAGE, $skip: skip };
     const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, params)));
