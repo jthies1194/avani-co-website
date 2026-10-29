@@ -3978,6 +3978,37 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 </div>
 <div class="crm-sec" id="sec-pipeline"></div>
 <div class="crm-sec" id="sec-tracker"></div>
+<div class="crm-sec" id="sec-comps">
+<div class="cmp-wrap">
+  <div class="cmp-form">
+    <div class="cmp-row">
+      <label>Town <input id="cmp-city" placeholder="Gulf Shores" autocomplete="off"></label>
+      <label>Beds <input id="cmp-beds" type="number" min="0" max="12" placeholder="3"></label>
+      <label>Sq ft <input id="cmp-sqft" type="number" min="0" placeholder="1800"></label>
+      <label>Kind
+        <select id="cmp-ptype">
+          <option value="">Anything</option>
+          <option value="Residential">Residential</option>
+          <option value="Land">Land</option>
+          <option value="Commercial Sale">Commercial</option>
+        </select>
+      </label>
+      <label>Sold within
+        <select id="cmp-months">
+          <option value="6">6 months</option>
+          <option value="12" selected>12 months</option>
+          <option value="24">24 months</option>
+        </select>
+      </label>
+      <button class="cmp-go" onclick="cmpRun()">Find comps</button>
+    </div>
+    <p class="cmp-hint">Or paste an MLS number to start from a specific property:
+      <input id="cmp-subject" placeholder="MLS #" autocomplete="off" style="width:120px">
+      <button class="cmp-sub" onclick="cmpRun(true)">Use it</button></p>
+  </div>
+  <div id="cmp-out"></div>
+</div>
+</div>
 <div class="crm-sec" id="sec-calendar"></div>
 <div class="crm-sec" id="sec-taxes"></div>
 <div class="crm-sec" id="sec-marketing"></div>
@@ -5391,7 +5422,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v377';
+window.BUILD = 'index-v378';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9322,6 +9353,7 @@ function referralLedgerHtml(year){
    Taxes is separate from Commissions on purpose: one is what agents earned, the
    other is what gets filed. */
 const ICON = {
+  comps:   '<path d="M3 20h18"/><rect x="4" y="11" width="4" height="9"/><rect x="10" y="7" width="4" height="13"/><rect x="16" y="13" width="4" height="7"/><path d="M4 7l6-4 6 3 4-2"/>',
   assist: '<path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
   today:   '<path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M7.1 16.9l-2.1 2.1"/><circle cx="12" cy="12" r="4"/>',
   leads:   '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
@@ -9361,6 +9393,9 @@ const CRM_SECTIONS = [
   { id:'sec-expenses',    label:'Expenses',    icon:'expense',  color:'#B4527A' },  // sea urchin
   { id:'sec-taxes',       label:'Taxes',       icon:'taxes',    color:'#6B4FBF' },  // deep water
   { id:'sec-pipeline',    label:'My deals',    icon:'pipeline', color:'#4A7A9B' },
+  /* Sold comparables. Agents only — admins cannot see leads and this is a
+     selling tool, not a back-office one. */
+  { id:'sec-comps',       label:'Comps',       icon:'comps',    color:'#2E8C5A', noAdmin:true },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
   { id:'sec-content',     label:'Content',     icon:'content',  color:'#C89B4E' },
@@ -10067,6 +10102,7 @@ function showCrmSection(id){
     if(id === 'sec-content' && typeof renderVideos === 'function') renderVideos();
     if(id === 'sec-content' && typeof renderLetter === 'function') renderLetter();
     if(id === 'sec-content' && typeof renderWelcome === 'function') renderWelcome();
+    if(id === 'sec-comps'   && typeof renderComps   === 'function') renderComps();
     if(id === 'sec-assist'  && typeof renderAssist  === 'function') renderAssist();
     if(id === 'sec-setup'){ if(typeof loadExitIntentCfg === 'function') loadExitIntentCfg();
       if(typeof loadReelSetup === 'function') loadReelSetup();
@@ -10469,6 +10505,7 @@ async function renderMyProfileSection(){
 </script>
 <script>
 const SECTION_META = {
+  'sec-comps':      { eyebrow:'Sold data', title:'Comparable sales',    blurb:'What similar homes actually sold for, from closed sales in the feed \u2014 so you can work a listing appointment without leaving the CRM.' },
   'sec-leads':      { eyebrow:'Pipeline',   title:'Leads',            blurb:'Everyone who has reached out. Assign them, move them through your stages, and keep notes as you go.' },
   'sec-commissions':{ eyebrow:'Earnings',   title:'Closed deals & commissions', blurb:'Every closing, split out by plan, cap, referrals and fees \u2014 with a calculator to model what more closings would be worth.' },
   'sec-expenses':   { eyebrow:'Your costs', title:'Business expenses', blurb:'Track what you spend running your business, so you know what you actually keep after expenses.' },
@@ -19411,7 +19448,7 @@ function commToggle(){
 .mkt-towns-h{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
   color:var(--driftwood);margin-bottom:12px}
 .mkt-chips{display:flex;gap:9px;flex-wrap:wrap}
-.mkt-sold{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.mkt-sold .mkt-top{margin-top:12px}.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
+.cmp-wrap{padding:4px 0}.cmp-form{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:16px 18px;margin-bottom:18px}.cmp-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}.cmp-row label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-row input,.cmp-row select{border:1px solid var(--line);border-radius:2px;padding:9px 10px;font-family:'Public Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--sand-light);text-transform:none;letter-spacing:0;min-width:96px}.cmp-go,.cmp-sub{background:var(--marsh);color:var(--sand-light);border:1px solid var(--marsh);border-radius:2px;padding:10px 20px;font-weight:600;font-size:12px;letter-spacing:.07em;text-transform:uppercase}.cmp-sub{background:transparent;color:var(--marsh);padding:7px 14px;margin-left:6px}.cmp-hint{margin:14px 0 0;font-size:13px;color:var(--driftwood)}.cmp-hint input{border:1px solid var(--line);border-radius:2px;padding:6px 8px;font-size:13px;margin:0 4px}.cmp-subject{background:var(--sand-light);border-left:3px solid var(--gold);padding:10px 14px;margin-bottom:14px}.cmp-subject strong{display:block;font-size:15px}.cmp-subject span{font-size:13px;color:var(--driftwood)}.cmp-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}.cmp-stat{background:var(--white);border:1px solid var(--line);border-radius:3px;padding:14px 16px}.cmp-stat .l{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--driftwood);font-weight:600}.cmp-stat .n{font-family:'Fraunces',serif;font-size:23px;margin:3px 0 2px}.cmp-stat .s{font-size:12px;color:var(--driftwood)}.cmp-note{font-size:13px;color:var(--driftwood);line-height:1.6;margin:10px 0}.cmp-warn{color:var(--coral)}.cmp-legal{font-size:12px;opacity:.85}.cmp-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--white)}.cmp-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:720px}.cmp-table th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--driftwood);padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}.cmp-table td{padding:11px 12px;border-bottom:1px solid var(--line-light);vertical-align:top}.cmp-table tr:last-child td{border-bottom:none}.cmp-table td.a{min-width:230px}.cmp-table td.p{font-weight:600}.cmp-table .cr{display:block;font-size:12px;color:var(--driftwood);margin-top:3px}@media(max-width:700px){.cmp-row label{flex:1 1 44%}.cmp-go{flex:1 1 100%}}.mkt-sold{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.mkt-sold .mkt-top{margin-top:12px}.mkt-chip{display:inline-flex;align-items:baseline;gap:8px;background:#fff;
   border:1px solid rgba(27,32,67,.14);border-radius:11px;padding:10px 14px;
   font:inherit;cursor:pointer;transition:.15s;text-align:left}
 .mkt-chip:hover{border-color:#2E3CB0;transform:translateY(-1px);
@@ -23616,6 +23653,134 @@ function wnGo(k){
 
 let asMode = 'followup', asLeads = null, asPick = '', asBusy = false, asOut = null;
 let asMls = '';
+
+/* ==================== COMPARABLE SALES (index 378) ====================
+   The sold comps an agent used to leave the CRM to pull. Reads /api/comps.
+
+   ⚠ NOT A VALUATION. This shows what similar homes sold for and the medians of
+   those sales. It does NOT state what the subject property is worth, and it must
+   not start doing so: an automated valuation is Firm Valuation under the MLS
+   agreement's Exhibit B — a separate licence tier with its own fee and its own
+   terms-of-use and audit obligations. The agent's judgement is the valuation.
+   Do not add a "suggested list price" to this panel. */
+let cmpBusy = false;
+
+function renderComps(){
+  const city = document.getElementById('cmp-city');
+  /* Pre-fill the town from whatever the agent last searched, so the common case
+     is one click rather than typing a town they just typed. */
+  if(city && !city.value){
+    try{ city.value = localStorage.getItem('cmpCity') || ''; }catch(e){}
+  }
+}
+
+function cmpVal(id){ const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+async function cmpRun(fromSubject){
+  if(cmpBusy) return;
+  const out = document.getElementById('cmp-out');
+  if(!out) return;
+  const subject = fromSubject ? cmpVal('cmp-subject') : '';
+  const city = cmpVal('cmp-city');
+  if(!subject && !city){
+    out.innerHTML = '<p class="cmp-note">Give me a town, or an MLS number to start from.</p>';
+    return;
+  }
+  try{ if(city) localStorage.setItem('cmpCity', city); }catch(e){}
+
+  cmpBusy = true;
+  out.innerHTML = '<p class="cmp-note">Looking at closed sales…</p>';
+  const p = new URLSearchParams();
+  if(subject) p.set('subject', subject);
+  if(city)    p.set('city', city);
+  ['beds','sqft','ptype','months'].forEach(k => {
+    const v = cmpVal('cmp-' + k); if(v) p.set(k, v);
+  });
+
+  try{
+    const r = await fetch('/api/comps?' + p.toString());
+    const d = await r.json();
+    if(!r.ok || !d.ok) throw new Error(d.error || 'Could not reach the feed.');
+    cmpRender(d);
+  }catch(e){
+    out.innerHTML = '<p class="cmp-note">' + escapeHtml(e.message || 'That did not work.') + '</p>';
+  }finally{ cmpBusy = false; }
+}
+
+function cmpMoney(n){ return (n || n === 0) ? '$' + Number(n).toLocaleString() : '—'; }
+
+function cmpRender(d){
+  const out = document.getElementById('cmp-out');
+  if(!out) return;
+  const c = d.comps || [];
+  if(!c.length){
+    out.innerHTML = '<p class="cmp-note">No closed sales matched that in the last '
+      + (d.criteria ? d.criteria.months : 12) + ' months. Try widening the time window, '
+      + 'or drop the beds and square footage and look at the whole town.</p>';
+    return;
+  }
+  const s = d.summary || {};
+
+  /* If narrowing by beds/sq ft left fewer than three, the server widened back to
+     the whole town. Say which set is on screen rather than quietly showing a
+     different thing than was asked for. */
+  const widened = d.narrowed === false && d.matchedNarrow < 3;
+
+  const subj = d.subject ? `
+    <div class="cmp-subject">
+      <strong>${escapeHtml(d.subject.address || 'Subject property')}</strong>
+      <span>${[d.subject.beds ? d.subject.beds + ' bd' : '',
+               d.subject.baths ? d.subject.baths + ' ba' : '',
+               d.subject.sqft ? Number(d.subject.sqft).toLocaleString() + ' sq ft' : '']
+              .filter(Boolean).join(' · ')}</span>
+    </div>` : '';
+
+  out.innerHTML = subj + `
+    <div class="cmp-sum">
+      ${cmpStat('Comps', c.length.toLocaleString(), 'Closed sales')}
+      ${cmpStat('Median sale', cmpMoney(s.median), 'What they sold for')}
+      ${s.pricePerSqft ? cmpStat('Per sq ft', '$' + s.pricePerSqft, 'Median') : ''}
+      ${s.medianDaysOnMarket != null ? cmpStat('Days on market', s.medianDaysOnMarket, 'Median') : ''}
+      ${s.saleToList != null ? cmpStat('Sold vs asking', s.saleToList + '%', 'Of final asking price') : ''}
+    </div>
+    ${s.saleToOriginal != null ? `<p class="cmp-note">
+      Against the <strong>original</strong> asking price these sold at a median of
+      <strong>${s.saleToOriginal}%</strong>${s.pctReducedBeforeSale != null
+        ? ` — ${s.pctReducedBeforeSale}% cut their price first` : ''}.</p>` : ''}
+    ${widened ? `<p class="cmp-note cmp-warn">Only ${d.matchedNarrow} sale${d.matchedNarrow===1?'':'s'}
+      matched those beds and square footage, which is too few to read anything into.
+      Showing every closed sale in ${escapeHtml(d.criteria.city)} instead — narrow it yourself
+      from the list below.</p>` : ''}
+    <div class="cmp-table-wrap">
+      <table class="cmp-table">
+        <thead><tr>
+          <th>Address</th><th>Sold</th><th>Price</th><th>$/sq ft</th>
+          <th>Beds</th><th>Sq ft</th><th>Days</th><th>vs asking</th>
+        </tr></thead>
+        <tbody>
+          ${c.map(x => `<tr>
+            <td class="a">${escapeHtml(x.addressWithheld ? 'Address withheld by seller' : (x.address || '—'))}
+              ${x.credit ? `<span class="cr">${escapeHtml(x.credit)}</span>` : ''}</td>
+            <td>${x.closeDate ? escapeHtml(x.closeDate) : '—'}</td>
+            <td class="p">${cmpMoney(x.closePrice)}</td>
+            <td>${x.pricePerSqft ? '$' + x.pricePerSqft : '—'}</td>
+            <td>${x.beds || '—'}</td>
+            <td>${x.sqft ? Number(x.sqft).toLocaleString() : '—'}</td>
+            <td>${x.dom == null ? '—' : x.dom}</td>
+            <td>${x.saleToList == null ? '—' : x.saleToList + '%'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="cmp-note cmp-legal">${escapeHtml(d.disclaimer || '')}</p>
+    <p class="cmp-note">These are comparable sales, not a valuation. What the property
+      in front of you is worth is your call — the condition, the view and the street
+      are not in this table.</p>`;
+}
+
+function cmpStat(l, v, sub){
+  return `<div class="cmp-stat"><div class="l">${l}</div><div class="n">${v}</div><div class="s">${sub}</div></div>`;
+}
 
 async function renderAssist(){
   const host = document.getElementById('as-body');
