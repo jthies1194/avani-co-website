@@ -872,6 +872,7 @@ app.get('/api/listing/:key', async (req, res) => {
        of those working. */
     const one = await mlsFindByKey(key);
     if (!one) return res.status(404).json({ error: 'Listing not found.' });
+    notePhotoHosts(one);
     res.json({ value: [one] });
   } catch (e) {
     console.error('[listing lookup] FAILED:', e.message);
@@ -1967,6 +1968,128 @@ app.delete('/api/cma-report/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ==================== STATIC MAP TILES (server v204) ====================
+   ⚠ Why the server fetches these rather than the browser:
+
+   1. It prints. A cross-origin <img> that has not finished loading when the
+      print dialog opens prints as a blank box. Tiles returned as data URIs are
+      part of the document before it is ever rendered.
+   2. It saves. A CMA stored in the KV table keeps its map; a remote URL in a
+      saved report is a map that may be gone next year.
+   3. One referrer, one user agent, one cache. OpenStreetMap's tile policy asks
+      for an identifying user agent and no bulk scraping, which is a promise a
+      server can keep and a browser cannot.
+
+   Attribution ("© OpenStreetMap contributors") is rendered on the map itself by
+   the client. It is required. Do not remove it. */
+
+const TILE_SIZE = 256;
+const tileCache = new Map();            // "z/x/y" -> { at, data }
+const TILE_TTL  = 7 * 24 * 60 * 60 * 1000;
+const TILE_CACHE_MAX = 600;
+const TILE_HOST = process.env.MAP_TILE_HOST || 'https://tile.openstreetmap.org';
+const TILE_UA = process.env.MAP_TILE_UA ||
+  'AvaniCoRealEstate-CMA/1.0 (+https://bamacoast.com; broker@bamacoast.com)';
+
+function lngToTileX(lng, z){ return (lng + 180) / 360 * Math.pow(2, z); }
+function latToTileY(lat, z){
+  const r = lat * Math.PI / 180;
+  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z);
+}
+
+async function fetchTile(z, x, y){
+  const key = z + '/' + x + '/' + y;
+  const hit = tileCache.get(key);
+  if (hit && Date.now() - hit.at < TILE_TTL) return hit.data;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 7000);
+  try {
+    const r = await fetch(`${TILE_HOST}/${z}/${x}/${y}.png`, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': TILE_UA, 'Accept': 'image/png,image/*' },
+    });
+    if (!r.ok) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!buf.length) return null;
+    const data = 'data:image/png;base64,' + buf.toString('base64');
+    if (tileCache.size >= TILE_CACHE_MAX) {
+      /* Oldest first. A Map iterates in insertion order, so this is enough. */
+      const first = tileCache.keys().next().value;
+      if (first) tileCache.delete(first);
+    }
+    tileCache.set(key, { at: Date.now(), data });
+    return data;
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* GET /api/map-tiles?bbox=minLat,minLng,maxLat,maxLng&w=760&h=440
+   Returns the tiles that cover that box plus the pixel origin the client needs
+   to place its own pins. The client does the projecting; this only moves PNGs. */
+app.get('/api/map-tiles', async (req, res) => {
+  const bb = String(req.query.bbox || '').split(',').map(Number);
+  if (bb.length !== 4 || bb.some(n => !isFinite(n))) {
+    return res.status(400).json({ error: 'bbox must be minLat,minLng,maxLat,maxLng' });
+  }
+  let [minLat, minLng, maxLat, maxLng] = bb;
+  if (minLat > maxLat) [minLat, maxLat] = [maxLat, minLat];
+  if (minLng > maxLng) [minLng, maxLng] = [maxLng, minLng];
+
+  const W = Math.min(1400, Math.max(320, Number(req.query.w) || 760));
+  const H = Math.min(1000, Math.max(220, Number(req.query.h) || 440));
+
+  /* Pick the largest zoom whose span still fits the requested pixel box. 18 is
+     OSM's practical limit; 9 keeps a runaway bbox from asking for the planet. */
+  let zoom = 9;
+  for (let z = 18; z >= 9; z--) {
+    const w = Math.abs(lngToTileX(maxLng, z) - lngToTileX(minLng, z)) * TILE_SIZE;
+    const h = Math.abs(latToTileY(minLat, z) - latToTileY(maxLat, z)) * TILE_SIZE;
+    if (w <= W && h <= H) { zoom = z; break; }
+  }
+
+  const n = Math.pow(2, zoom);
+  const cx = (lngToTileX(minLng, zoom) + lngToTileX(maxLng, zoom)) / 2;
+  const cy = (latToTileY(minLat, zoom) + latToTileY(maxLat, zoom)) / 2;
+
+  /* World-pixel coordinate of the top-left corner of the viewport. */
+  const originX = cx * TILE_SIZE - W / 2;
+  const originY = cy * TILE_SIZE - H / 2;
+
+  const x0 = Math.floor(originX / TILE_SIZE), x1 = Math.floor((originX + W) / TILE_SIZE);
+  const y0 = Math.floor(originY / TILE_SIZE), y1 = Math.floor((originY + H) / TILE_SIZE);
+
+  const wanted = [];
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      if (ty < 0 || ty >= n) continue;
+      wanted.push({ x: ((tx % n) + n) % n, y: ty, left: tx * TILE_SIZE - originX, top: ty * TILE_SIZE - originY });
+    }
+  }
+  if (wanted.length > 42) {
+    return res.status(400).json({ error: 'That area needs too many tiles.' });
+  }
+
+  const out = [];
+  for (const t of wanted) {
+    const data = await fetchTile(zoom, t.x, t.y);
+    if (data) out.push({ left: Math.round(t.left), top: Math.round(t.top), data });
+  }
+
+  if (!out.length) return res.status(502).json({ error: 'The map service did not answer.' });
+
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.json({
+    ok: true, zoom, size: { w: W, h: H },
+    origin: { x: originX, y: originY }, tileSize: TILE_SIZE,
+    attribution: '© OpenStreetMap contributors',
+    tiles: out,
+  });
+});
+
 app.get('/api/market-stats', async (req, res) => {
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
@@ -2132,6 +2255,7 @@ app.get('/api/listing-lookup', async (req, res) => {
       if (rows.length) break;
     }
     const d = { value: rows };
+    notePhotoHosts(d.value);
     const matches = (d.value || []).map(r => ({
       key: r.ListingKey,
       address: r.UnparsedAddress || '',
@@ -2278,15 +2402,75 @@ const PHOTO_HOSTS = [
   'cloudfront.net', 'mlsgrid.com', 'akamaized.net',
 ];
 
+/* ⚠ A FIXED ALLOWLIST IS WHY THE CMA HAD NO PHOTOS. Baldwin's media host is
+   not in the list above, so every image came back 403 from our own proxy and the
+   report printed with grey boxes. Guessing the next MLS's CDN hostname is not a
+   plan either — it changes without notice.
+
+   So the proxy learns. Any hostname that appears in a Media URL the MLS itself
+   returned is remembered and allowed from then on. That keeps this a proxy for
+   MLS photos rather than an open relay: a URL nobody's feed ever published is
+   still refused, so it cannot be pointed at an internal address.
+
+   Hosts are reported by /api/health, which is how you find out what a new feed
+   actually uses. */
+const photoHostsSeen = new Set();
+let photoHostsDirty = false;
+
+/* Learned hosts are remembered across restarts. Without this, a saved CMA whose
+   images point at the proxy would break every time the app restarts, because the
+   proxy would have forgotten which hosts the feed uses until somebody opened a
+   listing again. */
+async function loadPhotoHosts() {
+  try {
+    const saved = await getSetting('photohosts');
+    if (Array.isArray(saved)) saved.forEach(h => photoHostsSeen.add(String(h).toLowerCase()));
+  } catch (e) { /* first run, or no Supabase; the set just starts empty */ }
+}
+async function savePhotoHosts() {
+  if (!photoHostsDirty) return;
+  photoHostsDirty = false;
+  try { await setSetting('photohosts', [...photoHostsSeen]); } catch (e) {}
+}
+
+function notePhotoHost(u) {
+  if (typeof u !== 'string' || !/^https:\/\//i.test(u)) return;
+  try {
+    const h = new URL(u).hostname.toLowerCase();
+    if (h && !h.endsWith('.local') && h.includes('.') && !photoHostsSeen.has(h)) {
+      photoHostsSeen.add(h);
+      photoHostsDirty = true;
+    }
+  } catch (e) { /* not a URL; nothing to learn */ }
+}
+function notePhotoHosts(rows) {
+  for (const r of (Array.isArray(rows) ? rows : [rows])) {
+    if (!r) continue;
+    const m = Array.isArray(r.Media) ? r.Media : [];
+    for (const it of m) {
+      if (typeof it === 'string') notePhotoHost(it);
+      else if (it) [it.MediaURL, it.MediaUrl, it.Uri1600, it.Uri1024, it.Uri800,
+                    it.Uri640, it.Url, it.url].forEach(notePhotoHost);
+    }
+    notePhotoHost(r.PhotoURL); notePhotoHost(r.ThumbnailURL);
+  }
+  if (photoHostsDirty) savePhotoHosts();
+}
+function photoHostAllowed(host) {
+  if (PHOTO_HOSTS.some(h => host === h || host.endsWith('.' + h))) return true;
+  if (photoHostsSeen.has(host)) return true;
+  for (const seen of photoHostsSeen) if (host.endsWith('.' + seen)) return true;
+  return false;
+}
+
 app.get('/api/listing-photo', async (req, res) => {
   const raw = String(req.query.u || '');
   let url;
   try { url = new URL(raw); } catch (e) { return res.status(400).json({ error: 'Bad URL.' }); }
   if (url.protocol !== 'https:') return res.status(400).json({ error: 'https only.' });
   const host = url.hostname.toLowerCase();
-  const ok = PHOTO_HOSTS.some(h => host === h || host.endsWith('.' + h));
-  if (!ok) {
-    console.warn(`[photo proxy] refused host ${host} — add it to PHOTO_HOSTS if the feed uses it`);
+  if (!photoHostAllowed(host)) {
+    console.warn(`[photo proxy] refused host ${host} — no MLS feed has published it`);
     return res.status(403).json({ error: 'That image host is not allowed.' });
   }
   try {
@@ -7898,7 +8082,8 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v203',
+    serverVersion: 'v204',
+    photoHosts: [...photoHostsSeen],
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -12472,6 +12657,9 @@ app.get('/:slug', (req, res, next) => {
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {
   console.log(`Avani & Co. server running on port ${port}`);
+
+  await loadPhotoHosts();
+  if (photoHostsSeen.size) console.log(`[startup] Known MLS photo hosts: ${[...photoHostsSeen].join(', ')}`);
 
   // Test 1: can this app reach the general internet at all?
   try {
