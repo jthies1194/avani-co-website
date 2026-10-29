@@ -890,7 +890,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   font-size:12.5px;letter-spacing:.06em;padding:6px 12px;border-radius:2px}
 .detail-remarks{margin:18px 0 0;font-size:16px;line-height:1.8;color:#41496E;
   max-height:190px;overflow-y:auto}
-.detail-extra{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--gray)}
+.detail-extra{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--gray)}.ml-sample{margin-left:auto;border:1px solid var(--line);background:transparent;color:var(--marsh);border-radius:2px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}.ml-sample:hover{border-color:var(--marsh);background:var(--sand-light)}.ml-sample-box{margin-top:14px;border:1px solid var(--line);border-radius:3px;background:var(--white)}.ml-sample-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 13px;border-bottom:1px solid var(--line-light);background:var(--sand-light)}.ml-sample-h b{font-size:13.5px}.ml-sample-h span{font-size:12px;color:var(--driftwood)}.ml-sample-h .btn-sm{margin-left:auto}.ml-sample-text{margin:0;padding:14px 16px;font-family:'Public Sans',sans-serif;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--ink);max-height:430px;overflow:auto}.detail-history{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}.detail-history span{display:inline-flex;align-items:center;gap:6px;background:var(--sand-light);border:1px solid var(--line);border-radius:999px;padding:5px 13px;font-size:12.5px;color:var(--ink)}.detail-history span:first-child{background:#E4EAF8;border-color:#C9D5F0;color:#1B3670;font-weight:600}
 
 /* Always fully opaque — a QR is scanned with a phone pointed at the screen,
    so it can't depend on hover (the cursor would be sitting on top of it). */
@@ -5031,9 +5031,19 @@ document.getElementById('detail-mls').textContent = listingCredit(listing) || ''
   if(listing.SubdivisionName) bits.push(escapeHtml(listing.SubdivisionName));
   extra.innerHTML = bits.map(b => '<span>' + b + '</span>').join('');
 
+  /* The history sits between the facts and the description, where a buyer is
+     already reading, rather than at the bottom where nobody looks. */
+  let hist = document.getElementById('detail-history');
+  if(!hist){ hist = document.createElement('div'); hist.id = 'detail-history';
+    hist.className = 'detail-history';
+    extra.parentNode.insertBefore(hist, extra.nextSibling); }
+  const hb = listingHistory(listing);
+  hist.innerHTML = hb.map(x => '<span>' + escapeHtml(x) + '</span>').join('');
+  hist.style.display = hb.length ? 'flex' : 'none';
+
   let rem = document.getElementById('detail-remarks');
   if(!rem){ rem = document.createElement('p'); rem.id='detail-remarks'; rem.className='detail-remarks';
-    extra.parentNode.insertBefore(rem, extra.nextSibling); }
+    hist.parentNode.insertBefore(rem, hist.nextSibling); }
   rem.textContent = listing.PublicRemarks || '';
   rem.style.display = listing.PublicRemarks ? 'block' : 'none';
 })();
@@ -5568,7 +5578,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v396';
+window.BUILD = 'index-v397';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9078,6 +9088,59 @@ function loadMoreServer(){
 }
 </script>
 <script>
+/* ⚠ WHAT THE LISTING HAS BEEN THROUGH. Days on market and a price cut are the
+   two facts a buyer most wants and portals bury. Both come from fields the feed
+   already sends — OnMarketDate and OriginalListPrice — so there is no extra
+   request and nothing to go stale.
+
+   ⚠ DaysOnMarket is NOT a field in this feed; it is derived. If the MLS resets
+   OnMarketDate when a listing is withdrawn and relisted, this reads low. It is
+   the MLS's own date either way, which is the best answer available.
+
+   ⚠ Nothing is invented. No cut, no line about a cut. A listing with no
+   OnMarketDate gets no day count rather than a guess from the modification
+   timestamp, which would say "on market 2 days" for one that has sat all year
+   and merely had a photograph swapped. */
+function listingHistory(l){
+  if(!l) return [];
+  const out = [];
+  const day = 86400000;
+  const sold = (typeof lSold === 'function') ? lSold(l) : !!l.ClosePrice;
+  const on = l.OnMarketDate ? new Date(l.OnMarketDate) : null;
+  const valid = on && !isNaN(on) && on.getFullYear() > 1990;
+
+  if(valid){
+    const end = sold && l.CloseDate ? new Date(l.CloseDate) : new Date();
+    /* ⚠ floor, not round. A listing that went live 47 days and nine hours ago
+       has been on the market 47 days; rounding it to 48 disagrees with every
+       other site showing the same listing. */
+    const d = Math.floor((end - on) / day);
+    if(d >= 0 && d < 3650){
+      out.push(sold ? `Took ${d.toLocaleString()} day${d === 1 ? '' : 's'} to sell`
+                    : `On market ${d.toLocaleString()} day${d === 1 ? '' : 's'}`);
+    }
+  }
+
+  const orig = Number(l.OriginalListPrice) || 0;
+  const ask  = Number(l.ListPrice) || 0;
+  if(orig > 0 && ask > 0 && orig !== ask){
+    const diff = Math.abs(orig - ask);
+    /* Under a half percent is a correction, not a price move worth announcing. */
+    if(diff / orig > 0.005){
+      const pct = Math.round(diff / orig * 1000) / 10;
+      out.push(`${orig > ask ? 'Reduced' : 'Increased'} $${diff.toLocaleString()}`
+        + ` from $${orig.toLocaleString()}` + (pct >= 1 ? ` (${pct}%)` : ''));
+    }
+  }
+
+  const close = Number(l.ClosePrice) || 0;
+  if(sold && close > 0 && ask > 0){
+    const pc = Math.round(close / ask * 1000) / 10;
+    if(pc > 50 && pc < 150) out.push(`Sold for ${pc}% of the asking price`);
+  }
+  return out;
+}
+
 /* Land and lot listings have no beds/baths/sqft — "0 bd 0 ba 0 sqft" looks broken.
    Show acreage or property type instead. */
 function statsFor(l){
@@ -24749,6 +24812,16 @@ async function cmpOpenListing(key){
         : `<p class="cmp-note">No photos came back on this record.
              <span class="cmp-legal">Fields present: ${escapeHtml(Object.keys(l).filter(k =>
                /media|photo|image/i.test(k)).join(', ') || 'none matching media/photo/image')}</span></p>`}
+      ${(() => {
+        /* Same history line as the public listing detail, from the same function
+           so the two cannot drift apart. */
+        const h = listingHistory({
+          OnMarketDate: l.OnMarketDate, CloseDate: l.CloseDate,
+          OriginalListPrice: l.OriginalListPrice, ListPrice: l.ListPrice,
+          ClosePrice: l.ClosePrice, StandardStatus: l.StandardStatus });
+        return h.length ? `<div class="detail-history">${h.map(x =>
+          '<span>' + escapeHtml(x) + '</span>').join('')}</div>` : '';
+      })()}
       <div class="cd-facts">
         ${fact('Beds', l.BedroomsTotal)}
         ${fact('Baths', l.BathroomsTotalInteger)}
@@ -28088,7 +28161,15 @@ async function renderLetter(){
       <span class="l">${escapeHtml(t.town)}</span>
       <span class="n">${t.people} ${t.people===1?'person':'people'}${
         t.hasData ? ` \u00b7 ${t.count} listing${t.count===1?'':'s'}`
-                  : ' \u00b7 nothing on the market there'}</span>
+                  : ' \u00b7 nothing on the market there'}${
+        /* ⚠ Which towns the letter can quote SALE prices for, shown before
+           anything is sent. A town with no recent sales still gets a letter, it
+           just says so rather than implying the figures include sales. */
+        t.soldCount ? ` \u00b7 ${t.soldCount} sold, midpoint $${Number(t.soldMedian).toLocaleString()}`
+                    : (t.hasData ? ' \u00b7 no recent sales to quote' : '')}</span>
+      ${t.hasData ? `<button type="button" class="ml-sample"
+        onclick="event.preventDefault();mlSample('${escapeHtml(t.town).replace(/'/g,"\\'")}')"
+        >Read one</button>` : ''}
     </label>`).join('')
     + `<div class="ml-note"><b>Nobody gets the same letter twice in a month.</b>
         Press it again later and only people who have not had one will receive it.</div>`
@@ -28102,6 +28183,47 @@ async function renderLetter(){
        <p class="sx-sub" style="margin-top:10px">Start small. The sending domain is new,
          and a first run of hundreds is how a new domain lands in spam folders.</p>`;
   mlSync();
+}
+
+/* ⚠ Reads the exact letter that would go to this town, sending nothing. A
+   monthly letter goes out under the brokerage's name to people who did not ask
+   to be surprised; being able to read one first is the difference between a
+   review and a hope. */
+async function mlSample(town){
+  const host = document.getElementById('ml-body');
+  if(!host) return;
+  let box = document.getElementById('ml-sample-box');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'ml-sample-box';
+    box.className = 'ml-sample-box';
+    host.appendChild(box);
+  }
+  box.innerHTML = '<div class="ml-none">Writing one for ' + escapeHtml(town) + '\u2026</div>';
+  try{ box.scrollIntoView({ behavior:'smooth', block:'nearest' }); }catch(e){}
+  try{
+    const r = await fetch('/api/market-letter/sample?town=' + encodeURIComponent(town)
+      + '&_=' + Date.now(), { cache:'no-store' });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not write that one.');
+    box.innerHTML = `<div class="ml-sample-h">
+        <b>${escapeHtml(town)} \u2014 this is what goes out</b>
+        <span>${d.hasSold ? 'Includes sale prices from the last '
+            + (d.soldWindowDays === 90 ? 'three months' : 'year')
+          : 'No sale prices \u2014 too few recent sales there'}</span>
+        <button type="button" class="btn-sm" onclick="mlSampleClose()">Close</button>
+      </div>
+      <pre class="ml-sample-text">${escapeHtml(d.text)}</pre>
+      <p class="sx-sub">Nothing was sent. Your own name and the unsubscribe link are
+        filled in per person when it actually goes.</p>`;
+  }catch(e){
+    box.innerHTML = `<div class="ct-warn">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function mlSampleClose(){
+  const b = document.getElementById('ml-sample-box');
+  if(b) b.remove();
 }
 
 function mlToggle(t, on){
