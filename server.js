@@ -8254,7 +8254,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v207',
+    serverVersion: 'v209',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -9379,6 +9379,32 @@ function leadTown(l) {
 
 
 
+/* ⚠ WHAT ACTUALLY SOLD, per town. The letter used to end by admitting it had
+   no sale prices in it, which is the one number a homeowner opens a market
+   letter to find. These come from the same closed-sales pull the market page
+   uses, so the letter and the website cannot disagree.
+
+   ⚠ A 90-DAY WINDOW FIRST, widening to a year only if 90 days is too thin.
+   "Three sold last quarter" is a current fact; "forty sold in the last year" is
+   history. Which window was used is always stated — a median over four sales is
+   not the same claim as a median over forty and the letter must not blur them. */
+function letterTownSold(soldRowsAll, town) {
+  if (!Array.isArray(soldRowsAll) || !soldRowsAll.length) return null;
+  const here = soldRowsAll.filter(r =>
+    String(r.City || '').toLowerCase() === String(town).toLowerCase()
+    && Number(r.ClosePrice) > 0);
+  if (!here.length) return null;
+
+  const since = d => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  const recent = here.filter(r => String(r.CloseDate || '').slice(0, 10) >= since(90));
+  const use = recent.length >= 4 ? recent : here;
+  const window = recent.length >= 4 ? 90 : 365;
+  if (use.length < 3) return null;      // too few to be worth printing
+
+  const st = soldStats(use);
+  return st && st.count ? { ...st, window, town } : null;
+}
+
 /* One town, from the rows already pulled for market-stats. */
 function letterTownStats(rows, town) {
   const now = Date.now();
@@ -9404,6 +9430,14 @@ function letterTownStats(rows, town) {
   };
 }
 
+/* ⚠ Sold data is an ENRICHMENT. If the closed pull fails the letter still goes
+   out with the active figures and the honest footer, rather than the whole send
+   failing because an extra block could not be built. */
+async function letterSoldRows() {
+  try { return await soldRows(12); }
+  catch (e) { console.error('[letter] sold pull failed:', e.message); return []; }
+}
+
 function money(n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
 
 function letterText(s, first, sender, origin, unsub) {
@@ -9419,6 +9453,24 @@ function letterText(s, first, sender, origin, unsub) {
     s.cut ? `\u00b7 ${s.cut} ${s.cut === 1 ? 'has' : 'have'} dropped their asking price` : '',
     s.medianDom ? `\u00b7 The typical one has been listed about ${s.medianDom} days` : '',
     '',
+    /* ⚠ Sold figures go in their own block with their own heading, never mixed
+       into the list above. An asking price and a sale price answer different
+       questions and a reader skimming bullet points will not notice the switch. */
+    ...(s.sold ? [
+      `What actually sold${s.sold.window === 90 ? ' in the last three months' : ' over the last year'}:`,
+      '',
+      `\u00b7 ${s.sold.count} sale${s.sold.count === 1 ? '' : 's'} closed`,
+      `\u00b7 Midpoint sale price ${money(s.sold.median)}`,
+      s.sold.pricePerSqft ? `\u00b7 About ${money(s.sold.pricePerSqft)} a square foot` : '',
+      s.sold.saleToList != null
+        ? `\u00b7 They sold for ${s.sold.saleToList}% of what they were asking at the end`
+          + (s.sold.saleToOriginal != null && s.sold.saleToOriginal < s.sold.saleToList
+              ? `, and ${s.sold.saleToOriginal}% of the price they first opened at` : '')
+        : '',
+      s.sold.medianDaysOnMarket != null
+        ? `\u00b7 The typical one took about ${s.sold.medianDaysOnMarket} days to sell` : '',
+      '',
+    ].filter(x => x !== '') : []),
     /* ⚠ It once said "That is every active listing, counted this morning." That
        was not true and it went out under the brokerage's name. Baldwin is connected
        now and the figures are far closer to complete, but the principle holds: a
@@ -9442,9 +9494,13 @@ function letterText(s, first, sender, origin, unsub) {
     BROKERAGE_PHONE,
     BROKERAGE_ADDRESS,
     '',
-    /* ⚠ Said plainly, because a market letter that omits it implies sold prices are in
-       there somewhere. They are not. */
-    'These figures cover homes currently for sale. They do not include sale prices.',
+    /* ⚠ The wording tracks what is actually in the letter. It used to say sale
+       prices were not included, which was true then and would be a lie now. */
+    s.sold
+      ? 'Asking prices are what sellers are hoping for. Sale prices are what buyers '
+        + 'actually paid. Both are above, kept separate on purpose.'
+      : 'These figures cover homes currently for sale. There were not enough recent '
+        + 'sales in this town to publish a sale price for it — ask me and I will pull them.',
     '',
     DISCLAIMER_EMAIL,
     '',
@@ -9603,6 +9659,7 @@ app.post('/api/market-letter/preview', async (req, res) => {
     console.error('[letter] feed:', e.message);
     return res.status(502).json({ error: 'Could not reach the MLS feed.' });
   }
+  const sRows = await letterSoldRows();
 
   const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
   const all = (data || []).map(x => x.value).filter(Boolean);
@@ -9620,13 +9677,50 @@ app.post('/api/market-letter/preview', async (req, res) => {
 
   const towns = Object.keys(byTown).sort().map(t => {
     const s = letterTownStats(rows, t);
+    const sold = letterTownSold(sRows, t);
     return { town: t, people: byTown[t].length, hasData: !!s,
-      count: s ? s.count : 0, median: s ? s.median : 0 };
+      count: s ? s.count : 0, median: s ? s.median : 0,
+      /* Surfaced so the panel can show which towns the letter will carry sale
+         prices for, before anything is sent. */
+      soldCount: sold ? sold.count : 0,
+      soldMedian: sold ? sold.median : 0,
+      soldWindow: sold ? sold.window : 0 };
   });
 
   res.json({ ok: true, towns,
     skipped: { noTown, noEmail, unsubscribed: unsubbed },
     reachable: towns.filter(t => t.hasData).reduce((a, t) => a + t.people, 0) });
+});
+
+/* ⚠ READ IT BEFORE YOU SEND IT. This composes one real letter for one town
+   and returns the exact text that would go out, to nobody. It exists because a
+   monthly letter goes out under the brokerage's name to people who did not ask
+   to be surprised, and "send and hope" is not a review process. Sends nothing,
+   writes nothing, logs nothing. */
+app.get('/api/market-letter/sample', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const town = String(req.query.town || '').slice(0, 60);
+  if (!town) return res.status(400).json({ error: 'Which town?' });
+
+  let rows;
+  try { rows = await marketRows(); }
+  catch (e) { return res.status(502).json({ error: 'Could not reach the MLS feed.' }); }
+  const sRows = await letterSoldRows();
+
+  const stats = letterTownStats(rows, town);
+  if (!stats) return res.status(404).json({ error: `No active listings in ${town} to write about.` });
+  stats.sold = letterTownSold(sRows, town);
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const text = letterText(stats, req.query.name ? String(req.query.name).slice(0, 40) : 'Dana',
+    { name: sess.name || '' }, origin, origin + '/unsubscribe?x=SAMPLE');
+
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, town, text,
+    hasSold: !!stats.sold,
+    soldWindowDays: stats.sold ? stats.sold.window : 0,
+    note: 'Nothing was sent. This is what one of these looks like.' });
 });
 
 app.post('/api/market-letter/send', async (req, res) => {
@@ -9645,6 +9739,7 @@ app.post('/api/market-letter/send', async (req, res) => {
   let rows;
   try { rows = await marketRows(); }
   catch (e) { return res.status(502).json({ error: 'Could not reach the MLS feed.' }); }
+  const sRows = await letterSoldRows();
 
   const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
   const origin = `${req.protocol}://${req.get('host')}`;
@@ -9661,6 +9756,7 @@ app.post('/api/market-letter/send', async (req, res) => {
        must not send the same letter twice. */
     if (l.lastLetter === month) continue;
     const s = letterTownStats(rows, town);
+    if (s) s.sold = letterTownSold(sRows, town);
     if (!s) continue;
     queue.push({ key: row.key, lead: l, stats: s });
     if (queue.length >= cap) break;
@@ -11135,6 +11231,53 @@ function agentIsPublic(map, id) {
 }
 
 /* Broker sets it. Returns the whole map so the screen never guesses. */
+/* ⚠ THIS ROUTE DID NOT EXIST, and that is why no CMA has ever had a headshot
+   or a logo on it without one being uploaded by hand each time. The builder has
+   been asking for it since the branding was added; Express had nothing to answer
+   with, so the request fell through to the SPA catch-all and came back as the
+   index page. The front end got HTML where it expected JSON, swallowed the
+   error, and carried on with an empty brand — silently, every time.
+
+   ⚠ The agent's OWN branding, readable by that agent or by staff. It is not the
+   public bio route: it answers whether or not the profile is set live, because
+   an agent who has not published a bio still has a headshot and still builds
+   CMAs. Nothing here goes to a visitor. */
+app.get('/api/agent/:id/public', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const id = String(req.params.id || '');
+  if (sess.agentId !== id && !isStaff(sess)) {
+    return res.status(403).json({ error: 'That is not your profile.' });
+  }
+  res.set('Cache-Control', 'no-store');
+
+  const profile = (await getSetting('agentPublic:' + id)) || {};
+  let row = {};
+  if (supabase) {
+    try {
+      const { data } = await supabase.from('agents')
+        .select('id,name,email,phone,role').eq('id', id).maybeSingle();
+      row = data || {};
+    } catch (e) { /* the profile alone is enough to brand a report */ }
+  }
+
+  res.json({
+    ok: true,
+    id,
+    name: row.name || sess.name || '',
+    title: profile.title || '',
+    photo: profile.photo || '',
+    logo: profile.logo || '',
+    teamName: profile.teamName || '',
+    publicPhone: profile.publicPhone || row.phone || BROKERAGE_PHONE,
+    email: profile.publicEmail || row.email || '',
+    licenseNumbers: profile.licenseNumbers || {},
+    licensedStates: licensedStatesOf(profile),
+    /* How this agent last framed their headshot on a CMA, so the next one opens
+       the way they left it rather than needing cropping again. */
+    cmaFrame: profile.cmaFrame || null,
+  });
+});
+
 app.post('/api/agent/:id/public', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   if (!isStaff(sess)) return res.status(403).json({ error: 'Broker only.' });
@@ -11146,6 +11289,65 @@ app.post('/api/agent/:id/public', async (req, res) => {
   if (ok === false) return res.status(500).json({ error: 'That did not save.' });
   console.log(`[agent] ${sess.name} set profile ${live ? 'LIVE' : 'hidden'} for ${id}`);
   res.json({ ok: true, live, map });
+});
+
+/* ⚠ PHOTO AND LOGO ONLY, merged server-side. Saving these from the CMA builder
+   through the full profile route would mean the browser reading the whole
+   profile, changing two fields and writing it all back — and anything it failed
+   to read, such as a bio edited on another device a minute earlier, would be
+   silently erased. This route touches the two fields it is given and nothing
+   else, so a headshot saved from the CMA cannot cost somebody their bio.
+
+   It exists because an agent should upload their headshot once, not once per
+   report. The crop rides along so every new CMA starts framed the way they
+   framed it. */
+app.post('/api/agent/:id/brand', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const id = String(req.params.id || '');
+  if (sess.agentId !== id && !isStaff(sess)) {
+    return res.status(403).json({ error: 'You can only change your own branding.' });
+  }
+
+  const b = req.body || {};
+  const cleanPhoto = v => {
+    const t = String(v || '');
+    if (t.length > 900000) return null;          // too big: refuse, do not truncate
+    if (t && !/^(https?:\/\/|data:image\/(jpeg|png|webp);base64,)/.test(t)) return null;
+    return t;
+  };
+  const cleanFrame = f => {
+    if (!f || typeof f !== 'object') return undefined;
+    const n = (v, d) => { const x = Number(v); return isFinite(x) ? x : d; };
+    return {
+      zoom: Math.min(4, Math.max(1, n(f.zoom, 1))),
+      x: Math.min(100, Math.max(0, n(f.x, 50))),
+      y: Math.min(100, Math.max(0, n(f.y, 18))),
+    };
+  };
+
+  const key = 'agentPublic:' + id;
+  const existing = (await getSetting(key)) || {};
+  const next = { ...existing };
+
+  if (b.photo !== undefined) {
+    const p = cleanPhoto(b.photo);
+    if (p === null) return res.status(422).json({ error: 'That image is too large or not an image.' });
+    next.photo = p;
+  }
+  if (b.logo !== undefined) {
+    const l = cleanPhoto(b.logo);
+    if (l === null) return res.status(422).json({ error: 'That logo is too large or not an image.' });
+    next.logo = l;
+  }
+  if (b.cmaFrame !== undefined) {
+    const f = cleanFrame(b.cmaFrame);
+    if (f) next.cmaFrame = f;
+  }
+
+  const ok = await setSetting(key, next);
+  if (ok === false) return res.status(500).json({ error: 'That did not save.' });
+  console.log(`[brand] ${sess.name || id} updated ${Object.keys(b).join(', ')}`);
+  res.json({ ok: true, photo: !!next.photo, logo: !!next.logo, cmaFrame: next.cmaFrame || null });
 });
 
 app.get('/api/agent/public-map', async (req, res) => {
