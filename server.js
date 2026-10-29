@@ -8189,8 +8189,22 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v205',
+    serverVersion: 'v206',
     photoHosts: [...photoHostsSeen],
+    /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
+       a few hours old, or `lastOk` false, means the heartbeat is not keeping the
+       Supabase project awake and it is on course to pause. */
+    heartbeat: {
+      everyHours: heartbeat.everyHours,
+      startedAt: heartbeat.startedAt,
+      lastAt: heartbeat.lastAt,
+      lastOk: heartbeat.lastOk,
+      lastError: heartbeat.lastError,
+      beats: heartbeat.beats,
+      failures: heartbeat.failures,
+      hoursSinceLastBeat: heartbeat.lastAt
+        ? Math.round((Date.now() - new Date(heartbeat.lastAt)) / 36000) / 100 : null,
+    },
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
@@ -12762,9 +12776,71 @@ app.get('/:slug', (req, res, next) => {
 });
 
 const port = process.env.PORT || 3000;
+/* ==================== SUPABASE HEARTBEAT (server v206) ====================
+   ⚠ WHY THIS EXISTS. Supabase pauses a Free project after seven days of low
+   DATABASE activity, and only real database requests count — Auth and Storage
+   traffic on their own do not. A quiet week on the site was therefore enough to
+   put the database to sleep, which takes the whole site down with it.
+
+   This app runs continuously whether or not anyone visits, so it can keep the
+   project awake on its own. One cheap SELECT every few hours is genuine
+   database activity and resets the clock.
+
+   ⚠ A READ, NOT A WRITE. A write every six hours would churn the table and the
+   write-ahead log for nothing; a select of a single key is the smallest thing
+   that still counts.
+
+   ⚠ ITS LIMIT, STATED PLAINLY: this only beats while this process is alive. If
+   the host restarts or idles the app and the heartbeat stops, nothing here will
+   notice. That is why the state below is reported by /api/health — so a stopped
+   heartbeat is visible before the pause email arrives, rather than discovered
+   when a client cannot load the site. The only arrangement with no such caveat
+   is a paid plan, which does not pause at all. */
+const HEARTBEAT_HOURS = Math.min(Math.max(Number(process.env.HEARTBEAT_HOURS) || 6, 1), 24);
+const heartbeat = {
+  startedAt: null, lastAt: null, lastOk: null, lastError: null,
+  beats: 0, failures: 0, consecutiveFailures: 0, everyHours: HEARTBEAT_HOURS,
+};
+
+async function heartbeatOnce() {
+  if (!supabase) return;
+  try {
+    const { error } = await supabase.from(KV_TABLE).select('key').limit(1);
+    heartbeat.beats++;
+    heartbeat.lastAt = new Date().toISOString();
+    if (error) throw new Error(error.message || 'query error');
+    heartbeat.lastOk = true;
+    heartbeat.lastError = null;
+    heartbeat.consecutiveFailures = 0;
+  } catch (e) {
+    heartbeat.lastAt = new Date().toISOString();
+    heartbeat.lastOk = false;
+    heartbeat.lastError = e.message;
+    heartbeat.failures++;
+    heartbeat.consecutiveFailures++;
+    /* Logged every time. A heartbeat that fails twice running is the database
+       being unreachable, which is the thing this was built to get ahead of. */
+    console.error(`[heartbeat] FAILED (${heartbeat.consecutiveFailures} in a row): ${e.message}`);
+  }
+}
+
+function startHeartbeat() {
+  if (!supabase) {
+    console.log('[heartbeat] not started — no Supabase configured');
+    return;
+  }
+  heartbeat.startedAt = new Date().toISOString();
+  heartbeatOnce();
+  const t = setInterval(heartbeatOnce, HEARTBEAT_HOURS * 60 * 60 * 1000);
+  /* unref so the timer can never be the only reason this process stays alive. */
+  if (t.unref) t.unref();
+  console.log(`[heartbeat] every ${HEARTBEAT_HOURS}h, keeping the Supabase project awake`);
+}
+
 app.listen(port, async () => {
   console.log(`Avani & Co. server running on port ${port}`);
 
+  startHeartbeat();
   await loadPhotoHosts();
   if (photoHostsSeen.size) console.log(`[startup] Known MLS photo hosts: ${[...photoHostsSeen].join(', ')}`);
 
