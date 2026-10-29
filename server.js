@@ -1157,11 +1157,19 @@ async function soldRows(months = 12) {
   const rows = [];
   const PAGE = 200;
   const seenAddr = new Set();
-  let mode = null;
-  for (let skip = 0; skip < 2000; skip += PAGE) {
+  let mode = null, total = null;
+  /* ⚠ A SAMPLE, not a census. Ten pages of closed sales behind a proxy is how
+     /api/market-stats turns into a 502. Five pages of the most recent sales is
+     ample for a median, and the TRUE count comes from the feed's own @odata.count
+     rather than from how many rows we happened to pull — otherwise the page
+     would claim "1,000 closed sales" when there were five thousand. */
+  const deadline = Date.now() + 20000;
+  for (let skip = 0; skip < 1000; skip += PAGE) {
+    if (Date.now() > deadline) { console.warn('[sold] stopped early on time'); break; }
     const attempt = await closedQuery([`StandardStatus eq 'Closed'`], cutoff,
                                       { top: PAGE, skip });
     mode = attempt.mode;
+    if (total == null && attempt.r && attempt.r.total != null) total = attempt.r.total;
     const got = (attempt.r && attempt.r.value) ? attempt.r.value : [];
     if (!got.length) break;
     for (const row of got) {
@@ -1174,7 +1182,7 @@ async function soldRows(months = 12) {
   }
   rows.sort((a, b) => String(b.CloseDate || '').localeCompare(String(a.CloseDate || '')));
   if (mode && mode !== 'date+sort') console.warn(`[sold] feed needed fallback: ${mode}`);
-  soldCache = { rows, at: Date.now(), months };
+  soldCache = { rows, at: Date.now(), months, total };
   console.log(`[sold] ${rows.length} closed sales in the last ${months} months`);
   return rows;
 }
@@ -1248,7 +1256,27 @@ function soldStats(rows) {
 
    The mode it succeeded with is reported, so the next session knows what this
    feed actually supports instead of rediscovering it. */
-async function closedQuery(baseParts, cutoff, { top = 200, skip = 0 } = {}) {
+/* ⚠ FETCH THE FIELDS, NOT THE PHOTOS. Without a $select each record arrives
+   with its whole Media array — roughly 47KB per listing, so 200 records is about
+   9MB and three pages is 28MB. The comps table displays no photos at all. Asking
+   for 200 full records timed out behind GoDaddy's proxy and came back as a 502
+   Bad Gateway, which looked from the browser like a missing route.
+
+   ⚠ There is a note elsewhere in this file saying NOT to use $select, because
+   naming Media in one returns it empty on this feed. That applies to routes that
+   need photos. This one does not, and omitting Media is the entire point. */
+const CLOSED_SELECT = [
+  'ListingKey','ListingId','UnparsedAddress','City','CountyOrParish','StateOrProvince',
+  'StandardStatus','MlsStatus','PropertyType','PropertySubType',
+  'ClosePrice','ListPrice','OriginalListPrice','CloseDate','OnMarketDate',
+  'BedroomsTotal','BathroomsTotalInteger','LivingArea','LotSizeAcres','YearBuilt',
+  'ListOfficeName','ListAgentFullName','ListOfficePhone','ListOfficeEmail',
+  'InternetEntireListingDisplayYN','InternetAddressDisplayYN','ModificationTimestamp',
+].join(',');
+
+let closedModeMemo = null;
+
+async function closedQuery(baseParts, cutoff, { top = 200, skip = 0, select = CLOSED_SELECT } = {}) {
   const anyOk = r => r && r.sources && r.sources.some(s => s.ok);
   const attempts = [
     { mode: 'date+sort', filter: [...baseParts, `CloseDate ge ${cutoff}`].join(' and '),
@@ -1258,14 +1286,26 @@ async function closedQuery(baseParts, cutoff, { top = 200, skip = 0 } = {}) {
     { mode: 'plain',     filter: baseParts.join(' and '),
       orderby: 'ModificationTimestamp desc', jsDate: true },
   ];
+  /* ⚠ Remember which shape this feed accepted and go straight to it next time.
+     Without this, every page of every request re-probes: three pages × three
+     attempts is nine round trips, which is how a request ends up behind a proxy
+     timeout. Reset on restart, which is the right lifetime — a feed's
+     capabilities do not change mid-process. */
   let last = null;
-  for (const a of attempts) {
-    const r = await mlsQuery({ filter: a.filter, top, skip, orderby: a.orderby, count: true });
+  const ordered = (closedModeMemo
+    ? attempts.slice().sort((a, b) => (a.mode === closedModeMemo ? -1 : 0) - (b.mode === closedModeMemo ? -1 : 0))
+    : attempts);
+  for (const a of ordered) {
+    const r = await mlsQuery({ filter: a.filter, top, skip, orderby: a.orderby,
+                               count: true, select });
     last = { r, ...a };
     /* An attempt counts as working only if the feed answered AND gave rows —
        a 200 with nothing back is how this failed silently the first time. */
     if (anyOk(r) && (r.value || []).length) {
-      if (a.mode !== 'date+sort') console.warn(`[closed] feed needed fallback: ${a.mode}`);
+      if (a.mode !== closedModeMemo) {
+        closedModeMemo = a.mode;
+        if (a.mode !== 'date+sort') console.warn(`[closed] feed needed fallback: ${a.mode}`);
+      }
       return last;
     }
     if (!anyOk(r)) continue;          // feed refused it — try the next shape
@@ -1364,8 +1404,13 @@ app.get('/api/comps', async (req, res) => {
     let attempt = await closedQuery(parts, cutoff, { top: 200, skip: 0 });
     const r = attempt.r;
     let pool = (r.value || []).slice();
+    /* ⚠ Time budget. The extra pages are a nicety — a bigger set to filter — and
+       not worth a 502. If the feed is slow, stop with what we have and say so
+       rather than letting the proxy kill the whole request. */
+    const deadline = Date.now() + 12000;
     if (pool.length >= 200) {
       for (const skip of [200, 400]) {
+        if (Date.now() > deadline) break;
         const more = await closedQuery(parts, cutoff, { top: 200, skip });
         const got = (more.r && more.r.value) ? more.r.value : [];
         if (!got.length) break;
@@ -1552,9 +1597,18 @@ app.get('/api/market-stats', async (req, res) => {
       generatedAt: new Date().toISOString(),
       area: 'Baldwin County, Alabama',
       source: mlsAttribution(),
+      /* The headline count is the feed's own total, not the size of the sample
+         the medians were computed from. Both are reported so the difference is
+         visible rather than implied. */
       basis: sold && sold.count
-        ? `Active inventory plus ${sold.count.toLocaleString()} closed sales from the last 12 months.`
+        ? `Active inventory plus ${(soldCache.total || sold.count).toLocaleString()} closed sales `
+          + `from the last 12 months`
+          + (soldCache.total && soldCache.total > sold.count
+              ? `, with the figures below drawn from the ${sold.count.toLocaleString()} most recent.`
+              : '.')
         : 'Active listings only.',
+      soldTotal: soldCache.total || null,
+      soldSampled: sold ? sold.count : 0,
       overall: statsFor(priced),
       byCity,
       byType,
@@ -7402,7 +7456,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v196',
+    serverVersion: 'v197',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
