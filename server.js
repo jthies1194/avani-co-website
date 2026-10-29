@@ -1381,22 +1381,82 @@ app.get('/api/property-lookup', async (req, res) => {
   if (q.length < 4) return res.status(400).json({ error: 'Give me a bit more of the address.' });
   const esc = q.replace(/'/g, "''").slice(0, 80);
 
-  /* Street number and name only. "412 Sandpiper Ln, Gulf Shores AL 36542" will
-     not substring-match a record stored as "412 Sandpiper Lane", so the search
-     uses the leading part and lets the agent pick from what comes back. */
+  /* ⚠ ONE contains() ON UnparsedAddress IS NOT ENOUGH, and that is why this
+     found nothing even for the agent's own listings:
+       - contains() is CASE SENSITIVE on this feed. "412 sandpiper ln" misses
+         "412 Sandpiper Ln".
+       - Street types never agree. "Ln" does not match a record stored as "Lane",
+         "Dr" misses "Drive", "Hwy" misses "Highway".
+       - Pasting the whole thing, "412 Sandpiper Ln, Gulf Shores AL 36542",
+         matches nothing because the stored string is punctuated differently.
+       - And a substring scan over 159,000 records is slow enough to hit the
+         timeout, which looks identical to "no matches".
+
+     So it tries progressively looser shapes and stops at the first that hits.
+     The street NUMBER plus the first word of the name is the sweet spot: both
+     are distinctive, neither is abbreviated. */
+  /* ⚠ An MLS number typed into the address box should just work. The agent
+     found that path on their own and it is the reliable one, so do not make
+     them use a different field for it. */
+  if (/^[A-Za-z0-9]{5,40}$/.test(q) && !/\s/.test(q)) {
+    try {
+      const one = await mlsFindByKey(q);
+      if (one) {
+        return res.json({ ok: true, query: q, matchedBy: 'MLS number', tried: ['mls number'],
+          matches: [{
+            key: one.ListingKey, address: one.UnparsedAddress || '', city: one.City || '',
+            county: one.CountyOrParish || '', status: one.StandardStatus || '',
+            beds: one.BedroomsTotal || null, baths: one.BathroomsTotalInteger || null,
+            sqft: one.LivingArea || null, acres: one.LotSizeAcres || null,
+            yearBuilt: one.YearBuilt || null, ptype: one.PropertyType || '',
+            subType: one.PropertySubType || '',
+            lat: Number(one.Latitude) || null, lng: Number(one.Longitude) || null,
+            lastClosePrice: Number(one.ClosePrice) || null, lastCloseDate: one.CloseDate || '',
+            listPrice: Number(one.ListPrice) || null,
+          }] });
+      }
+    } catch (e) { /* fall through to the address search */ }
+  }
+
   const lead = esc.split(',')[0].trim();
+  const m = lead.match(/^\s*(\d+[A-Za-z]?)\s+(.+)$/);
+  const streetNo = m ? m[1] : '';
+  const streetWords = m ? m[2].trim().split(/\s+/) : lead.split(/\s+/);
+  /* Skip a leading direction so "N Beach Blvd" keys on "Beach". */
+  const firstWord = (streetWords[0] && /^(n|s|e|w|ne|nw|se|sw|north|south|east|west)$/i.test(streetWords[0])
+                      ? streetWords[1] : streetWords[0]) || '';
+
+  const attempts = [];
+  if (streetNo && firstWord) {
+    attempts.push({ how: 'number+street field',
+                    filter: `StreetNumber eq '${streetNo}' and contains(StreetName,'${firstWord}')` });
+    attempts.push({ how: 'number+street text',
+                    filter: `contains(UnparsedAddress,'${streetNo} ${firstWord}')` });
+  }
+  if (firstWord && !streetNo) {
+    attempts.push({ how: 'street name', filter: `contains(StreetName,'${firstWord}')` });
+  }
+  attempts.push({ how: 'whole string', filter: `contains(UnparsedAddress,'${lead}')` });
 
   try {
-    const r = await mlsQuery({
-      filter: `contains(UnparsedAddress,'${lead}')`,
-      top: 25, skip: 0, count: false, county: false,
-      orderby: 'ModificationTimestamp desc',
-      select: CLOSED_SELECT,
-    });
+    let r = null, used = null, tried = [];
+    for (const a of attempts) {
+      tried.push(a.how);
+      const got = await mlsQuery({
+        filter: a.filter, top: 25, skip: 0, count: false, county: false,
+        orderby: 'ModificationTimestamp desc', select: CLOSED_SELECT,
+      });
+      const ok = got.sources && got.sources.some(x => x.ok);
+      if (ok && (got.value || []).length) { r = got; used = a; break; }
+      if (ok) { r = got; used = a; }          // answered, found nothing — keep trying looser
+    }
+    if (!r) {
+      return res.status(502).json({ error: 'The MLS did not answer that lookup.', tried });
+    }
     if (r.sources && r.sources.length && !r.sources.some(x => x.ok)) {
       const first = r.sources.find(x => !x.ok) || {};
       return res.status(502).json({ error: 'The MLS refused that lookup.',
-                                    feedDetail: first.detail, sentFilter: lead });
+                                    feedDetail: first.detail, sentFilter: used && used.filter });
     }
     /* One row per property, keeping the most recent record for each — a house
        that sold three times should appear once, with what is known now. */
@@ -1427,7 +1487,10 @@ app.get('/api/property-lookup', async (req, res) => {
       });
       if (hits.length >= 12) break;
     }
-    res.json({ ok: true, query: q, matches: hits });
+    /* Report HOW it was found and what was sent. When a lookup comes back empty
+       the agent needs to see the filter, not a shrug. */
+    res.json({ ok: true, query: q, matches: hits,
+               matchedBy: used && used.how, sentFilter: used && used.filter, tried });
   } catch (e) {
     console.error('[property-lookup] FAILED:', e.message);
     res.status(500).json({ error: e.message });
@@ -7731,7 +7794,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v200',
+    serverVersion: 'v201',
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
     database: !!supabase,
