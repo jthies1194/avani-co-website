@@ -252,6 +252,12 @@ function keyAllowedForAgent(key, sess, write) {
   // Marketing projects are per agent: marketing:<agentId>:<projectId>.
   // Staff bypass this function entirely, which is how the broker sees all of them.
   if (k.startsWith('marketing:')) return k.startsWith('marketing:' + sess.agentId + ':');
+  /* ⚠ DOCUMENTS ARE NOT REACHABLE THROUGH THIS ROUTE AT ALL. They are keyed
+     doc:<random>, and the catch-all below would have let any signed-in agent read
+     or overwrite any other agent's by guessing — a signed disclosure, a client's
+     ID, a contract. /api/docs checks ownership on every read; this says the
+     generic key route is not another way in. */
+  if (k.startsWith('doc:')) return false;
   return true;
 }
 
@@ -8273,7 +8279,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v210',
+    serverVersion: 'v211',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -10352,6 +10358,176 @@ app.post('/api/lead/restore/:id', async (req, res) => {
    are first-class here. HEIC is refused BY NAME with an instruction, because an
    iPhone shooting in High Efficiency produces a file no browser will render and
    "that did not work" is a useless thing to tell somebody standing in a parking lot. */
+
+/* ==================== DOCUMENTS (server v211) ====================
+   ⚠ WHY THIS EXISTS. Deal attachments were stored as base64 INSIDE the deal
+   record — six files at 4MB each, up to 24MB in one row, read back in full every
+   time that deal was opened. On a phone on a car park's worth of signal, that is
+   a deal that will not load. Receipts and CMA PDFs each got their own row with a
+   size guard; deal files never did.
+
+   Each document is now its own row, and the thing it belongs to stores only a
+   reference: id, name, type, size. Opening a deal reads kilobytes.
+
+   ⚠ OWNERSHIP IS ON THE DOCUMENT, unlike receipts, where it is read from the
+   expense that points at it. A document can hang off a deal, a lead, or nothing
+   yet, so there is no single ledger to ask — the owner is recorded here and
+   checked on every read.
+
+   ⚠ THE BYTES DECIDE THE TYPE, never the filename. Same sniff the receipts use,
+   widened for the formats a phone camera actually produces. */
+const DOC_MAX_BYTES = 9 * 1024 * 1024;    // ~12MB base64, under the 14mb json ceiling
+const DOC_MAX_PER_OWNER = 40;
+
+const DOC_TYPES = [
+  { test: /^JVBERi0/,            mime: 'application/pdf', ext: 'pdf' },   // %PDF-
+  { test: /^\/9j\//,             mime: 'image/jpeg',      ext: 'jpg' },   // FF D8 FF
+  { test: /^iVBORw0KGgo/,        mime: 'image/png',       ext: 'png' },   // \x89PNG
+  { test: /^UklGR/,              mime: 'image/webp',      ext: 'webp' },  // RIFF....WEBP
+  { test: /^R0lGOD/,             mime: 'image/gif',       ext: 'gif' },
+];
+
+/* ⚠ HEIC IS DETECTED FROM THE BYTES, not the extension. An iPhone shooting in
+   High Efficiency uploads a file no browser will render, and half the time it
+   arrives named .jpg from a share sheet. The ftyp box sits at byte 4, which is
+   base64 offset 8 — so the check is on the decoded header, not the string. */
+function docSniff(raw) {
+  const hit = DOC_TYPES.find(t => t.test.test(raw));
+  if (hit) return hit;
+  try {
+    const head = Buffer.from(raw.slice(0, 64), 'base64');
+    const brand = head.slice(4, 12).toString('latin1');
+    if (/^ftyp(heic|heix|hevc|heim|heis|hevm|mif1|msf1)/.test(brand)) {
+      return { heic: true };
+    }
+  } catch (e) { /* unreadable header: falls through to "not a type we take" */ }
+  return null;
+}
+
+function docKey(id) { return 'doc:' + String(id || '').slice(0, 80); }
+
+/* An agent sees their own; staff see everything, the same rule as deals. */
+function docMayTouch(sess, rec) {
+  if (!rec) return false;
+  return isStaff(sess) || rec.agentId === sess.agentId;
+}
+
+app.post('/api/docs', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+
+  const b = req.body || {};
+  const owner = String(b.owner || '').slice(0, 90);     // 'deal:123', 'lead:abc', or ''
+  const data  = String(b.dataBase64 || '');
+  const name  = String(b.filename || '').slice(0, 120);
+  if (!data) return res.status(400).json({ error: 'No file came through.' });
+
+  const raw = data.replace(/^data:[^,]*,/, '');
+  const bytes = Math.ceil(raw.length * 3 / 4);
+  if (bytes > DOC_MAX_BYTES) {
+    return res.status(413).json({
+      error: `That file is ${(bytes / 1048576).toFixed(1)}MB. Nine is the ceiling — ` +
+             'photograph the page rather than scanning it at full resolution.' });
+  }
+
+  const kind = docSniff(raw);
+  if (kind && kind.heic) {
+    return res.status(415).json({ error:
+      'That is an iPhone HEIC photo, which browsers cannot display. On the phone: ' +
+      'Settings → Camera → Formats → Most Compatible, then retake it. Or open the ' +
+      'photo, tap Edit and then Done, which saves a copy every browser can read.',
+      heic: true });
+  }
+  if (!kind) {
+    return res.status(415).json({ error: 'That is not a PDF or an image we can display.' });
+  }
+
+  if (owner) {
+    const existing = await docsFor(owner);
+    if (existing.length >= DOC_MAX_PER_OWNER) {
+      return res.status(409).json({ error: `That already has ${DOC_MAX_PER_OWNER} documents on it.` });
+    }
+  }
+
+  const id = 'doc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  const rec = {
+    id, owner, name: name || ('document.' + kind.ext),
+    type: kind.mime, ext: kind.ext, bytes,
+    agentId: sess.agentId, agentName: sess.name || '',
+    uploadedAt: new Date().toISOString(),
+    dataBase64: 'data:' + kind.mime + ';base64,' + raw,
+  };
+  const ok = await setSetting(docKey(id), rec);
+  if (ok === false) return res.status(500).json({ error: 'That did not save.' });
+
+  console.log(`[docs] ${sess.name || sess.agentId} added ${rec.name} (${(bytes/1024).toFixed(0)}KB) to ${owner || 'nothing'}`);
+  /* ⚠ The bytes are NOT echoed back. The browser already has the file it just
+     sent; returning it doubles the response for nothing. */
+  res.json({ ok: true, doc: docMeta(rec) });
+});
+
+/* What a list needs: everything except the file itself. */
+function docMeta(rec) {
+  if (!rec) return null;
+  const { dataBase64, ...meta } = rec;
+  return meta;
+}
+
+async function docsFor(owner) {
+  if (!owner || !supabase) return [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'doc:%');
+    return (data || []).map(r => r.value).filter(v => v && v.owner === owner);
+  } catch (e) {
+    console.error('[docs] list failed:', e.message);
+    return [];
+  }
+}
+
+app.get('/api/docs', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+  const owner = String(req.query.owner || '').slice(0, 90);
+  if (!owner) return res.status(400).json({ error: 'Which record?' });
+  const all = await docsFor(owner);
+  const mine = all.filter(d => docMayTouch(sess, d));
+  mine.sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
+  res.json({ ok: true, owner, docs: mine.map(docMeta) });
+});
+
+/* ⚠ Served as the FILE, not as JSON wrapping base64. A browser can then show a
+   PDF in its own viewer and an image inline, and the phone can hand it to
+   whatever app the agent wants to send it with. */
+app.get('/api/docs/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const rec = await getSetting(docKey(req.params.id));
+  if (!rec) return res.status(404).json({ error: 'That document is not here.' });
+  if (!docMayTouch(sess, rec)) return res.status(403).json({ error: 'That is not yours.' });
+
+  const raw = String(rec.dataBase64 || '').replace(/^data:[^,]*,/, '');
+  const buf = Buffer.from(raw, 'base64');
+  res.set('Content-Type', rec.type || 'application/octet-stream');
+  res.set('Cache-Control', 'private, max-age=600');
+  /* inline so a phone previews it; the filename is still right if they save it */
+  res.set('Content-Disposition',
+    `inline; filename="${String(rec.name || 'document').replace(/[^\w.\- ]+/g, '_')}"`);
+  res.send(buf);
+});
+
+app.delete('/api/docs/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const sess = await requireSession(req, res); if (!sess) return;
+  const key = docKey(req.params.id);
+  const rec = await getSetting(key);
+  if (!rec) return res.json({ ok: true });
+  if (!docMayTouch(sess, rec)) return res.status(403).json({ error: 'That is not yours.' });
+  await delSetting(key);
+  console.log(`[docs] ${sess.name || sess.agentId} deleted ${rec.name}`);
+  res.json({ ok: true });
+});
 
 const RECEIPT_MAX_BYTES = 9 * 1024 * 1024;   // ~12MB base64, under the 14mb json ceiling
 
