@@ -2886,7 +2886,11 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
 :root{
   --rl:#0E1433; --rl2:#161D45;
   --gd:#C89B4E; --gd-lt:#E8D2A0; --gd-pale:#F6EEDC;
-  --pp:#FBFAF7;
+  /* ⚠ Warmed from #FBFAF7. A near-white working area beside a deep navy rail
+     is a lot of glare for somebody who has this open all day; the sand reads as
+     paper and takes the edge off without losing contrast against white cards. */
+  --pp:#F7F3EA;
+  --pp-card:#FFFFFF; --pp-line:#E6DECC;
   --mut:#7A8199; --hair:rgba(20,26,60,.10); --hair2:rgba(20,26,60,.06);
 }
 #crm-main.crm-wrap{max-width:none;padding:0;display:flex;align-items:flex-start;
@@ -2990,6 +2994,33 @@ html,body{overflow-x:hidden;overflow-x:clip}
   text-transform:none;position:relative;transform:none;box-shadow:none;transition:.13s;
   flex:0 0 auto}
 #crm-main .crm-nav button:hover{background:rgba(255,255,255,.08);color:#fff;transform:none}
+/* ---- group headings ----
+   ⚠ The coloured dash is the key: it is the same colour as the icons beneath
+   it, which is what makes a repeated colour read as "same group" rather than as
+   a coincidence. Small, low-contrast, and not clickable — it is a label. */
+#crm-main .crm-nav .crm-grp{display:flex;align-items:center;gap:7px;
+  padding:14px 10px 5px;font-size:8.5px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--tab,#7B86AC);opacity:.95;pointer-events:none;
+  flex:0 0 auto}
+#crm-main .crm-nav .crm-grp:first-child{padding-top:4px}
+#crm-main .crm-nav .crm-grp i{width:13px;height:2px;border-radius:2px;
+  background:currentColor;display:block;flex:0 0 13px}
+/* Arrange mode is a flat drag list; headings would be drop targets that are not tabs. */
+#crm-main .crm-nav.arranging .crm-grp{display:none}
+
+/* ---- the hover explanation ----
+   ⚠ Fixed to the viewport, appended to <body>. The rail is its own scroll
+   container, so anything positioned inside it is clipped at the rail's right
+   edge — exactly where this needs to appear. */
+.crm-tip{position:fixed;z-index:300;width:224px;padding:10px 12px;border-radius:6px;
+  background:#1B2446;color:#D7DEF2;border:1px solid #2C3768;font-size:11.5px;
+  line-height:1.45;box-shadow:0 14px 34px rgba(0,0,0,.34);
+  opacity:0;visibility:hidden;transform:translateX(-4px);transition:opacity .12s,transform .12s;
+  pointer-events:none}
+.crm-tip.on{opacity:1;visibility:visible;transform:none}
+.crm-tip b{display:block;font-size:12.5px;color:#E8C87A;margin-bottom:3px}
+@media (prefers-reduced-motion: reduce){.crm-tip{transition:none}}
+@media (hover: none){.crm-tip{display:none}}
 #crm-main .crm-nav button.on{background:var(--pp);color:var(--rl)}
 /* ⚠ The active marker moved from the top edge to the left edge. A 2.5px line across
    the top of a full-width row reads as a divider between two tabs, not as "you are
@@ -5578,7 +5609,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v401';
+window.BUILD = 'index-v402';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9595,30 +9626,72 @@ function icon(k){
    gold, gulf teal, seagrass green, coral, deep water. The point is that people
    learn the color before they read the word — a wall of identical gray tiles
    makes you read all twelve every time. */
+/* ==================== TAB GROUPS (index 402) ====================
+   ⚠ COLOUR MEANS THE GROUP, NOT THE TAB. There were nineteen tabs sharing
+   eleven colours, assigned one at a time, so the same green landed on Comps and
+   on Commissions and said they were related when they are not. A repeat now
+   carries information: same colour, same group, and the heading above names it.
+
+   Five hues, chosen to stay apart from each other at 17px on a dark ground, and
+   all distinct from the gold used for the active tab and the unread counts — if
+   a group ever shares the accent colour, "where am I" stops being readable.
+
+   ⚠ An agent's own colour still wins. tabColor() checks their custom value
+   first; this is only the default. */
+const CRM_GROUPS = {
+  daily:  { label:'Daily',           color:'#E8A33D' },   // sunrise
+  money:  { label:'Money',           color:'#3FB37A' },   // seagrass
+  reach:  { label:'Reaching people', color:'#36B5C6' },   // gulf
+  office: { label:'Office',          color:'#9B7BE0' },   // dusk
+  me:     { label:'Me',              color:'#8C93AD' },   // slate, deliberately quiet
+};
+
+/* ⚠ `blurb` is what the tab does, in the words an agent would use, shown on
+   hover before they click. Written for somebody who has never opened it. Keep
+   them one sentence: a paragraph in a hover card does not get read. */
 const CRM_SECTIONS = [
-  { id:'sec-today',       label:'Today',       icon:'today',    color:'#E0982C' },  // sunrise
-  { id:'sec-leads',       label:'Leads',       icon:'leads',    color:'#D2604A', badge:() => (window.__leadCount || 0), noAdmin:true },  // coral
-  { id:'sec-commissions', label:'Commissions', icon:'money',    color:'#2E8C5A' },  // seagrass
-  { id:'sec-expenses',    label:'Expenses',    icon:'expense',  color:'#B4527A' },  // sea urchin
-  { id:'sec-taxes',       label:'Taxes',       icon:'taxes',    color:'#6B4FBF' },  // deep water
-  { id:'sec-pipeline',    label:'My deals',    icon:'pipeline', color:'#4A7A9B' },
+  { id:'sec-today',       label:'Today',       icon:'today',    color:'#E0982C', group:'daily',
+    blurb:'What needs doing today \u2014 who is waiting, what is booked, what is due.' },
+  { id:'sec-leads',       label:'Leads',       icon:'leads',    color:'#D2604A', group:'daily',
+    blurb:'Everyone who asked you something, and what you owe them next.',
+    badge:() => (window.__leadCount || 0), noAdmin:true },
+  { id:'sec-commissions', label:'Commissions', icon:'money',    color:'#2E8C5A', group:'money',
+    blurb:'What each closing paid you, and what is still owed.' },
+  { id:'sec-expenses',    label:'Expenses',    icon:'expense',  color:'#B4527A', group:'money',
+    blurb:'What the business cost you, logged as you go so January is not a shoebox.' },
+  { id:'sec-taxes',       label:'Taxes',       icon:'taxes',    color:'#6B4FBF', group:'money',
+    blurb:'Your 1099 figures, quarterly estimates and what to hand your accountant.' },
+  { id:'sec-pipeline',    label:'My deals',    icon:'pipeline', color:'#4A7A9B', group:'daily',
+    blurb:'Every deal you are working, from first showing to the closing table.' },
   /* Sold comparables. Agents only — admins cannot see leads and this is a
      selling tool, not a back-office one. */
-  { id:'sec-comps',       label:'Comps',       icon:'comps',    color:'#2E8C5A', noAdmin:true },
-  { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A' },
-  { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8' },  // gulf teal
-  { id:'sec-content',     label:'Content',     icon:'content',  color:'#C89B4E' },
+  { id:'sec-comps',       label:'Comps & CMAs', icon:'comps',   color:'#2E8C5A', group:'daily', noAdmin:true,
+    blurb:'Find what sold nearby and build a CMA you can hand a seller.' },
+  { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A', group:'daily',
+    blurb:'Showings, closings and anything with a date on it.' },
+  { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8', group:'reach',
+    blurb:'Flyers, business cards and yard sign riders, with a QR code that comes back to you.' },
+  { id:'sec-content',     label:'Email & posts', icon:'content', color:'#C89B4E', group:'reach',
+    blurb:'The monthly market letter, saved posts and anything you send more than once.' },
   /* ⚠ noAdmin, same as Leads. Two of its three jobs read the lead book and
      canSeeLeads() excludes admins — a tab that is two-thirds broken is worse
      than no tab at all. */
-  { id:'sec-assist',      label:'Assistant',   icon:'assist',   color:'#7A5CBF', noAdmin:true },
-  { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', brokerOnly:true },  // sign blue
-  { id:'sec-reviews',     label:'Reviews',     icon:'reviews',  color:'#C9971F' },   // agents see their own  // gold
-  { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B' },  // slate blue
-  { id:'sec-setup',       label:'Settings',    icon:'settings', color:'#6A7290' },
-  { id:'sec-mypage',      label:'My page',     icon:'mypage',   color:'#2A9D8F' },  // seafoam
-  { id:'sec-myprofile',   label:'My details',  icon:'details',  color:'#7A6A9B' },  // broker needs one too
-  { id:'sec-password',    label:'My password', icon:'key',      color:'#6A7290' },
+  { id:'sec-assist',      label:'Assistant',   icon:'assist',   color:'#7A5CBF', group:'reach', noAdmin:true,
+    blurb:'Drafts a follow-up, writes listing copy, answers questions about your leads.' },
+  { id:'sec-agents',      label:'Agents',      icon:'agents',   color:'#2E3CB0', group:'office', brokerOnly:true,
+    blurb:'Your agents \u2014 their details, their licences and what they are producing.' },
+  { id:'sec-reviews',     label:'Reviews',     icon:'reviews',  color:'#C9971F', group:'reach',
+    blurb:'Ask a past client for a review and see the ones you have.' },
+  { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B', group:'office',
+    blurb:'Forms, links and the things you need often enough to stop hunting for.' },
+  { id:'sec-setup',       label:'Settings',    icon:'settings', color:'#6A7290', group:'me',
+    blurb:'How the site and the CRM behave.' },
+  { id:'sec-mypage',      label:'My public page', icon:'mypage', color:'#2A9D8F', group:'reach',
+    blurb:'The page the public sees when they look you up. Your photo, bio and listings.' },
+  { id:'sec-myprofile',   label:'My details',  icon:'details',  color:'#7A6A9B', group:'me',
+    blurb:'Your name, headshot, logo and licence numbers \u2014 used across the CRM.' },
+  { id:'sec-password',    label:'My password', icon:'key',      color:'#6A7290', group:'me',
+    blurb:'Change your password.' },
 ];
 let crmSection = 'sec-today';
 
@@ -9677,6 +9750,9 @@ async function exitArrangeMode(){
    be overridden, and the workspace takes a tint. All of it saved per user next to
    the tab order, so it follows them between devices. */
 const PALETTES = {
+  /* ⚠ 'group' is deliberately NOT in here. It is the absence of a palette —
+     tabColor() falls through to the section's group. Adding it as a colour list
+     would reintroduce colour-by-index, which is the bug this replaced. */
   coastal: { label:'Coastal', colors:['#E0982C','#D2604A','#2E8C5A','#B4527A','#6B4FBF',
              '#1E9AA8','#2E3CB0','#C9971F','#4A7A9B','#6A7290','#2A9D8F','#7A6A9B','#6A7290'] },
   blush:   { label:'Blush',   colors:['#D9767F','#C2506A','#B4527A','#A8478C','#8E4A9E',
@@ -9702,7 +9778,7 @@ const SWATCHES = ['#E0982C','#D2604A','#C94F3D','#B4527A','#D9767F','#A8478C','#
    question nobody needs. The colors are just colors — anyone who follows a
    team will know which is which. */
 const BACKGROUNDS = {
-  paper: { label:'Paper',  css:'#FCFCFD' },
+  paper: { label:'Paper',  css:'#F7F3EA' },
   sand:  { label:'Sand',   css:'linear-gradient(#FBF7EF,#F7F4EC)' },
   mist:  { label:'Mist',   css:'linear-gradient(#F3F6FA,#EEF2F8)' },
   shell: { label:'Shell',  css:'linear-gradient(#FCF4F4,#F8EFF1)' },
@@ -9730,15 +9806,54 @@ const BACKGROUNDS = {
   winter: { label:'Winter',  css:'linear-gradient(160deg,#F1F5FA,#EFF1F6)' },
 };
 
-let crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
+/* ⚠ 'group' is the default, NOT 'coastal'. Coastal assigned a colour by tab
+   INDEX, which is how the same green reached Comps and Commissions — the index
+   has nothing to do with what a tab is. Anybody who has actively picked coastal,
+   or any other palette, still gets it; this only changes what you get having
+   chosen nothing. */
+let crmTheme = { palette:'group', bg:'paper', bgColor:'', text:'auto', custom:{} };
 
 /* The color a given tab should actually be: an explicit override first, then the
    chosen palette, then whatever the section was born with. */
+/* ⚠ ORDER OF PRECEDENCE, and it matters: the agent's own colour for that tab
+   beats a chosen palette, which beats the group colour, which beats the tab's
+   old individual colour. Grouping is the new DEFAULT, never an override —
+   anybody who has already coloured their tabs keeps exactly what they set. */
 function tabColor(sc, i){
   if(crmTheme.custom && crmTheme.custom[sc.id]) return crmTheme.custom[sc.id];
+  /* A palette the agent actually picked beats the group colour. 'group' is not
+     in PALETTES, so it falls through to the group below — which is the point. */
   const p = PALETTES[crmTheme.palette];
   if(p && p.colors[i]) return p.colors[i];
+  const g = sc && sc.group && CRM_GROUPS[sc.group];
+  if(g) return g.color;
   return sc.color || '#2E3CB0';
+}
+
+/* ⚠ GROUPS THAT SURVIVE REORDERING. Agents arrange their own tabs and pin
+   favourites, so groups cannot be a fixed list painted over the top — that
+   would either ignore their order or scatter one heading per tab.
+
+   Instead the groups are derived FROM their order: a group appears where its
+   first tab appears, and its tabs keep the relative order the agent gave them.
+   Anybody who drags Taxes to the top moves the whole Money group to the top,
+   which is what they meant. Pinned tabs come out as their own group at the
+   front, because that is what pinning is for. */
+function crmNavGroups(list){
+  const out = [], byKey = {};
+  const pinned = [];
+  (list || []).forEach(sc => {
+    const isFav = (crmTabFavs || []).indexOf(sc.id) >= 0;
+    if(isFav){ pinned.push(sc); return; }
+    const key = (sc.group && CRM_GROUPS[sc.group]) ? sc.group : 'me';
+    if(!byKey[key]){
+      byKey[key] = { key, label: CRM_GROUPS[key].label, color: CRM_GROUPS[key].color, items: [] };
+      out.push(byKey[key]);
+    }
+    byKey[key].items.push(sc);
+  });
+  if(pinned.length) out.unshift({ key:'pinned', label:'Pinned', color:'#C9971F', items: pinned });
+  return out;
 }
 
 /* The workspace background has to go on the page, not on #crm-main. That element
@@ -9794,8 +9909,12 @@ function applyCrmBackground(){
        while leaving the rail and the page around it alone. */
     const body = document.getElementById('crm-body');
     if(body){ body.style.background = css; body.style.backgroundAttachment = 'fixed'; }
-    document.body.style.background = '#FBFAF7';
-    document.documentElement.style.background = '#FBFAF7';
+    /* ⚠ Follows --pp so the page behind the workspace matches it. Hardcoding
+       #FBFAF7 here meant warming the variable warmed the cards and left a cold
+       seam down the edge of the screen. */
+    const pp = getComputedStyle(document.documentElement).getPropertyValue('--pp').trim() || '#F7F3EA';
+    document.body.style.background = pp;
+    document.documentElement.style.background = pp;
     document.body.classList.toggle('crm-dark', crmIsDark());
   } else {
     clearCrmBackground();
@@ -9875,7 +9994,7 @@ function prefsOwnerId(){
 /* Loads whoever's settings apply right now and repaints. */
 async function applyPrefsFor(){
   crmTabOrder = null;
-  crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
+  crmTheme = { palette:'group', bg:'paper', bgColor:'', text:'auto', custom:{} };
   await loadTabOrder();
   applyCrmBackground();
   renderCrmNav();
@@ -9907,8 +10026,11 @@ async function loadTabOrder(){
       window.__myLinks    = Array.isArray(ld.mine)  ? ld.mine  : [];
     }catch(e){ window.__quickLinks = []; window.__myLinks = []; }
     if(p && p.theme){
-      crmTheme = Object.assign({ palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} }, p.theme);
-      if(!PALETTES[crmTheme.palette]) crmTheme.palette = 'coastal';
+      crmTheme = Object.assign({ palette:'group', bg:'paper', bgColor:'', text:'auto', custom:{} }, p.theme);
+      /* ⚠ 'group' is a valid choice that is deliberately absent from PALETTES,
+         so it must not be "corrected" back to a palette here. Anything else
+         unrecognised still falls back. */
+      if(crmTheme.palette !== 'group' && !PALETTES[crmTheme.palette]) crmTheme.palette = 'group';
       // 'custom' is a real value and is not in BACKGROUNDS — without this test a
       // color someone chose themselves was thrown away on every reload
       if(crmTheme.bg !== 'custom' && !BACKGROUNDS[crmTheme.bg]) crmTheme.bg = 'paper';
@@ -10178,6 +10300,33 @@ function crmMeasureNav(){
 })();
 window.addEventListener('resize', () => { try{ crmMeasureNav(); }catch(e){} });
 
+/* ⚠ DRAWN AGAINST <body>, not inside the tab. The rail is its own scroll
+   container, and anything positioned inside a scroll container gets clipped at
+   its edge — a hover card inside the nav would be cut off at the rail's right
+   edge, which is exactly where it needs to appear. */
+let crmTipEl = null;
+
+function crmTip(btn){
+  if(!btn || window.matchMedia('(hover: none)').matches) return;
+  const blurb = btn.getAttribute('data-blurb') || '';
+  const name  = btn.getAttribute('data-tip') || '';
+  if(!blurb) return;
+  if(!crmTipEl){
+    crmTipEl = document.createElement('div');
+    crmTipEl.className = 'crm-tip';
+    document.body.appendChild(crmTipEl);
+  }
+  crmTipEl.innerHTML = '<b>' + escapeHtml(name) + '</b>' + escapeHtml(blurb);
+  const r = btn.getBoundingClientRect();
+  crmTipEl.style.left = (r.right + 10) + 'px';
+  /* Kept on screen when the tab is near the bottom of a tall rail. */
+  const top = Math.min(window.innerHeight - 92, Math.max(8, r.top + r.height / 2 - 34));
+  crmTipEl.style.top = top + 'px';
+  crmTipEl.classList.add('on');
+}
+
+function crmTipHide(){ if(crmTipEl) crmTipEl.classList.remove('on'); }
+
 function renderCrmNav(){
   const nav = document.getElementById('crm-nav');
   if(!nav || !currentAgent) return;
@@ -10203,8 +10352,12 @@ function renderCrmNav(){
     .map(l => `<a class="crm-ext" href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer"
         title="${escapeHtml(l.label)} \u2014 opens in a new tab">
         <span class="ti">${icon('links')}</span><span class="tl">${escapeHtml(l.label)}</span></a>`).join('');
-  nav.innerHTML = visibleOrderedSections()
-    .map((sc, idx) => {
+  /* ⚠ ARRANGE MODE STAYS FLAT. The drag-and-drop works on one continuous list
+     of tiles; group headings in the middle of it would be drop targets that are
+     not tabs. You arrange a flat list, and the groups reform from the order you
+     left. */
+  const navList = visibleOrderedSections();
+  const navHtml = (sc, idx) => {
       let n = sc.badge ? sc.badge() : 0;
       let flash = false;
       try{
@@ -10217,10 +10370,24 @@ function renderCrmNav(){
           <span class="grip">${icon('grip')}</span>
           <span class="ti">${icon(sc.icon)}</span><span class="tl">${escapeHtml(secLabel(sc))}</span></button>`;
       }
+      /* ⚠ data-blurb, not title. The browser's own tooltip takes a second to
+         appear and cannot be styled or read on a touch screen; this one is
+         drawn by crmTip() against <body>, so the scrolling rail cannot clip it. */
       return `<button class="${crmSection===sc.id?'on':''}" onclick="showCrmSection('${sc.id}')"
-        style="--tab:${tabColor(sc, idx)}">
+        style="--tab:${tabColor(sc, idx)}"
+        data-tip="${escapeHtml(secLabel(sc))}"
+        data-blurb="${escapeHtml(sc.blurb || '')}"
+        onmouseenter="crmTip(this)" onmouseleave="crmTipHide()" onfocus="crmTip(this)" onblur="crmTipHide()">
         <span class="ti">${icon(sc.icon)}</span><span class="tl">${escapeHtml(secLabel(sc))}</span>${n?`<span class="pill${flash?' flash':''}">${n}</span>`:''}</button>`;
-    }).join('')
+    };
+
+  nav.innerHTML = (arrangeMode
+      ? navList.map(navHtml).join('')
+      : crmNavGroups(navList).map(g => {
+          const idxOf = sc => navList.indexOf(sc);
+          return `<div class="crm-grp" style="--tab:${g.color}"><i></i>${escapeHtml(g.label)}</div>`
+            + g.items.map(sc => navHtml(sc, idxOf(sc))).join('');
+        }).join(''))
     + (previewing()
         ? `<button class="crm-arrange" style="--tab:#8C93AD;opacity:.5;cursor:default"
              onclick="showToast('You’re previewing ' + currentAgent.name + '. Their layout is theirs to change.')"
@@ -17216,7 +17383,7 @@ async function applyTabArrange(){
 
 async function resetTabArrange(){
   crmTabOrder = null;
-  crmTheme = { palette:'coastal', bg:'paper', bgColor:'', text:'auto', custom:{} };
+  crmTheme = { palette:'group', bg:'paper', bgColor:'', text:'auto', custom:{} };
   crmTabNames = {};
   arrDraft = []; arrTheme = JSON.parse(JSON.stringify(crmTheme)); arrNames = {};
   try{ await storeSet('crmPrefs:' + prefsOwnerId(),
@@ -30322,8 +30489,13 @@ async function mlDelete(i){
    text can go back to being light. The tab-color mixes have to target WHITE rather than
    #14183A, because the rules further up this file were written for a light background
    and this is not one. */
-#crm-rail{background:var(--blue,#2E3CB0);
-  border-right:1px solid rgba(255,255,255,.16);color:#FFFFFF}
+/* ⚠ CHANGED to --rl (#0E1433). This rule set the rail to the brand's royal
+   blue #2E3CB0, overriding the deep navy declared for it further up the file.
+   At that brightness a white card beside a blue rail has almost no edge — the
+   two surfaces read as one, which is what made the shell look unfinished. The
+   contrast note below still holds: white on #0E1433 measures far past 4.5. */
+#crm-rail{background:var(--rl,#0E1433);
+  border-right:1px solid rgba(255,255,255,.10);color:#FFFFFF}
 @media(max-width:1000px){
   #crm-rail{border-right:none;border-bottom:1px solid rgba(255,255,255,.16)}
 }
@@ -30468,9 +30640,9 @@ async function mlDelete(i){
 /* "Make it yours" is a CRM action, so it keeps a chip but no tile. */
 #crm-main .crm-nav .crm-arrange{color:#FFFFFF;background:transparent;
   border:1px solid rgba(255,255,255,.22);border-radius:9px;padding:6px 9px}
-#crm-main .crm-nav .crm-arrange .ti{background:#FFFFFF;color:var(--blue,#2E3CB0);
+#crm-main .crm-nav .crm-arrange .ti{background:#FFFFFF;color:var(--rl,#0E1433);
   border-radius:6px;width:24px;height:24px}
-#crm-main #crm-rail{background:var(--blue,#2E3CB0)}
+#crm-main #crm-rail{background:var(--rl,#0E1433)}
 
 /* Outside tools: readable, still clearly secondary to the tabs. */
 #crm-nav .crm-ext,#crm-rail .crm-ext,.crm-nav .crm-ext{color:rgba(255,255,255,.78)}
