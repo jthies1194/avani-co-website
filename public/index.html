@@ -3130,6 +3130,13 @@ html,body{overflow-x:hidden;overflow-x:clip}
    as it was before index 303 — this is a fallback, not a leftover. */
 @media(max-width:1000px){
   #crm-main.crm-wrap{display:block}
+  /* ⚠ NOT STICKY ON A PHONE. position:sticky is right for a 224px column beside
+     the content — it is wrong for a 430px band ON TOP of it, which is what the
+     same rule produced once the rail went horizontal. The nav stayed pinned to
+     the top of the screen through every scroll, so a 844px phone had 414px of
+     readable content and no way to get the rest back. It scrolls away with the
+     page now, the way a header should. */
+  #crm-rail{position:static;top:auto}
   /* ---- groups in the horizontal bar ----
      ⚠ A group heading in a wrapping row of pills would sit INSIDE the flow and
      push tabs around it, which is worse than no grouping at all. flex-basis 100%
@@ -5687,7 +5694,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v406';
+window.BUILD = 'index-v407';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
