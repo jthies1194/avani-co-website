@@ -2998,11 +2998,20 @@ html,body{overflow-x:hidden;overflow-x:clip}
    ⚠ The coloured dash is the key: it is the same colour as the icons beneath
    it, which is what makes a repeated colour read as "same group" rather than as
    a coincidence. Small, low-contrast, and not clickable — it is a label. */
-#crm-main .crm-nav .crm-grp{display:flex;align-items:center;gap:7px;
+#crm-main .crm-nav .crm-grp{display:flex;align-items:center;gap:7px;width:100%;
   padding:14px 10px 5px;font-size:8.5px;font-weight:700;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--tab,#7B86AC);opacity:.95;pointer-events:none;
-  flex:0 0 auto}
-#crm-main .crm-nav .crm-grp:first-child{padding-top:4px}
+  text-transform:uppercase;color:var(--tab,#7B86AC);opacity:.95;
+  background:none;border:0;text-align:left;flex:0 0 auto;line-height:1.2;
+  font-family:inherit;white-space:nowrap;
+  /* not tappable on a desktop: there is nothing to collapse */
+  pointer-events:none;cursor:default}
+#crm-main .crm-nav .crm-grp .gl{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+#crm-main .crm-nav .crm-grp .n{display:none}
+#crm-main .crm-nav .crm-grpwrap:first-child .crm-grp{padding-top:4px}
+/* ⚠ display:contents — the wrappers exist for the phone layout and must be
+   invisible to the desktop one, or the rail becomes a column of boxes instead of
+   a column of tabs. */
+#crm-main .crm-nav .crm-grpwrap,#crm-main .crm-nav .crm-grprow{display:contents}
 #crm-main .crm-nav .crm-grp i{width:13px;height:2px;border-radius:2px;
   background:currentColor;display:block;flex:0 0 13px}
 /* Arrange mode is a flat drag list; headings would be drop targets that are not tabs. */
@@ -3021,6 +3030,22 @@ html,body{overflow-x:hidden;overflow-x:clip}
 .crm-tip b{display:block;font-size:12.5px;color:#E8C87A;margin-bottom:3px}
 @media (prefers-reduced-motion: reduce){.crm-tip{transition:none}}
 @media (hover: none){.crm-tip{display:none}}
+
+/* ---- what this screen is, for anyone who cannot hover ----
+   Hidden wherever the hover card works, so the same sentence is never on screen
+   twice. */
+.crm-what{display:none}
+.crm-what i{width:9px;height:9px;border-radius:50%;background:var(--tab,#C89B4E);
+  display:inline-block;flex:0 0 9px;margin-top:5px}
+.crm-what b{font-weight:700;color:#14183A;margin-right:5px}
+.crm-what span{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--tab,#C89B4E);margin-left:6px;white-space:nowrap}
+@media (hover: none), (max-width: 1000px){
+  .crm-sec.on > .crm-what{display:flex;align-items:flex-start;gap:9px;
+    margin:0 0 16px;padding:10px 13px;border-radius:5px;
+    background:rgba(20,26,60,.045);border-left:3px solid var(--tab,#C89B4E);
+    font-size:13px;line-height:1.5;color:#4A5170}
+}
 #crm-main .crm-nav button.on{background:var(--pp);color:var(--rl)}
 /* ⚠ The active marker moved from the top edge to the left edge. A 2.5px line across
    the top of a full-width row reads as a divider between two tabs, not as "you are
@@ -3105,6 +3130,27 @@ html,body{overflow-x:hidden;overflow-x:clip}
    as it was before index 303 — this is a fallback, not a leftover. */
 @media(max-width:1000px){
   #crm-main.crm-wrap{display:block}
+  /* ---- groups in the horizontal bar ----
+     ⚠ A group heading in a wrapping row of pills would sit INSIDE the flow and
+     push tabs around it, which is worse than no grouping at all. flex-basis 100%
+     makes each heading take a full line, so a group and its tabs form a band:
+     nineteen pills in a blob become five short labelled rows. */
+  /* ⚠ ONE SCROLLING ROW PER GROUP. Nineteen wrapping pills plus five headings
+     made the rail 519px tall on a 390px phone — more than half the screen before
+     any content. Each group now keeps to a single line you swipe sideways, which
+     is five short rows instead of nine wrapped ones. */
+  #crm-main .crm-nav{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
+  #crm-main .crm-nav .crm-grpwrap{display:block;width:100%}
+  #crm-main .crm-nav .crm-grprow{display:flex;flex-wrap:nowrap;gap:4px;
+    overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  #crm-main .crm-nav .crm-grprow::-webkit-scrollbar{display:none}
+  #crm-main .crm-nav .crm-grprow button{flex:0 0 auto;white-space:nowrap}
+  /* A cap for the in-between widths, where every group is still shown. */
+  #crm-main .crm-nav{max-height:40vh;overflow-y:auto}
+  #crm-main .crm-nav .crm-grp{width:100%;
+    padding:8px 2px 3px;font-size:8px;letter-spacing:.14em;opacity:.9}
+  #crm-main .crm-nav .crm-grpwrap:first-child .crm-grp{padding-top:2px}
   #crm-rail{flex:none;width:auto;height:auto;overflow:visible;
     padding:9px 22px 0;gap:0 16px;
     flex-direction:row;flex-wrap:wrap;align-items:center;
@@ -3133,6 +3179,38 @@ html,body{overflow-x:hidden;overflow-x:clip}
 }
 @media(max-width:700px){
   #crm-rail{padding:9px 14px 0;gap:0 10px}
+  /* ---- one group open at a time ----
+     ⚠ The rail was 452px of an 844px phone with every group showing. Collapsed,
+     it is five one-line headings and a single row of tabs — about a fifth of
+     that — and the group you are in is the one open, so the tab you just pressed
+     is still visible. */
+  /* ⚠ A tap target, not a label: 11px of padding either side puts it over the
+     32px minimum so it can actually be hit with a thumb. */
+  #crm-main .crm-nav .crm-grp{padding:11px 6px;font-size:8px;min-height:34px;
+    pointer-events:auto;cursor:pointer;border-radius:4px}
+  #crm-main .crm-nav .crm-grp:hover,#crm-main .crm-nav .crm-grp:focus-visible{
+    background:rgba(255,255,255,.07)}
+  #crm-main .crm-nav .crm-grp .n{display:inline-block;margin-left:auto;
+    font-size:8.5px;opacity:.7;letter-spacing:0}
+  #crm-main .crm-nav .crm-grprow{display:none}
+  #crm-main .crm-nav .crm-grpwrap.open .crm-grprow{display:flex}
+  #crm-main .crm-nav{max-height:none;overflow:visible}
+
+  /* ---- the foot of the rail on a phone ----
+     ⚠ "Make it yours" was a full tile, the version stamp wrapped onto three
+     lines, and "Suggest an improvement" ran off the right edge. All three are
+     secondary to the tabs and none of them should cost a phone a hundred pixels. */
+  #crm-main .crm-nav .crm-arrange{width:auto;padding:5px 10px;border-radius:999px;
+    margin:8px 0 0;font-size:11px;align-self:flex-start;flex-direction:row;gap:6px}
+  #crm-main .crm-nav .crm-arrange .ti{width:16px;height:16px;border-radius:50%}
+  #crm-main .crm-nav .crm-arrange .ti svg{width:10px;height:10px}
+  #crm-main .idea-row{flex-wrap:wrap;gap:8px;padding-bottom:9px}
+  #crm-main .find-wrap{flex:1 1 150px;min-width:130px}
+  #crm-main .idea-btn{flex:0 0 auto;margin-left:0;font-size:11px;padding:6px 10px;
+    max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* The version stamp is a reference, not a headline — one line, or nothing. */
+  #crm-rail #crm-version{order:11;width:100%;font-size:9.5px;opacity:.6;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 0 7px;margin:0}
   /* ⚠ This was `#crm-rail .mk{display:none}`, which hid the brand — the thing you tap
      to get back to the public site. On a phone that left "Search the MLS" on Today as
      the only route out of the CRM, which is listed in the handoff as designed-but-not-
@@ -5609,7 +5687,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v402';
+window.BUILD = 'index-v405';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10327,6 +10405,26 @@ function crmTip(btn){
 
 function crmTipHide(){ if(crmTipEl) crmTipEl.classList.remove('on'); }
 
+/* ⚠ PHONES ONLY, by CSS. On a desktop every group is open and this does
+   nothing visible; the rail is a column and there is room for all of it. On a
+   phone the whole rail was 452px of an 844px screen, so one group is open at a
+   time and the rest are one-line headings you tap. */
+function crmGrpToggle(btn){
+  const wrap = btn && btn.closest('.crm-grpwrap');
+  if(!wrap) return;
+  const nav = wrap.parentElement;
+  const wasOpen = wrap.classList.contains('open');
+  nav.querySelectorAll('.crm-grpwrap').forEach(w => {
+    w.classList.remove('open');
+    const h = w.querySelector('.crm-grp');
+    if(h) h.setAttribute('aria-expanded', 'false');
+  });
+  if(!wasOpen){
+    wrap.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
 function renderCrmNav(){
   const nav = document.getElementById('crm-nav');
   if(!nav || !currentAgent) return;
@@ -10385,8 +10483,21 @@ function renderCrmNav(){
       ? navList.map(navHtml).join('')
       : crmNavGroups(navList).map(g => {
           const idxOf = sc => navList.indexOf(sc);
-          return `<div class="crm-grp" style="--tab:${g.color}"><i></i>${escapeHtml(g.label)}</div>`
-            + g.items.map(sc => navHtml(sc, idxOf(sc))).join('');
+          /* ⚠ Each group is wrapped so a phone can scroll it sideways. On a
+             desktop the wrapper and the row are display:contents, so the rail is
+             still one flat flex column and nothing about it changes. */
+          /* ⚠ On a phone only one group is open at a time (see the ≤700px
+             rules), so the open one has to be the group you are actually in. */
+          const here = g.items.some(sc => sc.id === crmSection);
+          return `<div class="crm-grpwrap${here ? ' open' : ''}" style="--tab:${g.color}">`
+            + `<div class="crm-grp" role="button" tabindex="0" aria-expanded="${here}"
+                 onclick="crmGrpToggle(this)"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();crmGrpToggle(this)}"
+                 ><i></i><span class="gl">${escapeHtml(g.label)}</span>
+                 <span class="n">${g.items.length}</span></div>`
+            + `<div class="crm-grprow">`
+            + g.items.map(sc => navHtml(sc, idxOf(sc))).join('')
+            + `</div></div>`;
         }).join(''))
     + (previewing()
         ? `<button class="crm-arrange" style="--tab:#8C93AD;opacity:.5;cursor:default"
@@ -10432,6 +10543,32 @@ function showCrmSection(id){
     el.classList.toggle('on', ok && el.id === id);
     el.style.display = ok ? '' : 'none';
   });
+
+  /* ⚠ THE SAME EXPLANATION, FOR A PHONE. The hover card cannot exist on a
+     touch screen — there is no hover — so without this, every mobile agent gets
+     a nav of nineteen words and no idea what any of them do, which is the exact
+     problem the hover card was added to solve.
+
+     It is written into every section but shown by CSS only where there is no
+     hover, or where the screen is too narrow for the rail. One source of words,
+     two places to read them. */
+  try{
+    const sec = document.getElementById(id);
+    const meta = CRM_SECTIONS.find(x => x.id === id);
+    if(sec && meta && meta.blurb){
+      let what = sec.querySelector(':scope > .crm-what');
+      if(!what){
+        what = document.createElement('p');
+        what.className = 'crm-what';
+        sec.insertBefore(what, sec.firstChild);
+      }
+      const g = (meta.group && CRM_GROUPS[meta.group]) || null;
+      what.style.setProperty('--tab', tabColor(meta, 0));
+      what.innerHTML = '<i></i><b>' + escapeHtml(secLabel(meta)) + '</b>'
+        + escapeHtml(meta.blurb)
+        + (g ? ' <span>' + escapeHtml(g.label) + '</span>' : '');
+    }
+  }catch(e){}
   // pull the saved order once, then redraw — otherwise the first paint after
   // signing in always shows the default order and jumps a moment later
   // pull the counts the badges need, once, at sign-in
@@ -30643,6 +30780,21 @@ async function mlDelete(i){
 #crm-main .crm-nav .crm-arrange .ti{background:#FFFFFF;color:var(--rl,#0E1433);
   border-radius:6px;width:24px;height:24px}
 #crm-main #crm-rail{background:var(--rl,#0E1433)}
+
+/* ⚠ PLACED HERE ON PURPOSE. The mobile rules for this live up in the @media
+   block near the rail layout, but the rule above is further down the file and
+   wins at equal specificity, so "Make it yours" stayed a full tile on a phone
+   and cost about eighty pixels of a four-hundred-pixel rail. Same shape of bug
+   as the rail colour: two stylesheets, the later one quietly winning. */
+@media(max-width:1000px){
+  #crm-main .crm-nav .crm-arrange{width:auto;align-self:flex-start;
+    flex-direction:row;align-items:center;gap:7px;
+    padding:5px 11px 5px 6px;border-radius:999px;margin:9px 0 0;font-size:11px}
+  #crm-main .crm-nav .crm-arrange .ti{width:18px;height:18px;border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center}
+  #crm-main .crm-nav .crm-arrange .ti svg{width:11px;height:11px}
+  #crm-main .crm-nav .crm-arrange .tl{font-size:11px}
+}
 
 /* Outside tools: readable, still clearly secondary to the tabs. */
 #crm-nav .crm-ext,#crm-rail .crm-ext,.crm-nav .crm-ext{color:rgba(255,255,255,.78)}
