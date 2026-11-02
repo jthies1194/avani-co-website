@@ -5578,7 +5578,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v400';
+window.BUILD = 'index-v401';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -14598,6 +14598,13 @@ async function renderMarketingSection(){
     note.textContent = 'As broker you can also open any agent\u2019s saved projects from their profile.';
     list.parentNode.appendChild(note);
   }
+
+  /* ⚠ PAINTED HERE, not by the caller. Three different places rebuild this
+     section — the tab switch, closing the artwork editor, deleting a project —
+     and only one of them repainted the library afterwards. The other two left it
+     reading "Loading…" with no error anywhere. A section that replaces its own
+     markup is the only thing that can be trusted to refill it. */
+  if (typeof mlLoad === 'function') { try { mlLoad(); } catch (e) {} }
 }
 
 /* ---------- scan stats ----------
