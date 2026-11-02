@@ -1464,6 +1464,14 @@ app.get('/api/address-suggest', async (req, res) => {
         streetName: x.StreetName || '',
         city: x.City || '',
         status: x.StandardStatus || '',
+        /* ⚠ The subject's OWN listing data. A seller's home is usually not on
+           the market, but when it IS the CMA has to show it: comparing a live
+           listing against sold comps needs the asking price, how long it has sat
+           and its price per foot in the same table, or the comparison is missing
+           its own left-hand column. Facts from the feed — nothing derived. */
+        originalListPrice: Number(x.OriginalListPrice) || null,
+        onMarketDate: x.OnMarketDate || '',
+        credit: listingCredit(x),
         beds: x.BedroomsTotal || null, baths: x.BathroomsTotalInteger || null,
         sqft: x.LivingArea || null, acres: x.LotSizeAcres || null,
         yearBuilt: x.YearBuilt || null,
@@ -1535,6 +1543,9 @@ app.get('/api/property-lookup', async (req, res) => {
             lat: Number(one.Latitude) || null, lng: Number(one.Longitude) || null,
             lastClosePrice: Number(one.ClosePrice) || null, lastCloseDate: one.CloseDate || '',
             listPrice: Number(one.ListPrice) || null,
+            originalListPrice: Number(one.OriginalListPrice) || null,
+            onMarketDate: one.OnMarketDate || '',
+            credit: listingCredit(one),
           }] });
       }
     } catch (e) { /* fall through to the address search */ }
@@ -1625,6 +1636,14 @@ app.get('/api/property-lookup', async (req, res) => {
         city: x.City || '',
         county: x.CountyOrParish || '',
         status: x.StandardStatus || '',
+        /* ⚠ The subject's OWN listing data. A seller's home is usually not on
+           the market, but when it IS the CMA has to show it: comparing a live
+           listing against sold comps needs the asking price, how long it has sat
+           and its price per foot in the same table, or the comparison is missing
+           its own left-hand column. Facts from the feed — nothing derived. */
+        originalListPrice: Number(x.OriginalListPrice) || null,
+        onMarketDate: x.OnMarketDate || '',
+        credit: listingCredit(x),
         beds: x.BedroomsTotal || null,
         baths: x.BathroomsTotalInteger || null,
         sqft: x.LivingArea || null,
@@ -8254,7 +8273,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v209',
+    serverVersion: 'v210',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
