@@ -1790,7 +1790,22 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <div class="sp-foot" style="padding:0 22px 18px;margin-top:0">
     <div class="f" style="max-width:220px;flex:1">
       <label for="f-status">Status</label>
-      <select id="f-status" onchange="runSearch()"><option value="">For sale (active)</option><option value="Active Under Contract">Under contract</option><option value="Pending">Pending</option><option value="Closed">Sold</option><option value="Canceled">Canceled</option><option value="Expired">Expired</option><option value="Withdrawn">Withdrawn</option></select>
+      <!-- ⚠ Canceled, Expired and Withdrawn were on this list. Those are listings
+           whose sellers are no longer under contract with anybody — members-only
+           information that is not ours to publish. The server refuses them now
+           whatever this dropdown says (/api/search returns 400), and agents reach
+           them through Prospecting in the CRM, behind a sign-in. -->
+      <select id="f-status" onchange="runSearch()"><option value="">For sale (active)</option><option value="Active Under Contract">Under contract</option><option value="Pending">Pending</option><option value="Closed">Sold</option></select>
+    </div>
+    <div class="f" style="max-width:260px;flex:1">
+      <label for="f-subtype">Property type</label>
+      <!-- Filled from /api/property-types, which reads what the feed actually
+           carries. A hardcoded list goes wrong the moment the MLS adds a subtype,
+           and goes wrong silently — a filter for something nobody uses returns
+           nothing and looks broken. -->
+      <select id="f-subtype" onchange="runSearch()">
+        <option value="">Any kind of property</option>
+      </select>
     </div>
     <button class="more-t" type="button" onclick="toggleMoreFilters()" id="mf-btn"
       aria-expanded="false">More filters</button>
@@ -4229,6 +4244,7 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-marketing"></div>
 <div class="crm-sec" id="sec-resources"></div>
 <div class="crm-sec" id="sec-storage"></div>
+<div class="crm-sec" id="sec-prospect"></div>
 <div class="crm-sec" id="sec-mypage"></div>
 <div class="crm-sec" id="sec-myprofile">
 <!-- ⚠ These switches save to notify:<agentId> — they are personal, not brokerage
@@ -5719,7 +5735,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v410';
+window.BUILD = 'index-v412';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9026,6 +9042,14 @@ function searchTown(name){
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+/* The property-type picker fills itself from the feed once the page is up. Not
+   awaited by anything — the search works without it, with "Any kind of property". */
+(function(){
+  const go = () => { if(typeof loadPropertyTypes === 'function') loadPropertyTypes(); };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+  else go();
+})();
 </script>
 <script>
 /* Build the "Where" suggestions from the live feed rather than a hardcoded list,
@@ -9062,6 +9086,39 @@ let CITY_LIST = [], cityHi = -1;
       .map(o => ({ name: o.value, n: 0 })).filter(c => c.name);
   }catch(e){}
 })();
+
+/* ==================== THE PROPERTY TYPE PICKER (index 412) ====================
+   Options read from the feed, grouped by PropertyType, so the list is exactly what
+   Baldwin carries. Runs once on load; a failure leaves the "Any kind of property"
+   option in place rather than emptying the control. */
+let PTYPE_GROUPS = null;
+
+async function loadPropertyTypes(){
+  const sel = document.getElementById('f-subtype');
+  if(!sel) return;
+  try{
+    const r = await fetch('/api/property-types');
+    const ct = r.headers.get('content-type') || '';
+    if(!ct.includes('json')) throw new Error('not data');
+    const d = await r.json();
+    PTYPE_GROUPS = d.groups || [];
+    if(!PTYPE_GROUPS.length) return;
+    /* Residential first — it is what nearly everyone wants — then the rest as the
+       server ordered them. */
+    const order = g => (/^Residential$/i.test(g.type) ? 0 : /Residential/i.test(g.type) ? 1 : 2);
+    const groups = [...PTYPE_GROUPS].sort((a, b) => order(a) - order(b));
+    const esc = escapeHtml;
+    sel.innerHTML = '<option value="">Any kind of property</option>'
+      + groups.filter(g => (g.subTypes || []).length).map(g =>
+          `<optgroup label="${esc(g.type)}">`
+          + g.subTypes.map(st => `<option value="${esc(st)}">${esc(st)}</option>`).join('')
+          + '</optgroup>').join('');
+  }catch(e){
+    /* Left as "Any kind of property". A picker with one honest option beats a
+       picker full of subtypes this MLS does not use. */
+    console.warn('[property types]', e.message);
+  }
+}
 
 function cityHint(q){
   const box = document.getElementById('city-hint');
@@ -9144,6 +9201,7 @@ function extraFilters(){
     sqftMax: v('f-sqftmax').replace(/[^0-9]/g,''),
     acres: v('f-acres').replace(/[^0-9.]/g,''),
     yearBuilt: v('f-year').replace(/[^0-9]/g,''),
+    subtype: v('f-subtype'),
     garage: v('f-garage'), stories: v('f-stories'),
     maxHoa: v('f-maxhoa').replace(/[^0-9]/g,''),
     waterfront: on('f-waterfront') ? '1' : '',
@@ -9173,7 +9231,7 @@ function toggleMoreFilters(){
 }
 
 function clearMoreFilters(){
-  ['f-baths','f-sqft','f-sqftmax','f-acres','f-year','f-garage','f-stories','f-maxhoa']
+  ['f-baths','f-sqft','f-sqftmax','f-acres','f-year','f-garage','f-stories','f-maxhoa','f-subtype']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   ['f-waterfront','f-view','f-pool','f-new','f-nohoa']
     .forEach(id => { const el = document.getElementById(id); if(el) el.checked = false; });
@@ -9214,7 +9272,7 @@ async function runServerSearch(append){
 
 function clearSearch(){
   ['f-city','pmin','pmax'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  ['f-beds','f-status'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['f-beds','f-status','f-subtype'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.querySelectorAll('.price-quick button').forEach(b => b.classList.remove('on'));
   CURRENT_PTYPE = '';
   document.querySelectorAll('#ptype-tabs button').forEach(b => b.classList.toggle('on', !b.dataset.ptype));
@@ -9711,6 +9769,7 @@ const ICON = {
   track:   '<path d="M4 18h16"/><circle cx="7" cy="18" r="2.4"/><circle cx="12" cy="18" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M7 15.5V9M12 15.5V6M17 15.5v-4"/>',
   calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8.5" cy="14.5" r="1.2"/><circle cx="13" cy="14.5" r="1.2"/>',
   tick:    '<path d="M4 12.5l5 5L20 6.5"/>',
+  prospect:'<path d="M3 10.5 L11 4 L19 10.5"/><path d="M5 9.5V20h5.5"/><circle cx="16" cy="16" r="3.6"/><path d="M18.7 18.7 L22 22"/>',
   store:   '<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/><path d="M4.5 11.5v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/>',
   grip:    '<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',
 };
@@ -9765,6 +9824,10 @@ const CRM_SECTIONS = [
      selling tool, not a back-office one. */
   { id:'sec-comps',       label:'Comps & CMAs', icon:'comps',   color:'#2E8C5A', group:'daily', noAdmin:true,
     blurb:'Find what sold nearby and build a CMA you can hand a seller.' },
+  /* ⚠ noAdmin, like Leads. This is a prospecting tool and admins are deliberately
+     kept away from contacting clients. */
+  { id:'sec-prospect',   label:'Prospecting', icon:'prospect', color:'#C2683A', group:'daily', noAdmin:true,
+    blurb:'Expired and withdrawn listings near you, and whether the house has already relisted.' },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A', group:'daily',
     blurb:'Showings, closings and anything with a date on it.' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8', group:'reach',
@@ -10174,6 +10237,7 @@ const FIND_INDEX = [
   ['sec-reviews','Reviews','reviews testimonials ratings google approve'],
   ['sec-resources','Resources','forms documents baldwin realtors ce continuing education links training'],
   ['sec-storage','Storage','storage space full database size supabase disk delete clear files documents backed up'],
+  ['sec-prospect','Prospecting','expired withdrawn canceled off market fsbo listings relisted prospect farm door knock'],
   ['sec-mypage','My page','public profile bio photo my link agent page website'],
   ['sec-myprofile','My details','my details license number states address emergency contact'],
   ['sec-password','My password','password change login security'],
@@ -10702,6 +10766,7 @@ function showCrmSection(id){
     }
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-storage' && typeof renderStorageSection === 'function') renderStorageSection();
+    if(id === 'sec-prospect' && typeof renderProspectSection === 'function') renderProspectSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
       (renderResourcesSection() || Promise.resolve()).catch(e =>
         console.error('[resources]', e)).then(() => {
@@ -31576,6 +31641,34 @@ function plEmailAll(){
 #sto-say.busy{display:block;background:#F2F4FB;border:1px solid #D9DFF2;color:#39426B}
 .sto-bulk{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 14px;
   padding:11px 14px;background:#FFF8E8;border:1px solid #F0E0B8;border-radius:10px;font-size:12.5px}
+/* Two allowances, side by side, because the whole point of the file storage work
+   is moving weight off the first onto the second. */
+#sto-meter.two{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+#sto-meter.two .sto-half{min-width:0}
+#sto-meter .sto-cap{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  color:#8A92A6;font-weight:620;margin-bottom:5px}
+#sto-move{background:#fff;border:1px solid #E3E6EF;border-radius:14px;padding:16px 18px;margin-bottom:18px}
+#sto-move h3{margin:0 0 6px;font-size:15px;letter-spacing:-.1px;color:#19203A}
+#sto-move p{margin:0 0 12px;font-size:12.5px;line-height:1.55;color:#5A6378;max-width:70ch}
+#sto-move .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#sto-move .btn{border:1px solid #D7DCE8;background:#fff;color:#19203A;border-radius:8px;
+  padding:7px 14px;font-size:12.5px;font-weight:620;cursor:pointer}
+#sto-move .btn:hover{background:#F8F9FC}
+#sto-move .btn.go{background:#2F6B4F;border-color:#2F6B4F;color:#fff}
+#sto-move .btn.go:hover{background:#275A42}
+#sto-move .btn[disabled]{opacity:.5;cursor:default}
+#sto-move .res{margin-top:12px;font-size:12.5px;line-height:1.55;color:#3C4457;
+  background:#F8F9FC;border:1px solid #EDEFF6;border-radius:9px;padding:11px 13px;display:none}
+#sto-move .res.on{display:block}
+#sto-move .res b{font-variant-numeric:tabular-nums}
+#sto-move .bad{background:#FDF0ED;border-color:#F0CFC6;color:#8E2F18}
+#sto-prog{height:7px;border-radius:99px;background:#EDEFF6;overflow:hidden;margin:11px 0 0;display:none}
+#sto-prog.on{display:block}
+#sto-prog i{display:block;height:100%;background:#2F6B4F;width:0;transition:width .3s ease}
+.sto-alarm{margin:0 0 16px;padding:12px 15px;border-radius:10px;font-size:12.5px;line-height:1.55;
+  background:#FDF0ED;border:1px solid #F0CFC6;color:#8E2F18}
+.sto-alarm b{display:block;margin-bottom:3px}
+@media(max-width:760px){ #sto-meter.two{grid-template-columns:1fr;gap:18px} }
 .sto-bulk b{font-variant-numeric:tabular-nums}
 @media(max-width:760px){
   #sto-meter .sto-big{font-size:23px}
@@ -31642,11 +31735,13 @@ function renderStorageSection(){
         file store. That keeps everything in one backup, but it means photos count
         against the database limit. This is what is using it, biggest first.</p>
       <div id="sto-say"></div>
+      <p style="margin:-8px 0 14px;font-size:12.5px"><a href="#" id="sto-refresh">Refresh</a></p>
       <div id="sto-meter">
         <div class="sto-big">Reading the database…</div>
         <div class="sto-bar"><div class="sto-fill" style="width:0;background:#C7CDDE"></div></div>
         <div class="sto-sub"><span>This takes a few seconds — sizes are measured row by row.</span></div>
       </div>
+      <div id="sto-move"></div>
       <div id="sto-groups"></div>
     </div>`;
   stoLoad();
@@ -31677,21 +31772,58 @@ function stoRender(){
   const pct = Math.min(100, used / cap * 100);
   const hue = pct >= 85 ? '#C0392B' : pct >= 60 ? '#D98324' : '#3FA06B';
 
+  const f = d.files || null;
+  const fUsed = f ? f.bytes : 0, fCap = (f && f.limitBytes) || 1;
+  const fPct = Math.min(100, fUsed / fCap * 100);
+
   const meter = document.getElementById('sto-meter');
-  if(meter) meter.innerHTML = `
-    <div class="sto-big">${stoBytes(used)}<span class="sto-of"> of ${stoBytes(cap)} used</span></div>
-    <div class="sto-bar"><div class="sto-fill" style="width:${pct.toFixed(1)}%;background:${hue}"></div></div>
-    <div class="sto-sub">
-      <span${pct >= 85 ? ' class="sto-warn"' : ''}>${pct.toFixed(1)}% full</span>
-      <span>${d.total.rows.toLocaleString()} rows</span>
-      <span>${stoBytes(Math.max(0, cap - used))} free</span>
-      ${d.estimated ? '<span>Some groups are too large to measure in full and are estimated.</span>' : ''}
-      <span style="margin-left:auto"><a href="#" onclick="event.preventDefault();stoLoad()">Refresh</a></span>
-    </div>`;
+  if(meter){
+    meter.className = f && f.ready ? 'two' : '';
+    const dbHalf = `
+      <div class="sto-half">
+        <div class="sto-cap">Database</div>
+        <div class="sto-big">${stoBytes(used)}<span class="sto-of"> of ${stoBytes(cap)}</span></div>
+        <div class="sto-bar"><div class="sto-fill" style="width:${pct.toFixed(1)}%;background:${hue}"></div></div>
+        <div class="sto-sub">
+          <span${pct >= 85 ? ' class="sto-warn"' : ''}>${pct.toFixed(1)}% full</span>
+          <span>${d.total.rows.toLocaleString()} rows</span>
+          <span>${stoBytes(Math.max(0, cap - used))} free</span>
+        </div>
+      </div>`;
+    const fileHalf = f && f.ready ? `
+      <div class="sto-half">
+        <div class="sto-cap">File storage</div>
+        <div class="sto-big">${stoBytes(fUsed)}<span class="sto-of"> of ${stoBytes(fCap)}</span></div>
+        <div class="sto-bar"><div class="sto-fill" style="width:${fPct.toFixed(1)}%;background:${
+          fPct >= 85 ? '#C0392B' : fPct >= 60 ? '#D98324' : '#3FA06B'}"></div></div>
+        <div class="sto-sub">
+          <span>${fPct.toFixed(1)}% full</span>
+          <span>${(f.count||0).toLocaleString()} files</span>
+          <span>${stoBytes(Math.max(0, fCap - fUsed))} free</span>
+        </div>
+      </div>` : '';
+    meter.innerHTML = dbHalf + fileHalf;
+  }
+
+  /* Either the bucket is unreachable, or uploads have fallen back into the
+     database because it was. Both are the kind of thing that must not be a line
+     in a log nobody reads. */
+  const say = document.getElementById('sto-say');
+  if(f && !f.ready && say && !say.className){
+    say.className = 'bad';
+    say.innerHTML = '<b>File storage is not available, so uploads are going into the '
+      + 'database.</b> ' + escapeHtml(f.error || 'No reason given.');
+  }
+  window.__stoFallbacks = f ? (f.fallbacks || 0) : 0;
+
+  stoRenderMove(d);
 
   const host = document.getElementById('sto-groups');
   if(!host) return;
   const biggest = Math.max(1, ...d.groups.map(g => g.bytes));
+
+  const refresh = document.getElementById('sto-refresh');
+  if(refresh) refresh.onclick = e => { e.preventDefault(); stoLoad(); };
 
   let bulk = '';
   if(stoPicked.size){
@@ -31776,6 +31908,148 @@ function stoGroupBody(g){
   return out;
 }
 
+/* ==================== MOVING FILES OUT OF THE DATABASE ====================
+   The panel only appears when there is something to move. When the database is
+   already clean it says so in one line and gets out of the way. */
+function stoRenderMove(d){
+  const host = document.getElementById('sto-move');
+  if(!host) return;
+  const f = d.files || {};
+  const fb = window.__stoFallbacks || 0;
+
+  let alarm = '';
+  if(fb > 0 && f.ready){
+    /* The bucket is up NOW but uploads went into the database at some point, which
+       means those rows need moving and nobody would otherwise know. */
+    alarm = `<div class="sto-alarm"><b>${fb} upload${fb===1?'':'s'} went into the database
+      because file storage could not be reached.</b>
+      ${f.lastFallbackWhy ? 'Last reason: ' + escapeHtml(f.lastFallbackWhy) + '. ' : ''}
+      File storage is working now, so moving files below will clear them.</div>`;
+  }
+
+  if(!f.ready){
+    host.innerHTML = alarm + `
+      <h3>File storage</h3>
+      <p><b>Not available.</b> ${escapeHtml(f.error || 'No reason given.')}<br>
+      Until this works, every upload goes into the database and counts against the
+      ${stoBytes(d.limitBytes)} above. Nothing is lost and nothing is broken — it is
+      just the expensive place to keep a photo.</p>
+      <div class="row">
+        <button class="btn" onclick="stoMigrate(true)">See what would move anyway</button>
+      </div>
+      <div class="res" id="sto-res"></div>`;
+    stoPaintLastMove();
+    return;
+  }
+
+  host.innerHTML = alarm + `
+    <h3>Move files out of the database</h3>
+    <p>Files uploaded before this was built are stored inside their database rows,
+      where they cost about a third more than the file itself and count against the
+      ${stoBytes(d.limitBytes)} database rather than the ${stoBytes(f.limitBytes)} of
+      file storage. This copies them across, checks each copy byte for byte, and only
+      then shrinks the row. A row keeps working whether or not it has been moved, so
+      this is safe to run in pieces and safe to stop.</p>
+    <div class="row">
+      <button class="btn" onclick="stoMigrate(true)">Check what would move</button>
+      <button class="btn go" onclick="stoMigrate(false)">Move them</button>
+      <span class="sto-hint">The check changes nothing.</span>
+    </div>
+    <div id="sto-prog"><i></i></div>
+    <div class="res" id="sto-res"></div>`;
+  stoPaintLastMove();
+}
+
+/* Put the last migration result back after a repaint, so finishing a move does not
+   erase the only account of what it did. */
+function stoPaintLastMove(){
+  const last = window.__stoLastMove;
+  const el = document.getElementById('sto-res');
+  if(!last || !el) return;
+  el.className = 'res on' + (last.bad ? ' bad' : '');
+  el.innerHTML = last.html;
+}
+
+async function stoMigrate(dryRun){
+  const prog = document.getElementById('sto-prog');
+  const btns = [...document.querySelectorAll('#sto-move .btn')];
+  /* \u26a0 Look the element up EVERY time, and remember what was shown. The run ends
+     with stoLoad(), which repaints the whole panel \u2014 so a message held in a
+     variable captured at the start was written into a node that had already been
+     thrown away, and the outcome of the migration vanished the instant it finished.
+     stoRenderMove paints __stoLastMove back in. */
+  const show = (html, bad) => {
+    window.__stoLastMove = { html, bad: !!bad };
+    const el = document.getElementById('sto-res');
+    if(el){ el.className = 'res on' + (bad ? ' bad' : ''); el.innerHTML = html; }
+  };
+
+  btns.forEach(b => b.disabled = true);
+  show(dryRun ? 'Checking\u2026' : 'Moving\u2026');
+  try{
+    if(dryRun){
+      const d = await stoMigrateCall(true, 0);
+      if(!d.candidates){
+        show('<b>Nothing to move.</b> Every file is already in file storage.');
+      }else{
+        show(`<b>${d.candidates}</b> file${d.candidates===1?'':'s'} would move, freeing about
+          <b>${stoBytes(d.wouldFreeBytes)}</b> of database.
+          ${d.remaining ? ' There are more than this check counted \u2014 the real run does all of them.' : ''}
+          <div style="margin-top:6px">Nothing has been changed.</div>`);
+      }
+      return;
+    }
+
+    /* Batched, and it keeps going. The server does at most 200 at a time so a big
+       job cannot sit there until the request times out. */
+    let moved = 0, freed = 0, rounds = 0;
+    const failed = [];
+    if(prog) prog.className = 'on';
+    for(;;){
+      const d = await stoMigrateCall(false, 25);
+      moved += d.moved; freed += d.movedBytes;
+      (d.failed || []).forEach(x => failed.push(x));
+      const left = d.remaining || 0;
+      if(prog) prog.firstElementChild.style.width =
+        (moved + left ? Math.round(moved / (moved + left) * 100) : 100) + '%';
+      show(`Moving\u2026 <b>${moved}</b> done${left ? ', ' + left + ' to go' : ''}.`);
+      if(!left || ++rounds >= 200) break;
+      if(!d.moved && !left) break;
+      /* \u26a0 A round that moved nothing but still reports work left would loop for
+         ever. Stop and say so instead. */
+      if(!d.moved){ failed.push({ key:'\u2014', why:'Stopped: a batch moved nothing but reported '
+        + left + ' still to do.' }); break; }
+    }
+    if(prog) prog.firstElementChild.style.width = '100%';
+    let out = `<b>Moved ${moved}</b> file${moved===1?'':'s'} into file storage, freeing about
+      <b>${stoBytes(Math.round(freed * 4 / 3))}</b> of database.`;
+    if(failed.length){
+      out += `<div style="margin-top:8px"><b>${failed.length} left alone:</b><br>`
+        + failed.slice(0, 6).map(x => escapeHtml(x.key) + ' \u2014 ' + escapeHtml(x.why)).join('<br>')
+        + (failed.length > 6 ? '<br>and ' + (failed.length - 6) + ' more' : '')
+        + '<div style="margin-top:4px">Those files are untouched and still readable. '
+        + 'Run it again and it will retry them.</div></div>';
+    }
+    show(out, failed.length > 0);
+    await stoLoad();
+  }catch(e){
+    show(escapeHtml(e.message), true);
+  }finally{
+    document.querySelectorAll('#sto-move .btn').forEach(b => b.disabled = false);
+  }
+}
+
+async function stoMigrateCall(dryRun, limit){
+  const r = await fetch('/api/storage/migrate', {
+    method:'POST', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify(limit ? { dryRun, limit } : { dryRun }) });
+  const ct = r.headers.get('content-type') || '';
+  if(!ct.includes('json')) throw new Error('The server did not answer with data. Check the server is v215 or later.');
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error || 'That did not work.');
+  return d;
+}
+
 function stoToggle(prefix){
   if(stoOpen.has(prefix)) stoOpen.delete(prefix); else stoOpen.add(prefix);
   stoRender();
@@ -31838,6 +32112,294 @@ async function stoSweep(prefix){
       + (undated ? '. ' + undated + ' had no date and were left alone.' : '.'), 'good');
     await stoLoad();
   }catch(e){ stoSay(e.message, 'bad'); }
+}
+</script>
+
+<style>
+/* ==================== PROSPECTING (index 412) ====================
+   The whole screen is built around one distinction: which of these is worth a
+   phone call. Everything else is subordinate to that. */
+#pr-wrap{max-width:1060px}
+#pr-wrap .pr-lead{font-size:13.5px;line-height:1.55;color:#5A6378;margin:0 0 16px;max-width:66ch}
+#pr-form{background:#fff;border:1px solid #E3E6EF;border-radius:14px;padding:16px 18px;margin-bottom:16px}
+#pr-form .pr-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+#pr-form .pr-f{display:flex;flex-direction:column;gap:4px;min-width:0}
+#pr-form label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A92A6;font-weight:620}
+#pr-form input,#pr-form select{border:1px solid #D7DCE8;border-radius:8px;padding:7px 9px;
+  font:inherit;font-size:13px;background:#fff;color:#19203A;min-width:0}
+#pr-form .pr-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+#pr-form .pr-chips button{border:1px solid #D7DCE8;background:#fff;color:#4E5668;border-radius:99px;
+  padding:5px 13px;font-size:12.5px;font-weight:560;cursor:pointer}
+#pr-form .pr-chips button.on{background:#2E3CB0;border-color:#2E3CB0;color:#fff}
+#pr-go{background:#2E3CB0;border:0;color:#fff;border-radius:8px;padding:9px 18px;
+  font-size:13px;font-weight:620;cursor:pointer}
+#pr-go:hover{background:#26319A}
+#pr-go[disabled]{opacity:.5;cursor:default}
+.pr-tally{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+.pr-t{flex:1 1 150px;background:#fff;border:1px solid #E3E6EF;border-radius:12px;padding:12px 14px}
+.pr-t b{display:block;font-size:24px;font-weight:650;letter-spacing:-.5px;line-height:1.1;color:#19203A}
+.pr-t span{display:block;font-size:11.5px;color:#737C93;margin-top:3px;line-height:1.4}
+.pr-t.good{border-color:#BFE3CF;background:#F4FBF7}
+.pr-t.good b{color:#1F6B43}
+.pr-t.dim b{color:#8A92A6}
+.pr-card{background:#fff;border:1px solid #E3E6EF;border-radius:12px;padding:13px 15px;margin-bottom:9px;
+  display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+.pr-card.back{background:#FAFAFB;border-color:#EAECF2}
+.pr-card.unk{background:#FFFDF6;border-color:#F0E4C4}
+.pr-main{flex:1 1 300px;min-width:0}
+.pr-addr{font-size:14.5px;font-weight:620;color:#19203A;letter-spacing:-.1px;word-break:break-word}
+.pr-card.back .pr-addr{color:#6B7388}
+.pr-meta{font-size:12.5px;color:#6C7489;margin-top:3px;line-height:1.5}
+.pr-side{flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums}
+.pr-price{font-size:15px;font-weight:620;color:#19203A}
+.pr-when{font-size:11.5px;color:#808899;margin-top:2px}
+.pr-flag{display:inline-block;font-size:11px;font-weight:620;border-radius:99px;
+  padding:3px 10px;margin-top:7px;white-space:nowrap}
+.pr-flag.call{background:#EAF7F0;color:#1F6B43;border:1px solid #BFE3CF}
+.pr-flag.back{background:#F1F2F7;color:#5A6378;border:1px solid #DFE2EC}
+.pr-flag.sold{background:#FDF0ED;color:#8E2F18;border:1px solid #F0CFC6}
+.pr-flag.unk{background:#FDF6E3;color:#8A6A2E;border:1px solid #F0DFB4}
+.pr-note{font-size:12px;color:#5E6679;margin-top:5px;line-height:1.45}
+#pr-say{margin:0 0 14px;font-size:13px;border-radius:10px;padding:11px 14px;display:none;line-height:1.5}
+#pr-say.on{display:block;background:#F2F4FB;border:1px solid #D9DFF2;color:#39426B}
+#pr-say.bad{display:block;background:#FDF0ED;border:1px solid #F0CFC6;color:#8E2F18}
+.pr-notice{margin:0 0 12px;font-size:12.5px;line-height:1.5;border-radius:10px;
+  padding:11px 14px;background:#FDF6E3;border:1px solid #F0DFB4;color:#8A6A2E}
+.pr-legal{margin-top:18px;font-size:12px;line-height:1.6;color:#737C93;
+  border-top:1px solid #EDEFF6;padding-top:13px;max-width:72ch}
+@media(max-width:760px){
+  #pr-form .pr-row{gap:10px}
+  #pr-form .pr-f{flex:1 1 calc(50% - 5px)}
+  #pr-form .pr-f.wide{flex:1 1 100%}
+  .pr-side{text-align:left;flex:1 1 100%}
+  .pr-card{gap:8px}
+}
+</style>
+<script>
+/* ==================== PROSPECTING (index 412) ====================
+   Expired, withdrawn and canceled listings. Agents only — /api/prospect requires
+   a session and /api/search refuses these statuses outright, because a seller with
+   no listing agreement is not public information.
+
+   The point of the screen is the relist check. An expired listing is only a lead
+   if the house is still unsold and unlisted, so every row says which it is and the
+   ones worth calling are sorted to the top. */
+
+let PR_STATUSES = { Expired:true, Withdrawn:true, Canceled:true };
+let PR_LAST = null;
+
+function renderProspectSection(){
+  const el = document.getElementById('sec-prospect');
+  if(!el) return;
+  el.innerHTML = `
+    <div id="pr-wrap">
+      <h2 style="margin:0 0 6px;font-size:21px;letter-spacing:-.3px">Prospecting</h2>
+      <p class="pr-lead">Listings that came off the market without selling — expired,
+        withdrawn or canceled. Each one is checked against what is on the market now
+        at the same address, so you can see at a glance which sellers are still
+        waiting and which have already relisted or sold.</p>
+      <div id="pr-say"></div>
+      <div id="pr-form">
+        <div class="pr-row">
+          <div class="pr-f wide" style="flex:2 1 220px">
+            <label for="pr-city">City or ZIP</label>
+            <input id="pr-city" placeholder="Gulf Shores, Foley, 36542…"
+              onkeydown="if(event.key==='Enter')prRun()">
+          </div>
+          <div class="pr-f">
+            <label for="pr-days">Came off within</label>
+            <select id="pr-days">
+              <option value="90">90 days</option>
+              <option value="180">6 months</option>
+              <option value="365" selected>1 year</option>
+              <option value="730">2 years</option>
+            </select>
+          </div>
+          <div class="pr-f">
+            <label for="pr-ptype">Kind</label>
+            <select id="pr-ptype">
+              <option value="">Any</option>
+              <option value="residential">Homes</option>
+              <option value="land">Land</option>
+              <option value="commercial">Commercial</option>
+            </select>
+          </div>
+          <div class="pr-f">
+            <label for="pr-min">Price from</label>
+            <input id="pr-min" inputmode="numeric" placeholder="No min" style="width:100px">
+          </div>
+          <div class="pr-f">
+            <label for="pr-max">to</label>
+            <input id="pr-max" inputmode="numeric" placeholder="No max" style="width:100px">
+          </div>
+          <div class="pr-f"><label>&nbsp;</label>
+            <button id="pr-go" onclick="prRun()">Search</button></div>
+        </div>
+        <div class="pr-chips" id="pr-chips">
+          ${['Expired','Withdrawn','Canceled'].map(st =>
+            `<button type="button" class="${PR_STATUSES[st]?'on':''}"
+               onclick="prToggle('${st}')">${st}</button>`).join('')}
+        </div>
+      </div>
+      <div id="pr-out"></div>
+      <p class="pr-legal"><b>These are not public.</b> Expired, withdrawn and canceled
+        listings are shared between MLS members and are not permitted on the public
+        site — the website refuses them even if asked directly. Treat what you see
+        here accordingly, and check your own obligations before contacting an owner
+        whose listing is still under an agreement with another brokerage.</p>
+    </div>`;
+  if(PR_LAST) prRender(PR_LAST);
+}
+
+function prToggle(st){
+  PR_STATUSES[st] = !PR_STATUSES[st];
+  /* At least one has to stay on, or the search is meaningless. */
+  if(!Object.values(PR_STATUSES).some(Boolean)) PR_STATUSES[st] = true;
+  const chips = document.getElementById('pr-chips');
+  if(chips) chips.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', !!PR_STATUSES[b.textContent.trim()]));
+}
+
+function prSay(msg, bad){
+  const el = document.getElementById('pr-say');
+  if(!el) return;
+  el.className = msg ? (bad ? 'bad' : 'on') : '';
+  el.textContent = msg || '';
+}
+
+async function prRun(){
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  const on = Object.keys(PR_STATUSES).filter(k => PR_STATUSES[k]);
+  const params = new URLSearchParams({
+    statuses: on.join(','),
+    days: v('pr-days') || '365',
+    city: v('pr-city'),
+    ptype: v('pr-ptype'),
+    min: v('pr-min').replace(/[^0-9]/g,''),
+    max: v('pr-max').replace(/[^0-9]/g,''),
+    top: '150',
+  });
+  [...params.keys()].forEach(k => { if(!params.get(k)) params.delete(k); });
+
+  const btn = document.getElementById('pr-go');
+  if(btn) btn.disabled = true;
+  prSay('Searching the MLS…');
+  document.getElementById('pr-out').innerHTML = '';
+  try{
+    const r = await fetch('/api/prospect?' + params.toString(), { cache:'no-store' });
+    const ct = r.headers.get('content-type') || '';
+    /* ⚠ Content type, not r.ok. A route that does not exist comes back from the
+       single-page catch-all as 200 and a copy of the website. */
+    if(!ct.includes('json')) throw new Error('The server did not answer with data. Check the server is v216 or later.');
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'That search did not work.');
+    PR_LAST = d;
+    prSay('');
+    prRender(d);
+  }catch(e){
+    prSay(e.message, true);
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+function prMoney(n){
+  if(!(n || n === 0)) return '—';
+  return '$' + Math.round(Number(n)).toLocaleString();
+}
+
+/* ⚠ A DATE-ONLY STRING IS NOT A UTC TIMESTAMP. new Date('2026-09-30') is parsed
+   as midnight UTC, which in Central time is the evening of the 29th — so a house
+   that closed on 30 September was printed as "Sep 29". The MLS sends CloseDate,
+   OffMarketDate and OnMarketDate as plain dates with no time, and an agent reading
+   a close date off this screen and repeating it to a seller would be wrong by a
+   day. Date-only strings are built as local dates; anything with a time in it is
+   left to the normal parser. */
+function prWhen(at){
+  if(!at) return '';
+  const s = String(at);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s);
+  if(isNaN(d)) return '';
+  return d.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
+}
+
+function prRender(d){
+  const host = document.getElementById('pr-out');
+  if(!host) return;
+  if(!d.count){
+    host.innerHTML = '<p style="color:#737C93;font-size:13.5px">Nothing came off the '
+      + 'market matching that. Try a longer window or a wider area.</p>';
+    return;
+  }
+
+  const tally = `<div class="pr-tally">
+    <div class="pr-t good"><b>${d.stillOffMarket}</b>
+      <span>still off market — worth a call</span></div>
+    <div class="pr-t"><b>${d.relisted}</b>
+      <span>already relisted or sold</span></div>
+    ${d.unchecked ? `<div class="pr-t dim"><b>${d.unchecked}</b>
+      <span>could not be checked</span></div>` : ''}
+    <div class="pr-t dim"><b>${d.count}</b>
+      <span>found in ${d.days === 365 ? 'the last year' : 'the last ' + d.days + ' days'}</span></div>
+  </div>`;
+
+  const notice = [];
+  if(!d.relistChecked) notice.push('The relist check could not be run, so none of these '
+    + 'has been confirmed as still off market.');
+  if(!d.dateFiltered) notice.push('The MLS would not filter on the off-market date, so the '
+    + 'window was applied here instead — a few older ones may be missing.');
+
+  const cards = d.rows.map(x => {
+    const rl = x.relist || {};
+    const kind = rl.found ? (rl.status === 'Closed' ? 'sold' : 'back')
+               : rl.checked ? 'call' : 'unk';
+    const cls = kind === 'call' ? '' : kind === 'unk' ? 'unk' : 'back';
+    const flag = kind === 'call' ? '<span class="pr-flag call">Still off market</span>'
+      : kind === 'sold' ? `<span class="pr-flag sold">Sold ${
+          rl.closeDate ? prWhen(rl.closeDate) : ''} — ${prMoney(rl.price)}</span>`
+      : kind === 'back' ? `<span class="pr-flag back">${escapeHtml(rl.word || 'back on the market')}${
+          rl.price ? ' — ' + prMoney(rl.price) : ''}</span>`
+      : `<span class="pr-flag unk">Not checked</span>`;
+
+    const facts = [
+      x.beds ? x.beds + ' bd' : '', x.baths ? x.baths + ' ba' : '',
+      x.sqft ? Number(x.sqft).toLocaleString() + ' sq ft' : '',
+      x.acres ? Number(x.acres).toLocaleString() + ' ac' : '',
+      x.yearBuilt ? 'built ' + x.yearBuilt : '',
+      x.subType || x.ptype || '',
+    ].filter(Boolean).join(' · ');
+
+    const cut = x.originalListPrice && x.listPrice && Number(x.originalListPrice) > Number(x.listPrice)
+      ? `Reduced from ${prMoney(x.originalListPrice)} before it came off.` : '';
+
+    return `<div class="pr-card ${cls}">
+      <div class="pr-main">
+        <div class="pr-addr">${escapeHtml(x.address || (x.addressWithheld ? 'Address withheld by the seller' : 'Address not given'))}</div>
+        <div class="pr-meta">${escapeHtml([x.city, x.state, x.postalCode].filter(Boolean).join(', '))}</div>
+        <div class="pr-meta">${escapeHtml(facts)}</div>
+        <div class="pr-meta">${escapeHtml(x.status)}${
+          x.offMarketDate ? ' ' + prWhen(x.offMarketDate) : ''}${
+          x.daysOffMarket != null ? ' · ' + x.daysOffMarket + ' days ago' : ''}${
+          x.listOffice ? ' · was with ' + escapeHtml(x.listOffice) : ''}</div>
+        ${flag}
+        ${rl.why ? `<div class="pr-note">Could not check: ${escapeHtml(rl.why)}.</div>` : ''}
+        ${cut ? `<div class="pr-note">${cut}</div>` : ''}
+      </div>
+      <div class="pr-side">
+        <div class="pr-price">${prMoney(x.listPrice)}</div>
+        <div class="pr-when">asking when it came off</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  host.innerHTML = tally
+    /* ⚠ Its own id. Reusing pr-say here would put two elements with that id in the
+       document, and prSay() writes to whichever the browser finds first — which
+       would be this one, so the next "Searching..." would land in the results. */
+    + (notice.length ? `<div class="pr-notice">${
+        notice.map(escapeHtml).join(' ')}</div>` : '')
+    + cards;
 }
 </script>
 </body>
