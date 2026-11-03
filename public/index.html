@@ -4736,6 +4736,30 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 </div>
 
 <script>
+/* ⚠ MOVED HERE FROM FOUR THOUSAND LINES BELOW (index 410). This draws the
+   beds/baths/sq-ft line on a listing card, and it is called twice in this block
+   — by renderListings and by the detail modal. It used to be DEFINED in a
+   later <script>, and a browser only hoists a function when its own block runs.
+   So the call was a forward reference across blocks: it worked only because the
+   listings fetch was always slower than the parser. On a cached page or a fast
+   connection that stops being true and every card throws instead of drawing.
+   It depends on nothing but its own argument, which is why moving it is safe. */
+function statsFor(l){
+  const bd = Number(l.BedroomsTotal)||0, ba = Number(l.BathroomsTotalInteger)||0, sf = Number(l.LivingArea)||0;
+  if(bd || ba || sf){
+    const out = [];
+    if(bd) out.push(bd + ' bd');
+    if(ba) out.push(ba + ' ba');
+    if(sf) out.push(sf.toLocaleString() + ' sqft');
+    return out.map(t => '<span>' + t + '</span>').join('');
+  }
+  const acres = Number(l.LotSizeAcres)||0;
+  const bits = [];
+  if(acres) bits.push(acres.toLocaleString(undefined,{maximumFractionDigits:2}) + ' acres');
+  bits.push(l.PropertySubType || l.PropertyType || 'Land');
+  return bits.map(t => '<span>' + t + '</span>').join('');
+}
+
 /* ============================================================
 MOCK LISTING DATA — structured to mirror RESO Web API fields
 so this can be swapped for a real MLS feed with minimal rework.
@@ -5695,7 +5719,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v409';
+window.BUILD = 'index-v410';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9260,21 +9284,8 @@ function listingHistory(l){
 
 /* Land and lot listings have no beds/baths/sqft — "0 bd 0 ba 0 sqft" looks broken.
    Show acreage or property type instead. */
-function statsFor(l){
-  const bd = Number(l.BedroomsTotal)||0, ba = Number(l.BathroomsTotalInteger)||0, sf = Number(l.LivingArea)||0;
-  if(bd || ba || sf){
-    const out = [];
-    if(bd) out.push(bd + ' bd');
-    if(ba) out.push(ba + ' ba');
-    if(sf) out.push(sf.toLocaleString() + ' sqft');
-    return out.map(t => '<span>' + t + '</span>').join('');
-  }
-  const acres = Number(l.LotSizeAcres)||0;
-  const bits = [];
-  if(acres) bits.push(acres.toLocaleString(undefined,{maximumFractionDigits:2}) + ' acres');
-  bits.push(l.PropertySubType || l.PropertyType || 'Land');
-  return bits.map(t => '<span>' + t + '</span>').join('');
-}
+/* statsFor() was moved to the top of the listings block — see the note there.
+   It is called from that block and must be parsed before it runs. */
 </script>
 <script>
 /* Agent profile — address, license, W-9 status etc. Broker-only. */
@@ -10942,7 +10953,13 @@ async function saveMyProfile(agentId, gated){
   const merged = Object.assign({}, existing, p);
   const missing = missingProfileFields(merged);
   if(missing.length){
-    const box = document.getElementById('profile-missing');
+    /* ⚠ TWO boxes carry this warning — one in the sign-in gate, one in My details
+       — and they used to share the id 'profile-missing'. getElementById returns the
+       FIRST, so an agent stopped by the gate could press Save, have the warning
+       written into the hidden panel behind the overlay, and see nothing happen with
+       no idea which field they had missed. `gated` already told us which screen we
+       are on; now it picks the box. */
+    const box = document.getElementById(gated ? 'profile-gate-missing' : 'profile-missing');
     if(box) box.innerHTML = `\u26A0 Still needed: ${missing.join(', ')}`;
     showToast("Please complete the required fields.");
     return;
@@ -10973,7 +10990,7 @@ async function checkProfileGate(){
     <h3>Welcome${currentAgent.name?', '+escapeHtml(currentAgent.name.split(' ')[0]):''}</h3>
     <p class="sub">Before you get started, we need a few details on file. This is the information the
        brokerage is required to keep for you \u2014 it's only visible to the broker.</p>
-    <div id="profile-missing" class="profile-missing"></div>
+    <div id="profile-gate-missing" class="profile-missing"></div>
     ${profileFormHtml(currentAgent.id, p)}
     <button class="btn-sm primary" style="width:100%; margin-top:14px;"
       onclick="saveMyProfile('${currentAgent.id}', true)">Save and continue</button>
