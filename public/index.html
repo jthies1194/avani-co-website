@@ -5752,7 +5752,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v413';
+window.BUILD = 'index-v416';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9114,32 +9114,48 @@ async function loadPropertyTypes(){
   const sel = document.getElementById('f-subtype');
   if(!sel) return;
   try{
-    const r = await fetch('/api/property-types');
+    /* ⚠ CACHE-BUSTED, and this is why. Server 216 set Cache-Control: max-age=3600
+       on this route unconditionally — including on the FAILURE response. So the one
+       hour after a bad deploy, every browser kept serving the broken answer: a
+       fallback list of RESO subtype names that Baldwin does not use. The server was
+       then fixed and the picker went on showing "Condominium" from cache, which
+       looked exactly like the fix not working.
+
+       The server now sends no-store when it could not read the feed. This is the
+       other half: a query string the CDN and the browser cannot match against
+       anything they already hold. */
+    const r = await fetch('/api/property-types?_=' + Date.now(), { cache: 'no-store' });
     const ct = r.headers.get('content-type') || '';
     if(!ct.includes('json')) throw new Error('not data');
     const d = await r.json();
-    PTYPE_GROUPS = d.groups || [];
+    PTYPE_GROUPS = d.menu || [];
     if(!PTYPE_GROUPS.length){
       /* ⚠ SAY SO rather than leave a picker that looks fine and filters nothing.
-         The server used to fall back to RESO's standard subtype names, and Baldwin
+         The server used to fall back to RESO's standard subtype names and Baldwin
          uses none of them — it sends "Residential Attached" and "Residential
-         Detached". So choosing "Condominium" ran a search that matched nothing and
-         looked like the market rather than a bug. There is no fallback now. */
+         Detached" — so choosing "Condominium" searched for nothing and looked
+         like the market. There is no fallback now. */
       sel.innerHTML = '<option value="">Any kind of property</option>';
       sel.title = 'Property types could not be read from the MLS right now.';
       console.warn('[property types] none available:', d.error || 'unknown');
       return;
     }
-    /* The server orders the groups and supplies the wording. The MLS's own value
-       goes to the feed; the readable label goes on screen. "Residential Attached"
-       is a condo, and nobody looking for a condo would ever pick that. */
+    /* ⚠ A SHORT CURATED MENU, NOT THE MLS'S OWN LIST. One choice can stand for
+       several feed values — "Lots & land" covers Land, Residential Lots, Vacant
+       Land and Zoned, which are four separate entries in the feed and one thing to
+       a person. The values travel comma-separated in the subtype parameter.
+
+       The entries the server marked `other` are subtypes no menu entry covered.
+       They go below a separator under their own names, so nothing in the feed is
+       unreachable but the ordinary choices come first. */
     const esc = escapeHtml;
+    const main = PTYPE_GROUPS.filter(m => !m.other);
+    const rest = PTYPE_GROUPS.filter(m => m.other);
+    const opt = m => `<option value="${esc((m.values || []).join(','))}">`
+      + esc(m.label) + '</option>';
     sel.innerHTML = '<option value="">Any kind of property</option>'
-      + PTYPE_GROUPS.filter(g => (g.subTypes || []).length).map(g =>
-          `<optgroup label="${esc(g.label || g.type)}">`
-          + g.subTypes.map(st =>
-              `<option value="${esc(st.value)}">${esc(st.label || st.value)}</option>`).join('')
-          + '</optgroup>').join('');
+      + main.map(opt).join('')
+      + (rest.length ? `<optgroup label="Other property types">${rest.map(opt).join('')}</optgroup>` : '');
   }catch(e){
     console.warn('[property types]', e.message);
   }
@@ -32305,25 +32321,57 @@ async function prFeedCheck(){
   const host = document.getElementById('pr-out');
   if(!host) return;
   try{
-    const r = await fetch('/api/prospect/feed-check', { cache:'no-store' });
+    const r = await fetch('/api/prospect/feed-check?_=' + Date.now(), { cache:'no-store' });
     const ct = r.headers.get('content-type') || '';
-    if(!ct.includes('json')) throw new Error('The server did not answer with data.');
+    if(!ct.includes('json')) throw new Error('The server did not answer with data. Check the server is v219 or later.');
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || 'The check did not run.');
+
+    /* ⚠ WHAT THIS SHOWS IS THE PROBE, NOT A SAMPLE. The first version of this
+       tallied the newest 1,000 records and reported what it saw, which answers the
+       wrong question: off-market listings are old and never appear in the newest
+       slice. Every status is now asked for directly with a counted query, on both
+       StandardStatus and MlsStatus, including the spellings feeds actually use. */
     const feeds = (d.feeds || []).map(f => {
-      const top = (f.statuses || []).slice(0, 8)
-        .map(([st, n]) => escapeHtml(st) + ' ' + n).join(' · ');
-      return `<div style="margin-top:7px"><b>${escapeHtml(f.label || f.id)}</b>
-        ${f.ok ? '' : ' — could not be read: ' + escapeHtml(f.detail || '')}
-        <div style="font-size:12px;color:#737C93;margin-top:2px">
-          ${f.sampled} listings sampled${top ? ' · ' + top : ''}</div></div>`;
+      const bits = [];
+      if(f.total != null) bits.push(f.total.toLocaleString() + ' listings in the feed');
+      if(!f.ok) bits.push('could not be read: ' + escapeHtml(f.detail || ''));
+
+      const asked = (f.probes || []).filter(p => p.ok);
+      const found = asked.filter(p => p.count && p.count !== 0);
+      const line = found.length
+        ? found.map(p => `<b>${escapeHtml(p.field)} = "${escapeHtml(p.word)}"</b> → ${
+            typeof p.count === 'number' ? p.count.toLocaleString() : escapeHtml(String(p.count))}`).join('<br>')
+        : asked.map(p => `${escapeHtml(p.field)} = "${escapeHtml(p.word)}" → none`).join('<br>');
+
+      const bad = (f.probes || []).filter(p => !p.ok);
+      const badLine = bad.length
+        ? `<div style="margin-top:5px">The feed refused these queries: ${
+            escapeHtml([...new Set(bad.map(p => p.field))].join(', '))}
+            ${bad[0].detail ? '— ' + escapeHtml(bad[0].detail) : ''}</div>`
+        : '';
+
+      return `<div style="margin-top:9px"><b>${escapeHtml(f.label || f.id)}</b>
+        <div style="font-size:12px;color:#737C93;margin-top:2px">${escapeHtml(bits.join(' · '))}</div>
+        <div style="font-size:12px;margin-top:4px;line-height:1.6">${line}</div>
+        ${badLine}</div>`;
     }).join('');
+
+    const good = d.carriesOffMarket;
     host.innerHTML = `<div class="pr-notice" style="background:${
-        d.carriesOffMarket ? '#F2F4FB' : '#FDF6E3'};border-color:${
-        d.carriesOffMarket ? '#D9DFF2' : '#F0DFB4'};color:${
-        d.carriesOffMarket ? '#39426B' : '#8A6A2E'}">
+        good ? '#F2F4FB' : '#FDF6E3'};border-color:${
+        good ? '#D9DFF2' : '#F0DFB4'};color:${good ? '#39426B' : '#8A6A2E'}">
       <b>Nothing matched that search.</b><br>${escapeHtml(d.verdict)}
-      ${feeds}</div>`;
+      <div style="margin-top:10px;font-size:12px;opacity:.85">Asked directly, one counted
+        query per status per field:</div>
+      ${feeds}
+      ${good ? '' : `<div style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(0,0,0,.08)">
+        <b>What to ask for.</b> Baldwin REALTORS provision what this feed receives.
+        The request is for <b>Expired, Withdrawn and Canceled</b> listings to be
+        included in the IDX/RESO feed for this account, with
+        <b>OffMarketDate</b> populated. Everything on this screen is already built
+        and will start working the moment they arrive.</div>`}
+    </div>`;
   }catch(e){
     host.innerHTML = '<p style="color:#737C93;font-size:13.5px">Nothing came off the '
       + 'market matching that. Try a longer window or a wider area.</p>';
