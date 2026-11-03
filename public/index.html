@@ -4228,6 +4228,7 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-taxes"></div>
 <div class="crm-sec" id="sec-marketing"></div>
 <div class="crm-sec" id="sec-resources"></div>
+<div class="crm-sec" id="sec-storage"></div>
 <div class="crm-sec" id="sec-mypage"></div>
 <div class="crm-sec" id="sec-myprofile">
 <!-- ⚠ These switches save to notify:<agentId> — they are personal, not brokerage
@@ -5694,7 +5695,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v408';
+window.BUILD = 'index-v409';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9699,6 +9700,7 @@ const ICON = {
   track:   '<path d="M4 18h16"/><circle cx="7" cy="18" r="2.4"/><circle cx="12" cy="18" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M7 15.5V9M12 15.5V6M17 15.5v-4"/>',
   calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8.5" cy="14.5" r="1.2"/><circle cx="13" cy="14.5" r="1.2"/>',
   tick:    '<path d="M4 12.5l5 5L20 6.5"/>',
+  store:   '<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/><path d="M4.5 11.5v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/>',
   grip:    '<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',
 };
 function icon(k){
@@ -9769,6 +9771,8 @@ const CRM_SECTIONS = [
     blurb:'Ask a past client for a review and see the ones you have.' },
   { id:'sec-resources',   label:'Resources',   icon:'links',    color:'#4A7A9B', group:'office',
     blurb:'Forms, links and the things you need often enough to stop hunting for.' },
+  { id:'sec-storage',     label:'Storage',     icon:'store',    color:'#6E6A86', group:'office', brokerOnly:true,
+    blurb:'What is using the database, biggest first \u2014 and how to clear it.' },
   { id:'sec-setup',       label:'Settings',    icon:'settings', color:'#6A7290', group:'me',
     blurb:'How the site and the CRM behave.' },
   { id:'sec-mypage',      label:'My public page', icon:'mypage', color:'#2A9D8F', group:'reach',
@@ -10158,6 +10162,7 @@ const FIND_INDEX = [
   ['sec-marketing','Marketing','flyers social posts photo editor open house sign in qr code templates'],
   ['sec-reviews','Reviews','reviews testimonials ratings google approve'],
   ['sec-resources','Resources','forms documents baldwin realtors ce continuing education links training'],
+  ['sec-storage','Storage','storage space full database size supabase disk delete clear files documents backed up'],
   ['sec-mypage','My page','public profile bio photo my link agent page website'],
   ['sec-myprofile','My details','my details license number states address emergency contact'],
   ['sec-password','My password','password change login security'],
@@ -10685,6 +10690,7 @@ function showCrmSection(id){
       }catch(e){ console.error('[pipeline]', e); after(); }
     }
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
+    if(id === 'sec-storage' && typeof renderStorageSection === 'function') renderStorageSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
       (renderResourcesSection() || Promise.resolve()).catch(e =>
         console.error('[resources]', e)).then(() => {
@@ -31490,5 +31496,332 @@ function plEmailAll(){
 }
 </style>
 
+
+<style>
+/* ==================== STORAGE (index 409) ====================
+   Broker-only. The point of the page is one sentence of arithmetic: what is
+   using the 500MB, biggest first. Everything else is subordinate to the bar. */
+#sto-wrap{max-width:1000px}
+#sto-wrap .sto-lead{font-size:13.5px;line-height:1.55;color:#5A6378;margin:0 0 18px;max-width:62ch}
+#sto-meter{background:#fff;border:1px solid #E3E6EF;border-radius:14px;padding:18px 20px 16px;margin-bottom:18px}
+#sto-meter .sto-big{font-size:27px;font-weight:650;letter-spacing:-.4px;color:#131A33;line-height:1.1}
+#sto-meter .sto-of{font-size:14px;font-weight:500;color:#78819A;margin-left:7px}
+.sto-bar{height:11px;border-radius:99px;background:#EDEFF6;overflow:hidden;margin:13px 0 9px}
+.sto-fill{height:100%;border-radius:99px;transition:width .45s ease,background .3s ease;min-width:3px}
+#sto-meter .sto-sub{font-size:12.5px;color:#6C7489;display:flex;flex-wrap:wrap;gap:4px 14px}
+#sto-wrap .sto-warn{color:#A8341F;font-weight:600}
+.sto-row{background:#fff;border:1px solid #E3E6EF;border-radius:12px;margin-bottom:9px;overflow:hidden}
+.sto-top{display:flex;align-items:center;gap:14px;padding:13px 16px;cursor:pointer;
+  background:none;border:0;width:100%;text-align:left;font:inherit;color:inherit}
+.sto-top:hover{background:#F8F9FC}
+.sto-top[aria-expanded="true"]{background:#F6F7FB}
+.sto-name{flex:1 1 auto;min-width:0}
+.sto-name b{display:block;font-size:14px;font-weight:620;color:#19203A;letter-spacing:-.1px}
+.sto-name span{display:block;font-size:12px;color:#737C93;margin-top:2px;line-height:1.45}
+.sto-size{flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums}
+.sto-size b{display:block;font-size:14.5px;font-weight:620;color:#19203A}
+.sto-size span{display:block;font-size:11.5px;color:#808899;margin-top:1px}
+.sto-share{flex:0 0 86px;height:6px;border-radius:99px;background:#EDEFF6;overflow:hidden}
+.sto-share i{display:block;height:100%;border-radius:99px;background:#5A6BD8}
+.sto-chev{flex:0 0 auto;color:#9AA2B6;transition:transform .2s ease}
+.sto-top[aria-expanded="true"] .sto-chev{transform:rotate(90deg)}
+.sto-lock{flex:0 0 auto;font-size:11px;font-weight:600;color:#8A6A2E;background:#FDF3DC;
+  border:1px solid #F0DFB4;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.sto-body{border-top:1px solid #EDEFF6;padding:0}
+.sto-note{padding:11px 16px;font-size:12.5px;color:#5E6679;background:#FBFCFE;line-height:1.5}
+.sto-items{width:100%;border-collapse:collapse;font-size:12.5px}
+.sto-items th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:#8A92A6;font-weight:620;padding:8px 10px;border-bottom:1px solid #EDEFF6;background:#FBFCFE}
+.sto-items td{padding:9px 10px;border-bottom:1px solid #F2F4F9;vertical-align:middle}
+.sto-items tr:last-child td{border-bottom:0}
+.sto-items .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sto-items .who,.sto-items .when{color:#737C93;white-space:nowrap}
+.sto-items .nm{font-weight:560;color:#1C2440;word-break:break-word}
+.sto-items .k{display:block;font-size:10.5px;color:#9AA2B6;font-family:ui-monospace,Menlo,monospace;margin-top:2px}
+.sto-x{background:#fff;border:1px solid #E0D0CC;color:#9E3A22;border-radius:7px;
+  padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
+.sto-x:hover{background:#FDF4F2;border-color:#D8B4AC}
+.sto-x[disabled]{opacity:.45;cursor:default}
+.sto-act{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;
+  background:#F8F9FC;border-top:1px solid #EDEFF6}
+.sto-act label{font-size:12.5px;color:#4E5668;font-weight:560}
+.sto-act select,.sto-act input[type=text]{border:1px solid #D7DCE8;border-radius:8px;
+  padding:6px 9px;font:inherit;font-size:12.5px;background:#fff;color:#19203A}
+.sto-act input[type=text]{width:92px;text-transform:uppercase;letter-spacing:.08em}
+.sto-go{background:#9E3A22;border:0;color:#fff;border-radius:8px;padding:7px 14px;
+  font-size:12.5px;font-weight:620;cursor:pointer}
+.sto-go:hover{background:#8A3019}
+.sto-go[disabled]{background:#C9BDB9;cursor:default}
+.sto-hint{font-size:11.5px;color:#7A8296;flex:1 1 220px;line-height:1.45}
+#sto-say{margin:0 0 16px;font-size:13px;border-radius:10px;padding:11px 14px;display:none;line-height:1.5}
+#sto-say.good{display:block;background:#EAF7F0;border:1px solid #BFE3CF;color:#1F6B43}
+#sto-say.bad{display:block;background:#FDF0ED;border:1px solid #F0CFC6;color:#8E2F18}
+#sto-say.busy{display:block;background:#F2F4FB;border:1px solid #D9DFF2;color:#39426B}
+.sto-bulk{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 14px;
+  padding:11px 14px;background:#FFF8E8;border:1px solid #F0E0B8;border-radius:10px;font-size:12.5px}
+.sto-bulk b{font-variant-numeric:tabular-nums}
+@media(max-width:760px){
+  #sto-meter .sto-big{font-size:23px}
+  .sto-share{display:none}
+  .sto-top{gap:10px;padding:12px 13px;flex-wrap:wrap}
+  .sto-name{flex:1 1 100%;order:1}
+  .sto-size{order:2;text-align:left}
+  .sto-lock{order:3}
+  .sto-chev{order:4;margin-left:auto}
+  /* The table becomes a stack of cards. A six-column table on a phone is a
+     horizontal scrollbar nobody finds. */
+  .sto-items thead{display:none}
+  .sto-items,.sto-items tbody,.sto-items tr,.sto-items td{display:block;width:auto}
+  .sto-items tr{padding:10px 13px;border-bottom:1px solid #F2F4F9}
+  .sto-items td{border:0;padding:1px 0}
+  .sto-items .num{text-align:left}
+  .sto-items td.pick{position:absolute;right:13px}
+  .sto-items tr{position:relative;padding-right:46px}
+}
+</style>
+<script>
+/* ==================== STORAGE PAGE (index 409) ====================
+   Answers one question — what is filling the database — and gives exactly two
+   ways to act on the answer: remove named items, or clear one group by age.
+
+   There is no "empty everything" button, and the groups the server marks locked
+   cannot be removed from here at all. A deal with a 24MB file inside it is still
+   a deal; freeing space must never be the reason one disappears. */
+
+let STO_DATA = null;
+const stoOpen = new Set();      /* which groups are expanded */
+const stoPicked = new Set();    /* which individual keys are ticked */
+
+function stoBytes(n){
+  const b = Math.max(0, Number(n) || 0);
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b/1024).toFixed(b < 10240 ? 1 : 0) + ' KB';
+  if(b < 1073741824) return (b/1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+function stoWhen(at){
+  if(!at) return '—';
+  const d = new Date(at);
+  if(isNaN(d)) return '—';
+  return d.toLocaleDateString(undefined, { day:'numeric', month:'short', year:'numeric' });
+}
+
+function stoSay(msg, kind){
+  const el = document.getElementById('sto-say');
+  if(!el) return;
+  el.className = msg ? (kind || 'busy') : '';
+  el.textContent = msg || '';
+}
+
+function renderStorageSection(){
+  const el = document.getElementById('sec-storage');
+  if(!el) return;
+  el.innerHTML = `
+    <div id="sto-wrap">
+      <h2 style="margin:0 0 6px;font-size:21px;letter-spacing:-.3px">Storage</h2>
+      <p class="sto-lead">Every file uploaded to the site — agent documents, CMA PDFs,
+        receipt photos — is stored inside the database rather than in a separate
+        file store. That keeps everything in one backup, but it means photos count
+        against the database limit. This is what is using it, biggest first.</p>
+      <div id="sto-say"></div>
+      <div id="sto-meter">
+        <div class="sto-big">Reading the database…</div>
+        <div class="sto-bar"><div class="sto-fill" style="width:0;background:#C7CDDE"></div></div>
+        <div class="sto-sub"><span>This takes a few seconds — sizes are measured row by row.</span></div>
+      </div>
+      <div id="sto-groups"></div>
+    </div>`;
+  stoLoad();
+}
+
+async function stoLoad(){
+  try{
+    const r = await fetch('/api/storage/report?_=' + Date.now(), { cache:'no-store' });
+    const ct = r.headers.get('content-type') || '';
+    /* ⚠ Content type, not r.ok. A route that does not exist is answered by the
+       single-page catch-all with 200 and a copy of the website. */
+    if(!ct.includes('json')) throw new Error('The server did not answer with data. Check the server version is v213 or later.');
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not read the database.');
+    STO_DATA = d;
+    stoRender();
+  }catch(e){
+    const m = document.getElementById('sto-meter');
+    if(m) m.innerHTML = '<div class="sto-big" style="font-size:17px">Could not read it</div>'
+      + '<div class="sto-sub" style="margin-top:8px"><span>' + escapeHtml(e.message) + '</span></div>';
+  }
+}
+
+function stoRender(){
+  const d = STO_DATA;
+  if(!d) return;
+  const used = d.total.bytes, cap = d.limitBytes || 1;
+  const pct = Math.min(100, used / cap * 100);
+  const hue = pct >= 85 ? '#C0392B' : pct >= 60 ? '#D98324' : '#3FA06B';
+
+  const meter = document.getElementById('sto-meter');
+  if(meter) meter.innerHTML = `
+    <div class="sto-big">${stoBytes(used)}<span class="sto-of"> of ${stoBytes(cap)} used</span></div>
+    <div class="sto-bar"><div class="sto-fill" style="width:${pct.toFixed(1)}%;background:${hue}"></div></div>
+    <div class="sto-sub">
+      <span${pct >= 85 ? ' class="sto-warn"' : ''}>${pct.toFixed(1)}% full</span>
+      <span>${d.total.rows.toLocaleString()} rows</span>
+      <span>${stoBytes(Math.max(0, cap - used))} free</span>
+      ${d.estimated ? '<span>Some groups are too large to measure in full and are estimated.</span>' : ''}
+      <span style="margin-left:auto"><a href="#" onclick="event.preventDefault();stoLoad()">Refresh</a></span>
+    </div>`;
+
+  const host = document.getElementById('sto-groups');
+  if(!host) return;
+  const biggest = Math.max(1, ...d.groups.map(g => g.bytes));
+
+  let bulk = '';
+  if(stoPicked.size){
+    let sum = 0;
+    for(const g of d.groups) for(const it of (g.items||[])) if(stoPicked.has(it.key)) sum += it.bytes;
+    bulk = `<div class="sto-bulk">
+      <span><b>${stoPicked.size}</b> selected, <b>${stoBytes(sum)}</b></span>
+      <button class="sto-go" onclick="stoDeleteSelected()">Remove selected</button>
+      <button class="sto-x" onclick="stoPicked.clear();stoRender()">Clear selection</button>
+      <span class="sto-hint">Removing a file cannot be undone. The record it was attached to stays.</span>
+    </div>`;
+  }
+
+  host.innerHTML = bulk + d.groups.map(g => {
+    const open = stoOpen.has(g.prefix);
+    const share = (g.bytes / biggest * 100).toFixed(1);
+    return `<div class="sto-row">
+      <button class="sto-top" aria-expanded="${open}" onclick="stoToggle('${g.prefix}')">
+        <span class="sto-chev"><svg viewBox="0 0 24 24" width="13" height="13"
+          fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+          stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        <span class="sto-name"><b>${escapeHtml(g.label)}</b>
+          <span>${escapeHtml(g.note || '')}</span></span>
+        <span class="sto-share"><i style="width:${share}%"></i></span>
+        <span class="sto-size"><b>${stoBytes(g.bytes)}${g.estimated ? '*' : ''}</b>
+          <span>${g.count.toLocaleString()} ${g.count === 1 ? 'row' : 'rows'}</span></span>
+        ${g.locked ? '<span class="sto-lock">Protected</span>' : ''}
+      </button>
+      ${open ? '<div class="sto-body">' + stoGroupBody(g) + '</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function stoGroupBody(g){
+  let out = '';
+  if(g.locked){
+    out += `<div class="sto-note"><b>This cannot be removed from here.</b> Deleting one of
+      these to free space would destroy the record itself, not a copy of it. Remove it from
+      its own panel, which knows how to take the record apart properly.</div>`;
+  }
+  if(g.estimated){
+    out += `<div class="sto-note">Too many rows to measure every one. The size above is
+      the average of the ${Math.min(600, g.count)} measured, scaled to all ${g.count.toLocaleString()}.</div>`;
+  }
+  if(!g.items || !g.items.length){
+    out += '<div class="sto-note">Nothing to list.</div>';
+    return out;
+  }
+  const rows = g.items.map(it => `<tr>
+      <td class="nm">${escapeHtml(it.name || '(no name)')}<span class="k">${escapeHtml(it.key)}</span></td>
+      <td class="who">${escapeHtml(it.who || '—')}</td>
+      <td class="when">${stoWhen(it.at)}</td>
+      <td class="num">${stoBytes(it.bytes)}</td>
+      <td class="num pick">${g.locked ? ''
+        : `<input type="checkbox" ${stoPicked.has(it.key) ? 'checked' : ''}
+             onchange="stoSel('${it.key.replace(/'/g, "\\'")}', this.checked)"
+             aria-label="Select ${escapeHtml(it.name || it.key)}">`}</td>
+    </tr>`).join('');
+  out += `<table class="sto-items"><thead><tr>
+      <th>What it is</th><th>Whose</th><th>Added</th><th class="num">Size</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+  if(g.count > g.items.length){
+    out += `<div class="sto-note">Showing the ${g.items.length} largest of
+      ${g.count.toLocaleString()}. Clear the rest by age below.</div>`;
+  }
+  if(g.sweep){
+    out += `<div class="sto-act">
+      <label for="sto-age-${g.prefix.replace(/:/g,'')}">Clear everything in here older than</label>
+      <select id="sto-age-${g.prefix.replace(/:/g,'')}">
+        <option value="365">1 year</option>
+        <option value="730">2 years</option>
+        <option value="180">6 months</option>
+        <option value="90">90 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <input type="text" id="sto-ok-${g.prefix.replace(/:/g,'')}" placeholder="DELETE"
+        aria-label="Type DELETE to confirm">
+      <button class="sto-go" onclick="stoSweep('${g.prefix}')">Clear</button>
+      <span class="sto-hint">Type DELETE to confirm. Anything with no date on it is left alone.</span>
+    </div>`;
+  }
+  return out;
+}
+
+function stoToggle(prefix){
+  if(stoOpen.has(prefix)) stoOpen.delete(prefix); else stoOpen.add(prefix);
+  stoRender();
+}
+
+function stoSel(key, on){
+  if(on) stoPicked.add(key); else stoPicked.delete(key);
+  stoRender();
+}
+
+async function stoDeleteSelected(){
+  const keys = [...stoPicked];
+  if(!keys.length) return;
+  if(!confirm('Remove ' + keys.length + (keys.length === 1 ? ' item' : ' items')
+    + ' permanently? This cannot be undone.')) return;
+  stoSay('Removing…', 'busy');
+  try{
+    const r = await fetch('/api/storage/delete', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ keys }) });
+    const ct = r.headers.get('content-type') || '';
+    if(!ct.includes('json')) throw new Error('The server did not answer with data.');
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'That did not work.');
+    stoPicked.clear();
+    const refused = (d.refused || []).length;
+    stoSay('Removed ' + d.deleted.length + ', freed ' + stoBytes(d.freedBytes)
+      + (refused ? '. ' + refused + ' refused: ' + escapeHtml(d.refused[0].why) : '.'),
+      refused ? 'bad' : 'good');
+    await stoLoad();
+  }catch(e){ stoSay(e.message, 'bad'); }
+}
+
+async function stoSweep(prefix){
+  const slug = prefix.replace(/:/g, '');
+  const days = Number((document.getElementById('sto-age-' + slug) || {}).value) || 365;
+  const confirmWord = ((document.getElementById('sto-ok-' + slug) || {}).value || '').trim();
+  if(confirmWord.toUpperCase() !== 'DELETE'){
+    stoSay('Type DELETE in the box to confirm.', 'bad');
+    return;
+  }
+  stoSay('Clearing…', 'busy');
+  try{
+    let gone = 0, freed = 0, rounds = 0, undated = 0;
+    /* The server clears at most 300 rows per call and says how many are left, so a
+       very large group cannot sit there until the request times out. Keep going. */
+    for(;;){
+      const r = await fetch('/api/storage/sweep', {
+        method:'POST', headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ prefix, olderThanDays: days, confirm:'DELETE' }) });
+      const ct = r.headers.get('content-type') || '';
+      if(!ct.includes('json')) throw new Error('The server did not answer with data.');
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'That did not work.');
+      gone += d.deleted; freed += d.freedBytes; undated += d.undated;
+      if(!d.remaining || ++rounds >= 40) break;
+      stoSay('Clearing… ' + gone + ' removed so far.', 'busy');
+    }
+    stoSay('Removed ' + gone + (gone === 1 ? ' item' : ' items') + ', freed ' + stoBytes(freed)
+      + (undated ? '. ' + undated + ' had no date and were left alone.' : '.'), 'good');
+    await stoLoad();
+  }catch(e){ stoSay(e.message, 'bad'); }
+}
+</script>
 </body>
 </html>
