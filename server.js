@@ -8279,7 +8279,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v212',
+    serverVersion: 'v213',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -13278,6 +13278,312 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   },
 }));
+
+
+/* ==================== STORAGE (server v213) ====================
+   ⚠ WHY THIS EXISTS. Every file uploaded to this site is stored as base64 INSIDE
+   its kv_store row. There is no file bucket. That was a deliberate trade — one
+   database, one backup, no second service to pay for — but it means a 4MB photo
+   from a phone becomes a ~5.4MB database row, and Supabase's free database stops
+   at 500MB.
+
+   Until now there was no way to see what was using the space and no way to clear
+   it without opening the SQL editor. There were per-item Remove buttons, but they
+   are scattered across separate panels, none of them shows a size, and nothing
+   shows a total.
+
+   Broker and admin only. Nothing is deleted unless it is named. There is
+   deliberately no "empty everything" button, and the groups in
+   STORAGE_PROTECTED cannot be deleted through here at all — a deal record with a
+   24MB attachment inside it is still a deal, and freeing space must never be the
+   reason one disappears. Those go from their own panel, which knows how. */
+
+const STORAGE_LIMIT_BYTES = Math.max(0, Number(process.env.STORAGE_LIMIT_BYTES) || 0)
+  || 500 * 1024 * 1024;
+
+/* file:true means rows here normally carry base64, so they are measured a few at a
+   time instead of in big pages. sweep:true means the group may be cleared by age. */
+const STORAGE_KINDS = {
+  'doc:':            { label: 'Agent documents',      note: 'Files and photos agents uploaded from the documents panel', file: true, sweep: true },
+  'cmafile:':        { label: 'CMA PDFs',             note: 'The PDF behind each CMA link sent to a client',             file: true, sweep: true },
+  'receipt:':        { label: 'Expense receipts',     note: 'Receipt photos attached to expenses',                       file: true, sweep: true },
+  'cmar:':           { label: 'Saved CMA reports',    note: 'CMAs saved in the builder to come back to',                 file: true, sweep: true },
+  'marketingScans:': { label: 'Marketing scans',      note: 'Saved marketing scans',                                                 sweep: true },
+  'promo:':          { label: 'Promotions',           note: 'Promotion records',                                                     sweep: true },
+  'openHouse:':      { label: 'Open houses',          note: 'Open house records and who signed in',                                  sweep: true },
+  'tracker:':        { label: 'Transaction trackers', note: 'Trackers shared with clients',                                          sweep: true },
+  'savedSearch:':    { label: 'Saved searches',       note: 'Searches agents and clients saved',                                     sweep: true },
+  'session:':        { label: 'Sign-in sessions',     note: 'Expire on their own. Clearing these signs everyone out — nothing else.', sweep: true },
+  'clientSession:':  { label: 'Client sign-ins',      note: 'Expire on their own',                                                   sweep: true },
+  'clientReset:':    { label: 'Password reset links', note: 'Expire on their own',                                                   sweep: true },
+  'cma:':            { label: 'CMA records',          note: 'Who each CMA went to and when they opened it. Deleting one takes its PDF with it.', sweep: true },
+  'cmaTok:':         { label: 'CMA links',            note: 'The share links for CMAs',                                              sweep: true },
+  'ohTok:':          { label: 'Open house links',     sweep: true },
+  'ssTok:':          { label: 'Saved search links',   sweep: true },
+  'promoTok:':       { label: 'Promotion links',      sweep: true },
+  'trackerTok:':     { label: 'Tracker links',        sweep: true },
+  'quickLinks:':     { label: 'Quick links' },
+  'photohosts':      { label: 'Photo host list' },
+  'agentPublic:':    { label: 'Agent public pages' },
+  'agentProfile:':   { label: 'Agent profiles' },
+  'agentAlerts:':    { label: 'Agent alert settings' },
+  'agentHR:':        { label: 'Agent HR records',     note: 'Pay, licence and onboarding records' },
+  'agentDeals:':     { label: 'Deals',                note: 'Deals, and any files attached inside them. Remove a file from the deal itself.', file: true },
+  'agent:':          { label: 'Agent accounts' },
+  'lead:':           { label: 'Leads',                note: 'Everyone who has ever contacted the site' },
+  'settings:':       { label: 'Site settings',        note: 'Configuration for the whole site' },
+};
+
+/* Deleting one of these to free space would destroy the thing itself, not a copy of
+   it. Each has its own panel that knows how to take a record apart properly. */
+const STORAGE_PROTECTED = ['settings:', 'lead:', 'agent:', 'agentHR:', 'agentDeals:',
+                           'agentProfile:', 'agentPublic:', 'agentAlerts:'];
+
+/* The longest known prefix wins, so 'cmafile:' is never read as 'cma'. An unknown key
+   is grouped by whatever sits before its first colon, which is how a prefix added
+   later shows up here on its own without this list being touched. */
+const STORAGE_PREFIXES = Object.keys(STORAGE_KINDS).sort((a, b) => b.length - a.length);
+
+function storagePrefix(key) {
+  const k = String(key || '');
+  for (const p of STORAGE_PREFIXES) if (k === p || k.startsWith(p)) return p;
+  const i = k.indexOf(':');
+  return i > 0 ? k.slice(0, i + 1) : '(other)';
+}
+
+function storageProtected(prefix) { return STORAGE_PROTECTED.includes(prefix); }
+
+/* What to show a person about one row without showing them the row. Several record
+   shapes, one answer — whichever field actually carries a human-readable name. */
+function storageFacts(key, v) {
+  const o = { name: '', who: '', at: '' };
+  if (!v || typeof v !== 'object') return o;
+  o.name = String(v.name || v.filename || v.address || v.subjectAddress || v.title
+                  || v.leadName || v.label || v.email || '').slice(0, 120);
+  o.who = String(v.agentName || v.agentId || v.owner || '').slice(0, 80);
+  o.at = String(v.uploadedAt || v.createdAt || v.savedAt || v.sentAt || v.at
+                || v.updatedAt || '').slice(0, 40);
+  return o;
+}
+
+/* The date a row is judged by when sweeping. No date at all means it is never old
+   enough to sweep by age — guessing would delete the one row that had no timestamp. */
+function storageAge(v) {
+  const f = storageFacts('', v);
+  if (!f.at) return null;
+  const t = Date.parse(f.at);
+  return Number.isFinite(t) ? t : null;
+}
+
+/* Deleting a CMA record has to take its PDF with it, or the space never comes back
+   and a link is left pointing at a record that is gone. */
+function storageCompanions(key) {
+  const k = String(key || '');
+  if (k.startsWith('cma:')) return ['cmafile:' + k.slice(4)];
+  return [];
+}
+
+/* Every key in the table, with no values at all — a few hundred kilobytes however
+   big the database has become. */
+async function storageAllKeys() {
+  const keys = [];
+  for (let from = 0; from < 40000; from += 1000) {
+    const { data, error } = await supabase.from(KV_TABLE)
+      .select('key').order('key').range(from, from + 999);
+    if (error) throw new Error(error.message);
+    const rows = data || [];
+    for (const r of rows) keys.push(r.key);
+    if (rows.length < 1000) break;
+  }
+  return keys;
+}
+
+/* ⚠ Values are fetched a few rows at a time on purpose. One page of 25 document rows
+   is up to 300MB of base64 in memory and this box does not have it. Sizes are kept,
+   the values are dropped on the next iteration. */
+const STORAGE_MEASURE_CAP = 600;
+
+async function storageMeasure(keys, isFile, onRow) {
+  const page = isFile ? 6 : 150;
+  for (let i = 0; i < keys.length; i += page) {
+    const chunk = keys.slice(i, i + page);
+    const { data, error } = await supabase.from(KV_TABLE).select('key,value').in('key', chunk);
+    if (error) { console.error('[storage] measure failed:', error.message); return false; }
+    for (const row of (data || [])) {
+      let bytes = 0;
+      try { bytes = Buffer.byteLength(JSON.stringify(row.value) ?? '', 'utf8'); } catch (e) { bytes = 0; }
+      onRow(row.key, bytes, row.value);
+    }
+  }
+  return true;
+}
+
+async function storageStaff(req, res) {
+  if (!requireSupabase(res)) return null;
+  const sess = await requireSession(req, res);
+  if (!sess) return null;
+  if (!isStaff(sess)) { res.status(403).json({ error: 'Broker and admin only.' }); return null; }
+  return sess;
+}
+
+app.get('/api/storage/report', async (req, res) => {
+  const sess = await storageStaff(req, res); if (!sess) return;
+
+  let keys;
+  try { keys = await storageAllKeys(); }
+  catch (e) { return res.status(502).json({ error: 'Could not read the database: ' + e.message }); }
+
+  const groups = new Map();
+  for (const key of keys) {
+    const p = storagePrefix(key);
+    if (!groups.has(p)) {
+      const k = STORAGE_KINDS[p] || {};
+      groups.set(p, {
+        prefix: p,
+        label: k.label || p.replace(/:$/, ''),
+        note: k.note || '',
+        file: !!k.file,
+        sweep: !!k.sweep && !storageProtected(p),
+        locked: storageProtected(p),
+        count: 0, bytes: 0, measured: 0, estimated: false,
+        keys: [], items: [],
+      });
+    }
+    const g = groups.get(p);
+    g.keys.push(key);
+    g.count++;
+  }
+
+  for (const g of groups.values()) {
+    const list = g.keys.slice(0, STORAGE_MEASURE_CAP);
+    const ok = await storageMeasure(list, g.file, (key, bytes, value) => {
+      g.bytes += bytes;
+      g.measured++;
+      g.items.push(Object.assign({ key, bytes }, storageFacts(key, value)));
+    });
+    /* A group too big to measure in full is scaled by the average of what was
+       measured, and SAID to be an estimate. A total that is quietly wrong is worse
+       than one that admits it. */
+    if (g.measured < g.count && g.measured > 0) {
+      g.bytes = Math.round(g.bytes / g.measured * g.count);
+      g.estimated = true;
+    }
+    if (!ok) g.estimated = true;
+    g.items.sort((a, b) => b.bytes - a.bytes);
+    g.items = g.items.slice(0, 50);
+  }
+
+  const out = [...groups.values()]
+    .sort((a, b) => b.bytes - a.bytes)
+    .map(({ keys: _k, ...g }) => g);
+
+  res.json({
+    ok: true,
+    total: { rows: keys.length, bytes: out.reduce((s, g) => s + g.bytes, 0) },
+    limitBytes: STORAGE_LIMIT_BYTES,
+    estimated: out.some(g => g.estimated),
+    groups: out,
+  });
+});
+
+app.post('/api/storage/delete', async (req, res) => {
+  const sess = await storageStaff(req, res); if (!sess) return;
+
+  const raw = req.body && req.body.keys;
+  const keys = (Array.isArray(raw) ? raw : []).map(k => String(k || '').slice(0, 200))
+    .filter(Boolean).slice(0, 200);
+  if (!keys.length) return res.status(400).json({ error: 'Nothing was named to delete.' });
+
+  const deleted = [], refused = [];
+  let freed = 0;
+  for (const key of keys) {
+    const prefix = storagePrefix(key);
+    if (storageProtected(prefix)) {
+      refused.push({ key, why: 'Protected. Remove it from its own panel instead.' });
+      continue;
+    }
+    /* Measured before it goes, so the page can say how much came back rather than
+       guessing, and so a key that was never there is reported as such. */
+    const before = await getSetting(key);
+    if (before === null || before === undefined) {
+      refused.push({ key, why: 'Already gone.' });
+      continue;
+    }
+    let bytes = 0;
+    try { bytes = Buffer.byteLength(JSON.stringify(before) ?? '', 'utf8'); } catch (e) { bytes = 0; }
+
+    if (!await delSetting(key)) {
+      refused.push({ key, why: 'The database refused it.' });
+      continue;
+    }
+    freed += bytes;
+    for (const c of storageCompanions(key)) {
+      const cv = await getSetting(c);
+      if (cv === null || cv === undefined) continue;
+      try { freed += Buffer.byteLength(JSON.stringify(cv) ?? '', 'utf8'); } catch (e) {}
+      await delSetting(c);
+    }
+    deleted.push(key);
+  }
+
+  console.log(`[storage] ${sess.name || sess.agentId} deleted ${deleted.length} row(s), `
+    + `${Math.round(freed / 1024)} KB, refused ${refused.length}`);
+  res.json({ ok: true, deleted, refused, freedBytes: freed });
+});
+
+app.post('/api/storage/sweep', async (req, res) => {
+  const sess = await storageStaff(req, res); if (!sess) return;
+
+  const b = req.body || {};
+  if (String(b.confirm || '').trim().toUpperCase() !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm.' });
+  }
+  const prefix = String(b.prefix || '');
+  const kind = STORAGE_KINDS[prefix];
+  if (!kind || !kind.sweep || storageProtected(prefix)) {
+    return res.status(400).json({ error: 'That group cannot be cleared from here.' });
+  }
+  const days = Math.max(1, Math.min(3650, Number(b.olderThanDays) || 0));
+  const cutoff = Date.now() - days * 86400000;
+
+  let keys;
+  try { keys = (await storageAllKeys()).filter(k => storagePrefix(k) === prefix); }
+  catch (e) { return res.status(502).json({ error: 'Could not read the database: ' + e.message }); }
+
+  /* One call clears at most this many, and says how many are left, so a sweep over a
+     very large group cannot sit there until the request times out. */
+  const BATCH = 300;
+  const batch = keys.slice(0, BATCH);
+  const doomed = [];
+  let undated = 0;
+  await storageMeasure(batch, !!kind.file, (key, bytes, value) => {
+    const at = storageAge(value);
+    if (at === null) { undated++; return; }   /* no date, never swept by age */
+    if (at < cutoff) doomed.push({ key, bytes });
+  });
+
+  let freed = 0, gone = 0;
+  for (const d of doomed) {
+    if (!await delSetting(d.key)) continue;
+    freed += d.bytes;
+    gone++;
+    for (const c of storageCompanions(d.key)) {
+      const cv = await getSetting(c);
+      if (cv === null || cv === undefined) continue;
+      try { freed += Buffer.byteLength(JSON.stringify(cv) ?? '', 'utf8'); } catch (e) {}
+      await delSetting(c);
+    }
+  }
+
+  console.log(`[storage] ${sess.name || sess.agentId} swept ${gone} ${prefix} row(s) `
+    + `older than ${days}d, ${Math.round(freed / 1024)} KB`);
+  res.json({
+    ok: true, prefix, olderThanDays: days,
+    deleted: gone, freedBytes: freed,
+    undated, scanned: batch.length,
+    remaining: Math.max(0, keys.length - batch.length),
+  });
+});
 
 // Anything that isn't a file or an API call is treated as an agent slug and
 // handed to the app, which resolves it client-side.
