@@ -8279,7 +8279,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v211',
+    serverVersion: 'v212',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -10406,6 +10406,41 @@ function docSniff(raw) {
 
 function docKey(id) { return 'doc:' + String(id || '').slice(0, 80); }
 
+/* ⚠ AN <img> TAG CANNOT SEND AN AUTHORIZATION HEADER. Sessions here are Bearer
+   tokens, which JavaScript attaches to fetch() calls — but a thumbnail is an
+   <img src>, and a PDF opened in a new tab is a navigation. Neither carries the
+   header, so both came back 401 and every thumbnail was a broken image.
+
+   So a document URL carries its own short-lived pass: the id, an expiry, and an
+   HMAC of both. Unguessable without the secret, dead after two hours, and only
+   ever handed to somebody who already passed the ownership check on the listing.
+   A link that leaks stops working the same afternoon.
+
+   ⚠ Falls back to the session when no pass is present, so a direct fetch() with
+   the header still works exactly as before. */
+const DOC_PASS_TTL_MS = 2 * 60 * 60 * 1000;
+const DOC_PASS_SECRET = process.env.HR_ENCRYPTION_KEY
+  || process.env.SUPABASE_SERVICE_KEY || process.env.BROKER_SETUP_KEY || 'avani-doc-pass';
+
+function docPass(id, until) {
+  const exp = until || (Date.now() + DOC_PASS_TTL_MS);
+  const sig = crypto.createHmac('sha256', DOC_PASS_SECRET)
+    .update(String(id) + '.' + exp).digest('hex').slice(0, 24);
+  return exp + '.' + sig;
+}
+
+function docPassValid(id, pass) {
+  const p = String(pass || '');
+  const i = p.indexOf('.');
+  if (i < 1) return false;
+  const exp = Number(p.slice(0, i));
+  if (!isFinite(exp) || exp < Date.now()) return false;
+  const want = docPass(id, exp);
+  /* Constant time, so the signature cannot be guessed a character at a time. */
+  const a = Buffer.from(p), b = Buffer.from(want);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 /* An agent sees their own; staff see everything, the same rule as deals. */
 function docMayTouch(sess, rec) {
   if (!rec) return false;
@@ -10467,10 +10502,12 @@ app.post('/api/docs', async (req, res) => {
   res.json({ ok: true, doc: docMeta(rec) });
 });
 
-/* What a list needs: everything except the file itself. */
+/* What a list needs: everything except the file itself, plus a URL that an
+   <img> or a new tab can actually open. */
 function docMeta(rec) {
   if (!rec) return null;
   const { dataBase64, ...meta } = rec;
+  meta.url = '/api/docs/' + rec.id + '?p=' + docPass(rec.id);
   return meta;
 }
 
@@ -10502,10 +10539,23 @@ app.get('/api/docs', async (req, res) => {
    whatever app the agent wants to send it with. */
 app.get('/api/docs/:id', async (req, res) => {
   if (!requireSupabase(res)) return;
-  const sess = await requireSession(req, res); if (!sess) return;
-  const rec = await getSetting(docKey(req.params.id));
+  const id = String(req.params.id || '');
+  const pass = String(req.query.p || '');
+
+  /* The pass first, because that is what an <img> or a new tab can send. */
+  if (pass) {
+    if (!docPassValid(id, pass)) {
+      return res.status(403).json({ error: 'That link has expired. Reopen the record.' });
+    }
+  } else {
+    const sess = await requireSession(req, res); if (!sess) return;
+    const owned = await getSetting(docKey(id));
+    if (!owned) return res.status(404).json({ error: 'That document is not here.' });
+    if (!docMayTouch(sess, owned)) return res.status(403).json({ error: 'That is not yours.' });
+  }
+
+  const rec = await getSetting(docKey(id));
   if (!rec) return res.status(404).json({ error: 'That document is not here.' });
-  if (!docMayTouch(sess, rec)) return res.status(403).json({ error: 'That is not yours.' });
 
   const raw = String(rec.dataBase64 || '').replace(/^data:[^,]*,/, '');
   const buf = Buffer.from(raw, 'base64');
