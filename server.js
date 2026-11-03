@@ -1055,6 +1055,24 @@ app.get('/api/listing/:key', async (req, res) => {
        of those working. */
     const one = await mlsFindByKey(key);
     if (!one) return res.status(404).json({ error: 'Listing not found.' });
+
+    /* ⚠ THIS ROUTE WAS STATUS-BLIND AND HAS NO SESSION, so anyone with a listing
+       key — printed on a sign, guessed, or kept from months ago — could read the
+       full record of an expired, withdrawn or canceled listing. The /listing/:key
+       SHARE page has always filtered to Active; its JSON twin never did.
+
+       It cannot simply be locked down: the CMA builder and the comps drawer both
+       fetch through here and legitimately need sold and off-market records. So the
+       session decides. A signed-in agent gets everything; the public gets the four
+       statuses the public search allows. The fetch wrapper in the front end already
+       sends an agent's token on every request, so neither caller changes. */
+    const sess = await getSession(req);
+    if (!sess) {
+      const st = String(one.StandardStatus || '');
+      if (!PUBLIC_STATUSES.includes(st)) {
+        return res.status(404).json({ error: 'Listing not found.' });
+      }
+    }
     notePhotoHosts(one);
     res.json({ value: [one] });
   } catch (e) {
@@ -1063,8 +1081,364 @@ app.get('/api/listing/:key', async (req, res) => {
   }
 });
 
+/* ==================== WHAT THE PUBLIC MAY SEE (server v216) ====================
+   ⚠ /api/search took `q.status` and dropped it straight into the OData filter, and
+   the status dropdown on the website offered Canceled, Expired and Withdrawn. So
+   the public site would show — and a bare URL would return — listings whose
+   sellers are no longer under contract with anyone. That is information the MLS
+   shares between its members; it is not ours to publish.
+
+   The allowlist lives HERE, on the server, and not in the dropdown, because a
+   dropdown is not a control. Anyone who can read the page can send any query
+   string they like, and /api/search has no session at all.
+
+   Four statuses are permitted in public: for sale, under contract, pending, sold.
+   Everything else is members-only and belongs behind a sign-in — see /api/prospect. */
+const PUBLIC_STATUSES = ['Active', 'Active Under Contract', 'Pending', 'Closed'];
+
+/* Returns the canonical status, or null for "not asked", or false for "asked for
+   something not allowed". Matching is case- and space-insensitive so that
+   ?status=withdrawn and ?status=%20WITHDRAWN%20 are both refused by the same
+   branch rather than one of them sliding past as an unknown value. */
+function publicStatus(v) {
+  const want = String(v == null ? '' : v).trim().replace(/\s+/g, ' ');
+  if (!want) return null;
+  return PUBLIC_STATUSES.find(s => s.toLowerCase() === want.toLowerCase()) || false;
+}
+
+/* ==================== WHAT KINDS OF PROPERTY (server v216) ====================
+   The public search could pick Residential / Land / Commercial / Lease but not
+   "detached house, not a condo", which is the first thing most buyers want to say.
+   PropertySubType carries that.
+
+   The options are read from the feed rather than typed here, because a hardcoded
+   list is wrong the moment the MLS adds a subtype, and silently wrong — a filter
+   for something nobody uses returns nothing and looks broken. */
+let ptypeCache = null, ptypeCachedAt = 0;
+const PTYPE_TTL_MS = 12 * 60 * 60 * 1000;
+
+/* If the feed cannot be reached the picker must still work, so it falls back to the
+   RESO standard subtypes. Marked as a fallback in the response so the front end can
+   say so rather than quietly showing a guess. */
+const PTYPE_FALLBACK = [
+  { type: 'Residential', subTypes: ['Single Family Residence', 'Condominium', 'Townhouse',
+      'Duplex', 'Triplex', 'Quadruplex', 'Manufactured Home', 'Mobile Home',
+      'Cabin', 'Apartment'] },
+  { type: 'Residential Lease', subTypes: ['Single Family Residence', 'Condominium', 'Townhouse', 'Apartment'] },
+  { type: 'Land', subTypes: ['Unimproved Land', 'Farm', 'Ranch'] },
+  { type: 'Commercial Sale', subTypes: ['Office', 'Retail', 'Industrial', 'Mixed Use', 'Warehouse', 'Hotel Motel'] },
+  { type: 'Commercial Lease', subTypes: ['Office', 'Retail', 'Industrial', 'Mixed Use', 'Warehouse'] },
+];
+
+async function propertyTypeOptions() {
+  if (ptypeCache && Date.now() - ptypeCachedAt < PTYPE_TTL_MS) return ptypeCache;
+  if (!mlsConfigured()) return { groups: PTYPE_FALLBACK, fromFeed: false, sampled: 0 };
+  try {
+    /* A wide sample of what is actually on the market, across every feed. Only the
+       two fields are selected, so this is cheap even at 1,000 rows a feed. */
+    const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, {
+      $top: 1000, $filter: STATUS_CLAUSE, $select: 'PropertyType,PropertySubType',
+    })));
+    const rows = [];
+    for (const r of results) if (r.ok) rows.push(...r.rows);
+    if (!rows.length) throw new Error('no rows');
+
+    const byType = new Map();
+    for (const x of rows) {
+      const t = String(x.PropertyType || '').trim();
+      const st = String(x.PropertySubType || '').trim();
+      if (!t) continue;
+      if (!byType.has(t)) byType.set(t, new Map());
+      if (st) {
+        const m = byType.get(t);
+        m.set(st, (m.get(st) || 0) + 1);
+      }
+    }
+    const groups = [...byType.entries()]
+      .map(([type, m]) => ({
+        type,
+        subTypes: [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k),
+        counts: Object.fromEntries(m),
+      }))
+      .sort((a, b) => a.type.localeCompare(b.type));
+    ptypeCache = { groups, fromFeed: true, sampled: rows.length, at: new Date().toISOString() };
+    ptypeCachedAt = Date.now();
+    return ptypeCache;
+  } catch (e) {
+    console.error('[property types] falling back to the standard list:', e.message);
+    return { groups: PTYPE_FALLBACK, fromFeed: false, sampled: 0, error: e.message };
+  }
+}
+
+app.get('/api/property-types', async (req, res) => {
+  const out = await propertyTypeOptions();
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.json(out);
+});
+
+/* Turns a comma-separated list of subtypes into one OData group. These are filter
+   VALUES, not permissions, so there is nothing to allow or deny — but they are
+   still escaped and capped, because an unbounded list in a URL is a way to make the
+   feed do arbitrary work. */
+function subTypeClause(raw, esc) {
+  const wanted = String(raw || '').split(',')
+    .map(x => x.trim()).filter(Boolean).slice(0, 12);
+  if (!wanted.length) return null;
+  return '(' + wanted.map(x => `PropertySubType eq '${esc(x)}'`).join(' or ') + ')';
+}
+
 // Server-side search. Sends the filters to Bridge so results cover all ~3,800
 // active listings instead of only the batch we cache for the homepage.
+/* ==================== PROSPECTING: OFF-MARKET LISTINGS (server v216) ====================
+   Expired, withdrawn and canceled listings, for agents only.
+
+   ⚠ WHY THIS IS NOT ON THE PUBLIC SEARCH AND MUST NOT BE. These are listings whose
+   sellers are no longer under contract with anybody. The MLS shares them between
+   its members; publishing them is not ours to do. requireSession is the whole
+   reason this route can exist at all, and /api/search refuses these statuses.
+
+   ⚠ AND WHY IT CHECKS FOR A RELIST. An expired listing is only a lead if the house
+   is still unsold and unlisted. Call the owner of one that came back on the market
+   with another brokerage three weeks ago and you have told them you are not paying
+   attention. So every row is checked against what is on the market NOW at the same
+   address, and says so: relisted, under contract, sold, or genuinely off market.
+
+   That check is one query per city, not one per listing. Addresses are matched on a
+   normalized key, because the same house is 'is 123 Oak Dr.' in one record and
+   '123 OAK DRIVE' in another. */
+
+const PROSPECT_STATUSES = ['Expired', 'Withdrawn', 'Canceled'];
+
+/* What counts as "it is back" when checking an off-market address. Closed is in
+   here on purpose: a house that SOLD is the most important thing to know about and
+   the easiest mistake to make. */
+const PROSPECT_CURRENT = ['Active', 'Active Under Contract', 'Pending', 'Closed'];
+
+/* Street suffixes and unit words, so '123 Oak Dr' and '123 OAK DRIVE' are one key.
+   Deliberately conservative — anything not in this list is left alone rather than
+   guessed at, because collapsing two different addresses into one key would report
+   a relist that is not there. */
+const ADDR_WORDS = {
+  avenue:'ave', av:'ave', ave:'ave',
+  boulevard:'blvd', blvd:'blvd',
+  circle:'cir', cir:'cir',
+  court:'ct', ct:'ct',
+  cove:'cv', cv:'cv',
+  drive:'dr', dr:'dr',
+  highway:'hwy', hwy:'hwy',
+  lane:'ln', ln:'ln',
+  loop:'loop',
+  parkway:'pkwy', pkwy:'pkwy',
+  place:'pl', pl:'pl',
+  road:'rd', rd:'rd',
+  square:'sq', sq:'sq',
+  street:'st', st:'st',
+  terrace:'ter', ter:'ter',
+  trail:'trl', trl:'trl',
+  way:'way',
+  north:'n', n:'n', south:'s', s:'s', east:'e', e:'e', west:'w', w:'w',
+  northeast:'ne', ne:'ne', northwest:'nw', nw:'nw',
+  southeast:'se', se:'se', southwest:'sw', sw:'sw',
+  apartment:'unit', apt:'unit', unit:'unit', suite:'unit', ste:'unit', '#':'unit',
+};
+
+/* ⚠ The unit number is KEPT. In Gulf Shores and Orange Beach a great many of these
+   are condos, where '27500 Perdido Beach Blvd' is several hundred different homes.
+   Dropping the unit would report every one of them as relisted the moment any one
+   of them came back on the market. */
+function addrKey(addr, city) {
+  let t = String(addr || '').toLowerCase();
+  t = t.replace(/[.,]/g, ' ').replace(/#/g, ' # ');
+  const words = t.split(/\s+/).filter(Boolean)
+    .map(w => (ADDR_WORDS[w] !== undefined ? ADDR_WORDS[w] : w));
+  const norm = words.join(' ').replace(/\s+/g, ' ').trim();
+  if (!norm) return '';
+  return norm + '|' + String(city || '').toLowerCase().replace(/[^a-z]/g, '');
+}
+
+const PROSPECT_SELECT = ['ListingKey','UnparsedAddress','City','PostalCode','StateOrProvince',
+  'StandardStatus','MlsStatus','ListPrice','OriginalListPrice','ClosePrice','CloseDate',
+  'PropertyType','PropertySubType','BedroomsTotal','BathroomsTotalInteger','LivingArea',
+  'LotSizeAcres','YearBuilt','OnMarketDate','OffMarketDate','ModificationTimestamp',
+  'DaysOnMarket','ListAgentFullName','ListOfficeName','Latitude','Longitude'].join(',');
+
+app.get('/api/prospect', async (req, res) => {
+  res.set('Cache-Control', 'no-store, must-revalidate');
+  /* The one line that makes the rest of this route lawful. */
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const q = req.query || {};
+  const esc = v => String(v).replace(/'/g, "''");
+  const num = v => { const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10); return isNaN(n) ? null : n; };
+
+  /* Which off-market statuses. Anything not on the list is ignored rather than
+     passed to the feed. */
+  const wanted = String(q.statuses || PROSPECT_STATUSES.join(','))
+    .split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+  const statuses = PROSPECT_STATUSES.filter(s => wanted.includes(s.toLowerCase()));
+  if (!statuses.length) {
+    return res.status(400).json({ error: 'Pick at least one of Expired, Withdrawn or Canceled.',
+                                  allowed: PROSPECT_STATUSES });
+  }
+
+  const parts = ['(' + statuses.map(x => `StandardStatus eq '${x}'`).join(' or ') + ')'];
+
+  if (q.city && String(q.city).trim()) {
+    const c = esc(String(q.city).trim());
+    parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}') or PostalCode eq '${c}')`);
+  }
+  const ptype = String(q.ptype || '').trim();
+  if (ptype === 'land') parts.push(`PropertyType eq 'Land'`);
+  else if (ptype === 'commercial') parts.push(`(PropertyType eq 'Commercial Sale' or PropertyType eq 'Commercial Lease')`);
+  else if (ptype === 'residential') parts.push(`PropertyType eq 'Residential'`);
+  const subClause = subTypeClause(q.subtype, esc);
+  if (subClause) parts.push(subClause);
+
+  const min = num(q.min); if (min) parts.push(`ListPrice ge ${min}`);
+  const max = num(q.max); if (max) parts.push(`ListPrice le ${max}`);
+  const beds = num(q.beds); if (beds) parts.push(`BedroomsTotal ge ${beds}`);
+
+  /* How far back to look. Default a year: older than that and the seller has
+     usually either moved on or forgotten they ever listed. */
+  const days = Math.max(1, Math.min(1825, num(q.days) || 365));
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+  const top = Math.min(num(q.top) || 100, 200);
+
+  let offMarket = [];
+  let dateFiltered = true;
+  try {
+    /* ⚠ OffMarketDate is not reliably populated in every feed, and a bound on a
+       field that is empty removes the row. Try the dated query, and if it comes
+       back empty fall back to undated and filter in code — the same ladder the
+       closed-comps query needed for CloseDate. */
+    let r = await mlsQuery({
+      filter: [...parts, `OffMarketDate ge ${since}`].join(' and '),
+      top, orderby: 'OffMarketDate desc', count: false, select: PROSPECT_SELECT, county: true,
+    });
+    if (!r.value.length) {
+      dateFiltered = false;
+      r = await mlsQuery({
+        filter: parts.join(' and '), top,
+        orderby: 'ModificationTimestamp desc', count: false, select: PROSPECT_SELECT, county: true,
+      });
+    }
+    offMarket = r.value || [];
+  } catch (e) {
+    console.error('[prospect] off-market query failed:', e.message);
+    return res.status(502).json({ error: 'The MLS would not answer that search: ' + e.message });
+  }
+
+  if (!dateFiltered) {
+    const cut = Date.now() - days * 86400000;
+    offMarket = offMarket.filter(x => {
+      const t = Date.parse(x.OffMarketDate || x.ModificationTimestamp || '');
+      return !Number.isFinite(t) || t >= cut;
+    });
+  }
+
+  /* ---------- is it back on the market? ----------
+     One query per distinct city rather than one per listing. */
+  const cities = [...new Set(offMarket.map(x => String(x.City || '').trim()).filter(Boolean))].slice(0, 12);
+  const current = new Map();
+  let relistChecked = true;
+  try {
+    const clause = '(' + PROSPECT_CURRENT.map(x => `StandardStatus eq '${x}'`).join(' or ') + ')';
+    for (const city of cities) {
+      const r = await mlsQuery({
+        filter: [clause, `City eq '${esc(city)}'`].join(' and '),
+        top: 200, orderby: 'ModificationTimestamp desc', count: false,
+        select: PROSPECT_SELECT, county: true,
+      });
+      for (const row of (r.value || [])) {
+        const k = addrKey(row.UnparsedAddress, row.City);
+        if (!k) continue;
+        /* Keep the most telling one. A house that is Closed outranks one that is
+           merely Active, because "it sold" is the thing you most need to know. */
+        const prev = current.get(k);
+        const rank = x => PROSPECT_CURRENT.indexOf(String(x.StandardStatus || ''));
+        if (!prev || rank(row) > rank(prev)) current.set(k, row);
+      }
+    }
+  } catch (e) {
+    /* ⚠ A failed check must not be reported as "not relisted" — that is the
+       answer that gets an agent to make the wrong call. Say it was not checked. */
+    console.error('[prospect] relist check failed:', e.message);
+    relistChecked = false;
+  }
+
+  const WORD = { 'Active':'back on the market', 'Active Under Contract':'back on, under contract',
+                 'Pending':'back on, pending', 'Closed':'sold' };
+
+  const rows = offMarket.map(x => {
+    const key = addrKey(x.UnparsedAddress, x.City);
+    const now = relistChecked && key ? current.get(key) : null;
+    const offAt = x.OffMarketDate || x.ModificationTimestamp || '';
+    /* ⚠ The seller's address opt-out (s.18.2.3) strips UnparsedAddress server-side,
+       so there is nothing to match on. Reporting that as "not relisted" would be
+       the single most expensive mistake this route could make — it is the answer
+       that gets an agent to phone the owner of a house that sold in August. A row
+       that could not be checked says so. */
+    const noAddress = !key;
+    return {
+      listingKey: x.ListingKey, address: x.UnparsedAddress || '', city: x.City || '',
+      postalCode: x.PostalCode || '', state: x.StateOrProvince || '',
+      status: x.StandardStatus || '', listPrice: x.ListPrice || null,
+      originalListPrice: x.OriginalListPrice || null,
+      ptype: x.PropertyType || '', subType: x.PropertySubType || '',
+      beds: x.BedroomsTotal || null, baths: x.BathroomsTotalInteger || null,
+      sqft: x.LivingArea || null, acres: x.LotSizeAcres || null,
+      yearBuilt: x.YearBuilt || null,
+      onMarketDate: x.OnMarketDate || '', offMarketDate: offAt,
+      daysOffMarket: offAt && Number.isFinite(Date.parse(offAt))
+        ? Math.round((Date.now() - Date.parse(offAt)) / 86400000) : null,
+      listAgent: x.ListAgentFullName || '', listOffice: x.ListOfficeName || '',
+      lat: x.Latitude || null, lng: x.Longitude || null,
+      /* The part that decides whether this is a lead at all. */
+      addressWithheld: !!x._addressWithheld,
+      relist: noAddress ? { checked: false, why: 'the seller withheld the address' }
+        : !relistChecked ? { checked: false, why: 'the check could not be run' }
+        : now ? {
+            checked: true, found: true,
+            status: now.StandardStatus,
+            word: WORD[now.StandardStatus] || now.StandardStatus,
+            listingKey: now.ListingKey,
+            price: now.StandardStatus === 'Closed' ? (now.ClosePrice || null) : (now.ListPrice || null),
+            closeDate: now.CloseDate || '',
+            office: now.ListOfficeName || '',
+            sameOffice: !!now.ListOfficeName && now.ListOfficeName === BROKERAGE_NAME,
+          }
+        : { checked: true, found: false },
+    };
+  });
+
+  /* Checked and genuinely off market first — those are the only ones worth a phone
+     call. Then the ones nobody could check. Relisted and sold last. */
+  const weight = r => (r.relist.found ? 2 : r.relist.checked ? 0 : 1);
+  rows.sort((a, b) => weight(a) - weight(b)
+    || String(b.offMarketDate).localeCompare(String(a.offMarketDate)));
+
+  /* Three counts, not two. "Still off market" means CHECKED and not found; a row
+     that could not be checked is its own number so it cannot pad the good one. */
+  const open      = rows.filter(r => r.relist.checked && !r.relist.found).length;
+  const back      = rows.filter(r => r.relist.found).length;
+  const unchecked = rows.filter(r => !r.relist.checked).length;
+  console.log(`[prospect] ${sess.name || sess.agentId}: ${rows.length} off-market, `
+    + `${open} still off market, ${back} back on, ${unchecked} unverified, `
+    + `cities checked ${cities.length}`);
+
+  res.json({
+    ok: true, statuses, days, dateFiltered,
+    count: rows.length,
+    stillOffMarket: open,
+    relisted: back,
+    unchecked,
+    relistChecked, citiesChecked: cities.length,
+    rows,
+  });
+});
+
 // Diagnostic: what does this dataset actually put in CountyOrParish / City?
 app.get('/api/mls-fields', async (req, res) => {
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
@@ -1126,7 +1500,17 @@ app.get('/api/search', async (req, res) => {
   const num = v => { const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10); return isNaN(n) ? null : n; };
 
   const parts = [];
-  const status = (q.status || '').trim();
+  /* ⚠ null = not asked for, false = asked for and NOT PERMITTED. Refused with a
+     400 rather than quietly swapped for Active, because a search that silently
+     returns something other than what was asked for is how you end up believing
+     the filter works. */
+  const status = publicStatus(q.status);
+  if (status === false) {
+    return res.status(400).json({
+      error: 'That status is not available on the public search.',
+      allowed: PUBLIC_STATUSES,
+    });
+  }
   if (status) {
     parts.push(`StandardStatus eq '${esc(status)}'`);
   } else {
@@ -1148,6 +1532,11 @@ app.get('/api/search', async (req, res) => {
   } else if (ptype === 'residential') {
     parts.push(`PropertyType eq 'Residential'`);
   }
+  /* "A detached house, not a condo" — the first thing most buyers want to say, and
+     the one thing the public search could not express. */
+  const subClause = subTypeClause(q.subtype, esc);
+  if (subClause) parts.push(subClause);
+
   const beds = num(q.beds);   if (beds)  parts.push(`BedroomsTotal ge ${beds}`);
   const min  = num(q.min);    if (min)   parts.push(`ListPrice ge ${min}`);
   const max  = num(q.max);    if (max)   parts.push(`ListPrice le ${max}`);
@@ -8416,7 +8805,10 @@ app.get('/api/mls-test', async (req, res) => {
         error: `No live feed called '${wanted}'.`,
         live: mlsSources().map(s => s.id) });
     }
-    const data = await mlsFetchOne(src, { $top: 1 });
+    /* ⚠ A public diagnostic that returned one arbitrary row — which could be an
+       expired or withdrawn listing. Sampling from the permitted statuses keeps the
+       field list useful without publishing a record we may not publish. */
+    const data = await mlsFetchOne(src, { $top: 1, $filter: STATUS_CLAUSE });
     if (!data.ok) {
       return res.status(502).json({ ok: false, source: src.id, dataset: src.dataset,
                                     status: data.status, error: data.detail });
@@ -8456,7 +8848,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v215',
+    serverVersion: 'v216',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
