@@ -40,7 +40,7 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 .search-panel{max-width:960px;margin:-34px auto 60px;background:var(--white);
   border:1px solid var(--line);border-radius:10px;
   box-shadow:0 24px 48px rgba(21,65,196,.10);position:relative;z-index:6;overflow:hidden}
-.sp-main{display:grid;grid-template-columns:1.6fr 1fr 1fr 1.4fr auto;
+.sp-main{display:grid;grid-template-columns:1.6fr 1fr 1fr 1.4fr;
   gap:16px;align-items:end;padding:20px 22px}
 .sp-main .f{min-width:0}
 .search .f label,.more-f .f label{display:block;font-size:10.5px;letter-spacing:.16em;
@@ -61,7 +61,8 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 .sp-price .price-pair{display:flex;align-items:center;gap:8px}
 .sp-price .price-pair input{text-align:left}
 .sp-price .dash{color:var(--driftwood);flex:0 0 auto}
-.sp-go{display:flex;gap:8px;align-items:end}
+.sp-go{display:flex;gap:8px;align-items:end;padding:0 22px 20px;justify-content:flex-start}
+.sp-go .btn{min-width:190px}
 .sp-go .btn{padding:12px 26px;white-space:nowrap}
 /* The quick price chips sit on their own row so they can never squeeze a field. */
 .sp-chips{display:flex;gap:7px;flex-wrap:wrap;padding:0 22px 16px}
@@ -94,8 +95,9 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
   .sp-main{grid-template-columns:1fr 1fr;gap:14px;padding:18px}
   .sp-main .f-where{grid-column:1 / -1}
   .sp-price{grid-column:1 / -1}
-  .sp-go{grid-column:1 / -1}
-  .sp-go .btn{width:100%;text-align:center}
+  /* On a phone it is the full width of the card — it is the only thing to press. */
+  .sp-go{padding:0 18px 18px}
+  .sp-go .btn{width:100%;text-align:center;min-width:0}
   .sp-chips{padding:0 18px 14px}
   .search{margin:-24px 14px 0}
 }
@@ -114,7 +116,11 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 #city-hint button:last-child{border-bottom:0}
 #city-hint button.on,#city-hint button:hover{background:#F6EEDC}
 #city-hint button span{font-size:12.5px;color:var(--driftwood);font-variant-numeric:tabular-nums}
-.search-bar select,.search-bar input{flex:1;min-width:120px;border:1px solid var(--line);border-radius:2px;padding:11px 12px;font-family:'Public Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--sand-light)}.search-bar button{background:transparent;color:var(--marsh);border:1px solid var(--marsh);border-radius:2px;padding:11px 26px;font-weight:600;font-size:12.5px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap}.search-bar button:hover{background:var(--marsh);color:var(--sand-light)}.section{max-width:1180px;margin:0 auto;padding:8px 32px 64px}.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:8px}.section-head h2{font-size:28px}.section-head .count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--driftwood)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px}.card{background:var(--white);border-radius:2px;overflow:hidden;border:1px solid var(--line);transition:transform 0.15s ease,box-shadow 0.15s ease;display:flex;flex-direction:column}.card:hover{transform:translateY(-3px);box-shadow:0 18px 34px rgba(21,65,196,0.12)}.card-photo{height:170px;position:relative;display:flex;align-items:center;justify-content:center}.card-photo svg{width:54px;height:54px;opacity:0.55}.status-badge{position:absolute;top:10px;left:10px;background:var(--white);color:var(--marsh);font-family:'Public Sans',sans-serif;font-weight:600;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border-radius:1px;border:1px solid rgba(21,65,196,0.25)}.status-badge.pending{color:var(--driftwood);border-color:var(--line)}.price-tag{position:absolute;bottom:-15px;right:14px;background:var(--marsh);color:var(--sand-light);font-family:'Fraunces',serif;font-weight:500;font-size:18px;padding:7px 15px 8px;border-radius:1px;box-shadow:0 8px 18px rgba(21,65,196,0.28);border:1px solid rgba(201,151,31,0.5)}.card-body{padding:22px 18px 18px;flex:1;display:flex;flex-direction:column}.card-body h3{font-size:17px;margin-bottom:2px}.card-loc{font-size:13px;color:var(--driftwood);margin-bottom:12px}.card-stats{display:flex;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--marsh);margin-bottom:14px}.price-tag.sold{background:var(--marsh-deep,#1B3670);border-color:rgba(255,255,255,.35)}.status-badge.sold{color:#2E8C5A;border-color:rgba(46,140,90,.45)}.status-badge.off{color:#8C93AD;border-color:rgba(140,147,173,.45)}.card-sold{font-size:13.5px;color:var(--ink);background:var(--sand-light);border-left:3px solid #2E8C5A;padding:8px 11px;margin-bottom:12px;line-height:1.5}.card-sold strong{font-weight:600}.card-mls{font-family:'Public Sans',sans-serif;font-size:15px;color:var(--ink);margin-bottom:14px;line-height:1.45}.card-cta{margin-top:auto;border:1px solid var(--marsh);background:transparent;color:var(--marsh);padding:10px;border-radius:2px;font-weight:600;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase}.card-cta:hover{background:var(--marsh);color:var(--sand-light)}.placeholder-note{background:#FDF3E9;border:1px solid #EBD5B8;border-radius:5px;padding:12px 16px;font-size:12.5px;color:#7A5B32;margin-bottom:26px;line-height:1.5}.lead-band{background:var(--marsh-deep);padding:64px 32px}.lead-band-inner{max-width:1180px;margin:0 auto}.lead-band h2{color:var(--sand-light);font-size:26px;text-align:center;margin-bottom:10px;font-weight:400}.lead-band .sub{color:rgba(250,246,236,0.6);text-align:center;margin-bottom:38px;font-size:13.5px;letter-spacing:0.02em}.lead-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:rgba(201,151,31,0.25);border:1px solid rgba(201,151,31,0.25)}
+.search-bar select,.search-bar input{flex:1;min-width:120px;border:1px solid var(--line);border-radius:2px;padding:11px 12px;font-family:'Public Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--sand-light)}.search-bar button{background:transparent;color:var(--marsh);border:1px solid var(--marsh);border-radius:2px;padding:11px 26px;font-weight:600;font-size:12.5px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap}.search-bar button:hover{background:var(--marsh);color:var(--sand-light)}.section{max-width:1180px;margin:0 auto;padding:8px 32px 64px}.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:8px}.section-head h2{font-size:28px}.section-head .count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--driftwood)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px}.card{background:var(--white);border-radius:2px;overflow:hidden;border:1px solid var(--line);transition:transform 0.15s ease,box-shadow 0.15s ease;display:flex;flex-direction:column}.card:hover{transform:translateY(-3px);box-shadow:0 18px 34px rgba(21,65,196,0.12)}.card-photo{height:170px;position:relative;display:flex;align-items:center;justify-content:center}.card-photo svg{width:54px;height:54px;opacity:0.55}.status-badge{position:absolute;top:10px;left:10px;background:var(--white);color:var(--marsh);font-family:'Public Sans',sans-serif;font-weight:600;font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;border-radius:1px;border:1px solid rgba(21,65,196,0.25)}.status-badge.pending{color:var(--driftwood);border-color:var(--line)}.price-tag{position:absolute;bottom:-15px;right:14px;background:var(--marsh);color:var(--sand-light);font-family:'Fraunces',serif;font-weight:500;font-size:18px;padding:7px 15px 8px;border-radius:1px;box-shadow:0 8px 18px rgba(21,65,196,0.28);border:1px solid rgba(201,151,31,0.5)}.card-body{padding:22px 18px 18px;flex:1;display:flex;flex-direction:column}.card-body h3{font-size:17px;margin-bottom:2px}.card-loc{font-size:13px;color:var(--driftwood);margin-bottom:12px}.card-stats{display:flex;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--marsh);margin-bottom:14px}.price-tag.sold{background:var(--marsh-deep,#1B3670);border-color:rgba(255,255,255,.35)}.status-badge.sold{color:#2E8C5A;border-color:rgba(46,140,90,.45)}.status-badge.off{color:#8C93AD;border-color:rgba(140,147,173,.45)}.card-sold{font-size:13.5px;color:var(--ink);background:var(--sand-light);border-left:3px solid #2E8C5A;padding:8px 11px;margin-bottom:12px;line-height:1.5}.card-sold strong{font-weight:600}.card-mls{font-family:'Public Sans',sans-serif;font-size:15px;color:var(--ink);margin-bottom:14px;line-height:1.45}.card-cta{margin-top:auto;border:1px solid var(--marsh);background:transparent;color:var(--marsh);padding:10px;border-radius:2px;font-weight:600;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase}.card-cta:hover{background:var(--marsh);color:var(--sand-light)}#mls-note-foot{padding-bottom:0}
+#mls-note-foot .mls-copy{display:block;margin-top:4px;opacity:.75}
+/* Sample data is a warning wherever it appears; the licence notice is not. */
+#mls-note-foot:has(strong){color:#C9971F}
+.placeholder-note{background:#FDF3E9;border:1px solid #EBD5B8;border-radius:5px;padding:12px 16px;font-size:12.5px;color:#7A5B32;margin-bottom:26px;line-height:1.5}.lead-band{background:var(--marsh-deep);padding:64px 32px}.lead-band-inner{max-width:1180px;margin:0 auto}.lead-band h2{color:var(--sand-light);font-size:26px;text-align:center;margin-bottom:10px;font-weight:400}.lead-band .sub{color:rgba(250,246,236,0.6);text-align:center;margin-bottom:38px;font-size:13.5px;letter-spacing:0.02em}.lead-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:rgba(201,151,31,0.25);border:1px solid rgba(201,151,31,0.25)}
 .lead-card h3{text-wrap:balance}.lead-card{background:var(--marsh-deep);border:none;padding:32px 26px;color:var(--sand-light);text-align:center}.lead-card svg{width:26px;height:26px;margin-bottom:14px;color:var(--coral);stroke-width:1.2}.lead-card h3{font-family:'Fraunces',serif;font-size:16px;margin-bottom:8px;color:var(--sand-light);font-weight:500}.lead-card p{font-size:12.5px;opacity:0.6;line-height:1.6;margin-bottom:20px}.lead-card button{width:100%;background:transparent;color:var(--coral);border:1px solid var(--coral);border-radius:2px;padding:11px;font-weight:600;font-size:11px;letter-spacing:0.08em;text-transform:uppercase}.lead-card button:hover{background:var(--coral);color:var(--marsh-deep)}footer{padding:40px 32px;text-align:center;font-size:12.5px;color:var(--driftwood);border-top:1px solid rgba(201,151,31,0.35)}.modal-overlay{display:none;position:fixed;inset:0;background:rgba(32,48,42,0.55);align-items:center;justify-content:center;z-index:200;padding:20px}.modal-overlay.active{display:flex}.modal{background:var(--white);border-radius:6px;max-width:420px;width:100%;padding:30px;position:relative;max-height:90vh;overflow-y:auto}.modal h3{font-size:20px;margin-bottom:6px}.modal .sub{font-size:13px;color:var(--driftwood);margin-bottom:20px}.modal-close{position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;color:var(--driftwood);line-height:1}.field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--marsh)}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-family:'Public Sans',sans-serif;font-size:14px;background:var(--sand-light)}.field textarea{resize:vertical;min-height:70px}.submit-btn{width:100%;background:var(--marsh);color:var(--sand-light);border:none;border-radius:2px;padding:13px;font-weight:600;font-size:12.5px;letter-spacing:0.06em;text-transform:uppercase;margin-top:6px}.submit-btn:hover{background:var(--marsh-deep)}.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--marsh-deep);color:var(--sand-light);padding:14px 22px;border-radius:6px;font-size:13.5px;z-index:300;transition:transform 0.25s ease;box-shadow:0 10px 24px rgba(0,0,0,0.2)}.toast.show{transform:translateX(-50%) translateY(0)}.crm-wrap{max-width:1180px;margin:0 auto;padding:36px 32px 80px}.crm-gate{max-width:360px;margin:80px auto;text-align:center}.crm-gate h2{margin-bottom:8px;font-size:22px}.crm-gate p{font-size:13.5px;color:var(--driftwood);margin-bottom:20px;line-height:1.5}.crm-gate input{width:100%;text-align:center;letter-spacing:0.3em;font-family:'IBM Plex Mono',monospace;padding:12px;border:1px solid var(--line);border-radius:4px;margin-bottom:12px}.crm-gate button{width:100%;background:var(--marsh);color:var(--sand-light);border:none;border-radius:4px;padding:12px;font-weight:700}.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:28px}.stat-box{background:var(--white);border:1px solid var(--line);border-radius:5px;padding:16px}.stat-box .n{font-family:'Fraunces',serif;font-size:28px;color:var(--marsh);line-height:1}.stat-box .l{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--driftwood);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px}.crm-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px}.stage-filters{display:flex;gap:6px;flex-wrap:wrap}.stage-filters button{border:1px solid var(--line);background:var(--white);padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;color:var(--marsh)}.stage-filters button.active{background:var(--marsh);color:var(--sand-light);border-color:var(--marsh)}.toolbar-actions{display:flex;gap:8px}.btn-sm{border:1px solid var(--marsh);background:var(--white);color:var(--marsh);padding:8px 14px;border-radius:4px;font-size:12.5px;font-weight:600}.btn-sm.primary{background:var(--marsh);color:var(--sand-light)}.btn-sm:hover{opacity:0.85}/* overflow:hidden was clipping the actions column with no way to reach it */
 .lead-table-wrap{background:var(--white);border:1px solid var(--line);border-radius:6px;
   overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
@@ -1744,13 +1750,13 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
          relied on: on most mobile browsers a datalist shows nothing, or needs a second
          tap on a control the person cannot see. It looked broken. The list below is
          built and positioned by us, so it behaves the same everywhere. -->
-    <input id="f-city" list="city-options" placeholder="City, community, or ZIP"
+    <input id="f-city" list="city-options" placeholder="All of Baldwin County, a city, or a ZIP"
       autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false"
       oninput="cityHint(this.value)" onfocus="cityHint(this.value)"
       onkeydown="cityKey(event)">
     <div id="city-hint" role="listbox"></div>
     <datalist id="city-options">
-      <option value="Gulf Shores"><option value="Orange Beach"><option value="Fort Morgan"><option value="Ono Island"><option value="Perdido Beach"><option value="Bon Secour"><option value="Laguna Key"><option value="Fairhope"><option value="Daphne"><option value="Spanish Fort"><option value="Point Clear"><option value="Montrose"><option value="Magnolia Springs"><option value="Barnwell"><option value="Belforest"><option value="Battles Wharf"><option value="Malbis"><option value="Foley"><option value="Robertsdale"><option value="Loxley"><option value="Summerdale"><option value="Silverhill"><option value="Elberta"><option value="Bay Minette"><option value="Stapleton"><option value="Seminole"><option value="Lillian"><option value="Josephine"><option value="Rosinton"><option value="Bromley"><option value="Miflin">
+      <option value="All of Baldwin County"><option value="Gulf Shores"><option value="Orange Beach"><option value="Fort Morgan"><option value="Ono Island"><option value="Perdido Beach"><option value="Bon Secour"><option value="Laguna Key"><option value="Fairhope"><option value="Daphne"><option value="Spanish Fort"><option value="Point Clear"><option value="Montrose"><option value="Magnolia Springs"><option value="Barnwell"><option value="Belforest"><option value="Battles Wharf"><option value="Malbis"><option value="Foley"><option value="Robertsdale"><option value="Loxley"><option value="Summerdale"><option value="Silverhill"><option value="Elberta"><option value="Bay Minette"><option value="Stapleton"><option value="Seminole"><option value="Lillian"><option value="Josephine"><option value="Rosinton"><option value="Bromley"><option value="Miflin">
     </datalist>
   </div>
   <div class="f"><label for="f-beds">Beds</label>
@@ -1769,7 +1775,6 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <input type="hidden" id="f-price">
     <input type="hidden" id="f-price-min">
   </div>
-  <div class="sp-go"><button class="btn" onclick="runSearch()">Search</button></div>
   </div>
 
   <!-- \u26a0 On their own row. In the old flex layout these wrapped into a narrow column
@@ -1810,6 +1815,12 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <button class="more-t" type="button" onclick="toggleMoreFilters()" id="mf-btn"
       aria-expanded="false">More filters</button>
   </div>
+
+<!-- ⚠ The Search button sat INSIDE the field row, as a fifth column between the
+     price inputs and nothing. It read as one of the criteria rather than the thing
+     you do once you have set them. It belongs after everything you can change,
+     which includes the filters below. -->
+<div class="sp-go" id="sp-go"><button class="btn" onclick="runSearch()">Search</button></div>
 
 <div class="more-f sp-more" id="more-f" hidden>
   <div class="mf-grid">
@@ -1853,9 +1864,6 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
 Call Jimmy · 251-229-3216
 </a>
-</div>
-<div class="placeholder-note">
-<span id="mls-notice"><strong>Note:</strong> the listings below are sample data, not live MLS.</span>
 </div>
 <div class="client-bar" id="client-bar">
   <div class="who" id="cb-who"></div>
@@ -2770,6 +2778,15 @@ function wcTick(){ wcPaintUS(); wcPaintWorld(); }
       FL Brokerage #CQ1074680<br>
       FL Broker #BK3657541
     </div>
+  </div>
+  <!-- ⚠ THE IDX NOTICE LIVES HERE NOW. It used to sit directly above the listing
+       grid, in the middle of the page, where it read as a warning about the
+       listings rather than the licence notice it is. BRMLS s.18.3.8 requires the
+       three statements on any page displaying IDX data; this footer is on every
+       such page, which is also where every other IDX site puts it. The id is
+       unchanged so updateMlsNotice() still finds it. -->
+  <div class="legal mls-note" id="mls-note-foot">
+    <span id="mls-notice"><strong>Note:</strong> the listings below are sample data, not live MLS.</span>
   </div>
   <div class="legal">
     All information is deemed reliable but not guaranteed and should be independently reviewed and verified. All material presented herein is intended for information purposes only and is subject to errors, omissions, changes, or withdrawal without notice. Equal Housing Opportunity. &copy; 2026 Avani &amp; Co. Real Estate, LLC.
@@ -5735,7 +5752,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v412';
+window.BUILD = 'index-v413';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9102,20 +9119,28 @@ async function loadPropertyTypes(){
     if(!ct.includes('json')) throw new Error('not data');
     const d = await r.json();
     PTYPE_GROUPS = d.groups || [];
-    if(!PTYPE_GROUPS.length) return;
-    /* Residential first — it is what nearly everyone wants — then the rest as the
-       server ordered them. */
-    const order = g => (/^Residential$/i.test(g.type) ? 0 : /Residential/i.test(g.type) ? 1 : 2);
-    const groups = [...PTYPE_GROUPS].sort((a, b) => order(a) - order(b));
+    if(!PTYPE_GROUPS.length){
+      /* ⚠ SAY SO rather than leave a picker that looks fine and filters nothing.
+         The server used to fall back to RESO's standard subtype names, and Baldwin
+         uses none of them — it sends "Residential Attached" and "Residential
+         Detached". So choosing "Condominium" ran a search that matched nothing and
+         looked like the market rather than a bug. There is no fallback now. */
+      sel.innerHTML = '<option value="">Any kind of property</option>';
+      sel.title = 'Property types could not be read from the MLS right now.';
+      console.warn('[property types] none available:', d.error || 'unknown');
+      return;
+    }
+    /* The server orders the groups and supplies the wording. The MLS's own value
+       goes to the feed; the readable label goes on screen. "Residential Attached"
+       is a condo, and nobody looking for a condo would ever pick that. */
     const esc = escapeHtml;
     sel.innerHTML = '<option value="">Any kind of property</option>'
-      + groups.filter(g => (g.subTypes || []).length).map(g =>
-          `<optgroup label="${esc(g.type)}">`
-          + g.subTypes.map(st => `<option value="${esc(st)}">${esc(st)}</option>`).join('')
+      + PTYPE_GROUPS.filter(g => (g.subTypes || []).length).map(g =>
+          `<optgroup label="${esc(g.label || g.type)}">`
+          + g.subTypes.map(st =>
+              `<option value="${esc(st.value)}">${esc(st.label || st.value)}</option>`).join('')
           + '</optgroup>').join('');
   }catch(e){
-    /* Left as "Any kind of property". A picker with one honest option beats a
-       picker full of subtypes this MLS does not use. */
     console.warn('[property types]', e.message);
   }
 }
@@ -9130,7 +9155,14 @@ function cityHint(q){
   const starts = CITY_LIST.filter(c => c.name.toLowerCase().startsWith(s));
   const has = s ? CITY_LIST.filter(c => !c.name.toLowerCase().startsWith(s)
                                      && c.name.toLowerCase().includes(s)) : [];
-  const list = starts.concat(has).slice(0, 8);
+  /* ⚠ Pinned to the top and never filtered away. The broadest search is the one
+     people most often want and the one they could not express: the box took a city
+     or a ZIP and nothing else, so "the whole county" meant leaving it empty, which
+     nobody guesses. */
+  const WIDE = { name: 'All of Baldwin County', n: 0, wide: true };
+  const matchesWide = !s || 'all of baldwin county'.includes(s) || 'county'.startsWith(s);
+  const rest = starts.concat(has).filter(c => !c.wide);
+  const list = (matchesWide ? [WIDE] : []).concat(rest).slice(0, 8);
   if(!list.length){ box.classList.remove('on'); box.innerHTML = ''; return; }
   cityHi = -1;
   box.innerHTML = list.map((c,i) =>
@@ -32203,7 +32235,7 @@ function renderProspectSection(){
         <div class="pr-row">
           <div class="pr-f wide" style="flex:2 1 220px">
             <label for="pr-city">City or ZIP</label>
-            <input id="pr-city" placeholder="Gulf Shores, Foley, 36542…"
+            <input id="pr-city" placeholder="All of Baldwin County, a city, or a ZIP"
               onkeydown="if(event.key==='Enter')prRun()">
           </div>
           <div class="pr-f">
@@ -32267,6 +32299,38 @@ function prSay(msg, bad){
   el.textContent = msg || '';
 }
 
+/* Why is it empty? Samples the feed with no status filter and reports what it
+   actually contains, so the answer is a fact rather than a guess. */
+async function prFeedCheck(){
+  const host = document.getElementById('pr-out');
+  if(!host) return;
+  try{
+    const r = await fetch('/api/prospect/feed-check', { cache:'no-store' });
+    const ct = r.headers.get('content-type') || '';
+    if(!ct.includes('json')) throw new Error('The server did not answer with data.');
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'The check did not run.');
+    const feeds = (d.feeds || []).map(f => {
+      const top = (f.statuses || []).slice(0, 8)
+        .map(([st, n]) => escapeHtml(st) + ' ' + n).join(' · ');
+      return `<div style="margin-top:7px"><b>${escapeHtml(f.label || f.id)}</b>
+        ${f.ok ? '' : ' — could not be read: ' + escapeHtml(f.detail || '')}
+        <div style="font-size:12px;color:#737C93;margin-top:2px">
+          ${f.sampled} listings sampled${top ? ' · ' + top : ''}</div></div>`;
+    }).join('');
+    host.innerHTML = `<div class="pr-notice" style="background:${
+        d.carriesOffMarket ? '#F2F4FB' : '#FDF6E3'};border-color:${
+        d.carriesOffMarket ? '#D9DFF2' : '#F0DFB4'};color:${
+        d.carriesOffMarket ? '#39426B' : '#8A6A2E'}">
+      <b>Nothing matched that search.</b><br>${escapeHtml(d.verdict)}
+      ${feeds}</div>`;
+  }catch(e){
+    host.innerHTML = '<p style="color:#737C93;font-size:13.5px">Nothing came off the '
+      + 'market matching that. Try a longer window or a wider area.</p>';
+    console.warn('[prospect] feed check', e.message);
+  }
+}
+
 async function prRun(){
   const v = id => ((document.getElementById(id) || {}).value || '').trim();
   const on = Object.keys(PR_STATUSES).filter(k => PR_STATUSES[k]);
@@ -32328,8 +32392,13 @@ function prRender(d){
   const host = document.getElementById('pr-out');
   if(!host) return;
   if(!d.count){
+    /* ⚠ An empty result has two completely different causes and they look
+       identical: nothing matched the filters, or the IDX feed carries no off-market
+       listings at all. The second is a permission to ask the MLS for, not a bug,
+       and leaving someone to guess between the two wastes an afternoon. So ask. */
     host.innerHTML = '<p style="color:#737C93;font-size:13.5px">Nothing came off the '
-      + 'market matching that. Try a longer window or a wider area.</p>';
+      + 'market matching that. Checking whether the feed carries these at all\u2026</p>';
+    prFeedCheck();
     return;
   }
 
