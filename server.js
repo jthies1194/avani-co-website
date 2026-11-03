@@ -24,6 +24,183 @@ const express = require('express');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
+/* ==================== FILE STORAGE (server v215) ====================
+   ⚠ WHY THIS EXISTS. Every upload on this site used to be stored as base64 INSIDE
+   its kv_store row: agent documents, the PDF behind each CMA link, receipt photos.
+   Supabase's free DATABASE stops at 500MB, and base64 is 33% bigger than the file
+   it encodes, so a 4MB photo took 5.4MB of the only 500MB there is. Supabase also
+   gives 1GB of FILE storage, counted separately, and the site was using none of it.
+
+   So: files go in the bucket, the row keeps the facts about the file. A 4MB photo
+   now costs the database about 300 bytes.
+
+   Three properties this is built around, in order of how much they matter:
+
+   1. A ROW THAT HAS NOT BEEN MIGRATED STILL WORKS. Every read tries the bucket
+      first and falls back to the base64 still in the row. Nothing has to be
+      migrated for the site to keep working, which is what makes the migration
+      safe to run in pieces, safe to stop half way, and safe to run at all.
+   2. THE ROW KEEPS ITS BASE64 UNTIL THE COPY IS PROVEN. Migration writes to the
+      bucket, reads it back, compares it byte for byte, and only then rewrites the
+      row without the base64. A failed verify leaves the row exactly as it was.
+   3. A BUCKET WE CANNOT REACH DOES NOT STOP AN AGENT WORKING. The upload falls
+      back to the old row storage — but loudly: it is counted, logged, reported by
+      /api/health and shown on the Storage page. A silent fallback is how you end
+      up back here with a full database and no idea why. */
+
+const FILE_BUCKET = (process.env.SUPABASE_BUCKET || 'uploads').replace(/[^a-z0-9-]/gi, '') || 'uploads';
+
+/* Supabase's free FILE storage allowance, separate from the 500MB database. */
+const FILE_LIMIT_BYTES = Math.max(0, Number(process.env.FILE_LIMIT_BYTES) || 0)
+  || 1024 * 1024 * 1024;
+
+const fileStore = {
+  bucket: FILE_BUCKET,
+  ready: false, checkedAt: null, error: null,
+  puts: 0, gets: 0, deletes: 0, bytesPut: 0,
+  fallbacks: 0, lastFallbackAt: null, lastFallbackWhy: null,
+};
+
+/* Make sure the bucket exists, once, at startup. Created private — these are
+   signed disclosures, clients' ID documents and contracts, and a public bucket
+   would make every one of them readable by anyone who guessed the path. */
+async function fileStoreInit() {
+  if (!supabase) { fileStore.error = 'no database configured'; return false; }
+  fileStore.checkedAt = new Date().toISOString();
+  try {
+    const { data: buckets, error } = await supabase.storage.listBuckets();
+    if (error) throw new Error(error.message);
+    if ((buckets || []).some(b => b.name === FILE_BUCKET)) {
+      fileStore.ready = true;
+      fileStore.error = null;
+      console.log(`[files] bucket "${FILE_BUCKET}" ready`);
+      return true;
+    }
+    const { error: mkErr } = await supabase.storage.createBucket(FILE_BUCKET, { public: false });
+    if (mkErr) throw new Error(mkErr.message);
+    fileStore.ready = true;
+    fileStore.error = null;
+    console.log(`[files] bucket "${FILE_BUCKET}" created (private)`);
+    return true;
+  } catch (e) {
+    fileStore.ready = false;
+    fileStore.error = e.message;
+    /* Loud, because the consequence of not noticing is a database that fills up
+       again while everything looks fine. */
+    console.error(`[files] BUCKET NOT AVAILABLE — uploads will go into the database `
+      + `instead, which is what we are trying to stop. Reason: ${e.message}`);
+    return false;
+  }
+}
+
+function fileSafeExt(ext) {
+  return String(ext || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin';
+}
+
+/* kind is the folder: docs, cma, receipts. id is already generated and unique. */
+function fileKeyFor(kind, id, ext) {
+  const k = String(kind).replace(/[^a-z]/gi, '');
+  const safeId = String(id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+  return `${k}/${safeId}.${fileSafeExt(ext)}`;
+}
+
+async function filePut(path, buf, mime) {
+  if (!fileStore.ready) return { ok: false, error: fileStore.error || 'bucket not ready' };
+  try {
+    const { error } = await supabase.storage.from(FILE_BUCKET)
+      .upload(path, buf, { contentType: mime || 'application/octet-stream', upsert: true });
+    if (error) throw new Error(error.message);
+    fileStore.puts++;
+    fileStore.bytesPut += buf.length;
+    return { ok: true, path };
+  } catch (e) {
+    console.error(`[files] put failed for ${path}: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
+async function fileGet(path) {
+  if (!path || !fileStore.ready) return null;
+  try {
+    const { data, error } = await supabase.storage.from(FILE_BUCKET).download(path);
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    const buf = Buffer.from(await data.arrayBuffer());
+    fileStore.gets++;
+    return buf;
+  } catch (e) {
+    console.error(`[files] get failed for ${path}: ${e.message}`);
+    return null;
+  }
+}
+
+async function fileDel(path) {
+  if (!path || !fileStore.ready) return false;
+  try {
+    const { error } = await supabase.storage.from(FILE_BUCKET).remove([path]);
+    if (error) throw new Error(error.message);
+    fileStore.deletes++;
+    return true;
+  } catch (e) {
+    console.error(`[files] delete failed for ${path}: ${e.message}`);
+    return false;
+  }
+}
+
+/* What every upload route calls. Hands back either a bucket path or the base64 to
+   put in the row, never both, and never nothing. */
+async function fileStash(kind, id, raw, mime, ext) {
+  const buf = Buffer.from(raw, 'base64');
+  const path = fileKeyFor(kind, id, ext);
+  const put = await filePut(path, buf, mime);
+  if (put.ok) return { path, inRow: null };
+  fileStore.fallbacks++;
+  fileStore.lastFallbackAt = new Date().toISOString();
+  fileStore.lastFallbackWhy = put.error;
+  console.error(`[files] FELL BACK TO THE DATABASE for ${kind}/${id} — ${put.error}`);
+  return { path: null, inRow: raw };
+}
+
+/* ⚠ ONE READER FOR ALL THREE STORES, and the reason the migration is safe. A
+   migrated row carries storagePath; one that has not been migrated still carries
+   its base64. This tries the bucket, then the row. If the path is recorded but the
+   object has gone AND the row no longer has the base64, it returns null so the
+   caller can answer honestly instead of sending an empty file. */
+async function fileBytes(rec, field) {
+  if (!rec) return null;
+  if (rec.storagePath) {
+    const buf = await fileGet(rec.storagePath);
+    if (buf && buf.length) return buf;
+  }
+  const raw = String(rec[field] || '').replace(/^data:[^,]*,/, '');
+  if (!raw) return null;
+  try { return Buffer.from(raw, 'base64'); } catch (e) { return null; }
+}
+
+/* How much the bucket holds, so the Storage page can show both numbers. */
+async function fileStoreUsage() {
+  if (!fileStore.ready) return { ready: false, bytes: 0, count: 0, error: fileStore.error };
+  let bytes = 0, count = 0;
+  try {
+    for (const folder of ['docs', 'cma', 'receipts']) {
+      for (let from = 0; from < 10000; from += 100) {
+        const { data, error } = await supabase.storage.from(FILE_BUCKET)
+          .list(folder, { limit: 100, offset: from });
+        if (error) throw new Error(error.message);
+        const rows = data || [];
+        for (const o of rows) {
+          count++;
+          bytes += Number((o.metadata && o.metadata.size) || 0);
+        }
+        if (rows.length < 100) break;
+      }
+    }
+  } catch (e) {
+    return { ready: true, bytes, count, error: e.message };
+  }
+  return { ready: true, bytes, count, error: null, limitBytes: FILE_LIMIT_BYTES };
+}
+
 // ---------- brokerage identity ----------
 // The trade name exactly as licensed with the Alabama Real Estate Commission.
 // AREC Rule 790-X-3-.16 requires this name, not an abbreviation, on advertising.
@@ -8279,7 +8456,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v214',
+    serverVersion: 'v215',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -8299,6 +8476,13 @@ app.get('/api/health', async (req, res) => {
       canAlert: !!mailer,
       hoursSinceLastBeat: heartbeat.lastAt
         ? Math.round((Date.now() - new Date(heartbeat.lastAt)) / 36000) / 100 : null,
+    },
+    /* ⚠ fallbacks above zero means uploads are going into the database again
+       because the bucket could not be reached. That is the thing to notice here. */
+    files: {
+      bucket: fileStore.bucket, ready: fileStore.ready, error: fileStore.error,
+      puts: fileStore.puts, gets: fileStore.gets, deletes: fileStore.deletes,
+      fallbacks: fileStore.fallbacks, lastFallbackAt: fileStore.lastFallbackAt,
     },
     routes: ['market-stats','mls-fields','search','listings'],
     brokerage: BROKERAGE_NAME,
@@ -10086,7 +10270,10 @@ app.post('/api/cma', async (req, res) => {
   /* ⚠ The file lives under its OWN key prefix. Anything that lists 'cma:' to show the
      agent what has been sent would otherwise drag several megabytes of base64 back on
      every render. */
-  await setSetting('cmafile:' + id, { b64: raw });
+  const cmaStash = await fileStash('cma', id, raw, 'application/pdf', 'pdf');
+  await setSetting('cmafile:' + id, cmaStash.path
+    ? { storagePath: cmaStash.path, bytes }
+    : { b64: cmaStash.inRow });
   await setSetting('cma:' + id, rec);
   await setSetting('cmaTok:' + cmaToken(id), { id });
 
@@ -10180,12 +10367,14 @@ app.get('/cma/:tok/file', async (req, res, next) => {
   if (!map || !map.id) return next();
   const rec = await getSetting('cma:' + map.id);
   const file = await getSetting('cmafile:' + map.id);
-  if (!rec || !file || !file.b64) return next();
+  if (!rec || !file) return next();
+  const pdf = await fileBytes(file, 'b64');
+  if (!pdf) return next();
   res.set('X-Robots-Tag', 'noindex, nofollow');
   res.set('Cache-Control', 'no-store');
   res.type('application/pdf');
   res.set('Content-Disposition', `inline; filename="${rec.filename}"`);
-  res.send(Buffer.from(file.b64, 'base64'));
+  res.send(pdf);
 });
 
 /* ---------- what the agent sees ---------- */
@@ -10226,12 +10415,16 @@ app.delete('/api/cma/:id', async (req, res) => {
      success and the agent watched a removed valuation stay on screen.
      A real delete, with the error actually checked, the way /api/kv/:key does it. */
   const keys = ['cma:' + id, 'cmafile:' + id, 'cmaTok:' + cmaToken(id)];
+  /* Read the file row BEFORE the rows go, or the path to the bucket object is gone
+     and the PDF is orphaned in the bucket for good. */
+  const cmaFileRow = await getSetting('cmafile:' + id);
   try {
     const { error } = await supabase.from(KV_TABLE).delete().in('key', keys);
     if (error) {
       console.error(`[cma] delete FAILED for ${id}:`, error.message);
       return res.status(500).json({ error: 'Could not remove that.' });
     }
+    if (cmaFileRow && cmaFileRow.storagePath) await fileDel(cmaFileRow.storagePath);
   } catch (e) {
     console.error(`[cma] delete FAILED for ${id}:`, e.message);
     return res.status(500).json({ error: 'Could not remove that.' });
@@ -10496,8 +10689,13 @@ app.post('/api/docs', async (req, res) => {
     type: kind.mime, ext: kind.ext, bytes,
     agentId: sess.agentId, agentName: sess.name || '',
     uploadedAt: new Date().toISOString(),
-    dataBase64: 'data:' + kind.mime + ';base64,' + raw,
   };
+  /* The file goes in the bucket and the row keeps the facts about it. If the bucket
+     cannot be reached the raw base64 goes back in the row so the agent is not
+     stopped — counted and logged, never silent. */
+  const stash = await fileStash('docs', id, raw, kind.mime, kind.ext);
+  if (stash.path) rec.storagePath = stash.path;
+  else rec.dataBase64 = 'data:' + kind.mime + ';base64,' + stash.inRow;
   const ok = await setSetting(docKey(id), rec);
   if (ok === false) return res.status(500).json({ error: 'That did not save.' });
 
@@ -10562,8 +10760,11 @@ app.get('/api/docs/:id', async (req, res) => {
   const rec = await getSetting(docKey(id));
   if (!rec) return res.status(404).json({ error: 'That document is not here.' });
 
-  const raw = String(rec.dataBase64 || '').replace(/^data:[^,]*,/, '');
-  const buf = Buffer.from(raw, 'base64');
+  /* Bucket first, then the base64 a row keeps until it is migrated. */
+  const buf = await fileBytes(rec, 'dataBase64');
+  /* ⚠ Answer honestly. Sending a zero-length 200 would show the agent a broken
+     image and tell them nothing about why. */
+  if (!buf) return res.status(404).json({ error: 'That file could not be read. Tell your broker.' });
   res.set('Content-Type', rec.type || 'application/octet-stream');
   res.set('Cache-Control', 'private, max-age=600');
   /* inline so a phone previews it; the filename is still right if they save it */
@@ -10580,6 +10781,7 @@ app.delete('/api/docs/:id', async (req, res) => {
   if (!rec) return res.json({ ok: true });
   if (!docMayTouch(sess, rec)) return res.status(403).json({ error: 'That is not yours.' });
   await delSetting(key);
+  if (rec.storagePath) await fileDel(rec.storagePath);
   console.log(`[docs] ${sess.name || sess.agentId} deleted ${rec.name}`);
   res.json({ ok: true });
 });
@@ -10651,7 +10853,10 @@ app.post('/api/receipt', async (req, res) => {
   /* ⚠ The blob first. If the row is written first and the blob write then fails, the
      screen shows a receipt link pointing at nothing. This way the worst case is an
      unreferenced blob, which the reset sweep collects. */
-  if (!await mustSet(res, 'receipt:' + id, { b64: raw, mime: kind.mime })) return;
+  const rStash = await fileStash('receipts', id, raw, kind.mime, kind.ext);
+  if (!await mustSet(res, 'receipt:' + id, rStash.path
+    ? { storagePath: rStash.path, mime: kind.mime }
+    : { b64: rStash.inRow, mime: kind.mime })) return;
 
   /* ⚠ Replacing an existing receipt removes the old blob. Otherwise re-photographing a
      blurry receipt leaves the blurry one in the database for ever. */
@@ -10686,14 +10891,15 @@ app.get('/api/receipt/:id', async (req, res) => {
     return res.status(403).json({ error: 'Not yours.' });
   }
   const file = await getSetting('receipt:' + id);
-  if (!file || !file.b64) return res.status(404).json({ error: 'The file is missing.' });
+  const bytes = await fileBytes(file, 'b64');
+  if (!bytes) return res.status(404).json({ error: 'The file is missing.' });
 
   res.set('X-Robots-Tag', 'noindex, nofollow');
   res.set('Cache-Control', 'no-store');
   res.type(file.mime || 'application/octet-stream');
   res.set('Content-Disposition',
     `inline; filename="${(row.receipt.filename || 'receipt').replace(/["\\]/g, '')}"`);
-  res.send(Buffer.from(file.b64, 'base64'));
+  res.send(bytes);
 });
 
 app.delete('/api/receipt/:id', async (req, res) => {
@@ -10710,10 +10916,12 @@ app.delete('/api/receipt/:id', async (req, res) => {
   }
 
   const was = row.receipt.filename;
+  const receiptRow = await getSetting('receipt:' + id);
   delete row.receipt;
   if (!await mustSet(res, 'settings:expenses', list)) return;
   /* A real delete, checked. setSetting(key, null) upserts a null and leaves the row. */
   await delSetting('receipt:' + id);
+  if (receiptRow && receiptRow.storagePath) await fileDel(receiptRow.storagePath);
 
   console.log(`[receipt] ${sess.name || sess.agentId} removed ${was} from expense ${row.id}`);
   res.json({ ok: true });
@@ -13309,7 +13517,7 @@ const STORAGE_LIMIT_BYTES = Math.max(0, Number(process.env.STORAGE_LIMIT_BYTES) 
 /* file:true means rows here normally carry base64, so they are measured a few at a
    time instead of in big pages. sweep:true means the group may be cleared by age. */
 const STORAGE_KINDS = {
-  'doc:':            { label: 'Agent documents',      note: 'Files and photos agents uploaded from the documents panel', file: true, sweep: true },
+  'doc:':            { label: 'Agent documents',      note: 'Files and photos agents uploaded from the documents panel. The files live in the bucket; these rows are the details about them.', file: true, sweep: true },
   'cmafile:':        { label: 'CMA PDFs',             note: 'The PDF behind each CMA link sent to a client',             file: true, sweep: true },
   'receipt:':        { label: 'Expense receipts',     note: 'Receipt photos attached to expenses',                       file: true, sweep: true },
   'cmar:':           { label: 'Saved CMA reports',    note: 'CMAs saved in the builder to come back to',                 file: true, sweep: true },
@@ -13482,12 +13690,24 @@ app.get('/api/storage/report', async (req, res) => {
     .sort((a, b) => b.bytes - a.bytes)
     .map(({ keys: _k, ...g }) => g);
 
+  /* Both numbers, because they are separate allowances and the whole point of the
+     file storage work is moving weight from the first to the second. */
+  const files = await fileStoreUsage();
   res.json({
     ok: true,
     total: { rows: keys.length, bytes: out.reduce((s, g) => s + g.bytes, 0) },
     limitBytes: STORAGE_LIMIT_BYTES,
     estimated: out.some(g => g.estimated),
     groups: out,
+    files: {
+      ready: files.ready, bucket: FILE_BUCKET,
+      bytes: files.bytes, count: files.count,
+      limitBytes: FILE_LIMIT_BYTES,
+      error: files.error || fileStore.error || null,
+      fallbacks: fileStore.fallbacks,
+      lastFallbackAt: fileStore.lastFallbackAt,
+      lastFallbackWhy: fileStore.lastFallbackWhy,
+    },
   });
 });
 
@@ -13521,12 +13741,16 @@ app.post('/api/storage/delete', async (req, res) => {
       refused.push({ key, why: 'The database refused it.' });
       continue;
     }
+    /* ⚠ The row is only half of a migrated file. Without this, freeing space
+       frees the 300-byte row and leaves the 4MB file in the bucket for good. */
+    if (before && before.storagePath) await fileDel(before.storagePath);
     freed += bytes;
     for (const c of storageCompanions(key)) {
       const cv = await getSetting(c);
       if (cv === null || cv === undefined) continue;
       try { freed += Buffer.byteLength(JSON.stringify(cv) ?? '', 'utf8'); } catch (e) {}
       await delSetting(c);
+      if (cv.storagePath) await fileDel(cv.storagePath);
     }
     deleted.push(key);
   }
@@ -13569,7 +13793,9 @@ app.post('/api/storage/sweep', async (req, res) => {
 
   let freed = 0, gone = 0;
   for (const d of doomed) {
+    const row = await getSetting(d.key);
     if (!await delSetting(d.key)) continue;
+    if (row && row.storagePath) await fileDel(row.storagePath);
     freed += d.bytes;
     gone++;
     for (const c of storageCompanions(d.key)) {
@@ -13577,6 +13803,7 @@ app.post('/api/storage/sweep', async (req, res) => {
       if (cv === null || cv === undefined) continue;
       try { freed += Buffer.byteLength(JSON.stringify(cv) ?? '', 'utf8'); } catch (e) {}
       await delSetting(c);
+      if (cv.storagePath) await fileDel(cv.storagePath);
     }
   }
 
@@ -13588,6 +13815,143 @@ app.post('/api/storage/sweep', async (req, res) => {
     undated, scanned: batch.length,
     remaining: Math.max(0, keys.length - batch.length),
   });
+});
+
+/* ==================== MOVING WHAT IS ALREADY THERE (server v215) ====================
+   Everything uploaded before this build is base64 inside its row. This copies those
+   files into the bucket and shrinks the rows.
+
+   ⚠ THE ORDER IS THE WHOLE SAFETY ARGUMENT, and it is deliberately the slow one:
+
+     1. write the file to the bucket
+     2. read it back OUT of the bucket
+     3. compare it to the original, byte for byte
+     4. only then rewrite the row without its base64
+
+   A failure at any step leaves the row untouched and still readable, because every
+   read tries the bucket first and falls back to the row. So a migration that dies
+   half way, or is interrupted by a restart, leaves nothing broken — it leaves some
+   rows moved and some not, and both kinds work. Run it again and it picks up where
+   it stopped.
+
+   It is driven from the Storage page, in batches, and the dry run touches nothing. */
+
+const MIGRATE_STORES = [
+  { prefix: 'doc:',     kind: 'docs',     field: 'dataBase64',
+    mime: r => r.type || 'application/octet-stream', ext: r => r.ext || 'bin' },
+  { prefix: 'cmafile:', kind: 'cma',      field: 'b64',
+    mime: () => 'application/pdf', ext: () => 'pdf' },
+  { prefix: 'receipt:', kind: 'receipts', field: 'b64',
+    mime: r => r.mime || 'application/octet-stream',
+    ext:  r => (String(r.mime || '').split('/')[1] || 'bin') },
+];
+
+function migrateIdFrom(prefix, key) { return key.slice(prefix.length); }
+
+/* A row needs moving when it still carries base64 and has no bucket path. */
+function migrateNeeded(store, rec) {
+  if (!rec || typeof rec !== 'object') return false;
+  if (rec.storagePath) return false;
+  return !!String(rec[store.field] || '');
+}
+
+app.post('/api/storage/migrate', async (req, res) => {
+  const sess = await storageStaff(req, res); if (!sess) return;
+
+  const b = req.body || {};
+  const dryRun = b.dryRun !== false;              /* safe by default */
+  const limit = Math.max(1, Math.min(200, Number(b.limit) || 25));
+
+  if (!dryRun && !fileStore.ready) {
+    return res.status(503).json({
+      error: `File storage is not available, so there is nowhere to move these to. `
+           + `Reason: ${fileStore.error || 'unknown'}. Nothing was changed.` });
+  }
+
+  let keys;
+  try { keys = await storageAllKeys(); }
+  catch (e) { return res.status(502).json({ error: 'Could not read the database: ' + e.message }); }
+
+  const out = { ok: true, dryRun, bucket: FILE_BUCKET,
+                moved: 0, movedBytes: 0, checked: 0, skipped: 0,
+                failed: [], remaining: 0, stores: {} };
+
+  for (const store of MIGRATE_STORES) {
+    const mine = keys.filter(k => storagePrefix(k) === store.prefix);
+    const st = { prefix: store.prefix, candidates: 0, bytes: 0, moved: 0, movedBytes: 0 };
+
+    /* Read one at a time. These rows are up to 12MB of base64 each; a page of them
+       is how you run a 512MB box out of memory while trying to save space. */
+    for (const key of mine) {
+      if (out.moved >= limit && !dryRun) { out.remaining++; continue; }
+      if (dryRun && st.candidates >= 400) { out.remaining++; continue; }
+
+      const rec = await getSetting(key);
+      out.checked++;
+      if (!migrateNeeded(store, rec)) { out.skipped++; continue; }
+
+      const raw = String(rec[store.field] || '').replace(/^data:[^,]*,/, '');
+      let original;
+      try { original = Buffer.from(raw, 'base64'); } catch (e) { original = null; }
+      if (!original || !original.length) {
+        out.failed.push({ key, why: 'The stored data could not be decoded. Left alone.' });
+        continue;
+      }
+
+      st.candidates++;
+      st.bytes += original.length;
+
+      if (dryRun) continue;
+
+      const id = migrateIdFrom(store.prefix, key);
+      const path = fileKeyFor(store.kind, id, store.ext(rec));
+
+      /* 1. write */
+      const put = await filePut(path, original, store.mime(rec));
+      if (!put.ok) { out.failed.push({ key, why: 'Could not write to the bucket: ' + put.error }); continue; }
+
+      /* 2 and 3. read it back and prove it is the same file. A length check is not
+         enough — a truncated or re-encoded upload can land on the same length. */
+      const back = await fileGet(path);
+      if (!back || back.length !== original.length || !back.equals(original)) {
+        out.failed.push({ key, why: 'The copy in the bucket did not match. Row left alone.' });
+        await fileDel(path);
+        continue;
+      }
+
+      /* 4. and only now shrink the row */
+      const slim = Object.assign({}, rec);
+      delete slim[store.field];
+      slim.storagePath = path;
+      slim.bytes = slim.bytes || original.length;
+      slim.movedAt = new Date().toISOString();
+      if (!await setSetting(key, slim)) {
+        /* The row still has its base64 and the bucket now has a copy. Harmless:
+           the read prefers the bucket, the row is the fallback, and the next run
+           will try this row again. Nothing is lost either way. */
+        out.failed.push({ key, why: 'The file was copied but the row would not save. It will be retried.' });
+        continue;
+      }
+
+      out.moved++; out.movedBytes += original.length;
+      st.moved++;  st.movedBytes += original.length;
+    }
+
+    st.estimatedFreed = Math.round(st.bytes * 4 / 3);   /* base64 is 33% bigger */
+    out.stores[store.prefix] = st;
+  }
+
+  out.candidates = Object.values(out.stores).reduce((s, x) => s + x.candidates, 0);
+  out.candidateBytes = Object.values(out.stores).reduce((s, x) => s + x.bytes, 0);
+  /* What the DATABASE gets back is the base64 size, not the file size. */
+  out.wouldFreeBytes = Math.round(out.candidateBytes * 4 / 3);
+
+  if (!dryRun) {
+    console.log(`[files] ${sess.name || sess.agentId} moved ${out.moved} file(s) `
+      + `(${Math.round(out.movedBytes / 1024)} KB) into the bucket, `
+      + `${out.failed.length} failed, ${out.remaining} still to do`);
+  }
+  res.json(out);
 });
 
 // Anything that isn't a file or an API call is treated as an agent slug and
@@ -13726,6 +14090,7 @@ app.listen(port, async () => {
   console.log(`Avani & Co. server running on port ${port}`);
 
   startHeartbeat();
+  await fileStoreInit();
   await loadPhotoHosts();
   if (photoHostsSeen.size) console.log(`[startup] Known MLS photo hosts: ${[...photoHostsSeen].join(', ')}`);
 
