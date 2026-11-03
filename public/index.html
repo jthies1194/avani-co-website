@@ -5752,7 +5752,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v416';
+window.BUILD = 'index-v417';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -32344,6 +32344,34 @@ async function prFeedCheck(){
             typeof p.count === 'number' ? p.count.toLocaleString() : escapeHtml(String(p.count))}`).join('<br>')
         : asked.map(p => `${escapeHtml(p.field)} = "${escapeHtml(p.word)}" → none`).join('<br>');
 
+      /* ⚠ THE ACCOUNTING. With 160,000 records in the feed and none of the three
+         statuses, the useful question is no longer "is Expired in here" but "then
+         what are the other 160,000". These two lines answer it with arithmetic
+         rather than more guessed words. */
+      const acct = [];
+      if(f.known && f.known.length){
+        acct.push('<div style="margin-top:6px;font-size:12px;line-height:1.6">'
+          + f.known.map(k => escapeHtml(k.status) + ': '
+              + (typeof k.count === 'number' ? k.count.toLocaleString() : '?')).join(' · ')
+          + '</div>');
+      }
+      if(typeof f.unaccounted === 'number'){
+        const n = f.unaccounted;
+        acct.push(`<div style="margin-top:5px;font-size:12px"><b>${
+          n > 0 ? n.toLocaleString() + ' records are not any of those five'
+                : 'Those five account for every record in the feed'}</b></div>`);
+      }
+      if(f.otherStatuses && f.otherStatuses.ok && f.otherStatuses.count){
+        acct.push(`<div style="margin-top:5px;font-size:12px;line-height:1.6">
+          What they call themselves:<br>${
+            (f.otherStatuses.values || []).map(v => '· ' + escapeHtml(v)).join('<br>')}</div>`);
+      }
+      if(f.withOffMarketDate && f.withOffMarketDate.ok && f.withOffMarketDate.count){
+        acct.push(`<div style="margin-top:5px;font-size:12px;line-height:1.6">
+          <b>${f.withOffMarketDate.count.toLocaleString()}</b> records carry an off-market
+          date. Their statuses: ${escapeHtml((f.withOffMarketDate.values || []).join(', '))}</div>`);
+      }
+
       const bad = (f.probes || []).filter(p => !p.ok);
       const badLine = bad.length
         ? `<div style="margin-top:5px">The feed refused these queries: ${
@@ -32354,6 +32382,7 @@ async function prFeedCheck(){
       return `<div style="margin-top:9px"><b>${escapeHtml(f.label || f.id)}</b>
         <div style="font-size:12px;color:#737C93;margin-top:2px">${escapeHtml(bits.join(' · '))}</div>
         <div style="font-size:12px;margin-top:4px;line-height:1.6">${line}</div>
+        ${acct.join('')}
         ${badLine}</div>`;
     }).join('');
 
