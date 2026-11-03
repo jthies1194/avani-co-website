@@ -1497,6 +1497,77 @@ app.get('/api/prospect/feed-check', async (req, res) => {
         }
       }
 
+      /* ==================== ACCOUNTING FOR EVERY RECORD ====================
+         ⚠ 160,028 records in the feed and none of the three statuses, on either
+         field, in any spelling. That is not an active-only view — it is the whole
+         archive. So the question stops being "is Expired in here" and becomes
+         "then WHAT are the other 160,000", and guessing more words is the wrong
+         way to answer it.
+
+         Two queries settle it:
+
+         1. COUNT EACH KNOWN STATUS AND ADD THEM UP. If the five known statuses sum
+            to the feed total, there is nothing else in it and the matter is closed.
+            If they fall short, the difference is real records with a status nobody
+            has named yet.
+         2. ASK FOR THE RECORDS THAT ARE NOT ANY OF THEM, and read their status off
+            the rows that come back. One query, and it enumerates instead of
+            guessing — whatever Baldwin calls an expired listing, it appears here.
+
+         And separately: anything with an OffMarketDate is an off-market listing
+         whatever its status says, so that gets counted too. */
+      const KNOWN = ['Active', 'Active Under Contract', 'Pending', 'Closed', 'Coming Soon'];
+      feed.known = [];
+      let knownSum = 0;
+      for (const st of KNOWN) {
+        try {
+          const r = await mlsFetchOne(src, {
+            $top: 1, $count: 'true', $filter: `StandardStatus eq '${st}'`,
+          });
+          const n = r.ok && r.count != null ? r.count : null;
+          feed.known.push({ status: st, count: n });
+          if (typeof n === 'number') knownSum += n;
+        } catch (e) { feed.known.push({ status: st, count: null, error: e.message }); }
+      }
+      feed.knownSum = knownSum;
+      feed.unaccounted = feed.total != null ? feed.total - knownSum : null;
+
+      /* The enumeration. Whatever is left, with its own words on it. */
+      feed.otherStatuses = null;
+      try {
+        const notAny = KNOWN.map(k => `StandardStatus ne '${k}'`).join(' and ');
+        const r = await mlsFetchOne(src, {
+          $top: 12, $count: 'true', $filter: notAny,
+          $orderby: 'ModificationTimestamp desc',
+          $select: 'ListingKey,StandardStatus,MlsStatus,OffMarketDate,ModificationTimestamp',
+        });
+        feed.otherStatuses = r.ok
+          ? { count: r.count, ok: true,
+              values: [...new Set(r.rows.map(x =>
+                `StandardStatus: ${x.StandardStatus || '(blank)'} / MlsStatus: ${x.MlsStatus || '(blank)'}`))],
+              samples: r.rows.slice(0, 6).map(x => ({
+                key: x.ListingKey, standard: x.StandardStatus || '',
+                mls: x.MlsStatus || '', offMarketDate: x.OffMarketDate || '' })) }
+          : { ok: false, detail: `${r.status} ${String(r.detail || '').slice(0, 140)}` };
+      } catch (e) { feed.otherStatuses = { ok: false, detail: e.message }; }
+
+      /* An off-market date is an off-market listing, whatever the status field says. */
+      feed.withOffMarketDate = null;
+      try {
+        const r = await mlsFetchOne(src, {
+          $top: 8, $count: 'true', $filter: 'OffMarketDate ne null',
+          $orderby: 'OffMarketDate desc',
+          $select: 'ListingKey,StandardStatus,MlsStatus,OffMarketDate',
+        });
+        feed.withOffMarketDate = r.ok
+          ? { count: r.count, ok: true,
+              values: [...new Set(r.rows.map(x => String(x.StandardStatus || '(blank)')))],
+              samples: r.rows.slice(0, 6).map(x => ({
+                key: x.ListingKey, standard: x.StandardStatus || '',
+                mls: x.MlsStatus || '', offMarketDate: x.OffMarketDate || '' })) }
+          : { ok: false, detail: `${r.status} ${String(r.detail || '').slice(0, 140)}` };
+      } catch (e) { feed.withOffMarketDate = { ok: false, detail: e.message }; }
+
       /* What statuses the feed does carry, for context. Still a sample, and
          labelled as one \u2014 it answers "what is in here" and not "is X in here". */
       const tally = {};
@@ -1525,6 +1596,16 @@ app.get('/api/prospect/feed-check', async (req, res) => {
 
   const any = out.some(f => f.carriesOffMarket);
   const allUsable = out.flatMap(f => f.usable.map(u => `${f.id}: ${u.field} = "${u.word}" (${u.count})`));
+  /* Records the known statuses do not account for. If this is zero the feed really
+     does contain nothing but current and closed listings. If it is not zero, those
+     records exist and `otherStatuses` has their own words on them. */
+  const leftover = out.reduce((n, f) =>
+    n + (typeof f.unaccounted === 'number' && f.unaccounted > 0 ? f.unaccounted : 0), 0);
+  const otherWords = out.flatMap(f =>
+    ((f.otherStatuses && f.otherStatuses.values) || []).map(v => `${f.id}: ${v}`));
+  const datedOff = out.reduce((n, f) =>
+    n + ((f.withOffMarketDate && typeof f.withOffMarketDate.count === 'number')
+         ? f.withOffMarketDate.count : 0), 0);
   const notFilterable = out.flatMap(f =>
     f.probes.filter(p => !p.ok).map(p => `${f.id}: ${p.field} \u2014 ${p.detail}`));
 
@@ -1536,13 +1617,24 @@ app.get('/api/prospect/feed-check', async (req, res) => {
     carriesOffMarket: any,
     usable: allUsable,
     notFilterable: [...new Set(notFilterable)],
+    leftover, otherWords, datedOff,
     verdict: any
       ? 'The feed does carry off-market listings, and Prospecting can read them: '
         + allUsable.join('; ') + '. An empty search means nothing matched the filters.'
-      : 'Every status was asked for directly and counted, on both StandardStatus and '
-        + 'MlsStatus, and the feed returned none. The MLS itself has these records; this '
-        + 'IDX feed is not being sent them. That is a provisioning change to request from '
-        + 'Baldwin REALTORS, not something that can be fixed here.',
+      : leftover > 0
+        ? `Those three statuses are not in the feed under any name tried \u2014 but `
+          + `${leftover.toLocaleString()} records are not accounted for by Active, `
+          + `Pending, Under Contract, Closed or Coming Soon either. Whatever the MLS `
+          + `calls them is listed below, and once we know the word Prospecting can use `
+          + `it.`
+        : datedOff > 0
+          ? `None of those statuses are in the feed, but ${datedOff.toLocaleString()} `
+            + `records do have an off-market date. Their statuses are listed below.`
+          : 'Every status was asked for directly and counted, on both StandardStatus and '
+            + 'MlsStatus, and the feed returned none. The five current and closed statuses '
+            + 'account for every record in it. The MLS itself has these records; this IDX '
+            + 'feed is not being sent them. That is a provisioning change to request from '
+            + 'Baldwin REALTORS, not something that can be fixed here.',
     feeds: out,
   });
 });
@@ -9176,7 +9268,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v219',
+    serverVersion: 'v220',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
