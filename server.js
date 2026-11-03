@@ -8279,7 +8279,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v213',
+    serverVersion: 'v214',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -8292,6 +8292,11 @@ app.get('/api/health', async (req, res) => {
       lastError: heartbeat.lastError,
       beats: heartbeat.beats,
       failures: heartbeat.failures,
+      consecutiveFailures: heartbeat.consecutiveFailures,
+      alerts: heartbeat.alerts,
+      alertedAt: heartbeat.alertedAt,
+      alertAfter: HEARTBEAT_ALERT_AFTER,
+      canAlert: !!mailer,
       hoursSinceLastBeat: heartbeat.lastAt
         ? Math.round((Date.now() - new Date(heartbeat.lastAt)) / 36000) / 100 : null,
     },
@@ -13618,7 +13623,39 @@ const HEARTBEAT_HOURS = Math.min(Math.max(Number(process.env.HEARTBEAT_HOURS) ||
 const heartbeat = {
   startedAt: null, lastAt: null, lastOk: null, lastError: null,
   beats: 0, failures: 0, consecutiveFailures: 0, everyHours: HEARTBEAT_HOURS,
+  alertedAt: null, alerts: 0,
 };
+
+/* ==================== THE ALERT (server v214) ====================
+   The heartbeat keeps the database awake. This says something when the
+   heartbeat itself cannot reach it — because a keep-alive that has quietly
+   stopped working is indistinguishable from one that is working, right up to
+   the morning the site will not load.
+
+   Two deliberate choices:
+   • It waits for the SECOND consecutive failure. One failed query is a
+     dropped packet; two in a row, hours apart, is the database.
+   • At most one email a day while it stays down, and one when it comes back,
+     so a bad week is two emails rather than twenty-eight. */
+const HEARTBEAT_ALERT_AFTER = 2;
+const HEARTBEAT_ALERT_EVERY_MS = 24 * 60 * 60 * 1000;
+
+async function heartbeatAlert(subject, text) {
+  if (!mailer) { console.error('[heartbeat] cannot send the alert — no RESEND_API_KEY'); return; }
+  const to = await resolveNotifyAddress();
+  if (!to) { console.error('[heartbeat] cannot send the alert — no address to send it to'); return; }
+  try {
+    await mailer.sendMail({ to, subject, text });
+    heartbeat.alertedAt = new Date().toISOString();
+    heartbeat.alerts++;
+    console.log(`[heartbeat] alert emailed to ${to}: ${subject}`);
+  } catch (e) {
+    /* ⚠ Must never throw. This runs inside the heartbeat's own catch block; an
+       error escaping here would take down the keep-alive to report that the
+       keep-alive is in trouble. */
+    console.error('[heartbeat] the alert email failed:', e.message);
+  }
+}
 
 async function heartbeatOnce() {
   if (!supabase) return;
@@ -13629,6 +13666,18 @@ async function heartbeatOnce() {
     if (error) throw new Error(error.message || 'query error');
     heartbeat.lastOk = true;
     heartbeat.lastError = null;
+    /* Recovered after an alert went out — say so, so nobody spends the morning
+       chasing a problem that fixed itself. */
+    if (heartbeat.consecutiveFailures >= HEARTBEAT_ALERT_AFTER && heartbeat.alertedAt) {
+      const n = heartbeat.consecutiveFailures;
+      heartbeat.consecutiveFailures = 0;
+      heartbeat.alertedAt = null;
+      await heartbeatAlert(
+        'bamacoast.com — the database is reachable again',
+        `The keep-alive reached the Supabase database again at ${heartbeat.lastAt}.\n\n`
+        + `It had failed ${n} times in a row before this. The site should be behaving `
+        + `normally. No action needed.\n`);
+    }
     heartbeat.consecutiveFailures = 0;
   } catch (e) {
     heartbeat.lastAt = new Date().toISOString();
@@ -13639,6 +13688,24 @@ async function heartbeatOnce() {
     /* Logged every time. A heartbeat that fails twice running is the database
        being unreachable, which is the thing this was built to get ahead of. */
     console.error(`[heartbeat] FAILED (${heartbeat.consecutiveFailures} in a row): ${e.message}`);
+
+    const due = !heartbeat.alertedAt
+      || (Date.now() - Date.parse(heartbeat.alertedAt)) >= HEARTBEAT_ALERT_EVERY_MS;
+    if (heartbeat.consecutiveFailures >= HEARTBEAT_ALERT_AFTER && due) {
+      await heartbeatAlert(
+        'bamacoast.com — the database keep-alive is failing',
+        `The keep-alive could not reach the Supabase database.\n\n`
+        + `Failed ${heartbeat.consecutiveFailures} times in a row. Last attempt `
+        + `${heartbeat.lastAt}.\nError: ${e.message}\n\n`
+        + `What this means: the keep-alive runs every ${HEARTBEAT_HOURS} hours to stop `
+        + `Supabase pausing the project after seven quiet days. While it cannot reach `
+        + `the database, nothing is holding that pause off.\n\n`
+        + `What to check: open the Supabase dashboard and see whether the project is `
+        + `paused, over its limits, or has had its keys rotated. /api/health on the site `
+        + `reports the keep-alive's own state.\n\n`
+        + `You will not get another one of these for 24 hours, and you will get one `
+        + `when it starts working again.\n`);
+    }
   }
 }
 
