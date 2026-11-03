@@ -1181,6 +1181,61 @@ const PTYPE_GROUP_LABELS = {
   'land':               'Land & lots',
 };
 
+/* ==================== THE MENU A BUYER SEES (server v218) ====================
+   ⚠ SHOWING THE MLS'S SUBTYPE LIST ONE-FOR-ONE WAS THE MISTAKE. Baldwin's list is
+   database internals, not a menu: Land, Residential Lots, Vacant Land and Zoned are
+   four separate entries for what a person would call a lot, and Other, Special
+   Purpose and Industrial sit in the same list. Nobody shopping for a house reads
+   that and finds what they want.
+
+   So the menu is curated, and each entry maps to ONE OR MORE feed values. The
+   subtype parameter has always taken a comma-separated list, so one choice can
+   cover four MLS values with no change to the query.
+
+   Two rules that keep this honest:
+   • An entry appears only if the feed actually has at least one of its values, so
+     no menu item can ever return nothing.
+   • Any subtype the feed has that no entry covers is listed on its own afterwards
+     rather than dropped, so a value the MLS adds next year still reaches the
+     search. */
+const PTYPE_MENU = [
+  { label: 'Houses',              values: ['Residential Detached', 'Single Family Residence',
+                                           'Cabin', 'Manufactured Home', 'Mobile Home'] },
+  { label: 'Condos & townhouses', values: ['Residential Attached', 'Condominium',
+                                           'Townhouse', 'Apartment'] },
+  { label: 'Multi-family',        values: ['Multi Family', 'Duplex', 'Triplex', 'Quadruplex'] },
+  { label: 'Lots & land',         values: ['Land', 'Residential Lots', 'Vacant Land', 'Zoned',
+                                           'Acreage', 'Unimproved Land', 'Farm', 'Ranch'] },
+  { label: 'RV lots',             values: ['RV Lot Improved', 'RV Lot Unimproved'] },
+  { label: 'Commercial',          values: ['Retail', 'Office', 'Industrial', 'Special Purpose',
+                                           'Warehouse', 'Mixed Use', 'Hotel Motel', 'Business'] },
+];
+
+/* Built from what the feed has, so the menu and the data cannot disagree. */
+function ptypeMenuFrom(counts) {
+  const have = new Map();
+  for (const [value, n] of Object.entries(counts)) have.set(value.toLowerCase(), { value, n });
+
+  const used = new Set();
+  const menu = [];
+  for (const entry of PTYPE_MENU) {
+    const hits = [];
+    let n = 0;
+    for (const want of entry.values) {
+      const hit = have.get(want.toLowerCase());
+      if (hit) { hits.push(hit.value); n += hit.n; used.add(hit.value.toLowerCase()); }
+    }
+    if (hits.length) menu.push({ label: entry.label, values: hits, count: n });
+  }
+  const leftovers = [...have.values()]
+    .filter(x => !used.has(x.value.toLowerCase()))
+    .sort((a, b) => b.n - a.n);
+  for (const x of leftovers) {
+    menu.push({ label: ptypeLabel(x.value), values: [x.value], count: x.n, other: true });
+  }
+  return menu;
+}
+
 function ptypeLabel(raw) {
   const k = String(raw || '').trim().toLowerCase();
   return PTYPE_LABELS[k] || String(raw || '').trim();
@@ -1192,7 +1247,7 @@ function ptypeGroupLabel(raw) {
 
 async function propertyTypeOptions() {
   if (ptypeCache && Date.now() - ptypeCachedAt < PTYPE_TTL_MS) return ptypeCache;
-  if (!mlsConfigured()) return { groups: [], fromFeed: false, sampled: 0, error: 'no feed configured' };
+  if (!mlsConfigured()) return { menu: [], groups: [], fromFeed: false, sampled: 0, error: 'no feed configured' };
   try {
     const rows = [];
     const notes = [];
@@ -1237,15 +1292,26 @@ async function propertyTypeOptions() {
       .filter(g => g.subTypes.length)
       .sort((a, b) => rank(a.type) - rank(b.type) || a.type.localeCompare(b.type));
 
-    ptypeCache = { groups, fromFeed: true, sampled: rows.length, at: new Date().toISOString() };
+    /* One flat count of every subtype across every PropertyType, because a buyer
+       picking "Lots & land" does not care whether the MLS filed it under Land or
+       under Residential. */
+    const flat = {};
+    for (const x of rows) {
+      const st = String(x.PropertySubType || '').trim();
+      if (st) flat[st] = (flat[st] || 0) + 1;
+    }
+    const menu = ptypeMenuFrom(flat);
+
+    ptypeCache = { menu, groups, fromFeed: true, sampled: rows.length,
+                   at: new Date().toISOString() };
     ptypeCachedAt = Date.now();
-    console.log(`[property types] ${groups.length} groups from ${rows.length} rows: `
-      + groups.map(g => g.type + '(' + g.subTypes.length + ')').join(', '));
+    console.log(`[property types] menu of ${menu.length} from ${rows.length} rows: `
+      + menu.map(m => m.label + '(' + m.count + ')').join(', '));
     return ptypeCache;
   } catch (e) {
     console.error('[property types] could not read them from the feed:', e.message);
     /* Deliberately empty. See the note at the top of this block. */
-    return { groups: [], fromFeed: false, sampled: 0, error: e.message };
+    return { menu: [], groups: [], fromFeed: false, sampled: 0, error: e.message };
   }
 }
 
@@ -1286,6 +1352,32 @@ function subTypeClause(raw, esc) {
    '123 OAK DRIVE' in another. */
 
 const PROSPECT_STATUSES = ['Expired', 'Withdrawn', 'Canceled'];
+
+/* ⚠ SPELLING AND FIELD ARE BOTH IN DOUBT, and an exact match on the wrong one
+   returns nothing while looking like an empty market.
+
+   • RESO's enumeration is "Canceled", one L. Plenty of MLSs send "Cancelled".
+     One exact-match filter on the wrong spelling finds nothing at all.
+   • StandardStatus is the normalised field. MlsStatus carries the MLS's own
+     wording, and some feeds populate only that — or put "Temporarily Off Market"
+     in it where StandardStatus says nothing useful.
+
+   So every variant worth trying is listed, on both fields, and the query ladders
+   until something answers. */
+const PROSPECT_WORDS = {
+  'Expired':    ['Expired'],
+  'Withdrawn':  ['Withdrawn', 'Temporarily Off Market', 'Withdrawn Conditional'],
+  'Canceled':   ['Canceled', 'Cancelled'],
+};
+const PROSPECT_FIELDS = ['StandardStatus', 'MlsStatus'];
+
+/* One OData group for the chosen statuses against one field. */
+function prospectClause(field, chosen) {
+  const words = [];
+  for (const st of chosen) for (const w of (PROSPECT_WORDS[st] || [st])) words.push(w);
+  const uniq = [...new Set(words)];
+  return '(' + uniq.map(w => `${field} eq '${w.replace(/'/g, "''")}'`).join(' or ') + ')';
+}
 
 /* What counts as "it is back" when checking an off-market address. Closed is in
    here on purpose: a house that SOLD is the most important thing to know about and
@@ -1359,43 +1451,98 @@ app.get('/api/prospect/feed-check', async (req, res) => {
 
   const out = [];
   for (const src of mlsSources()) {
-    const tally = {};
-    let sampled = 0, ok = true, detail = '';
-    /* Unfiltered, newest first, a few pages. If off-market listings are in the feed
-       at all they turn up quickly, because a listing going off market IS a
-       modification. */
-    for (let page = 0; page < 5; page++) {
-      const r = await mlsFetchOne(src, {
-        $top: 200, $skip: page * 200,
-        $orderby: 'ModificationTimestamp desc',
-        $select: 'StandardStatus,ModificationTimestamp',
-      });
-      if (!r.ok) { ok = false; detail = `${r.status} ${String(r.detail || '').slice(0, 120)}`; break; }
-      sampled += r.rows.length;
-      for (const x of r.rows) {
-        const st = String(x.StandardStatus || '(blank)');
-        tally[st] = (tally[st] || 0) + 1;
+    const feed = { id: src.id, label: src.label, ok: true, detail: '',
+                   total: null, probes: [], browse: [], carriesOffMarket: false,
+                   usable: [] };
+
+    /* How big is the feed at all? A count with no filter. If this is roughly the
+       number of ACTIVE listings in the county, the feed is an active-only view and
+       no amount of filtering will find an expired listing in it. */
+    try {
+      const t = await mlsFetchOne(src, { $top: 1, $count: 'true' });
+      if (!t.ok) { feed.ok = false; feed.detail = `${t.status} ${String(t.detail || '').slice(0, 140)}`; }
+      else feed.total = t.count != null ? t.count : null;
+    } catch (e) { feed.ok = false; feed.detail = e.message; }
+
+    /* ⚠ ASK DIRECTLY, ONE COUNTED QUERY PER STATUS PER FIELD. The previous version
+       of this sampled the newest 1,000 records and tallied what it saw — which was
+       useless for exactly the thing it was built to answer, because off-market
+       listings are OLD and never appear in the newest slice. 683 Active + 140
+       Closed + 119 Pending + 45 Under Contract + 13 Coming Soon came to exactly
+       1,000: the page cap, not the whole feed.
+
+       A counted filter is definitive. If `StandardStatus eq 'Expired'` returns a
+       count of 0 the feed has none; if the field is not filterable the feed says
+       400 and that is recorded too, which is a different answer and a different
+       conversation with the MLS. */
+    if (feed.ok) {
+      for (const field of PROSPECT_FIELDS) {
+        for (const canonical of PROSPECT_STATUSES) {
+          for (const word of (PROSPECT_WORDS[canonical] || [canonical])) {
+            let probe = { field, status: canonical, word, count: null, ok: true, detail: '' };
+            try {
+              const r = await mlsFetchOne(src, {
+                $top: 1, $count: 'true',
+                $filter: `${field} eq '${word.replace(/'/g, "''")}'`,
+              });
+              if (!r.ok) { probe.ok = false; probe.detail = `${r.status} ${String(r.detail || '').slice(0, 100)}`; }
+              else probe.count = r.count != null ? r.count : (r.rows.length ? 'some' : 0);
+            } catch (e) { probe.ok = false; probe.detail = e.message; }
+            feed.probes.push(probe);
+            if (probe.ok && probe.count && probe.count !== 0) {
+              feed.carriesOffMarket = true;
+              feed.usable.push({ field, status: canonical, word, count: probe.count });
+            }
+          }
+        }
       }
-      if (r.rows.length < 200) break;
+
+      /* What statuses the feed does carry, for context. Still a sample, and
+         labelled as one \u2014 it answers "what is in here" and not "is X in here". */
+      const tally = {};
+      let sampled = 0;
+      for (let page = 0; page < 5; page++) {
+        const r = await mlsFetchOne(src, {
+          $top: 200, $skip: page * 200, $orderby: 'ModificationTimestamp desc',
+          $select: 'StandardStatus,MlsStatus',
+        });
+        if (!r.ok) break;
+        sampled += r.rows.length;
+        for (const x of r.rows) {
+          const a = String(x.StandardStatus || '(blank)');
+          const b = String(x.MlsStatus || '(blank)');
+          tally['StandardStatus: ' + a] = (tally['StandardStatus: ' + a] || 0) + 1;
+          tally['MlsStatus: ' + b] = (tally['MlsStatus: ' + b] || 0) + 1;
+        }
+        if (r.rows.length < 200) break;
+      }
+      feed.sampled = sampled;
+      feed.browse = Object.entries(tally).sort((a, b) => b[1] - a[1]);
     }
-    const found = PROSPECT_STATUSES.filter(st => tally[st]);
-    out.push({
-      id: src.id, label: src.label, ok, detail, sampled,
-      statuses: Object.entries(tally).sort((a, b) => b[1] - a[1]),
-      offMarketStatusesFound: found,
-      carriesOffMarket: found.length > 0,
-    });
+
+    out.push(feed);
   }
 
-  const any = out.some(x => x.carriesOffMarket);
+  const any = out.some(f => f.carriesOffMarket);
+  const allUsable = out.flatMap(f => f.usable.map(u => `${f.id}: ${u.field} = "${u.word}" (${u.count})`));
+  const notFilterable = out.flatMap(f =>
+    f.probes.filter(p => !p.ok).map(p => `${f.id}: ${p.field} \u2014 ${p.detail}`));
+
   console.log(`[prospect] feed check for ${sess.name || sess.agentId}: `
-    + out.map(x => `${x.id}=${x.carriesOffMarket ? x.offMarketStatusesFound.join('/') : 'none'}`).join(', '));
+    + (any ? 'FOUND ' + allUsable.join('; ') : 'no off-market statuses in any feed'));
+
   res.json({
     ok: true,
     carriesOffMarket: any,
+    usable: allUsable,
+    notFilterable: [...new Set(notFilterable)],
     verdict: any
-      ? 'The feed does include off-market listings, so an empty search means nothing matched the filters.'
-      : 'None of the sampled listings had an Expired, Withdrawn or Canceled status. That usually means the IDX feed is provisioned active-only, which is a permission to request from the MLS rather than something to fix here.',
+      ? 'The feed does carry off-market listings, and Prospecting can read them: '
+        + allUsable.join('; ') + '. An empty search means nothing matched the filters.'
+      : 'Every status was asked for directly and counted, on both StandardStatus and '
+        + 'MlsStatus, and the feed returned none. The MLS itself has these records; this '
+        + 'IDX feed is not being sent them. That is a provisioning change to request from '
+        + 'Baldwin REALTORS, not something that can be fixed here.',
     feeds: out,
   });
 });
@@ -1420,7 +1567,8 @@ app.get('/api/prospect', async (req, res) => {
                                   allowed: PROSPECT_STATUSES });
   }
 
-  const parts = ['(' + statuses.map(x => `StandardStatus eq '${x}'`).join(' or ') + ')'];
+  /* The status clause is decided below, once we know which field answers. */
+  const parts = [];
 
   if (q.city && String(q.city).trim() && !isCountyWide(q.city)) {
     const c = esc(String(q.city).trim());
@@ -1446,23 +1594,61 @@ app.get('/api/prospect', async (req, res) => {
 
   let offMarket = [];
   let dateFiltered = true;
+  let matchedOn = null;
+  const attempts = [];
   try {
-    /* ⚠ OffMarketDate is not reliably populated in every feed, and a bound on a
-       field that is empty removes the row. Try the dated query, and if it comes
-       back empty fall back to undated and filter in code — the same ladder the
-       closed-comps query needed for CloseDate. */
-    let r = await mlsQuery({
-      filter: [...parts, `OffMarketDate ge ${since}`].join(' and '),
-      top, orderby: 'OffMarketDate desc', count: false, select: PROSPECT_SELECT, county: true,
-    });
-    if (!r.value.length) {
-      dateFiltered = false;
-      r = await mlsQuery({
-        filter: parts.join(' and '), top,
-        orderby: 'ModificationTimestamp desc', count: false, select: PROSPECT_SELECT, county: true,
+    /* ⚠ TWO LADDERS, and both exist because a query that returns nothing looks
+       identical to a market with nothing in it.
+
+       The outer one is the FIELD. StandardStatus is the normalised value and the
+       right first choice; MlsStatus carries the MLS's own wording and some feeds
+       populate only that. A field the feed does not support answers 400, which is
+       caught per attempt rather than failing the whole request.
+
+       The inner one is the DATE BOUND. OffMarketDate is not reliably populated,
+       and a bound on an empty field removes the row — the same thing that bit the
+       closed-comps query with CloseDate. */
+    for (const field of PROSPECT_FIELDS) {
+      const clause = prospectClause(field, statuses);
+      const base = [clause, ...parts];
+      let r = null, dated = true;
+      try {
+        r = await mlsQuery({
+          filter: [...base, `OffMarketDate ge ${since}`].join(' and '),
+          top, orderby: 'OffMarketDate desc', count: false, select: PROSPECT_SELECT, county: true,
+        });
+      } catch (e) { attempts.push({ field, dated: true, error: e.message }); r = null; }
+
+      if (!r || !r.value.length) {
+        dated = false;
+        try {
+          r = await mlsQuery({
+            filter: base.join(' and '), top,
+            orderby: 'ModificationTimestamp desc', count: false, select: PROSPECT_SELECT, county: true,
+          });
+        } catch (e) { attempts.push({ field, dated: false, error: e.message }); r = null; }
+      }
+
+    /* ⚠ mlsQuery DOES NOT THROW when a feed rejects the query — it catches per
+       source and returns zero rows with the failure recorded in `sources`. So a
+       feed that REFUSES to filter this field looked exactly like a feed that has
+       none of these listings, which is the one ambiguity this whole route exists
+       to remove. Read the per-source result, not just the row count. */
+      const refused = r ? (r.sources || []).filter(x => !x.ok) : [];
+      attempts.push({
+        field, dated,
+        rows: r ? r.value.length : 0,
+        refusedBy: refused.map(x => `${x.id}: ${x.status || '?'}`),
+        error: refused.length
+          ? `the feed would not filter on ${field}` : undefined,
       });
+      if (r && r.value.length) {
+        offMarket = r.value;
+        dateFiltered = dated;
+        matchedOn = field;
+        break;
+      }
     }
-    offMarket = r.value || [];
   } catch (e) {
     console.error('[prospect] off-market query failed:', e.message);
     return res.status(502).json({ error: 'The MLS would not answer that search: ' + e.message });
@@ -1568,6 +1754,7 @@ app.get('/api/prospect', async (req, res) => {
 
   res.json({
     ok: true, statuses, days, dateFiltered,
+    matchedOn, attempts,
     count: rows.length,
     stillOffMarket: open,
     relisted: back,
@@ -8989,7 +9176,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v217',
+    serverVersion: 'v219',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
