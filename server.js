@@ -1096,6 +1096,24 @@ app.get('/api/listing/:key', async (req, res) => {
    Everything else is members-only and belongs behind a sign-in — see /api/prospect. */
 const PUBLIC_STATUSES = ['Active', 'Active Under Contract', 'Pending', 'Closed'];
 
+/* ==================== SEARCHING THE WHOLE COUNTY (server v217) ====================
+   The Where box only took a city or a ZIP, so there was no way to say "all of
+   Baldwin County" — you had to leave it empty and hope, which nobody does.
+
+   An empty box has always searched county-wide, because the feed is already
+   restricted to the covered counties. This just gives that a name people can pick.
+   Treated as "no city clause", not as a city called Baldwin. */
+const COUNTY_WIDE = [
+  'all', 'all of baldwin county', 'all of baldwin', 'baldwin', 'baldwin county',
+  'baldwin co', 'county', 'countywide', 'county wide', 'entire county',
+  'all cities', 'anywhere', 'everywhere',
+];
+function isCountyWide(v) {
+  const t = String(v == null ? '' : v).trim().toLowerCase()
+    .replace(/[.,]/g, '').replace(/\s+/g, ' ');
+  return !!t && COUNTY_WIDE.includes(t);
+}
+
 /* Returns the canonical status, or null for "not asked", or false for "asked for
    something not allowed". Matching is case- and space-insensitive so that
    ?status=withdrawn and ?status=%20WITHDRAWN%20 are both refused by the same
@@ -1117,31 +1135,79 @@ function publicStatus(v) {
 let ptypeCache = null, ptypeCachedAt = 0;
 const PTYPE_TTL_MS = 12 * 60 * 60 * 1000;
 
-/* If the feed cannot be reached the picker must still work, so it falls back to the
-   RESO standard subtypes. Marked as a fallback in the response so the front end can
-   say so rather than quietly showing a guess. */
-const PTYPE_FALLBACK = [
-  { type: 'Residential', subTypes: ['Single Family Residence', 'Condominium', 'Townhouse',
-      'Duplex', 'Triplex', 'Quadruplex', 'Manufactured Home', 'Mobile Home',
-      'Cabin', 'Apartment'] },
-  { type: 'Residential Lease', subTypes: ['Single Family Residence', 'Condominium', 'Townhouse', 'Apartment'] },
-  { type: 'Land', subTypes: ['Unimproved Land', 'Farm', 'Ranch'] },
-  { type: 'Commercial Sale', subTypes: ['Office', 'Retail', 'Industrial', 'Mixed Use', 'Warehouse', 'Hotel Motel'] },
-  { type: 'Commercial Lease', subTypes: ['Office', 'Retail', 'Industrial', 'Mixed Use', 'Warehouse'] },
-];
+/* ⚠ NO FALLBACK LIST ANY MORE, AND THAT IS THE FIX. This used to fall back to the
+   RESO standard subtypes — Condominium, Single Family Residence and so on. Baldwin
+   does not use a single one of those names. It sends "Residential Attached" and
+   "Residential Detached". So when the feed call failed, the picker filled with
+   plausible-looking values that matched nothing, and choosing Condominium returned
+   an empty search with no hint as to why.
+
+   A filter offering values the feed has never heard of is worse than a filter with
+   no values, because the empty result looks like the market rather than a bug. If
+   the feed cannot be read, the picker says so and stays on "Any kind of property".
+
+   ⚠ AND THE SAMPLE PAGES AT 200. Bridge caps every response at 200 records — the
+   comment on /api/listings says so and every other call here respects it. This one
+   asked for $top=1000, which is why it was failing in the first place. */
+const PTYPE_PAGE = 200;
+const PTYPE_PAGES = 5;          /* up to 1,000 rows per feed, 200 at a time */
+
+/* The MLS's own words are not the buyer's words. "Residential Attached" is a condo
+   or a townhouse; nobody searching for a condo would pick it. The raw value is what
+   gets sent to the feed; this is only what the person reads.
+
+   Keyed on the lowercased raw value. Anything not in here shows under its own name
+   rather than vanishing, so a subtype the MLS adds next year still appears. */
+const PTYPE_LABELS = {
+  'residential detached': 'House (detached)',
+  'residential attached': 'Condo or townhouse',
+  'residential lots':     'Residential lot',
+  'vacant land':          'Vacant land',
+  'land':                 'Land',
+  'rv lot improved':      'RV lot \u2014 improved',
+  'rv lot unimproved':    'RV lot \u2014 unimproved',
+  'multi family':         'Multi-family',
+  'special purpose':      'Special purpose',
+  'mobile home':          'Mobile home',
+  'manufactured home':    'Manufactured home',
+};
+
+/* Same for the PropertyType headings the subtypes sit under. */
+const PTYPE_GROUP_LABELS = {
+  'residential':        'Homes',
+  'residential lease':  'For lease',
+  'commercial sale':    'Commercial',
+  'commercial lease':   'Commercial for lease',
+  'land':               'Land & lots',
+};
+
+function ptypeLabel(raw) {
+  const k = String(raw || '').trim().toLowerCase();
+  return PTYPE_LABELS[k] || String(raw || '').trim();
+}
+function ptypeGroupLabel(raw) {
+  const k = String(raw || '').trim().toLowerCase();
+  return PTYPE_GROUP_LABELS[k] || String(raw || '').trim();
+}
 
 async function propertyTypeOptions() {
   if (ptypeCache && Date.now() - ptypeCachedAt < PTYPE_TTL_MS) return ptypeCache;
-  if (!mlsConfigured()) return { groups: PTYPE_FALLBACK, fromFeed: false, sampled: 0 };
+  if (!mlsConfigured()) return { groups: [], fromFeed: false, sampled: 0, error: 'no feed configured' };
   try {
-    /* A wide sample of what is actually on the market, across every feed. Only the
-       two fields are selected, so this is cheap even at 1,000 rows a feed. */
-    const results = await Promise.all(mlsSources().map(s => mlsFetchOne(s, {
-      $top: 1000, $filter: STATUS_CLAUSE, $select: 'PropertyType,PropertySubType',
-    })));
     const rows = [];
-    for (const r of results) if (r.ok) rows.push(...r.rows);
-    if (!rows.length) throw new Error('no rows');
+    const notes = [];
+    for (const src of mlsSources()) {
+      for (let page = 0; page < PTYPE_PAGES; page++) {
+        const r = await mlsFetchOne(src, {
+          $top: PTYPE_PAGE, $skip: page * PTYPE_PAGE, $filter: STATUS_CLAUSE,
+          $select: 'PropertyType,PropertySubType',
+        });
+        if (!r.ok) { notes.push(`${src.id}: ${r.status}`); break; }
+        rows.push(...r.rows);
+        if (r.rows.length < PTYPE_PAGE) break;
+      }
+    }
+    if (!rows.length) throw new Error(notes.join('; ') || 'no rows');
 
     const byType = new Map();
     for (const x of rows) {
@@ -1149,33 +1215,45 @@ async function propertyTypeOptions() {
       const st = String(x.PropertySubType || '').trim();
       if (!t) continue;
       if (!byType.has(t)) byType.set(t, new Map());
-      if (st) {
-        const m = byType.get(t);
-        m.set(st, (m.get(st) || 0) + 1);
-      }
+      if (st) byType.get(t).set(st, (byType.get(t).get(st) || 0) + 1);
     }
+
+    /* Homes first, then lease, then land, then commercial \u2014 roughly the order
+       people ask in, not alphabetical. */
+    const rank = t => {
+      const k = t.toLowerCase();
+      if (k === 'residential') return 0;
+      if (k.includes('residential')) return 1;
+      if (k === 'land') return 2;
+      return 3;
+    };
     const groups = [...byType.entries()]
       .map(([type, m]) => ({
         type,
-        subTypes: [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k),
-        counts: Object.fromEntries(m),
+        label: ptypeGroupLabel(type),
+        subTypes: [...m.entries()].sort((a, b) => b[1] - a[1])
+          .map(([value, count]) => ({ value, label: ptypeLabel(value), count })),
       }))
-      .sort((a, b) => a.type.localeCompare(b.type));
+      .filter(g => g.subTypes.length)
+      .sort((a, b) => rank(a.type) - rank(b.type) || a.type.localeCompare(b.type));
+
     ptypeCache = { groups, fromFeed: true, sampled: rows.length, at: new Date().toISOString() };
     ptypeCachedAt = Date.now();
+    console.log(`[property types] ${groups.length} groups from ${rows.length} rows: `
+      + groups.map(g => g.type + '(' + g.subTypes.length + ')').join(', '));
     return ptypeCache;
   } catch (e) {
-    console.error('[property types] falling back to the standard list:', e.message);
-    return { groups: PTYPE_FALLBACK, fromFeed: false, sampled: 0, error: e.message };
+    console.error('[property types] could not read them from the feed:', e.message);
+    /* Deliberately empty. See the note at the top of this block. */
+    return { groups: [], fromFeed: false, sampled: 0, error: e.message };
   }
 }
 
 app.get('/api/property-types', async (req, res) => {
   const out = await propertyTypeOptions();
-  res.set('Cache-Control', 'public, max-age=3600');
+  res.set('Cache-Control', out.fromFeed ? 'public, max-age=3600' : 'no-store');
   res.json(out);
 });
-
 /* Turns a comma-separated list of subtypes into one OData group. These are filter
    VALUES, not permissions, so there is nothing to allow or deny — but they are
    still escaped and capped, because an unbounded list in a URL is a way to make the
@@ -1262,6 +1340,66 @@ const PROSPECT_SELECT = ['ListingKey','UnparsedAddress','City','PostalCode','Sta
   'LotSizeAcres','YearBuilt','OnMarketDate','OffMarketDate','ModificationTimestamp',
   'DaysOnMarket','ListAgentFullName','ListOfficeName','Latitude','Longitude'].join(',');
 
+/* ==================== DOES THE FEED EVEN CARRY THESE? (server v217) ====================
+   ⚠ An empty prospecting search has two completely different causes and they look
+   identical: either nothing matched the filters, or the IDX feed does not include
+   off-market listings at all. Many IDX feeds are provisioned active-only, and that
+   is a permission to ask the MLS for, not a bug to fix in code.
+
+   So this samples each feed with NO status filter and reports what statuses come
+   back. The Prospecting panel calls it when a search finds nothing, and can then
+   say which of the two it is instead of leaving it to be guessed at.
+
+   Agents only — it returns status names, not listings, but it is still feed
+   internals and there is no reason for it to be public. */
+app.get('/api/prospect/feed-check', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const out = [];
+  for (const src of mlsSources()) {
+    const tally = {};
+    let sampled = 0, ok = true, detail = '';
+    /* Unfiltered, newest first, a few pages. If off-market listings are in the feed
+       at all they turn up quickly, because a listing going off market IS a
+       modification. */
+    for (let page = 0; page < 5; page++) {
+      const r = await mlsFetchOne(src, {
+        $top: 200, $skip: page * 200,
+        $orderby: 'ModificationTimestamp desc',
+        $select: 'StandardStatus,ModificationTimestamp',
+      });
+      if (!r.ok) { ok = false; detail = `${r.status} ${String(r.detail || '').slice(0, 120)}`; break; }
+      sampled += r.rows.length;
+      for (const x of r.rows) {
+        const st = String(x.StandardStatus || '(blank)');
+        tally[st] = (tally[st] || 0) + 1;
+      }
+      if (r.rows.length < 200) break;
+    }
+    const found = PROSPECT_STATUSES.filter(st => tally[st]);
+    out.push({
+      id: src.id, label: src.label, ok, detail, sampled,
+      statuses: Object.entries(tally).sort((a, b) => b[1] - a[1]),
+      offMarketStatusesFound: found,
+      carriesOffMarket: found.length > 0,
+    });
+  }
+
+  const any = out.some(x => x.carriesOffMarket);
+  console.log(`[prospect] feed check for ${sess.name || sess.agentId}: `
+    + out.map(x => `${x.id}=${x.carriesOffMarket ? x.offMarketStatusesFound.join('/') : 'none'}`).join(', '));
+  res.json({
+    ok: true,
+    carriesOffMarket: any,
+    verdict: any
+      ? 'The feed does include off-market listings, so an empty search means nothing matched the filters.'
+      : 'None of the sampled listings had an Expired, Withdrawn or Canceled status. That usually means the IDX feed is provisioned active-only, which is a permission to request from the MLS rather than something to fix here.',
+    feeds: out,
+  });
+});
+
 app.get('/api/prospect', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   /* The one line that makes the rest of this route lawful. */
@@ -1284,7 +1422,7 @@ app.get('/api/prospect', async (req, res) => {
 
   const parts = ['(' + statuses.map(x => `StandardStatus eq '${x}'`).join(' or ') + ')'];
 
-  if (q.city && String(q.city).trim()) {
+  if (q.city && String(q.city).trim() && !isCountyWide(q.city)) {
     const c = esc(String(q.city).trim());
     parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}') or PostalCode eq '${c}')`);
   }
@@ -1516,7 +1654,10 @@ app.get('/api/search', async (req, res) => {
   } else {
     parts.push(ACTIVE_ONLY);   // default to what's genuinely for sale
   }
-  if (q.city && q.city.trim()) {
+  /* ⚠ isCountyWide first. Without it "Baldwin County" is sent as a city name,
+     matches nothing, and the person who asked for the whole county gets an empty
+     page — the worst possible answer to the broadest possible search. */
+  if (q.city && q.city.trim() && !isCountyWide(q.city)) {
     const c = esc(q.city.trim());
     // match the city OR anywhere in the street address, same as the old client-side behavior
     parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}'))`);
@@ -8848,7 +8989,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v216',
+    serverVersion: 'v217',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
