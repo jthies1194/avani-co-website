@@ -5694,7 +5694,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v407';
+window.BUILD = 'index-v408';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -31232,13 +31232,19 @@ function docRender(owner, docs){
     const img = /^image\//.test(d.type || '');
     const kb = d.bytes ? (d.bytes > 1048576
       ? (d.bytes / 1048576).toFixed(1) + 'MB' : Math.round(d.bytes / 1024) + 'KB') : '';
+    /* ⚠ d.url, not the bare id. The URL the server hands back carries a signed
+       pass — an <img> tag cannot send an Authorization header, so without it every
+       thumbnail was a 401 and every "open" was an error page. */
+    const href = d.url || ('/api/docs/' + encodeURIComponent(d.id));
     return `<div class="doc-item">
-      <a class="doc-thumb" href="/api/docs/${escapeHtml(d.id)}" target="_blank" rel="noopener">
-        ${img ? `<img src="/api/docs/${escapeHtml(d.id)}" alt="" loading="lazy">`
+      <a class="doc-thumb" href="${escapeHtml(href)}" target="_blank" rel="noopener">
+        ${img ? `<img src="${escapeHtml(href)}" alt="" loading="lazy"
+                  onerror="this.replaceWith(Object.assign(document.createElement('span'),
+                    {className:'doc-pdf',textContent:'IMG'}))">`
               : '<span class="doc-pdf">PDF</span>'}
       </a>
       <div class="doc-meta">
-        <a href="/api/docs/${escapeHtml(d.id)}" target="_blank" rel="noopener"
+        <a href="${escapeHtml(href)}" target="_blank" rel="noopener"
            ><b>${escapeHtml(d.name || 'Document')}</b></a>
         <span>${escapeHtml(kb)}${d.agentName ? ' · ' + escapeHtml(d.agentName) : ''}${
           d.uploadedAt ? ' · ' + escapeHtml(String(d.uploadedAt).slice(0, 10)) : ''}</span>
