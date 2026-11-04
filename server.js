@@ -6229,77 +6229,59 @@ function dripClean(text, where){
 }
 
 /* Called when the CRM loads. Sends what is due, records what was sent. */
-app.post('/api/drip/tick', async (req, res) => {
-  const sess = await requireSession(req, res); if (!sess) return;
-  const campaigns = (await getSetting('settings:dripCampaigns')) || [];
-  if (!Array.isArray(campaigns) || !campaigns.length) return res.json({ ok: true, sent: 0 });
+/* ==================== LISTING ALERTS THAT SEND THEMSELVES (server v223) ====================
+   ⚠ WHY THIS IS NOW A FUNCTION AND A TIMER. All of this already worked — and it
+   only ran inside POST /api/drip/tick, which the CRM calls when an agent loads it.
+   So a visitor who asked for new-listing alerts on Saturday evening heard nothing
+   until somebody opened the dashboard on Monday.
 
-  const now = Date.now();
-  const origin = `${req.protocol}://${req.get('host')}`;
-  let sent = 0, tasks = [];
+   That is worse than not capturing the address. It teaches the person that this
+   office is slow, and the portals email them in minutes.
 
-  let leads = [];
+   The logic below is unchanged from what the route was already doing. What is new
+   is that a timer runs it over EVERY saved search, with no session, so the pace a
+   lead chose for themselves — instant, daily, weekly — is the pace they get. */
+
+const SEARCH_GAP = { instant: 0, daily: 20 * 3600000, weekly: 6.5 * 86400000 };
+
+/* Keys being processed right now, shared by the timer and the route. */
+const searchInFlight = new Set();
+
+async function searchAlertPass({ keyFilter, origin, why }) {
+  let feeds = 0, checked = 0, skipped = 0;
   try {
-    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
-    leads = (data || []).map(r => ({ key: r.key, lead: r.value })).filter(x => x.lead);
-  } catch (e) { return res.status(500).json({ error: 'Could not read leads.' }); }
-
-  for (const { key, lead } of leads) {
-    if (!isStaff(sess) && lead.assignedAgentId !== sess.agentId) continue;
-    if (!lead.drip || !lead.drip.campaignId) continue;
-    const camp = campaigns.find(c => c.id === lead.drip.campaignId);
-    if (!camp || camp.paused) continue;
-
-    // the sweep is the only thing that runs regularly, so lanes are judged here
-    let changed = false;
-    try { if (laneApply(lead, now)) changed = true; } catch (e) {}
-
-    const due = dripDue(lead, camp, now);
-    if (!due.length) { if (changed) await setSetting(key, lead); continue; }
-
-    for (const step of due) {
-      if (step.type === 'email') {
-        if (!lead.email || !mailer) { continue; }
-        const unsub = `${origin}/unsub/${lead.id}.${unsubToken(lead.id)}`;
-        try {
-          await mailer.sendMail({
-            to: lead.email,
-            subject: dripFill(step.subject, lead, sess),
-            text: dripFill(step.body, lead, sess)
-                + `\n\n—\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`
-                + `\n${BROKERAGE_ADDRESS}`
-                + `\n\nIf you would rather not hear from us, unsubscribe here: ${unsub}`,
-          });
-          sent++;
-        } catch (e) { console.error('[drip] send failed:', e.message); continue; }
-      } else {
-        // a reminder for the agent, not an automated message
-        tasks.push({ leadId: lead.id, name: lead.name, what: step.subject });
-      }
-      lead.drip.done = (lead.drip.done || []).concat(step.id);
-      lead.drip.lastAt = new Date().toISOString();
-      changed = true;
-    }
-    if (changed) { try { await setSetting(key, lead); } catch (e) {} }
-  }
-  /* Saved searches, same pass. A listing is never sent twice, and the pace the
-     lead chose is honored — including "paused", which they can set themselves. */
-  let feeds = 0;
-  const GAP = { instant: 0, daily: 20 * 3600000, weekly: 6.5 * 86400000 };
-  try {
-    const { data } = await supabase.from(KV_TABLE).select('key,value')
-      .ilike('key', 'savedSearch:' + (isStaff(sess) ? '%' : sess.agentId + ':%'));
+    /* ⚠ THE ERROR IS READ, not discarded. This was `const { data } = ...` and
+       Supabase does not throw — it hands back { data: null, error }. So a database
+       failure produced an empty list, which this loop treats as "no saved searches
+       are due", which is indistinguishable from a quiet market. The alerts would
+       have gone silent and reported success. */
+    const { data, error } = await supabase.from(KV_TABLE).select('key,value').ilike('key', keyFilter);
+    if (error) throw new Error(error.message);
     for (const row of (data || [])) {
       const rec = row.value;
       if (!rec || rec.pace === 'paused' || !rec.email) continue;
+      checked++;
       const since = new Date(rec.lastSent || rec.createdAt).getTime();
-      if (Date.now() - since < (GAP[rec.pace] ?? GAP.daily)) continue;
+      if (Date.now() - since < (SEARCH_GAP[rec.pace] ?? SEARCH_GAP.daily)) { skipped++; continue; }
+
+      /* \u26a0 ONE AT A TIME PER SEARCH. The sweep and the CRM's own tick both run in
+         this process and can overlap \u2014 an agent logging in while the timer fires.
+         Without this, both read the same record, both decide a listing is new, and
+         the lead gets the same email twice. */
+      if (searchInFlight.has(row.key)) { skipped++; continue; }
+      searchInFlight.add(row.key);
+      try {
 
       const day = new Date(rec.lastSent || rec.createdAt).toISOString().slice(0, 10);
       const rows = await searchRun(rec.criteria || {}, day);
       const seen = rec.sentKeys || [];
       const fresh = rows.filter(r => r.ListingKey && !seen.includes(r.ListingKey));
-      if (!fresh.length) { rec.lastSent = new Date().toISOString(); await setSetting(row.key, rec); continue; }
+      if (!fresh.length) {
+        rec.lastSent = new Date().toISOString();
+        await setSetting(row.key, rec);
+        searchInFlight.delete(row.key);
+        continue;
+      }
 
       if (mailer) {
         const link = `${origin}/?feed=${searchToken(rec.id)}`;
@@ -6351,9 +6333,134 @@ app.post('/api/drip/tick', async (req, res) => {
       rec.sentKeys = seen.concat(fresh.map(r => r.ListingKey)).slice(-400);
       rec.lastSent = new Date().toISOString();
       await setSetting(row.key, rec);
+      } finally { searchInFlight.delete(row.key); }
     }
-  } catch (e) { console.error('[search] pass failed:', e.message); }
+  } catch (e) {
+    console.error('[search] pass failed:', e.message);
+    return { sent: feeds, checked, skipped, error: e.message };
+  }
+  return { sent: feeds, checked, skipped, error: null };
+}
 
+/* ==================== THE TIMER ====================
+   Every SEARCH_SWEEP_MINUTES, in process, like claimSweep and dripSweep. "Instant"
+   means within one sweep, so fifteen minutes by default rather than until Monday. */
+const SEARCH_SWEEP_MINUTES = Math.min(Math.max(
+  Number(process.env.SEARCH_SWEEP_MINUTES) || 15, 1), 240);
+
+const searchSweepState = {
+  everyMinutes: SEARCH_SWEEP_MINUTES,
+  startedAt: null, lastAt: null, lastOk: null, lastError: null,
+  runs: 0, sent: 0, checked: 0,
+};
+
+async function searchAlertSweep() {
+  searchSweepState.lastAt = new Date().toISOString();
+  searchSweepState.runs++;
+  try {
+    const r = await searchAlertPass({
+      keyFilter: 'savedSearch:%',
+      origin: PUBLIC_ORIGIN,          /* no request to read a host from */
+      why: 'sweep',
+    });
+    searchSweepState.lastOk = !r.error;
+    searchSweepState.lastError = r.error || null;
+    searchSweepState.sent += r.sent;
+    searchSweepState.checked = r.checked;
+    if (r.sent) {
+      console.log(`[search] sweep sent ${r.sent} alert(s) across ${r.checked} saved search(es)`);
+    }
+  } catch (e) {
+    /* \u26a0 Never throws. This runs on a timer with nothing above it to catch, and an
+       escaping error would stop the interval for the life of the process — the
+       alerts would go quiet again and look exactly like they do now. */
+    searchSweepState.lastOk = false;
+    searchSweepState.lastError = e.message;
+    console.error('[search] sweep failed:', e.message);
+  }
+}
+
+function startSearchSweep() {
+  searchSweepState.startedAt = new Date().toISOString();
+  /* \u26a0 Not immediately. A host that restarts in a loop would otherwise run a full
+     pass on every boot, and "instant" searches would be re-checked constantly. */
+  const t = setInterval(() => { searchAlertSweep().catch(() => {}); },
+                        SEARCH_SWEEP_MINUTES * 60 * 1000);
+  if (t.unref) t.unref();
+  setTimeout(() => { searchAlertSweep().catch(() => {}); }, 90 * 1000).unref?.();
+  console.log(`[search] listing alerts will be checked every ${SEARCH_SWEEP_MINUTES} minute(s)`);
+}
+
+app.post('/api/drip/tick', async (req, res) => {
+  const sess = await requireSession(req, res); if (!sess) return;
+  const now = Date.now();
+  const origin = `${req.protocol}://${req.get('host')}`;
+  let sent = 0, tasks = [];
+
+  /* ⚠ LISTING ALERTS RUN FIRST, AND THAT IS THE FIX. This route does two
+     unrelated jobs: drip follow-ups and new-listing alerts. It used to open with
+
+         if (!campaigns.length) return res.json({ ok: true, sent: 0 });
+
+     and the alert pass came AFTER it. So an office with no drip campaigns set up
+     sent no listing alerts either — ever, even with an agent signed in. One
+     feature silently switched off a completely different one. */
+  const pass = await searchAlertPass({
+    keyFilter: 'savedSearch:' + (isStaff(sess) ? '%' : sess.agentId + ':%'),
+    origin,
+    why: 'agent ' + (sess.name || sess.agentId),
+  });
+  const feeds = pass.sent;
+
+  const campaigns = (await getSetting('settings:dripCampaigns')) || [];
+  if (!Array.isArray(campaigns) || !campaigns.length) {
+    return res.json({ ok: true, sent: 0, feeds, tasks: [] });
+  }
+
+  let leads = [];
+  try {
+    const { data } = await supabase.from(KV_TABLE).select('key,value').ilike('key', 'lead:%');
+    leads = (data || []).map(r => ({ key: r.key, lead: r.value })).filter(x => x.lead);
+  } catch (e) { return res.status(500).json({ error: 'Could not read leads.' }); }
+
+  for (const { key, lead } of leads) {
+    if (!isStaff(sess) && lead.assignedAgentId !== sess.agentId) continue;
+    if (!lead.drip || !lead.drip.campaignId) continue;
+    const camp = campaigns.find(c => c.id === lead.drip.campaignId);
+    if (!camp || camp.paused) continue;
+
+    // the sweep is the only thing that runs regularly, so lanes are judged here
+    let changed = false;
+    try { if (laneApply(lead, now)) changed = true; } catch (e) {}
+
+    const due = dripDue(lead, camp, now);
+    if (!due.length) { if (changed) await setSetting(key, lead); continue; }
+
+    for (const step of due) {
+      if (step.type === 'email') {
+        if (!lead.email || !mailer) { continue; }
+        const unsub = `${origin}/unsub/${lead.id}.${unsubToken(lead.id)}`;
+        try {
+          await mailer.sendMail({
+            to: lead.email,
+            subject: dripFill(step.subject, lead, sess),
+            text: dripFill(step.body, lead, sess)
+                + `\n\n—\n${sess.name || ''}\n${BROKERAGE_NAME}\n${BROKERAGE_PHONE}`
+                + `\n${BROKERAGE_ADDRESS}`
+                + `\n\nIf you would rather not hear from us, unsubscribe here: ${unsub}`,
+          });
+          sent++;
+        } catch (e) { console.error('[drip] send failed:', e.message); continue; }
+      } else {
+        // a reminder for the agent, not an automated message
+        tasks.push({ leadId: lead.id, name: lead.name, what: step.subject });
+      }
+      lead.drip.done = (lead.drip.done || []).concat(step.id);
+      lead.drip.lastAt = new Date().toISOString();
+      changed = true;
+    }
+    if (changed) { try { await setSetting(key, lead); } catch (e) {} }
+  }
   if (sent || feeds) console.log(`[drip] ${sent} follow-up(s), ${feeds} listing alert(s) for ${sess.name}`);
   res.json({ ok: true, sent, feeds, tasks });
 });
@@ -9481,7 +9588,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v222',
+    serverVersion: 'v223',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -9501,6 +9608,22 @@ app.get('/api/health', async (req, res) => {
       canAlert: !!mailer,
       hoursSinceLastBeat: heartbeat.lastAt
         ? Math.round((Date.now() - new Date(heartbeat.lastAt)) / 36000) / 100 : null,
+    },
+    /* ⚠ A sweep that has stopped looks exactly like a market with no new
+       listings, which is how this went unnoticed in the first place. lastAt is the
+       number to watch: if it is older than everyMinutes, alerts are not going out. */
+    listingAlerts: {
+      everyMinutes: searchSweepState.everyMinutes,
+      startedAt: searchSweepState.startedAt,
+      lastAt: searchSweepState.lastAt,
+      lastOk: searchSweepState.lastOk,
+      lastError: searchSweepState.lastError,
+      runs: searchSweepState.runs,
+      sentTotal: searchSweepState.sent,
+      savedSearches: searchSweepState.checked,
+      minutesSinceLastRun: searchSweepState.lastAt
+        ? Math.round((Date.now() - Date.parse(searchSweepState.lastAt)) / 6000) / 10 : null,
+      canSend: !!mailer,
     },
     /* ⚠ fallbacks above zero means uploads are going into the database again
        because the bucket could not be reached. That is the thing to notice here. */
@@ -15115,6 +15238,7 @@ app.listen(port, async () => {
   console.log(`Avani & Co. server running on port ${port}`);
 
   startHeartbeat();
+  startSearchSweep();
   await fileStoreInit();
   await loadPhotoHosts();
   if (photoHostsSeen.size) console.log(`[startup] Known MLS photo hosts: ${[...photoHostsSeen].join(', ')}`);
