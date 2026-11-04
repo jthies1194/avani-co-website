@@ -4135,7 +4135,7 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
         <span class="subj-input">
           <input id="subj-q" placeholder="2400 Callaway" autocomplete="off"
             autocorrect="off" autocapitalize="off" spellcheck="false"
-            oninput="sugInput()" onkeydown="sugKey(event)"
+            oninput="sugUse('cma');sugInput()" onkeydown="sugUse('cma');sugKey(event)"
             onblur="setTimeout(sugHide,160)">
           <div id="subj-sug" class="subj-sug" role="listbox"></div>
         </span>
@@ -5752,7 +5752,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v418';
+window.BUILD = 'index-v419';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -24352,6 +24352,54 @@ let sugTimer = null;
 let sugItems = [];
 let sugIndex = -1;
 
+/* ==================== ONE TYPE-AHEAD, TWO BOXES (index 419) ====================
+   This was written for the CMA's subject box and had those element ids typed into
+   it. The address lookup in Prospecting needs exactly the same behaviour — the
+   same debounce, the same per-street-number cache, the same fuzzy scoring that
+   forgives "Calaway" for "Callaway", the same arrow keys.
+
+   ⚠ So it is parameterised rather than copied. A second copy would drift: the day
+   someone fixes the scoring in one, the other keeps the bug. The CMA's ids are the
+   DEFAULT, so if nothing calls sugUse() the behaviour is exactly what it was.
+
+   Only one dropdown can be open at a time, which is why the shared sugItems and
+   sugIndex are safe. Whichever box the person types in claims the type-ahead. */
+const SUG_TARGETS = {
+  cma: {
+    input: 'subj-q', list: 'subj-sug',
+    /* What the CMA did when a suggestion was picked, unchanged. */
+    onChoose: x => {
+      subjPicked = x;
+      subjShow();
+      if (x.lat && x.lng) cmpRun();
+    },
+    onEnterWithoutSelection: () => subjFind(),
+  },
+};
+/* Registered here rather than in the history block, because SUG_TARGETS is a
+   const in this block and the history code loads later. The functions it calls are
+   declared in that later block, which is fine — they are only looked up when a
+   suggestion is actually picked. */
+SUG_TARGETS.history = {
+  input: 'ph-q', list: 'ph-sug',
+  /* Picking a suggestion runs the lookup straight away. The person has already
+     said which property they mean; making them press a button as well is a step
+     that exists only because the code was easier to write that way. */
+  onChoose: x => {
+    if (typeof phRun === 'function') phRun();
+  },
+  onEnterWithoutSelection: () => { if (typeof phRun === 'function') phRun(); },
+};
+
+let sugTarget = SUG_TARGETS.cma;
+
+function sugUse(name){
+  const t = SUG_TARGETS[name];
+  if(!t || t === sugTarget) return;
+  sugHide();                /* close the other box's list before switching */
+  sugTarget = t;
+}
+
 const SUG_STREET_TYPES = {
   st:'street', str:'street', rd:'road', dr:'drive', drv:'drive', ln:'lane',
   ct:'court', cir:'circle', blvd:'boulevard', ave:'avenue', av:'avenue',
@@ -24419,8 +24467,8 @@ function sugInput(){
 }
 
 async function sugRun(){
-  const box = document.getElementById('subj-q');
-  const list = document.getElementById('subj-sug');
+  const box = document.getElementById(sugTarget.input);
+  const list = document.getElementById(sugTarget.list);
   if(!box || !list) return;
   const q = box.value || '';
   const { num, rest } = sugParse(q);
@@ -24472,7 +24520,7 @@ async function sugRun(){
 }
 
 function sugHide(){
-  const list = document.getElementById('subj-sug');
+  const list = document.getElementById(sugTarget.list);
   if(list){ list.classList.remove('on'); list.innerHTML = ''; }
   sugIndex = -1;
 }
@@ -24480,21 +24528,22 @@ function sugHide(){
 function sugChoose(i){
   const x = sugItems[i];
   if(!x) return;
-  const box = document.getElementById('subj-q');
+  const box = document.getElementById(sugTarget.input);
   if(box) box.value = x.address || '';
   sugHide();
-  subjPicked = x;
-  subjShow();
-  if(x.lat && x.lng) cmpRun();
+  if(typeof sugTarget.onChoose === 'function') sugTarget.onChoose(x);
 }
 
 /* Arrow keys and Enter, so it is usable without reaching for the mouse. */
 function sugKey(e){
-  const list = document.getElementById('subj-sug');
+  const list = document.getElementById(sugTarget.list);
   const open = list && list.classList.contains('on') && sugItems.length;
   if(e.key === 'Escape'){ sugHide(); return; }
   if(!open){
-    if(e.key === 'Enter'){ e.preventDefault(); subjFind(); }
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      if(typeof sugTarget.onEnterWithoutSelection === 'function') sugTarget.onEnterWithoutSelection();
+    }
     return;
   }
   if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
@@ -24508,7 +24557,8 @@ function sugKey(e){
   }
   if(e.key === 'Enter'){
     e.preventDefault();
-    if(sugIndex >= 0) sugChoose(sugIndex); else subjFind();
+    if(sugIndex >= 0) sugChoose(sugIndex);
+    else if(typeof sugTarget.onEnterWithoutSelection === 'function') sugTarget.onEnterWithoutSelection();
   }
 }
 
@@ -32560,8 +32610,12 @@ function prRender(d){
 #ph-box h3{margin:0 0 4px;font-size:15px;letter-spacing:-.1px;color:#19203A}
 #ph-box p.hint{margin:0 0 12px;font-size:12.5px;line-height:1.55;color:#5A6378;max-width:66ch}
 #ph-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
-#ph-q{flex:1 1 300px;border:1px solid #D7DCE8;border-radius:8px;padding:8px 10px;
+.ph-input{position:relative;flex:1 1 300px;min-width:0;display:block}
+#ph-q{width:100%;border:1px solid #D7DCE8;border-radius:8px;padding:8px 10px;
   font:inherit;font-size:13.5px;background:#fff;color:#19203A;min-width:0}
+/* The dropdown is the CMA's .subj-sug, so it already has its own styling; it only
+   needs to sit above the cards below it. */
+.ph-input .subj-sug{z-index:60}
 #ph-go{background:#2E3CB0;border:0;color:#fff;border-radius:8px;padding:9px 18px;
   font-size:13px;font-weight:620;cursor:pointer}
 #ph-go:hover{background:#26319A}
@@ -32598,6 +32652,16 @@ function prRender(d){
 @media(max-width:760px){
   .ph-when{flex:1 1 100%;padding-top:0}
   .ph-addr{font-size:16px}
+  /* ⚠ ON A PHONE THE BUTTON SITS DIRECTLY BELOW THE INPUT, so an absolutely
+     positioned dropdown lands on top of it and "Look it up" cannot be pressed —
+     the suggestion list makes the button it is meant to replace unreachable. In
+     the flow instead: the list pushes the button down, which is how a phone
+     expects to behave anyway. */
+  .ph-input{flex:1 1 100%}
+  .ph-input .subj-sug{position:static;left:auto;right:auto;top:auto;
+    margin-top:6px;box-shadow:none;max-height:260px}
+  #ph-form{flex-direction:column;align-items:stretch}
+  #ph-go{width:100%}
 }
 </style>
 <script>
@@ -32639,8 +32703,17 @@ function phBoxHtml(){
         listed, what it asked, what it sold for, how long it took, and what it has
         gained between sales. Street number and street name is enough.</p>
       <div id="ph-form">
-        <input id="ph-q" placeholder="2400 Callaway Dr, or 27500 Perdido Beach"
-          onkeydown="if(event.key==='Enter')phRun()">
+        <!-- Same type-ahead the CMA's subject box uses, pointed at this input.
+             sugUse('history') claims it on the first keystroke; only one dropdown
+             is ever open, so they cannot fight over it. -->
+        <span class="ph-input">
+          <input id="ph-q" placeholder="2400 Callaway, or 27500 Perdido Beach"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            oninput="sugUse('history');sugInput()"
+            onkeydown="sugUse('history');sugKey(event)"
+            onblur="setTimeout(sugHide,160)">
+          <div id="ph-sug" class="subj-sug" role="listbox"></div>
+        </span>
         <button id="ph-go" onclick="phRun()">Look it up</button>
       </div>
       <div id="ph-say"></div>
