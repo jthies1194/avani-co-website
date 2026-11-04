@@ -2452,10 +2452,19 @@ app.get('/api/address-suggest', async (req, res) => {
       const first = r.sources.find(x => !x.ok) || {};
       return res.json({ ok: true, how, suggestions: [], feedDetail: first.detail });
     }
+    /* ⚠ ADDRESS KEY, NOT THE DEDUPE KEY. mlsDedupeKey does not normalise street
+       types, so "18 Dune Ridge Rd" and "18 Dune Ridge Road" are two different keys
+       and the suggestion list offered the SAME HOUSE TWICE — which is exactly the
+       kind of thing that makes a person distrust the whole box. addrKey folds Rd
+       into Road, Dr into Drive and so on, and deliberately keeps unit numbers, so
+       unit 1104 and unit 2201 stay separate suggestions.
+
+       Scoped to the suggestion list on purpose. mlsDedupeKey is used by search,
+       comps and the CMA, and widening it there is a bigger change than this. */
     const seen = new Set();
     const out = [];
     for (const x of (r.value || [])) {
-      const k = mlsDedupeKey(x) || x.ListingKey;
+      const k = addrKey(x.UnparsedAddress, x.City) || mlsDedupeKey(x) || x.ListingKey;
       if (seen.has(k)) continue;
       seen.add(k);
       out.push({
@@ -9472,7 +9481,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v221',
+    serverVersion: 'v222',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
