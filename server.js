@@ -946,7 +946,14 @@ function mlsWithCounty(filter) {
   return filter ? `${filter} and ${c}` : c;
 }
 
-function mlsMerge(results) {
+/* dedupe defaults to TRUE, which is what every existing caller wants: one card per
+   property, however many feeds carry it and however many times it has been listed.
+
+   ⚠ /api/property-history passes false, and must. The dedupe key is the address
+   with the unit word stripped, so three records for one house — sold 2014, sold
+   2021, on the market now — collapse into one, and a history lookup gets a single
+   row where the whole point is the sequence. */
+function mlsMerge(results, { dedupe = true } = {}) {
   const seen = new Set();
   const out = [];
   for (const res of results) {
@@ -955,8 +962,10 @@ function mlsMerge(results) {
       if (!mlsCovered(row)) continue;
       if (!mlsDisplayable(row)) continue;   // s.18.2.3 seller opt-out
       mlsApplyAddressOptOut(row);
-      const k = mlsDedupeKey(row);
-      if (k) { if (seen.has(k)) continue; seen.add(k); }
+      if (dedupe) {
+        const k = mlsDedupeKey(row);
+        if (k) { if (seen.has(k)) continue; seen.add(k); }
+      }
       out.push(row);
     }
   }
@@ -967,7 +976,7 @@ function mlsMerge(results) {
 /* The one entry point. Returns { value, total, sources, partial, configured }.
    `partial` means at least one live feed failed and the results are incomplete —
    callers that show a count should say so rather than quietly under-reporting. */
-async function mlsQuery({ filter, top = 24, skip = 0, select,
+async function mlsQuery({ filter, top = 24, skip = 0, select, dedupe = true,
     orderby = 'ModificationTimestamp desc', count = true, county = true } = {}) {
   const srcs = mlsSources();
   if (!srcs.length) return { value: [], total: 0, sources: [], partial: false, configured: false };
@@ -998,7 +1007,7 @@ async function mlsQuery({ filter, top = 24, skip = 0, select,
 
   const results = await Promise.all(srcs.map(s => mlsFetchOne(s, params)));
   const okResults = results.filter(r => r.ok);
-  const merged = mlsMerge(results);
+  const merged = mlsMerge(results, { dedupe });
   const value = merged.slice(skip, skip + top);
 
   let total = null;
@@ -2494,6 +2503,244 @@ app.get('/api/address-suggest', async (req, res) => {
 
    ⚠ Returns FACTS ABOUT THE PROPERTY, not a value. No estimate, no "worth",
    nothing derived. That line is Firm Valuation and it is not ours to cross. */
+/* ==================== FINDING A PROPERTY BY ADDRESS (server v221) ====================
+   ⚠ EXTRACTED SO TWO ROUTES CANNOT DRIFT APART. /api/property-lookup had all of
+   this inline; /api/property-history needs exactly the same matching and must not
+   get a second, slightly different copy of it. Nothing below has changed from what
+   property-lookup was already doing — it is the same list of attempts in the same
+   order, and there is a test that proves it.
+
+   Why it is a ladder of attempts rather than one query:
+     • contains() on this feed is CASE SENSITIVE. "2400 callaway" misses
+       "2400 Callaway Dr", which is why address search failed while an MLS number
+       worked — a key match never touches case.
+     • Street types never agree. "Ln" does not match "Lane", "Dr" misses "Drive".
+     • A pasted "412 Sandpiper Ln, Gulf Shores AL 36542" matches nothing, because
+       the stored string is punctuated differently.
+     • A substring scan over 160,000 records is slow enough to time out, which
+       looks exactly like "no matches".
+
+   The street NUMBER plus the first word of the name is the sweet spot: both are
+   distinctive and neither gets abbreviated. */
+function addressAttempts(esc) {
+  const lead = String(esc).split(',')[0].trim();
+  const m = lead.match(/^\s*(\d+[A-Za-z]?)\s+(.+)$/);
+  const streetNo = m ? m[1] : '';
+  const streetWords = m ? m[2].trim().split(/\s+/) : lead.split(/\s+/);
+  /* Skip a leading direction so "N Beach Blvd" keys on "Beach". */
+  const firstWord = (streetWords[0] && /^(n|s|e|w|ne|nw|se|sw|north|south|east|west)$/i.test(streetWords[0])
+                      ? streetWords[1] : streetWords[0]) || '';
+
+  /* Title Case first, because that is how nearly all MLS text is stored, then the
+     word as typed, then UPPER for the feeds that shout. */
+  const caseVariants = w => {
+    if (!w) return [];
+    const title = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    return [...new Set([title, w, w.toUpperCase(), w.toLowerCase()])];
+  };
+
+  const attempts = [];
+  if (streetNo && firstWord) {
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `number+street field (${v})`,
+                      filter: `StreetNumber eq '${streetNo}' and contains(StreetName,'${v}')` });
+    });
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `number+street text (${v})`,
+                      filter: `contains(UnparsedAddress,'${streetNo} ${v}')` });
+    });
+  }
+  if (firstWord && !streetNo) {
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `street name (${v})`, filter: `contains(StreetName,'${v}')` });
+    });
+    caseVariants(firstWord).forEach(v => {
+      attempts.push({ how: `address text (${v})`, filter: `contains(UnparsedAddress,'${v}')` });
+    });
+  }
+  attempts.push({ how: 'whole string', filter: `contains(UnparsedAddress,'${lead}')` });
+  return { attempts, lead, streetNo, firstWord };
+}
+
+/* ==================== ONE PROPERTY, EVERY RECORD (server v221) ====================
+   Type an address, get everything the MLS has ever had on it: each time it was
+   listed, what it asked, what it actually sold for, how long it took, and what it
+   has done between sales.
+
+   This exists because the feed carries 153,777 closed records — 96% of it — and
+   nothing was reading them. /api/property-lookup finds a property and deliberately
+   keeps ONE row per property, the most recent, which is right for the CMA and
+   exactly wrong here.
+
+   ⚠ WHAT THIS CANNOT TELL YOU, AND IT MATTERS. The feed contains no Expired,
+   Withdrawn or Canceled records — counted directly, all five present statuses add
+   up to the feed total exactly. So a listing that came off the market WITHOUT
+   selling leaves no trace here at all. A gap in this timeline does not mean the
+   house was never listed; it means no record of it reached this feed. Anyone
+   reading "listed twice, sold twice" must not conclude "never failed to sell".
+   The response says so in `blindSpot` and the screen prints it. */
+
+/* ⚠ DECLARED BEFORE THE ROUTE THAT READS IT. A const is not hoisted, and a route
+   handler runs long after module load so it would have worked — which is exactly
+   what made the same shape of bug survive for months in the front end, where
+   statsFor() was defined four thousand lines below its first call and only worked
+   because the network was slower than the parser. Not repeating it here. */
+const HIST_BLIND_SPOT = 'This feed carries no expired, withdrawn or canceled records '
+  + '— the five current and closed statuses account for every one of its 160,000 '
+  + 'listings. So a listing that came off the market without selling leaves no trace '
+  + 'here. A gap in this history does not mean the property was never listed.';
+
+/* RESO gives the dates we need; everything below is arithmetic on them. */
+function histDays(fromDate, toDate) {
+  const a = Date.parse(fromDate || ''), b = toDate ? Date.parse(toDate) : Date.now();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+function histRecord(x) {
+  const orig = Number(x.OriginalListPrice) || null;
+  const ask = Number(x.ListPrice) || null;
+  const sold = Number(x.ClosePrice) || null;
+  const closed = String(x.StandardStatus || '') === 'Closed';
+  return {
+    key: x.ListingKey,
+    status: x.StandardStatus || '',
+    mlsStatus: x.MlsStatus || '',
+    address: x.UnparsedAddress || '',
+    city: x.City || '',
+    subType: x.PropertySubType || '',
+    beds: x.BedroomsTotal || null,
+    baths: x.BathroomsTotalInteger || null,
+    sqft: Number(x.LivingArea) || null,
+    acres: Number(x.LotSizeAcres) || null,
+    yearBuilt: x.YearBuilt || null,
+    onMarketDate: x.OnMarketDate || '',
+    closeDate: x.CloseDate || '',
+    originalListPrice: orig,
+    listPrice: ask,
+    closePrice: sold,
+    office: x.ListOfficeName || '',
+    agent: x.ListAgentFullName || '',
+    /* How long it took. For something still on the market, how long so far. */
+    daysOnMarket: histDays(x.OnMarketDate, closed ? x.CloseDate : null),
+    stillOn: !closed && ['Active', 'Active Under Contract', 'Pending', 'Coming Soon']
+      .includes(String(x.StandardStatus || '')),
+    /* What came off the asking price before it sold, and what it sold for against
+       the FIRST price asked — not the last one, which is the number that flatters. */
+    cutFromOriginal: (orig && ask && orig > ask) ? orig - ask : null,
+    soldVsOriginal: (sold && orig) ? Math.round(sold / orig * 1000) / 10 : null,
+    pricePerFoot: (sold && Number(x.LivingArea)) ? Math.round(sold / Number(x.LivingArea)) : null,
+  };
+}
+
+app.get('/api/property-history', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const sess = await requireSession(req, res); if (!sess) return;
+  if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
+
+  const q = String(req.query.q || '').trim();
+  if (q.length < 4) return res.status(400).json({ error: 'Give me a bit more of the address.' });
+  const esc = q.replace(/'/g, "''").slice(0, 80);
+
+  const { attempts, lead } = addressAttempts(esc);
+  const tried = [];
+  let rows = [], used = null;
+
+  try {
+    /* Same ladder, same order, but top is 100 and NOTHING is deduped — several
+       records for one property is the entire point. */
+    const deadline = Date.now() + 14000;
+    for (const a of attempts) {
+      if (Date.now() > deadline) { tried.push('(stopped on time)'); break; }
+      tried.push(a.how);
+      const got = await mlsQuery({
+        filter: a.filter, top: 100, skip: 0, count: false, county: false,
+        orderby: 'ModificationTimestamp desc', select: CLOSED_SELECT,
+        /* ⚠ EVERY record, not one per property. The default dedupe key is the
+           address with the unit stripped, so a house sold in 2014, sold again in
+           2021 and listed today collapses to a single row — and the sequence is
+           the entire reason this route exists. */
+        dedupe: false,
+      });
+      const answered = got.sources && got.sources.some(x => x.ok);
+      if (answered && (got.value || []).length) { rows = got.value; used = a; break; }
+      if (answered) used = a;
+    }
+  } catch (e) {
+    console.error('[property-history] FAILED:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+
+  if (!rows.length) {
+    return res.json({ ok: true, query: q, properties: [], tried,
+                      sentFilter: used && used.filter,
+                      blindSpot: HIST_BLIND_SPOT });
+  }
+
+  /* Group by normalised address, so "1601 Chateau Dr." and "1601 Chateau Drive"
+     are one property, and unit 1104 stays separate from unit 2201. */
+  const groups = new Map();
+  for (const x of rows) {
+    const k = addrKey(x.UnparsedAddress, x.City);
+    if (!k) continue;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(x);
+  }
+
+  const properties = [...groups.entries()].map(([key, recs]) => {
+    const list = recs.map(histRecord);
+    /* Newest first. Closed records sort by close date, live ones by on-market. */
+    const when = r => r.closeDate || r.onMarketDate || '';
+    list.sort((a, b) => String(when(b)).localeCompare(String(when(a))));
+
+    const sales = list.filter(r => r.status === 'Closed' && r.closePrice && r.closeDate)
+      .sort((a, b) => String(a.closeDate).localeCompare(String(b.closeDate)));
+
+    /* ⚠ THE NUMBER WORTH HAVING. Two sales of the SAME house are real
+       appreciation for that property — not a neighbourhood average, not an index.
+       Annualised as well as total, because "60% since 2017" and "8% a year" land
+       very differently in a listing appointment. */
+    const appreciation = [];
+    for (let i = 1; i < sales.length; i++) {
+      const from = sales[i - 1], to = sales[i];
+      const years = histDays(from.closeDate, to.closeDate) / 365.25;
+      if (!(years > 0.08)) continue;               /* same-year flips are not a trend */
+      const pct = (to.closePrice / from.closePrice - 1) * 100;
+      appreciation.push({
+        fromDate: from.closeDate, fromPrice: from.closePrice,
+        toDate: to.closeDate, toPrice: to.closePrice,
+        gain: to.closePrice - from.closePrice,
+        pct: Math.round(pct * 10) / 10,
+        years: Math.round(years * 10) / 10,
+        annualPct: Math.round((Math.pow(to.closePrice / from.closePrice, 1 / years) - 1) * 1000) / 10,
+      });
+    }
+
+    const live = list.find(r => r.stillOn) || null;
+    const newest = list[0] || null;
+    return {
+      addressKey: key,
+      address: (newest && newest.address) || '',
+      city: (newest && newest.city) || '',
+      currentStatus: live ? live.status : (newest ? newest.status : ''),
+      onMarketNow: !!live,
+      timesInFeed: list.length,
+      salesCount: sales.length,
+      lastSale: sales.length ? sales[sales.length - 1] : null,
+      appreciation,
+      records: list,
+    };
+  }).sort((a, b) => b.timesInFeed - a.timesInFeed);
+
+  console.log(`[property-history] ${sess.name || sess.agentId}: "${q}" -> `
+    + `${properties.length} propert${properties.length === 1 ? 'y' : 'ies'}, `
+    + `${rows.length} records, via ${used ? used.how : 'nothing'}`);
+
+  res.json({ ok: true, query: q, properties, tried,
+             matchedBy: used && used.how, sentFilter: used && used.filter,
+             blindSpot: HIST_BLIND_SPOT });
+});
+
 app.get('/api/property-lookup', async (req, res) => {
   const sess = await requireSession(req, res); if (!sess) return;
   res.set('Cache-Control', 'no-store');
@@ -2543,50 +2790,7 @@ app.get('/api/property-lookup', async (req, res) => {
     } catch (e) { /* fall through to the address search */ }
   }
 
-  const lead = esc.split(',')[0].trim();
-  const m = lead.match(/^\s*(\d+[A-Za-z]?)\s+(.+)$/);
-  const streetNo = m ? m[1] : '';
-  const streetWords = m ? m[2].trim().split(/\s+/) : lead.split(/\s+/);
-  /* Skip a leading direction so "N Beach Blvd" keys on "Beach". */
-  const firstWord = (streetWords[0] && /^(n|s|e|w|ne|nw|se|sw|north|south|east|west)$/i.test(streetWords[0])
-                      ? streetWords[1] : streetWords[0]) || '';
-
-  /* ⚠ CASE. contains() on this feed is case-SENSITIVE, and the agent types
-     "2400 callaway" while the MLS stores "2400 Callaway Dr". Passing their
-     capitalisation straight through meant every address search failed while an
-     MLS number — an exact key match that never touches case — worked fine.
-     That is precisely the symptom reported.
-
-     So each shape is tried in the capitalisations the data actually uses:
-     Title Case first because that is how nearly all MLS text is stored, then
-     the word as typed, then UPPER for the feeds that shout. */
-  const caseVariants = w => {
-    if (!w) return [];
-    const title = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-    const upper = w.toUpperCase();
-    return [...new Set([title, w, upper, w.toLowerCase()])];
-  };
-
-  const attempts = [];
-  if (streetNo && firstWord) {
-    caseVariants(firstWord).forEach(v => {
-      attempts.push({ how: `number+street field (${v})`,
-                      filter: `StreetNumber eq '${streetNo}' and contains(StreetName,'${v}')` });
-    });
-    caseVariants(firstWord).forEach(v => {
-      attempts.push({ how: `number+street text (${v})`,
-                      filter: `contains(UnparsedAddress,'${streetNo} ${v}')` });
-    });
-  }
-  if (firstWord && !streetNo) {
-    caseVariants(firstWord).forEach(v => {
-      attempts.push({ how: `street name (${v})`, filter: `contains(StreetName,'${v}')` });
-    });
-    caseVariants(firstWord).forEach(v => {
-      attempts.push({ how: `address text (${v})`, filter: `contains(UnparsedAddress,'${v}')` });
-    });
-  }
-  attempts.push({ how: 'whole string', filter: `contains(UnparsedAddress,'${lead}')` });
+  const { attempts, lead } = addressAttempts(esc);
 
   try {
     let r = null, used = null, tried = [];
@@ -9268,7 +9472,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v220',
+    serverVersion: 'v221',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
