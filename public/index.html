@@ -5752,7 +5752,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v417';
+window.BUILD = 'index-v418';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -32242,11 +32242,14 @@ function renderProspectSection(){
   el.innerHTML = `
     <div id="pr-wrap">
       <h2 style="margin:0 0 6px;font-size:21px;letter-spacing:-.3px">Prospecting</h2>
-      <p class="pr-lead">Listings that came off the market without selling — expired,
-        withdrawn or canceled. Each one is checked against what is on the market now
-        at the same address, so you can see at a glance which sellers are still
-        waiting and which have already relisted or sold.</p>
+      <p class="pr-lead">Two tools. Look up one address to see everything the MLS has
+        ever had on it, or search for listings that came off the market without selling.
+        The off-market search needs expired, withdrawn and canceled statuses added to
+        the IDX feed — the address lookup works now.</p>
       <div id="pr-say"></div>
+      ${typeof phBoxHtml === 'function' ? phBoxHtml() : ''}
+      <h3 style="margin:22px 0 4px;font-size:15px;letter-spacing:-.1px;color:#19203A">Find
+        off-market listings</h3>
       <div id="pr-form">
         <div class="pr-row">
           <div class="pr-f wide" style="flex:2 1 220px">
@@ -32546,6 +32549,214 @@ function prRender(d){
     + (notice.length ? `<div class="pr-notice">${
         notice.map(escapeHtml).join(' ')}</div>` : '')
     + cards;
+}
+</script>
+
+<style>
+/* ==================== ONE PROPERTY'S HISTORY (index 418) ====================
+   A timeline, read top-down newest first. The sale rows carry the weight because
+   a closed price is a fact and everything else is context. */
+#ph-box{background:#fff;border:1px solid #E3E6EF;border-radius:14px;padding:16px 18px;margin-bottom:16px}
+#ph-box h3{margin:0 0 4px;font-size:15px;letter-spacing:-.1px;color:#19203A}
+#ph-box p.hint{margin:0 0 12px;font-size:12.5px;line-height:1.55;color:#5A6378;max-width:66ch}
+#ph-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+#ph-q{flex:1 1 300px;border:1px solid #D7DCE8;border-radius:8px;padding:8px 10px;
+  font:inherit;font-size:13.5px;background:#fff;color:#19203A;min-width:0}
+#ph-go{background:#2E3CB0;border:0;color:#fff;border-radius:8px;padding:9px 18px;
+  font-size:13px;font-weight:620;cursor:pointer}
+#ph-go:hover{background:#26319A}
+#ph-go[disabled]{opacity:.5;cursor:default}
+#ph-out{margin-top:0}
+.ph-prop{background:#fff;border:1px solid #E3E6EF;border-radius:14px;padding:16px 18px;margin-bottom:12px}
+.ph-head{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin-bottom:3px}
+.ph-addr{font-size:17px;font-weight:650;letter-spacing:-.2px;color:#19203A}
+.ph-city{font-size:13px;color:#737C93}
+.ph-now{font-size:11.5px;font-weight:620;border-radius:99px;padding:3px 10px;white-space:nowrap}
+.ph-now.on{background:#EAF7F0;color:#1F6B43;border:1px solid #BFE3CF}
+.ph-now.off{background:#F1F2F7;color:#5A6378;border:1px solid #DFE2EC}
+.ph-gain{margin:12px 0 0;padding:12px 14px;background:#F4FBF7;border:1px solid #BFE3CF;
+  border-radius:10px;font-size:13px;line-height:1.6;color:#1F5C3D}
+.ph-gain b{font-variant-numeric:tabular-nums}
+.ph-gain .big{font-size:19px;font-weight:650;letter-spacing:-.3px;display:block;margin-bottom:2px}
+.ph-line{margin-top:14px;border-top:1px solid #EDEFF6;padding-top:4px}
+.ph-rec{display:flex;flex-wrap:wrap;gap:12px;padding:11px 0;border-bottom:1px solid #F4F6FA}
+.ph-rec:last-child{border-bottom:0}
+.ph-when{flex:0 0 96px;font-size:12px;color:#737C93;font-variant-numeric:tabular-nums;padding-top:2px}
+.ph-what{flex:1 1 240px;min-width:0}
+.ph-tag{display:inline-block;font-size:11px;font-weight:620;border-radius:99px;
+  padding:2px 9px;margin-right:7px;vertical-align:1px}
+.ph-tag.sold{background:#EDF2FD;color:#2A3C7A;border:1px solid #CFDBF5}
+.ph-tag.live{background:#EAF7F0;color:#1F6B43;border:1px solid #BFE3CF}
+.ph-tag.other{background:#F1F2F7;color:#5A6378;border:1px solid #DFE2EC}
+.ph-price{font-size:14.5px;font-weight:620;color:#19203A;font-variant-numeric:tabular-nums}
+.ph-sub{font-size:12px;color:#6C7489;margin-top:3px;line-height:1.5}
+.ph-blind{margin-top:14px;font-size:12px;line-height:1.6;color:#8A6A2E;
+  background:#FDF6E3;border:1px solid #F0DFB4;border-radius:10px;padding:11px 13px}
+#ph-say{margin:10px 0 0;font-size:13px;display:none;line-height:1.5;border-radius:10px;padding:10px 13px}
+#ph-say.on{display:block;background:#F2F4FB;border:1px solid #D9DFF2;color:#39426B}
+#ph-say.bad{display:block;background:#FDF0ED;border:1px solid #F0CFC6;color:#8E2F18}
+@media(max-width:760px){
+  .ph-when{flex:1 1 100%;padding-top:0}
+  .ph-addr{font-size:16px}
+}
+</style>
+<script>
+/* ==================== ONE PROPERTY'S HISTORY (index 418) ====================
+   Type an address, see every record the MLS has for it. Built because the feed is
+   96% closed sales — 153,777 of them — and nothing was reading that.
+
+   ⚠ The blind spot is printed on screen, every time, not buried in a tooltip. The
+   feed has no expired, withdrawn or canceled records, so a listing that came off
+   without selling leaves NO trace. "Listed twice, sold twice" must not be read as
+   "never failed to sell", and the one person who would read it that way is an
+   agent in a listing appointment. */
+
+let PH_LAST = null;
+
+function phMoney(n){
+  if(!(n || n === 0)) return '—';
+  return '$' + Math.round(Number(n)).toLocaleString();
+}
+
+function phWhen(at, long){
+  if(!at) return '';
+  const s = String(at);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  /* Date-only strings are local, not UTC — otherwise a sale on the 30th prints
+     as the 29th in Central time. */
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s);
+  if(isNaN(d)) return '';
+  return d.toLocaleDateString(undefined, long
+    ? { day:'numeric', month:'short', year:'numeric' }
+    : { month:'short', year:'numeric' });
+}
+
+function phBoxHtml(){
+  return `
+    <div id="ph-box">
+      <h3>Look up one address</h3>
+      <p class="hint">Every record the MLS has for a property — each time it was
+        listed, what it asked, what it sold for, how long it took, and what it has
+        gained between sales. Street number and street name is enough.</p>
+      <div id="ph-form">
+        <input id="ph-q" placeholder="2400 Callaway Dr, or 27500 Perdido Beach"
+          onkeydown="if(event.key==='Enter')phRun()">
+        <button id="ph-go" onclick="phRun()">Look it up</button>
+      </div>
+      <div id="ph-say"></div>
+    </div>
+    <div id="ph-out"></div>`;
+}
+
+function phSay(msg, bad){
+  const el = document.getElementById('ph-say');
+  if(!el) return;
+  el.className = msg ? (bad ? 'bad' : 'on') : '';
+  el.textContent = msg || '';
+}
+
+async function phRun(){
+  const q = ((document.getElementById('ph-q') || {}).value || '').trim();
+  if(q.length < 4){ phSay('Give me a bit more of the address.', true); return; }
+  const btn = document.getElementById('ph-go');
+  if(btn) btn.disabled = true;
+  phSay('Searching 160,000 records…');
+  document.getElementById('ph-out').innerHTML = '';
+  try{
+    const r = await fetch('/api/property-history?q=' + encodeURIComponent(q) + '&_=' + Date.now(),
+                          { cache:'no-store' });
+    const ct = r.headers.get('content-type') || '';
+    if(!ct.includes('json')) throw new Error('The server did not answer with data. Check the server is v221 or later.');
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'That lookup did not work.');
+    PH_LAST = d;
+    phSay('');
+    phRender(d);
+  }catch(e){
+    phSay(e.message, true);
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+function phRender(d){
+  const host = document.getElementById('ph-out');
+  if(!host) return;
+  if(!d.properties || !d.properties.length){
+    host.innerHTML = `<div class="ph-prop">
+      <div class="ph-addr" style="font-size:15px">Nothing found for that address</div>
+      <div class="ph-sub" style="margin-top:6px">Try just the street number and street
+        name — "2400 Callaway" rather than the whole postal address.</div>
+      <div class="ph-blind">${escapeHtml(d.blindSpot || '')}</div></div>`;
+    return;
+  }
+
+  host.innerHTML = d.properties.map(p => {
+    /* The appreciation between the property's OWN sales. Not a neighbourhood
+       average, not an index — this house, these two prices. */
+    const gain = (p.appreciation || []).length
+      ? (() => {
+          const a = p.appreciation[p.appreciation.length - 1];
+          return `<div class="ph-gain">
+            <span class="big">${phMoney(a.fromPrice)} → ${phMoney(a.toPrice)}</span>
+            Up <b>${phMoney(a.gain)}</b> (<b>${a.pct}%</b>) over <b>${a.years}</b> years
+            — about <b>${a.annualPct}%</b> a year, on this property's own two sales.
+            ${p.appreciation.length > 1 ? `<div style="margin-top:5px;font-size:12px;opacity:.85">
+              ${p.appreciation.length} sale-to-sale periods on record.</div>` : ''}
+          </div>`;
+        })()
+      : '';
+
+    const recs = (p.records || []).map(r => {
+      const sold = r.status === 'Closed' && r.closePrice;
+      const tag = sold ? 'sold' : r.stillOn ? 'live' : 'other';
+      const when = r.closeDate || r.onMarketDate;
+      const bits = [];
+      if(r.daysOnMarket != null){
+        bits.push(sold ? r.daysOnMarket + ' days on market'
+                       : r.daysOnMarket + ' days so far');
+      }
+      if(sold && r.originalListPrice && r.soldVsOriginal != null){
+        bits.push(r.soldVsOriginal >= 100
+          ? `${r.soldVsOriginal}% of the ${phMoney(r.originalListPrice)} first asked`
+          : `${r.soldVsOriginal}% of the ${phMoney(r.originalListPrice)} first asked`);
+      }
+      if(r.cutFromOriginal) bits.push('cut ' + phMoney(r.cutFromOriginal) + ' along the way');
+      if(r.pricePerFoot) bits.push(phMoney(r.pricePerFoot) + '/sq ft');
+      if(r.office) bits.push('listed by ' + r.office);
+      const facts = [
+        r.beds ? r.beds + ' bd' : '', r.baths ? r.baths + ' ba' : '',
+        r.sqft ? Number(r.sqft).toLocaleString() + ' sq ft' : '',
+        r.yearBuilt ? 'built ' + r.yearBuilt : '', r.subType || '',
+      ].filter(Boolean).join(' · ');
+
+      return `<div class="ph-rec">
+        <div class="ph-when">${escapeHtml(phWhen(when, true))}</div>
+        <div class="ph-what">
+          <span class="ph-tag ${tag}">${escapeHtml(
+            sold ? 'Sold' : r.stillOn ? (r.status === 'Active' ? 'For sale' : r.status) : r.status)}</span>
+          <span class="ph-price">${phMoney(sold ? r.closePrice : r.listPrice)}</span>
+          ${bits.length ? `<div class="ph-sub">${escapeHtml(bits.join(' · '))}</div>` : ''}
+          ${facts ? `<div class="ph-sub">${escapeHtml(facts)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="ph-prop">
+      <div class="ph-head">
+        <span class="ph-addr">${escapeHtml(p.address || '(address withheld)')}</span>
+        <span class="ph-city">${escapeHtml(p.city || '')}</span>
+        <span class="ph-now ${p.onMarketNow ? 'on' : 'off'}">${
+          p.onMarketNow ? escapeHtml(p.currentStatus === 'Active' ? 'On the market now' : p.currentStatus)
+                        : 'Not on the market'}</span>
+      </div>
+      <div class="ph-sub">${p.timesInFeed} record${p.timesInFeed === 1 ? '' : 's'} in the
+        MLS · ${p.salesCount} sale${p.salesCount === 1 ? '' : 's'}</div>
+      ${gain}
+      <div class="ph-line">${recs}</div>
+      <div class="ph-blind">${escapeHtml(d.blindSpot || '')}</div>
+    </div>`;
+  }).join('');
 }
 </script>
 </body>
