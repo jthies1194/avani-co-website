@@ -188,9 +188,37 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
   transition:transform .25s, box-shadow .25s, background .25s}
 .chat-fab:hover{background:#F0D6A0;transform:translateY(-2px);
   box-shadow:0 14px 38px rgba(23,31,99,.42)}
-.chat-fab::after{content:'';position:absolute;inset:-4px;border-radius:44px;
-  border:2px solid var(--gold);opacity:0;animation:fabPulse 3.2s ease-out 2s 3}
-@keyframes fabPulse{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
+/* ⚠ IT RAN THREE TIMES AND STOPPED. The old rule was `fabPulse 3.2s ease-out 2s 3`
+   — three iterations, done about twelve seconds after the page loads. Nothing was
+   broken; it had simply finished. Anyone who scrolled for a minute before looking
+   for help saw a button that had never moved.
+
+   Now it draws attention for as long as it is unused: a double pulse, then twenty
+   quiet seconds, repeating. Short enough to catch the eye on a long page, far
+   enough apart that it is not a blinking advert.
+
+   ⚠ border-radius:inherit, not a fixed 44px. On a phone the later rule turns this
+   button into a 56px circle, and a 44px ring around a circle is a rounded square
+   sitting off the edges of it.
+
+   ⚠ pointer-events:none, because a transparent ring 4px outside the button should
+   never be the thing that swallows the tap. */
+.chat-fab::after{content:'';position:absolute;inset:-4px;border-radius:inherit;
+  border:2px solid var(--gold);opacity:0;pointer-events:none;
+  animation:fabPulse 22s ease-out 3s infinite}
+@keyframes fabPulse{
+  0%  {opacity:.75;transform:scale(1)}
+  6%  {opacity:0;  transform:scale(1.2)}
+  7%  {opacity:.75;transform:scale(1)}
+  13% {opacity:0;  transform:scale(1.2)}
+  14%,100%{opacity:0;transform:scale(1)}
+}
+/* Once they have opened the chat, stop asking. */
+.chat-fab.seen::after{animation:none}
+/* And never animate for someone who has asked their system not to. */
+@media(prefers-reduced-motion:reduce){
+  .chat-fab::after{animation:none}
+}
 .chat-fab svg{width:21px;height:21px;stroke:var(--blue-ink);flex-shrink:0}
 .chat-panel{position:fixed;bottom:90px;right:22px;width:340px;max-width:calc(100vw - 32px);height:440px;max-height:calc(100vh - 140px);background:var(--white);border-radius:8px;box-shadow:0 20px 50px rgba(21,65,196,0.25);z-index:150;display:none;flex-direction:column;overflow:hidden;border:1px solid var(--line);}
 .chat-panel.open{display:flex;}
@@ -5542,7 +5570,30 @@ openMyAccount();
 let chatHistory = [];
 function toggleChat(){
 document.getElementById('chat-panel').classList.toggle('open');
+/* ⚠ Stop pulsing once they have actually opened it. A button that keeps asking
+   for attention after it has been used is just noise, and the person who most
+   deserves to be left alone is the one who already engaged. Remembered across
+   visits where the browser allows it — wrapped, because storage throws in a
+   private window and must never take the chat down with it. */
+const fab = document.getElementById('chat-fab');
+if(fab && !fab.classList.contains('seen')){
+  fab.classList.add('seen');
+  try{ localStorage.setItem('chatSeen','1'); }catch(e){}
 }
+}
+
+/* A returning visitor who has used the chat before should not be pulsed at again. */
+(function(){
+  const mark = () => {
+    let seen = false;
+    try{ seen = localStorage.getItem('chatSeen') === '1'; }catch(e){ seen = false; }
+    if(!seen) return;
+    const fab = document.getElementById('chat-fab');
+    if(fab) fab.classList.add('seen');
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mark);
+  else mark();
+})();
 function closeChatOpenLead(){
 document.getElementById('chat-panel').classList.remove('open');
 openLeadModal('chat');
@@ -5773,7 +5824,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v421';
+window.BUILD = 'index-v422';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
