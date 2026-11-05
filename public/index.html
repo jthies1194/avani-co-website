@@ -106,6 +106,9 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 }/* \u26a0 The dropdown is absolutely positioned, so its .f wrapper has to be the positioning
    context or it lands relative to the page and appears somewhere else entirely. */
 .search .f{position:relative}
+#city-hint .hint-head{padding:7px 12px 4px;font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:#9AA2B6;font-weight:700;
+  border-top:1px solid var(--line);margin-top:3px}
 #city-hint{display:none;position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);
   background:#fff;border:1px solid var(--line);border-radius:5px;overflow:hidden;
   box-shadow:0 14px 34px rgba(21,65,196,.16);max-height:270px;overflow-y:auto}
@@ -1766,7 +1769,9 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
          relied on: on most mobile browsers a datalist shows nothing, or needs a second
          tap on a control the person cannot see. It looked broken. The list below is
          built and positioned by us, so it behaves the same everywhere. -->
-    <input id="f-city" list="city-options" placeholder="All of Baldwin County, a city, or a ZIP"
+    <input id="f-city" list="city-options"
+      placeholder="Address, city, ZIP, or all of Baldwin County"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
       autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false"
       oninput="cityHint(this.value)" onfocus="cityHint(this.value)"
       onkeydown="cityKey(event)">
@@ -5768,7 +5773,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v420';
+window.BUILD = 'index-v421';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -9099,8 +9104,17 @@ function populateCityOptions(){
   if(!cities.length) return;
   dl.innerHTML = cities.map(c =>
     `<option value="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c]})</option>`).join('');
+  /* ⚠ THIS LINE WAS THE WHOLE PROBLEM, OR AT LEAST THE VISIBLE HALF OF IT. Once
+     the listings loaded it overwrote the placeholder with "20 cities — start
+     typing", so whatever the markup said, the box ON THE SCREEN told every visitor
+     it took cities and nothing else. Someone who already knew the address had no
+     reason to try it — and if they did, it failed on capitalisation anyway.
+
+     It now says what the box actually accepts, and still reports how many towns
+     are in the feed, which was the useful part. */
   const inp = document.getElementById('f-city');
-  if(inp) inp.placeholder = cities.length + ' cities \u2014 start typing';
+  if(inp) inp.placeholder = 'Address, city, ZIP \u2014 or all '
+    + cities.length + ' Baldwin County towns';
   /* \u26a0 Kept in a variable as well as the datalist, because the list we draw ourselves
      is the one that actually works on a phone. */
   CITY_LIST = cities.map(c => ({ name: c, n: counts[c] }));
@@ -9195,13 +9209,77 @@ function cityHint(q){
   const matchesWide = !s || 'all of baldwin county'.includes(s) || 'county'.startsWith(s);
   const rest = starts.concat(has).filter(c => !c.wide);
   const list = (matchesWide ? [WIDE] : []).concat(rest).slice(0, 8);
-  if(!list.length){ box.classList.remove('on'); box.innerHTML = ''; return; }
   cityHi = -1;
-  box.innerHTML = list.map((c,i) =>
-    '<button type="button" role="option" data-i="' + i + '" onclick="cityPick(\'' 
-    + String(c.name).replace(/'/g, "\\'") + '\')">'
-    + escapeHtml(c.name) + (c.n ? '<span>' + c.n + '</span>' : '') + '</button>').join('');
+  CITY_ROWS = list.map(c => ({ kind:'city', name:c.name, n:c.n }));
+  cityPaint();
+  /* ⚠ ADDRESSES TOO, AND THAT IS THE FIX. This box only ever suggested cities, so
+     anyone who already knew the address had nothing to pick — and typing it by
+     hand failed on capitalisation, because contains() on this feed is case
+     sensitive. Asked for as soon as the text looks like a street address. */
+  cityAddrWanted(q);
+}
+
+/* City rows and address rows are kept apart and painted together: the addresses
+   arrive from the server a moment after the cities, and a repaint must not throw
+   away whichever half is already on screen. */
+let CITY_ROWS = [], ADDR_ROWS = [], cityAddrTimer = null, cityAddrFor = '';
+
+function cityPaint(){
+  const box = document.getElementById('city-hint');
+  if(!box) return;
+  if(!CITY_ROWS.length && !ADDR_ROWS.length){
+    box.classList.remove('on'); box.innerHTML = ''; return;
+  }
+  let html = '', i = 0, headed = false;
+  const row = (r, label) =>
+    '<button type="button" role="option" data-i="' + (i++) + '" onclick="cityPick('
+    + JSON.stringify(r.name).replace(/"/g, '&quot;') + ')">'
+    + escapeHtml(r.name) + (label ? '<span>' + escapeHtml(label) + '</span>' : '')
+    + '</button>';
+  for(const r of CITY_ROWS) html += row(r, r.n ? String(r.n) : '');
+  for(const r of ADDR_ROWS){
+    if(!headed){ html += '<div class="hint-head">Addresses</div>'; headed = true; }
+    html += row(r, r.note || '');
+  }
+  box.innerHTML = html;
   box.classList.add('on');
+}
+
+/* Debounced, because every one of these reaches the MLS. */
+function cityAddrWanted(q){
+  const t = String(q || '').trim();
+  const looksLikeAddress = /^\d/.test(t) ? t.length >= 2 : t.length >= 3;
+  if(!looksLikeAddress){ ADDR_ROWS = []; cityPaint(); return; }
+  if(cityAddrTimer) clearTimeout(cityAddrTimer);
+  cityAddrTimer = setTimeout(() => cityAddrFetch(t), 280);
+}
+
+async function cityAddrFetch(t){
+  cityAddrFor = t;
+  /* The route takes a street number OR a street name, so send whichever was typed. */
+  const m = t.match(/^\s*(\d+[A-Za-z]?)\b\s*(.*)$/);
+  const qs = m ? 'num=' + encodeURIComponent(m[1]) : 'name=' + encodeURIComponent(t);
+  try{
+    const r = await fetch('/api/address-suggest?' + qs, { cache:'no-store' });
+    const ct = r.headers.get('content-type') || '';
+    if(!ct.includes('json')) return;
+    const d = await r.json();
+    /* ⚠ A slow earlier request must not overwrite a newer one's answer. */
+    if(cityAddrFor !== t) return;
+    let hits = d.suggestions || [];
+    /* With a number AND some street name typed, narrow to the street as well. */
+    if(m && m[2] && m[2].length >= 2){
+      const want = m[2].toLowerCase();
+      const narrowed = hits.filter(x => String(x.address || '').toLowerCase().includes(want));
+      if(narrowed.length) hits = narrowed;
+    }
+    ADDR_ROWS = hits.slice(0, 6).map(x => ({
+      kind:'addr', name: x.address || '',
+      note: [x.city, x.beds ? x.beds + ' bd' : '',
+             x.status && x.status !== 'Active' ? x.status : ''].filter(Boolean).join(' \u00b7 '),
+    })).filter(x => x.name);
+    cityPaint();
+  }catch(e){ /* the city suggestions still stand */ }
 }
 
 function cityPick(name){
