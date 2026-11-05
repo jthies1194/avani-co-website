@@ -4580,11 +4580,13 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="detail-loc" id="detail-loc"></div>
 <div class="detail-stats" id="detail-stats"></div>
 <p style="font-size:15px; color:var(--ink); line-height:1.6; margin-bottom:4px;" id="detail-mls"></p>
-<div class="share-row">
-<button class="share-btn" onclick="shareListing('facebook')">Facebook</button>
-<button class="share-btn" onclick="shareListing('twitter')">X / Twitter</button>
+<div class="share-row" id="share-row">
+<button class="share-btn" id="share-native-btn" onclick="shareListing('native')" hidden>Share</button>
+<button class="share-btn" data-desktop-share onclick="shareListing('facebook')">Facebook</button>
+<button class="share-btn" data-desktop-share onclick="shareListing('twitter')">X / Twitter</button>
 <button class="share-btn" onclick="shareListing('copy')">Copy link</button>
 </div>
+<div id="share-manual" hidden></div>
 <button class="submit-btn" id="detail-contact-btn">Contact agent about this home</button>
 </div>
 </div>
@@ -5276,7 +5278,10 @@ openLeadModal('listing', listing.ListingKey, listing.UnparsedAddress.replace(/'/
 };
 document.getElementById('detail-modal-overlay').classList.add('active');
 }
-function closeDetailModal(){ document.getElementById('detail-modal-overlay').classList.remove('active'); }
+function closeDetailModal(){
+  document.getElementById('detail-modal-overlay').classList.remove('active');
+  if(typeof hideManualLink === 'function') hideManualLink();
+}
 
 function shareListing(platform){
 if(!currentDetailListing) return;
@@ -5289,14 +5294,97 @@ const ref = (typeof getAgentReferral === 'function') ? getAgentReferral() : null
 const url = location.origin + '/listing/' + encodeURIComponent(currentDetailListing.ListingKey)
   + (ref && ref.slug ? '?agent=' + encodeURIComponent(ref.slug) : '');
 const text = `${currentDetailListing.UnparsedAddress}, ${currentDetailListing.City} — $${currentDetailListing.ListPrice.toLocaleString()}`;
+if(platform === 'native'){
+  /* The phone's own share sheet: Messages, WhatsApp, Mail, Instagram, whatever
+     they already use. Returns a promise; an AbortError just means they closed it. */
+  if(navigator.share){
+    navigator.share({ title: text, text, url })
+      .catch(e => { if(!e || e.name !== 'AbortError') copyListingLink(url); });
+    return;
+  }
+  return copyListingLink(url);
+}
 if(platform === 'facebook'){
 window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url), '_blank', 'width=600,height=500');
 } else if(platform === 'twitter'){
 window.open('https://twitter.com/intent/tweet?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text), '_blank', 'width=600,height=500');
 } else if(platform === 'copy'){
-navigator.clipboard.writeText(url).then(()=> showToast("Link copied!")).catch(()=> showToast("Couldn't copy — copy from the address bar instead."));
+copyListingLink(url);
 }
 }
+
+/* ⚠ This used to be a bare navigator.clipboard.writeText(url).then().catch().
+   navigator.clipboard is simply absent in the in-app browsers inside Facebook,
+   Instagram and Messenger, and on any page not served over HTTPS — so the call
+   threw "TypeError: Cannot read properties of undefined (reading 'writeText')"
+   SYNCHRONOUSLY, which means the .catch() never ran either. Tapping Copy link on
+   a phone did nothing at all: no link, no toast, no error. Measured in a 390px
+   mobile context with clipboard removed, which is what those webviews look like. */
+function copyListingLink(url){
+  const done = () => { hideManualLink(); showToast('Link copied!'); };
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(done).catch(()=> copyListingFallback(url));
+      return;
+    }
+  }catch(e){}
+  copyListingFallback(url);
+}
+
+function copyListingFallback(url){
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.contentEditable = 'true';
+    ta.readOnly = false;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    /* iOS Safari ignores .select() on its own; it needs a real range. */
+    const range = document.createRange();
+    range.selectNodeContents(ta);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    ta.setSelectionRange(0, url.length);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    ta.remove();
+    if(ok){ hideManualLink(); showToast('Link copied!'); return; }
+  }catch(e){}
+  /* Last resort: show the link so it can be copied by hand. Failing visibly beats
+     failing silently, which is what this did before. */
+  showManualLink(url);
+}
+
+function showManualLink(url){
+  const box = document.getElementById('share-manual');
+  if(!box){ showToast("Couldn't copy — copy from the address bar instead."); return; }
+  box.hidden = false;
+  box.innerHTML = '<div style="font-size:12px;color:var(--marsh);margin:0 0 5px">'
+    + 'Press and hold to copy this link:</div>'
+    + '<input readonly value="' + escapeHtml(url) + '" '
+    + 'style="width:100%;font-size:13px;padding:9px;border:1px solid var(--line);'
+    + 'border-radius:4px;background:#fff;color:inherit;-webkit-user-select:all;user-select:all">';
+  const inp = box.querySelector('input');
+  if(inp){ inp.focus(); try{ inp.setSelectionRange(0, url.length); }catch(e){} }
+}
+function hideManualLink(){
+  const box = document.getElementById('share-manual');
+  if(box){ box.hidden = true; box.innerHTML = ''; }
+}
+
+/* Where the phone has a share sheet, it replaces the two popup buttons rather
+   than joining them: four buttons at 390px wrap into an unreadable row, and the
+   sheet already offers Facebook and X alongside everything else they use. */
+function shareRowInit(){
+  const native = !!navigator.share;
+  const nb = document.getElementById('share-native-btn');
+  if(nb) nb.hidden = !native;
+  document.querySelectorAll('#share-row [data-desktop-share]')
+    .forEach(b => { b.hidden = native; });
+}
+if(document.readyState === 'loading')
+  document.addEventListener('DOMContentLoaded', shareRowInit);
+else shareRowInit();
 
 // ---------- Client accounts (real login, favorites, saved searches) ----------
 let currentClient = null;
@@ -5824,7 +5912,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v423';
+window.BUILD = 'index-v424';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
