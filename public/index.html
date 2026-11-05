@@ -5824,7 +5824,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v422';
+window.BUILD = 'index-v423';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -15692,32 +15692,51 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     return lines;
   }
 
-  /* Fit a paragraph into a box.
+  /* How tall this text would be at a given size. The layout needs this BEFORE it
+     decides how much room to leave, which is the whole point. */
+  function paragraphHeight(ctx, text, w, px, lead, font){
+    const t = String(text || '').trim();
+    if(!t) return 0;
+    ctx.font = (font || '%SIZE%px Helvetica, Arial, sans-serif').replace('%SIZE%', px);
+    return wrapLines(ctx, t, w).length * px * lead;
+  }
 
-     Listing remarks vary from one line to six hundred words, so a fixed size
-     either wastes the page or cuts mid-sentence. This steps the size down until
-     the whole thing fits. Only if it still will not fit at the smallest readable
-     size does it trim — and then on a word boundary with an ellipsis, never
-     mid-word like "fitness facil".                                              */
+  /* Fit a paragraph into a box — GROWING as well as shrinking.
+
+     ⚠ THIS USED TO ONLY EVER SHRINK. It started at `opts.start` and stepped down
+     until the text fitted, so that start value was a ceiling the type could never
+     rise above however much room there was. On the Feature sheet that left three
+     and a half inches of white space under a line of 11pt text. And the floor was
+     0.094*dpi — 6.8pt at 200dpi — so a long description came out at a size you
+     would need a magnifying glass to read.
+
+     Now it finds the LARGEST size between a readable floor and a sensible ceiling
+     that still fits, so short text fills its box and long text shrinks only as far
+     as it has to. Nothing on a printed flyer drops below the floor; if the words
+     genuinely will not fit at that size, they are trimmed on a word boundary with
+     an ellipsis instead, because 7pt body type on a handout is not a smaller
+     version of readable, it is unreadable. */
   function drawParagraph(ctx, text, x, y, w, maxH, dpi, opts){
     const t = String(text || '').trim();
     if(!t) return 0;
     opts = opts || {};
-    const startPx = opts.start || 0.15 * dpi;
-    const minPx   = opts.min   || 0.098 * dpi;
-    const lead    = opts.lead  || 1.42;
-    const font    = opts.font  || '%SIZE%px Helvetica, Arial, sans-serif';
+    const pt = n => n * dpi / 72;
+    const lead = opts.lead || 1.42;
+    const font = opts.font || '%SIZE%px Helvetica, Arial, sans-serif';
+    /* Floor and ceiling in POINTS, because that is how type is read and how a
+       printer talks about it. 9.5pt is about the smallest a handout should carry. */
+    const minPx = Math.round(opts.min || pt(9.5));
+    const maxPx = Math.round(opts.max || pt(13.5));
 
-    let px = startPx, lines = null;
-    while(px >= minPx){
-      ctx.font = font.replace('%SIZE%', px);
+    let px = null, lines = null;
+    for(let s = Math.max(maxPx, minPx); s >= minPx; s--){
+      ctx.font = font.replace('%SIZE%', s);
       const ls = wrapLines(ctx, t, w);
-      if(ls.length * px * lead <= maxH){ lines = ls; break; }
-      px -= Math.max(1, Math.round(0.004 * dpi));
+      if(ls.length * s * lead <= maxH){ px = s; lines = ls; break; }
     }
 
     if(!lines){
-      // smallest readable size still overflows — trim on a word boundary
+      /* Smallest readable size still overflows — trim on a word boundary. */
       px = minPx;
       ctx.font = font.replace('%SIZE%', px);
       const all = wrapLines(ctx, t, w);
@@ -15973,7 +15992,14 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     // Reserve room for the description in proportion to how long it actually is,
     // so a short blurb doesn't shrink the photo and a long one still fits.
     const remLen = String(spec.remarks || '').length;
-    const remH = remLen ? Math.min(2.5*dpi, Math.max(0.5*dpi, remLen / 90 * 0.19 * dpi)) : 0;
+    /* ⚠ Measured at the size we want to read it at, not estimated from a character
+       count. 0.19*dpi per 90 characters is 38px, and a 90-character line at 11pt
+       needs 43px — so the photo quietly took the difference and the description
+       paid for it in type size. */
+    const remH = remLen
+      ? Math.min(2.6*dpi, paragraphHeight(ctx, spec.remarks, W - pad*2,
+                                          Math.round(13.5 * dpi / 72), 1.42) + 0.14*dpi)
+      : 0;
     const belowPhoto = Math.min(0.44*dpi, CAP) * 1.24 + 0.2*dpi*1.6 + 0.62*dpi
                      + remH + 0.45*dpi;
     const footTopA = H - 1.55 * dpi;
@@ -16025,7 +16051,25 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     ctx.fillStyle = BRAND.paper;
     ctx.fillRect(0, 0, W, H);
 
-    const heroH = 4.1 * dpi;
+    /* ⚠ WAS A FIXED 4.1 INCHES, and everything the description did not use stayed
+       white. A short blurb left three and a half inches of empty paper between the
+       facts and the footer, which is the other half of "it doesn't fill the space".
+
+       The photo now takes whatever the text below does not need, the same way the
+       open-house and four-photo sheets already do. Bounded at both ends so a very
+       long description cannot squeeze the photo into a strip, and a one-line one
+       cannot push it past half the page. */
+    /* ⚠ Measured at the size the text will ACTUALLY be set at — the fitter's
+       ceiling — not at some smaller size. Reserving for 11pt and then drawing at
+       13.5pt is how a reservation quietly runs short, which is the bug this
+       replaced on the other two sheets. */
+    const _remH = spec.remarks
+      ? paragraphHeight(ctx, spec.remarks, W - pad*2,
+                        Math.round(13.5 * dpi / 72), 1.45) + 0.14*dpi
+      : 0;
+    const _below = 0.34*dpi + 0.62*dpi + 0.26*dpi + 0.28*dpi + _remH + 0.24*dpi;
+    const heroH = Math.max(3.4 * dpi,
+                   Math.min(6.6 * dpi, (H - 1.55*dpi) - _below));
     if(!drawCover(ctx, spec._photoImg, 0, 0, W, heroH))
       placeholder(ctx, 0, 0, W, heroH, 'Listing photo');
     const grad = ctx.createLinearGradient(0, heroH * 0.45, 0, heroH);
@@ -16061,7 +16105,7 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     if(spec.remarks){
       ctx.fillStyle = 'rgba(27,32,67,.76)';
       drawParagraph(ctx, spec.remarks, pad, y, W - pad*2, footTop - y, dpi,
-                    { start: 0.155*dpi, min: 0.1*dpi, lead: 1.45 });
+                    { lead: 1.45 });
     }
 
     drawFooter(ctx, spec, dpi, W, H, QR);
@@ -16192,7 +16236,15 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     // with a band of empty white above the footer.
     const rest = imgs.slice(1, 4);
     const remLen = String(spec.remarks || '').length;
-    const remH = remLen ? Math.min(2.1*dpi, Math.max(0.42*dpi, remLen / 100 * 0.17 * dpi)) : 0;
+    /* ⚠ MEASURED, NOT GUESSED. This was `remLen / 100 * 0.17 * dpi` — 34px per
+       hundred characters at 200dpi. A hundred-character line at a readable 11pt
+       needs 43px, so the reservation was calibrated to roughly 8.7pt type: the
+       photos above took the rest, and the description had no room to be legible.
+       Asking how tall the text actually is at the size we want cannot drift. */
+    const remH = remLen
+      ? Math.min(2.4*dpi, paragraphHeight(ctx, spec.remarks, innerW,
+                                          Math.round(13.5 * dpi / 72), 1.42) + 0.12*dpi)
+      : 0;
     const textH = Math.min(0.38*dpi, CAP) * 1.2 + 0.18*dpi*1.5 + 0.62*dpi + remH + 0.3*dpi;
     const avail = (H - 1.55*dpi) - y - textH;
     const thumbH = rest.length ? Math.max(0.9*dpi, Math.min(1.35*dpi, avail * 0.3)) : 0;
@@ -16234,8 +16286,7 @@ function mkDupById(id){ const p = mkProjects.find(x => x.id === id); if(p) mkDup
     const footTop = H - 1.55 * dpi - 0.18 * dpi;
     if(spec.remarks){
       ctx.fillStyle = 'rgba(27,32,67,.74)';
-      drawParagraph(ctx, spec.remarks, pad, y, innerW, footTop - y, dpi,
-                    { start: 0.14*dpi, min: 0.094*dpi });
+      drawParagraph(ctx, spec.remarks, pad, y, innerW, footTop - y, dpi);
     }
 
     drawFooter(ctx, spec, dpi, W, H, QR);
