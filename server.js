@@ -12128,7 +12128,13 @@ app.delete('/api/receipt/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-/* ==================== SHARING A LISTING (server 126) ====================
+/* ============ SHARING A LISTING (server 126, rebuilt in server v225) ============
+   v225: the page a shared link opened was a stub — address, price, three facts and
+   the description chopped at 900 characters mid-sentence, under the wrong
+   disclaimer. It now opens the way the MLS detail view does: status and list date,
+   price with any reduction against OriginalListPrice, a facts grid built only from
+   fields the feed actually returned, and the full public description.
+
    ⚠ The share buttons sent `/?listing=KEY` — the app shell with a query string. A
    social crawler does not run JavaScript, so Facebook fetched that, found the site's
    generic tags, and rendered a grey box reading "bamacoast.com". No address, no price,
@@ -12157,7 +12163,12 @@ app.get('/listing/:key', async (req, res, next) => {
        is checked here.
        ⚠ Exact match, not a prefix: 'Active Under Contract' also begins with
        'Active' and did NOT satisfy the old filter. */
-    if (r && String(r.StandardStatus || '') !== 'Active') r = null;
+    /* ⚠ Was `!== 'Active'`, so sharing a listing that had gone under contract or
+       pending sent every recipient to the search page instead of the home they
+       were sent. The public side already shows Active, Active Under Contract,
+       Pending and Closed; a share link now follows the same rule rather than a
+       stricter one of its own. Off-market statuses still fall through. */
+    if (r && !publicStatus(r.StandardStatus)) r = null;
   } catch (e) {
     console.error('[listing share] feed:', e.message);
     return next();
@@ -12169,7 +12180,14 @@ app.get('/listing/:key', async (req, res, next) => {
   const e = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const price = r.ListPrice ? '$' + Number(r.ListPrice).toLocaleString() : 'Price on request';
-  const addr  = [r.UnparsedAddress, r.City].filter(Boolean).join(', ');
+  /* ⚠ UnparsedAddress on this feed already ends with the city, state and ZIP, so
+     appending City produced "2400 Callaway Road, Gulf Shores AL 36542, Gulf
+     Shores" as the title of every share. Only add the city when it is missing. */
+  const ua = String(r.UnparsedAddress || '').trim();
+  const cityName = String(r.City || '').trim();
+  const hasCity = cityName &&
+    new RegExp('\\b' + cityName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(ua);
+  const addr = (cityName && !hasCity) ? [ua, cityName].filter(Boolean).join(', ') : (ua || cityName);
   const bits  = [
     r.BedroomsTotal ? r.BedroomsTotal + ' bd' : '',
     r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' ba' : '',
@@ -12177,8 +12195,70 @@ app.get('/listing/:key', async (req, res, next) => {
   ].filter(Boolean).join(' \u00b7 ');
   const img = listingPhotoUrl(r, origin);
   const credit = listingCredit(r);
-  const remarks = String(r.PublicRemarks || '').replace(/\s+/g, ' ').trim();
-  const desc = [price, bits, remarks].filter(Boolean).join(' — ').slice(0, 300);
+  const remarks = String(r.PublicRemarks || '').replace(/[ \t]+/g, ' ').trim();
+
+  /* ⚠ A bare slice cut mid-word: the preview under a shared link read
+     "...Picture slow mornings in a rocking ch". Cut at the last space instead and
+     mark it as cut. The page itself now shows the description in full — only
+     og:description has a platform limit worth respecting. */
+  const clip = (s, n) => {
+    s = String(s || '').replace(/\s+/g, ' ').trim();
+    if (s.length <= n) return s;
+    const cut = s.slice(0, n - 1);
+    const sp = cut.lastIndexOf(' ');
+    return (sp > n * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,;:.—-]+$/, '') + '…';
+  };
+  const desc = clip([price, bits, remarks].filter(Boolean).join(' — '), 300);
+
+  /* What the MLS detail view leads with, built only from fields the feed actually
+     returned. A label with nothing behind it is worse than no label, so a row
+     appears only when there is a value for it. */
+  const moneyFmt = v => '$' + Number(v).toLocaleString();
+  const yesNo = v => (v === true || v === 'true' ? 'Yes'
+                    : v === false || v === 'false' ? 'No' : '');
+  const factRows = [
+    ['MLS ID',            r.ListingId],
+    ['Days on market',    r.DaysOnMarket],
+    ['Property type',     r.PropertyType],
+    ['Property sub type', r.PropertySubType],
+    ['Subdivision',       r.SubdivisionName],
+    ['Apx living area',   r.LivingArea ? Number(r.LivingArea).toLocaleString() + ' sq ft' : ''],
+    ['Bedrooms',          r.BedroomsTotal],
+    ['Full bathrooms',    r.BathroomsFull != null ? r.BathroomsFull : r.BathroomsTotalInteger],
+    ['Half bathrooms',    r.BathroomsHalf],
+    ['HOA?',              r.AssociationYN != null ? yesNo(r.AssociationYN) : ''],
+    ['HOA fee',           Number(r.AssociationFee) > 0 ? moneyFmt(r.AssociationFee) : ''],
+    ['Year built',        r.YearBuilt],
+    ['Lot size',          Number(r.LotSizeAcres) > 0
+                            ? Number(r.LotSizeAcres).toFixed(2) + ' acres' : ''],
+    ['Stories',           r.StoriesTotal],
+    ['Garage spaces',     Number(r.GarageSpaces) > 0 ? r.GarageSpaces : ''],
+    ['Waterfront',        r.WaterfrontYN != null ? yesNo(r.WaterfrontYN) : ''],
+    ['Elementary school', r.ElementarySchool],
+    ['Middle school',     r.MiddleOrJuniorSchool || r.MiddleSchool],
+    ['High school',       r.HighSchool],
+  ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '');
+
+  /* "$335,000  -$15K  -4.3%" is the first thing his MLS shows, and on a shared
+     listing a price cut is the most persuasive fact on the page.
+     OriginalListPrice is already in the feed, so it costs nothing to say it. */
+  const origPrice = Number(r.OriginalListPrice) || 0, listPrice = Number(r.ListPrice) || 0;
+  const cutAmt = origPrice > listPrice && listPrice > 0 ? origPrice - listPrice : 0;
+  const cutPct = cutAmt ? (cutAmt / origPrice * 100).toFixed(1) : '';
+  const cutTxt = cutAmt
+    ? '−' + (cutAmt >= 1000 ? '$' + Math.round(cutAmt / 1000) + 'K' : moneyFmt(cutAmt))
+      + '  −' + cutPct + '%'
+    : '';
+
+  const status = String(r.StandardStatus || '').trim();
+  /* Date-only strings are UTC midnight; reading them in local time prints the
+     day before. Same trap the prospecting panel hit. */
+  const onMkt = r.OnMarketDate ? new Date(r.OnMarketDate) : null;
+  const listedTxt = onMkt && !isNaN(onMkt)
+    ? onMkt.toLocaleDateString('en-US',
+        { month: 'numeric', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+    : '';
+
   const canon = `${origin}/listing/${encodeURIComponent(r.ListingKey || key)}`
     + (who ? `?agent=${encodeURIComponent(who)}` : '');
   const into = `${origin}/?listing=${encodeURIComponent(r.ListingKey || key)}`
@@ -12214,25 +12294,47 @@ body{margin:0;background:#FBFAF7;color:#141A3C;
 h1{font-family:Georgia,serif;font-size:31px;line-height:1.2;font-weight:400;margin:0 0 4px}
 .pr{font-family:Georgia,serif;font-size:27px;color:#171F63;margin:0 0 6px}
 .bits{font-size:15px;color:#5A6178;margin:0 0 20px}
-.rm{font-size:15px;line-height:1.75;margin:0 0 24px}
+.rm{font-size:15px;line-height:1.75;margin:0 0 24px;white-space:pre-line}
 .btn{display:inline-block;background:#171F63;color:#fff;text-decoration:none;
   padding:15px 28px;border-radius:4px;font-weight:700;font-size:15px}
 .btn:hover{background:#C89B4E;color:#241A08}
 .cr{font-size:12.5px;color:#7A8199;margin-top:22px;padding-top:16px;
   border-top:1px solid rgba(20,26,60,.12)}
 .ft{font-size:13px;color:#5A6178;margin-top:8px;line-height:1.7}
+.st{display:flex;flex-wrap:wrap;align-items:baseline;gap:9px;margin:0 0 2px}
+.chip{display:inline-block;background:#E8EEF7;color:#171F63;border-radius:3px;
+  padding:3px 9px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.when{font-size:13px;color:#5A6178}
+.cut{display:inline-block;margin-left:10px;font-family:'Public Sans',system-ui,sans-serif;
+  font-size:15px;font-weight:700;color:#A4303F;white-space:nowrap}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:0 26px;
+  margin:4px 0 26px;border-top:1px solid rgba(20,26,60,.12)}
+.facts div{display:flex;justify-content:space-between;gap:14px;padding:9px 0;
+  border-bottom:1px solid rgba(20,26,60,.09);font-size:14px}
+.facts dt{color:#5A6178;margin:0}
+.facts dd{margin:0;font-weight:600;text-align:right}
+h2{font-family:Georgia,serif;font-size:19px;font-weight:400;margin:0 0 8px}
+@media(max-width:430px){h1{font-size:25px}.pr{font-size:23px}.w{padding:22px 16px 48px}}
 </style></head><body><div class="w">
 <div class="eb">${e(BROKERAGE_NAME)}</div>
 ${img ? `<img class="hero" src="${e(img)}" alt="${e(addr)}">` : ''}
-<h1>${e(r.UnparsedAddress || 'Address on request')}</h1>
-<div class="pr">${e(price)}</div>
-<div class="bits">${e([r.City, r.StandardStatus].filter(Boolean).join(' \u00b7 '))}${
-  bits ? ' \u00b7 ' + e(bits) : ''}</div>
-${remarks ? `<p class="rm">${e(remarks.slice(0, 900))}</p>` : ''}
+<div class="st">${status ? `<span class="chip">${e(status)}</span>` : ''}${
+  listedTxt ? `<span class="when">Listed ${e(listedTxt)}</span>` : ''}</div>
+<h1>${e(ua || 'Address on request')}</h1>
+<div class="pr">${e(price)}${cutTxt ? `<span class="cut">${e(cutTxt)}</span>` : ''}</div>
+<div class="bits">${e([cityName, bits].filter(Boolean).join(' \u00b7 '))}</div>
+${factRows.length ? `<dl class="facts">${factRows.map(([k, v]) =>
+  `<div><dt>${e(k)}</dt><dd>${e(v)}</dd></div>`).join('')}</dl>` : ''}
+${remarks ? `<h2>Description</h2><p class="rm">${e(remarks)}</p>` : ''}
 <a class="btn" href="${e(into)}">See the photos and more like it</a>
 ${credit ? `<div class="cr">${e(credit)}</div>` : ''}
 <div class="ft">${e(BROKERAGE_NAME)} &middot; ${e(BROKERAGE_PHONE)}<br>
-${e(DISCLAIMER_GENERAL).slice(0, 400)}</div>
+${/* \u26a0 This used to print DISCLAIMER_GENERAL \u2014 the *article* disclaimer, about
+      market commentary \u2014 sliced to 400 characters, on a page made entirely of
+      MLS listing data. Wrong text, and cut mid-sentence. mlsIdxDisclaimer() is
+      the prescribed IDX wording and carries the MLS as the source, which
+      s.18.3.7 requires. It is not trimmed; see the warning at its definition. */
+  e(mlsIdxDisclaimer())}</div>
 </div></body></html>`);
 });
 
