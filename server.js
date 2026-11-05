@@ -1112,6 +1112,43 @@ const PUBLIC_STATUSES = ['Active', 'Active Under Contract', 'Pending', 'Closed']
    An empty box has always searched county-wide, because the feed is already
    restricted to the covered counties. This just gives that a name people can pick.
    Treated as "no city clause", not as a city called Baldwin. */
+/* ==================== WHAT THE PERSON TYPED IN THE BOX (server v224) ====================
+   ⚠ contains() ON THIS FEED IS CASE SENSITIVE, and this is where it hurt most. The
+   search box sent the text exactly as typed:
+
+       "18 Dune Ridge Rd"  -> 1 result
+       "18 dune ridge"     -> 0 results
+       "gulf shores"       -> 0 results
+
+   So an address worked only if you happened to capitalise it the way the MLS
+   stores it, and a city worked only if you picked it from the dropdown rather than
+   typing it. That is why the box felt like it only took cities: the dropdown was
+   quietly supplying the capitalisation.
+
+   Each variant is sent against City AND UnparsedAddress, so one box takes a city,
+   a street address or a ZIP without the person choosing which they are giving. */
+function placeVariants(v) {
+  const t = String(v || '').trim().replace(/\s+/g, ' ');
+  if (!t) return [];
+  /* Title Case every word — "18 dune ridge rd" becomes "18 Dune Ridge Rd", which
+     is how MLS text is nearly always stored. */
+  const title = t.replace(/[A-Za-z]+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  return [...new Set([title, t, t.toUpperCase(), t.toLowerCase()])];
+}
+
+function placeClause(term, esc) {
+  const t = String(term || '').trim();
+  if (!t) return null;
+  const parts = [];
+  for (const v of placeVariants(t)) {
+    parts.push(`contains(City,'${esc(v)}')`);
+    parts.push(`contains(UnparsedAddress,'${esc(v)}')`);
+  }
+  /* A bare five-digit number is a ZIP, and PostalCode is an exact field. */
+  if (/^\d{5}$/.test(t)) parts.push(`PostalCode eq '${esc(t)}'`);
+  return '(' + parts.join(' or ') + ')';
+}
+
 const COUNTY_WIDE = [
   'all', 'all of baldwin county', 'all of baldwin', 'baldwin', 'baldwin county',
   'baldwin co', 'county', 'countywide', 'county wide', 'entire county',
@@ -1672,8 +1709,8 @@ app.get('/api/prospect', async (req, res) => {
   const parts = [];
 
   if (q.city && String(q.city).trim() && !isCountyWide(q.city)) {
-    const c = esc(String(q.city).trim());
-    parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}') or PostalCode eq '${c}')`);
+    const clause = placeClause(String(q.city).trim(), esc);
+    if (clause) parts.push(clause);
   }
   const ptype = String(q.ptype || '').trim();
   if (ptype === 'land') parts.push(`PropertyType eq 'Land'`);
@@ -1946,9 +1983,10 @@ app.get('/api/search', async (req, res) => {
      matches nothing, and the person who asked for the whole county gets an empty
      page — the worst possible answer to the broadest possible search. */
   if (q.city && q.city.trim() && !isCountyWide(q.city)) {
-    const c = esc(q.city.trim());
-    // match the city OR anywhere in the street address, same as the old client-side behavior
-    parts.push(`(contains(City,'${c}') or contains(UnparsedAddress,'${c}'))`);
+    /* One box, three kinds of answer: a city, a street address or a ZIP — in
+       whatever capitalisation the person used. */
+    const clause = placeClause(q.city.trim(), esc);
+    if (clause) parts.push(clause);
   }
   // property type — the feed uses Residential, Land, Commercial Sale, Commercial Lease
   const ptype = String(q.ptype || '').trim();
@@ -2422,8 +2460,17 @@ function compDom(r) {
    Falls back to a street-name search when no number has been typed yet, which is
    slower and deliberately needs more characters before it will run. */
 app.get('/api/address-suggest', async (req, res) => {
-  const sess = await requireSession(req, res); if (!sess) return;
-  res.set('Cache-Control', 'no-store');
+  /* ⚠ PUBLIC, BUT NOT THE SAME ROUTE. The search box on the website needs to
+     suggest addresses, and this used to require a session, so it could not.
+     Opening it up is only safe with a status filter: without one it would suggest
+     the address of any listing in the feed, which is precisely the leak that
+     /api/search and /api/listing/:key were locked down for.
+
+     A signed-in agent still gets everything, because the CMA and comps need sold
+     and off-market records. The public gets the four statuses the public search
+     allows and nothing else. */
+  const sess = await getSession(req);
+  res.set('Cache-Control', sess ? 'no-store' : 'public, max-age=120');
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
   const num  = String(req.query.num || '').trim().slice(0, 12);
@@ -2441,6 +2488,12 @@ app.get('/api/address-suggest', async (req, res) => {
     how = 'street name';
   } else {
     return res.json({ ok: true, how: 'too short', suggestions: [] });
+  }
+
+  /* The status restriction for anyone not signed in. */
+  if (!sess) {
+    filter = '(' + PUBLIC_STATUSES.map(x => `StandardStatus eq '${x}'`).join(' or ')
+      + ') and ' + filter;
   }
 
   try {
@@ -9588,7 +9641,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v223',
+    serverVersion: 'v224',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
