@@ -284,6 +284,38 @@ function newToken() {
     Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('');
 }
 
+/* ⚠ WHY SESSIONS ARE ALSO HELD IN MEMORY (server v226).
+   A session is a row in kv_store, so it survives a restart and would work across
+   several processes. But it meant the database was in the path of EVERY
+   authenticated request: when Supabase stopped handing out connections on
+   18 November, `getSetting` returned null for every lookup, null is
+   indistinguishable from "no such token", and the whole agent side answered
+   "Sign in to access this." to a broker who was already signed in.
+
+   So the database stays the source of truth across restarts, and this Map is
+   checked first. A pool timeout of a few seconds or a few hours no longer signs
+   anyone out mid-sentence. The trade: a session revoked directly in the database
+   stays usable in a running process until it expires — logout clears this Map,
+   which is the path that actually matters, and the bound below keeps a
+   long-running process from growing without limit. */
+const sessionCache = new Map();
+const SESSION_CACHE_MAX = 500;
+
+function cacheSession(token, rec) {
+  if (!token || !rec) return;
+  /* Map preserves insertion order, so the first key is the oldest. Re-inserting
+     moves a token to the back, so active sessions are not evicted first. */
+  sessionCache.delete(token);
+  while (sessionCache.size >= SESSION_CACHE_MAX) {
+    const oldest = sessionCache.keys().next().value;
+    if (oldest === undefined) break;
+    sessionCache.delete(oldest);
+  }
+  sessionCache.set(token, rec);
+}
+
+function uncacheSession(token) { if (token) sessionCache.delete(token); }
+
 async function createSession(agent) {
   const token = newToken();
   const rec = {
@@ -292,17 +324,43 @@ async function createSession(agent) {
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + SESSION_HOURS * 3600 * 1000).toISOString(),
   };
-  await setSetting('session:' + token, rec);
-  return { token, expiresAt: rec.expiresAt };
+  /* ⚠ The return value used to be thrown away. setSetting answers false on a
+     failed write, so when the database was refusing writes this function handed
+     back a token that existed NOWHERE, login replied `ok:true`, and the very next
+     request 401'd. That is exactly the "it doesn't reject my password, it just
+     won't let me in" reported on 18 November. The caller is told now. */
+  const persisted = await setSetting('session:' + token, rec);
+  if (!persisted) {
+    console.error('[session] could not be saved to the database — holding it in '
+      + 'memory only; it will not survive a restart');
+  }
+  cacheSession(token, rec);
+  return { token, expiresAt: rec.expiresAt, persisted };
+}
+
+function sessionLive(rec) {
+  if (!rec || !rec.agentId) return false;
+  if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) return false;
+  return true;
 }
 
 async function getSession(req) {
   const hdr = req.headers.authorization || '';
   const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
   if (!token) return null;
+
+  /* Memory first — see the note on sessionCache. Expiry is still enforced here,
+     so a cached session is not a longer-lived one. */
+  const hit = sessionCache.get(token);
+  if (hit) {
+    if (sessionLive(hit)) return hit;
+    uncacheSession(token);
+    return null;
+  }
+
   const rec = await getSetting('session:' + token);
-  if (!rec || !rec.agentId) return null;
-  if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) return null;
+  if (!sessionLive(rec)) return null;
+  cacheSession(token, rec);
   return rec;
 }
 
@@ -7217,8 +7275,22 @@ app.post('/api/agent/reset-password', async (req, res) => {
 app.post('/api/agent/logout', async (req, res) => {
   const hdr = req.headers.authorization || '';
   const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
-  if (token) { try { await supabase.from('kv_store').delete().eq('key', 'session:' + token); } catch (e) {} }
-  res.json({ ok: true });
+  /* ⚠ Clearing the memory copy is not optional. Sessions are cached in this
+     process (see sessionCache), so deleting only the database row would leave a
+     "logged out" token working until it expired — logout that does not log you
+     out. This runs first, and unconditionally, because it cannot fail. */
+  uncacheSession(token);
+  let cleared = true;
+  if (token) {
+    try {
+      const { error } = await supabase.from('kv_store').delete().eq('key', 'session:' + token);
+      if (error) { cleared = false; console.error('[logout] row not deleted:', error.message); }
+    } catch (e) { cleared = false; console.error('[logout] delete threw:', e && e.message); }
+  }
+  /* The caller is told, because a session still in the database can be used from
+     another process or after a restart. The token is dead in THIS process either
+     way, so the answer is still ok:true. */
+  res.json({ ok: true, rowDeleted: cleared });
 });
 
 app.get('/api/session', async (req, res) => {
@@ -7233,15 +7305,107 @@ app.post('/api/agent/login', async (req, res) => {
   const normalizedEmail = (email || '').trim().toLowerCase();
   try {
     const { data, error } = await supabase.from('agents').select('*').eq('email', normalizedEmail).maybeSingle();
-    if (error || !data) return res.status(401).json({ error: 'No account found with that email.' });
+
+    /* ⚠ This was `if (error || !data)` → 401 "No account found with that email."
+       A database error and a missing account are not the same event, and saying
+       the wrong one cost an afternoon on 18 November: the agents table was
+       failing, the login said the account did not exist, and the broker
+       reasonably concluded his own credentials were wrong. The two are told
+       apart now, and a database fault is a 503 — not a 401 — so it cannot be
+       mistaken for a rejected password. */
+    if (error) {
+      console.error('[login] agents lookup FAILED:', error.message);
+      return res.status(503).json({
+        error: 'Sign-in is unavailable because the agents table cannot be read '
+             + 'right now. This is not your email or your password.',
+        detail: error.message, stage: 'agents-read', dbFault: true,
+      });
+    }
+    if (!data) return res.status(401).json({ error: 'No account found with that email.' });
     if (!verifyPassword(password, data.password_hash)) return res.status(401).json({ error: 'Incorrect password.' });
     if (data.active === false) return res.status(403).json({ error: 'This account has been deactivated. Contact your broker.' });
-    await supabase.from('agents').update({ last_login: new Date().toISOString() }).eq('id', data.id);
+
+    /* Stamping last_login is a convenience, never a reason to block a sign-in
+       that has already been earned. It used to be awaited bare, so a write
+       failure here threw and became a 500 on a correct password. */
+    try {
+      const { error: stampErr } = await supabase.from('agents')
+        .update({ last_login: new Date().toISOString() }).eq('id', data.id);
+      if (stampErr) console.warn('[login] last_login not stamped:', stampErr.message);
+    } catch (e) { console.warn('[login] last_login threw:', e.message); }
+
     const sess = await createSession(data);
-    res.json({ ok: true, agent: agentPublic(data), token: sess.token, expiresAt: sess.expiresAt });
+    res.json({
+      ok: true, agent: agentPublic(data), token: sess.token, expiresAt: sess.expiresAt,
+      /* False means the session is held in this process only: it works now and
+         is gone on the next restart. The interface can warn instead of silently
+         logging them out later. */
+      persisted: sess.persisted,
+    });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    /* supabase-js resolves with {data,error} for a database fault, so reaching
+       here means something threw — a network failure, DNS, a dead pooler. That
+       is infrastructure, not a credential problem, and it is reported as such. */
+    console.error('[login] THREW:', e && e.message);
+    res.status(503).json({
+      error: 'Sign-in is unavailable because the database could not be reached. '
+           + 'This is not your email or your password.',
+      detail: e && e.message, stage: 'threw', dbFault: true,
+    });
   }
+});
+
+/* ---------- why can't I sign in? ----------
+   Unauthenticated on purpose: when sign-in is the thing that is broken, a
+   diagnostic behind sign-in is no use. It reports only infrastructure — whether
+   each table answers and whether the session store accepts a write — and
+   deliberately NOT whether any particular email exists, which would hand anyone
+   an account-enumeration oracle. Built after client sign-in kept working while
+   agent sign-in did not, because the two paths differ in exactly one way and
+   nothing on the site could show which side was failing. */
+app.get('/api/agent/login-check', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!supabase) return res.status(503).json({ ok: false, error: 'No database configured.' });
+
+  const probe = async (table) => {
+    const t0 = Date.now();
+    try {
+      const { error } = await supabase.from(table).select('*', { count: 'exact', head: true });
+      return error
+        ? { reachable: false, ms: Date.now() - t0, error: error.message }
+        : { reachable: true,  ms: Date.now() - t0 };
+    } catch (e) {
+      return { reachable: false, ms: Date.now() - t0, threw: e && e.message };
+    }
+  };
+
+  const agents  = await probe('agents');
+  const clients = await probe('clients');
+
+  /* The session store, exercised the way sign-in exercises it: a real write and
+     a real read back. A read-only database passes a read and fails here, which
+     is the case that breaks sign-in while the rest of the site looks fine. It
+     reuses one fixed key, overwritten on each check, so this cannot accumulate
+     rows in a database that may already be tight on space. */
+  const k = 'diag:login-check';
+  const t0 = Date.now();
+  const wrote = await setSetting(k, { at: new Date().toISOString() });
+  const readBack = await getSetting(k);
+  const sessionStore = {
+    writable: !!wrote, readable: !!readBack, ms: Date.now() - t0,
+  };
+
+  const verdict = !agents.reachable  ? 'The agents table is not answering — this is why agent sign-in fails.'
+    : !sessionStore.writable         ? 'The agents table is fine, but the session store will not accept a write, so a sign-in cannot be saved.'
+    : !sessionStore.readable         ? 'A session can be written but not read back.'
+    : 'Both tables answer and the session store reads and writes. Sign-in should work.';
+
+  res.json({
+    ok: agents.reachable && sessionStore.writable && sessionStore.readable,
+    verdict, agents, clients, sessionStore,
+    cachedSessions: sessionCache.size,
+    checkedAt: new Date().toISOString(),
+  });
 });
 
 // The qualifying broker must always be able to get in. Locking or deleting that
@@ -9641,7 +9805,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v224',
+    serverVersion: 'v226',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
