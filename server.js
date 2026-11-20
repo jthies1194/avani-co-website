@@ -7315,10 +7315,16 @@ app.post('/api/agent/login', async (req, res) => {
        mistaken for a rejected password. */
     if (error) {
       console.error('[login] agents lookup FAILED:', error.message);
+      /* ⚠ This used to say "the agents table cannot be read", which on
+         18 November pointed at one table while the entire database was timing
+         out. The message names what is certain — the read failed — and sends you
+         to the check that can tell the difference, rather than guessing at a
+         cause from inside the one route that noticed. */
       return res.status(503).json({
-        error: 'Sign-in is unavailable because the agents table cannot be read '
-             + 'right now. This is not your email or your password.',
-        detail: error.message, stage: 'agents-read', dbFault: true,
+        error: 'Sign-in is unavailable: the database did not answer. This is not '
+             + 'your email or your password. Open /api/agent/login-check to see '
+             + 'whether this is one table or the whole database.',
+        detail: errShape(error), stage: 'agents-read', dbFault: true,
       });
     }
     if (!data) return res.status(401).json({ error: 'No account found with that email.' });
@@ -7363,6 +7369,32 @@ app.post('/api/agent/login', async (req, res) => {
    an account-enumeration oracle. Built after client sign-in kept working while
    agent sign-in did not, because the two paths differ in exactly one way and
    nothing on the site could show which side was failing. */
+/* Everything an error object might be carrying, with the empty parts dropped so
+   the answer stays readable. A failure with no message at all still shows its
+   code, its cause, or at minimum its type. */
+function errShape(e) {
+  if (!e) return null;
+  if (typeof e === 'string') return { message: e };
+  const out = {
+    message: e.message || '', code: e.code || '', details: e.details || '',
+    hint: e.hint || '', name: e.name || '',
+  };
+  if (e.cause) {
+    out.cause = {
+      message: e.cause.message || '', code: e.cause.code || '',
+      errno: e.cause.errno == null ? '' : String(e.cause.errno),
+    };
+    if (!out.cause.message && !out.cause.code && !out.cause.errno) delete out.cause;
+  }
+  for (const k of Object.keys(out)) if (out[k] === '') delete out[k];
+  /* Never hand back a bare {} — that is the empty-string bug in another costume. */
+  if (!Object.keys(out).length) {
+    return { message: 'the error carried no message, code or cause',
+             raw: String(e).slice(0, 200) };
+  }
+  return out;
+}
+
 app.get('/api/agent/login-check', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!supabase) return res.status(503).json({ ok: false, error: 'No database configured.' });
@@ -7371,11 +7403,17 @@ app.get('/api/agent/login-check', async (req, res) => {
     const t0 = Date.now();
     try {
       const { error } = await supabase.from(table).select('*', { count: 'exact', head: true });
+      /* ⚠ This reported `error.message` alone and printed error:"" on
+         18 November — the one field that happened to be empty, so the check said
+         "not reachable" and nothing about why. A Postgres error from supabase-js
+         carries code, details and hint beside message, and a transport failure
+         carries a cause chain instead; whichever is present is what is wanted, so
+         all of them are passed through. */
       return error
-        ? { reachable: false, ms: Date.now() - t0, error: error.message }
+        ? { reachable: false, ms: Date.now() - t0, error: errShape(error) }
         : { reachable: true,  ms: Date.now() - t0 };
     } catch (e) {
-      return { reachable: false, ms: Date.now() - t0, threw: e && e.message };
+      return { reachable: false, ms: Date.now() - t0, threw: errShape(e) };
     }
   };
 
@@ -7391,18 +7429,54 @@ app.get('/api/agent/login-check', async (req, res) => {
   const t0 = Date.now();
   const wrote = await setSetting(k, { at: new Date().toISOString() });
   const readBack = await getSetting(k);
+  /* setSetting and getSetting answer false/null and keep the reason to
+     themselves, which is right for 55 call sites and useless in a diagnostic. So
+     the table is also probed directly, purely to carry the error text out. */
+  const kv = await probe(KV_TABLE);
   const sessionStore = {
     writable: !!wrote, readable: !!readBack, ms: Date.now() - t0,
+    table: KV_TABLE, tableReachable: kv.reachable,
+    error: kv.error || kv.threw || undefined,
   };
 
-  const verdict = !agents.reachable  ? 'The agents table is not answering — this is why agent sign-in fails.'
-    : !sessionStore.writable         ? 'The agents table is fine, but the session store will not accept a write, so a sign-in cannot be saved.'
-    : !sessionStore.readable         ? 'A session can be written but not read back.'
+  /* ⚠ The first version of this tested `agents` first and blamed it, and on
+     18 November it reported "the agents table is not answering" when `clients`
+     and the session store were just as dead — the whole database was timing out.
+     A diagnostic that names one component while three are down sends you to the
+     wrong place, which is worse than staying quiet. So the WIDEST true statement
+     is made first, and a single table is only named once the others are known to
+     be healthy. */
+  const nothingWorks = !agents.reachable && !clients.reachable
+                       && !sessionStore.writable && !sessionStore.readable;
+  const slow = [agents.ms, clients.ms, sessionStore.ms].some(m => m >= 2000);
+
+  const verdict = nothingWorks
+      ? 'The whole database is unreachable — every table and the session store '
+        + 'failed' + (slow ? ', all of them by timing out' : '') + '. This is not '
+        + 'specific to sign-in: anything that touches the database is down. Check '
+        + 'the Supabase project status and its disk usage, because a database that '
+        + 'has hit its storage limit goes read-only and times out exactly like this. '
+        + 'Listings keep working regardless, since they come from the MLS feed.'
+    : !agents.reachable && clients.reachable
+      ? 'The agents table alone is not answering, while clients is fine — this is '
+        + 'why agent sign-in fails and client sign-in does not.'
+    : !agents.reachable
+      ? 'The agents table is not answering.'
+    : !sessionStore.writable
+      ? 'The tables answer, but the session store will not accept a write, so a '
+        + 'sign-in cannot be saved.'
+    : !sessionStore.readable
+      ? 'A session can be written but not read back.'
     : 'Both tables answer and the session store reads and writes. Sign-in should work.';
 
   res.json({
-    ok: agents.reachable && sessionStore.writable && sessionStore.readable,
-    verdict, agents, clients, sessionStore,
+    ok: agents.reachable && clients.reachable
+        && sessionStore.writable && sessionStore.readable,
+    verdict,
+    /* Named so it cannot be read as "agents is the problem" when it is not. */
+    everythingDown: nothingWorks,
+    timedOut: slow,
+    agents, clients, sessionStore,
     cachedSessions: sessionCache.size,
     checkedAt: new Date().toISOString(),
   });
@@ -9805,7 +9879,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v226',
+    serverVersion: 'v227',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
