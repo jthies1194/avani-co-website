@@ -2027,6 +2027,79 @@ app.get('/api/mls-fields', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ==================== SEARCHING BY MAP (server v229) ====================
+   Measured before building: on the live Baldwin feed 148 of 148 sampled active
+   listings carry coordinates, all inside the county, none bogus — see the `geo`
+   block on /api/search/fields. So pins come straight from the feed and nothing
+   needs geocoding.
+
+   Two shapes are accepted. A BOX is what the map sends as you pan and zoom, and
+   goes to the feed as four comparisons. A POLYGON is what you get when someone
+   draws a shape; OData cannot express one, so its bounding box is sent to the
+   feed and the corners are trimmed off here. That ordering matters: the box is
+   always a superset of the polygon, so nothing inside the shape is ever lost by
+   fetching the box first.
+
+   ⚠ Coordinates are parsed as numbers and range-checked, never interpolated as
+   text. Everything here lands in an OData filter string, and `Latitude ge ' or
+   1 eq 1 or '` is a filter injection exactly like the SQL kind. */
+function parseLatLngPairs(v, max) {
+  const out = [];
+  for (const chunk of String(v || '').split(';')) {
+    const bits = chunk.split(',');
+    if (bits.length !== 2) continue;
+    const lng = Number(bits[0]), lat = Number(bits[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) continue;
+    out.push([lng, lat]);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/* west,south,east,north — the order Leaflet's toBBoxString() emits, so the client
+   has nothing to rearrange and nothing to get backwards. */
+function parseBbox(v) {
+  const n = String(v || '').split(',').map(Number);
+  if (n.length !== 4 || n.some(x => !Number.isFinite(x))) return null;
+  const [w, s, e, nn] = n;
+  if (s < -90 || nn > 90 || w < -180 || e > 180) return null;
+  if (!(nn > s) || !(e > w)) return null;        // zero-area or inside-out
+  return { w, s, e, n: nn };
+}
+
+function bboxOf(poly) {
+  let w = 180, s = 90, e = -180, n = -90;
+  for (const [lng, lat] of poly) {
+    if (lng < w) w = lng; if (lng > e) e = lng;
+    if (lat < s) s = lat; if (lat > n) n = lat;
+  }
+  return { w, s, e, n };
+}
+
+function bboxClause({ w, s, e, n }) {
+  /* toFixed(6) is ~11cm — far finer than any listing's coordinate — and it also
+     guarantees a plain decimal rather than exponential notation, which OData
+     would reject on a very small number. */
+  const f = x => Number(x).toFixed(6);
+  return `(Latitude ge ${f(s)} and Latitude le ${f(n)} `
+       + `and Longitude ge ${f(w)} and Longitude le ${f(e)})`;
+}
+
+/* Ray casting. Points exactly on an edge are not guaranteed either way, which is
+   fine: a listing sitting on the line a person drew by hand is a coin toss
+   whichever algorithm you pick. */
+function pointInPolygon(lat, lng, poly) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > lat) !== (yj > lat)
+        && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 app.get('/api/search', async (req, res) => {
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
@@ -2099,7 +2172,28 @@ app.get('/api/search', async (req, res) => {
   if (q.newConstruction === '1') parts.push(`(contains(PropertyCondition,'New') or YearBuilt ge ${new Date().getFullYear() - 1})`);
   if (q.noHoa === '1')       parts.push(`(AssociationYN eq false or AssociationFee eq 0)`);
 
-  const top  = Math.min(num(q.top) || 24, 200);
+  /* ---- map bounds, and a drawn shape ---- */
+  let poly = null, box = null, shapeError = null;
+  if (q.poly) {
+    /* 3 points minimum for an area; the ceiling stops a hand-drawn freehand
+       shape from arriving with ten thousand vertices. */
+    poly = parseLatLngPairs(q.poly, 500);
+    if (poly.length < 3) { shapeError = 'A drawn shape needs at least three points.'; poly = null; }
+    else box = bboxOf(poly);
+  } else if (q.bbox) {
+    box = parseBbox(q.bbox);
+    if (!box) shapeError = 'Map bounds were not understood.';
+  }
+  if (shapeError) return res.status(400).json({ error: shapeError });
+  if (box) parts.push(bboxClause(box));
+
+  /* ⚠ A map is not a page of results. Asking for 24 would draw 24 pins over an
+     area holding 300 listings, and the person looking at it has no way to tell
+     that two thirds of the map is missing — the single worst failure mode this
+     feature has. So a map request takes as much as the feed will give (Bridge
+     caps every response at 200) and the answer says plainly when it is short. */
+  const isMap = !!box;
+  const top  = isMap ? Math.min(num(q.top) || 200, 200) : Math.min(num(q.top) || 24, 200);
   const skip = num(q.skip) || 0;
 
   try {
@@ -2115,8 +2209,27 @@ app.get('/api/search', async (req, res) => {
                                     detail: first.detail, sources: r.sources });
     }
 
+    /* The feed answered the bounding box; trim to the shape actually drawn. */
+    let rows = r.value;
+    let trimmed = 0;
+    if (poly) {
+      const before = rows.length;
+      rows = rows.filter(x => pointInPolygon(Number(x.Latitude), Number(x.Longitude), poly));
+      trimmed = before - rows.length;
+    }
+
     // with no city specified, rank by market so the beach leads
-    const ordered = (q.city && q.city.trim()) ? r.value : sortByMarket(r.value);
+    const ordered = (q.city && q.city.trim()) ? rows : sortByMarket(rows);
+
+    /* ⚠ `capped` is the honest part of a map search. Bridge returns at most 200,
+       so a busy area comes back clipped — and a clipped map looks exactly like a
+       complete one. Saying so lets the page tell the person to zoom in, instead
+       of quietly showing them two thirds of the market.
+       Not set for a drawn shape when trimming did the clipping: there the number
+       returned is smaller than the fetch for a legitimate reason. */
+    const capped = isMap && r.value.length >= top
+                   && (r.total == null || r.total > r.value.length);
+
     res.json({
       value: ordered,
       total: r.total,
@@ -2124,6 +2237,15 @@ app.get('/api/search', async (req, res) => {
       partial: r.partial,
       sources: r.sources,
       top, skip,
+      ...(isMap ? {
+        map: {
+          bbox: box, shape: poly ? 'polygon' : 'box',
+          fetched: r.value.length,
+          shown: ordered.length,
+          outsideShape: trimmed,
+          capped,
+        },
+      } : {}),
     });
   } catch (e) {
     console.error('[search] FAILED:', e.message);
@@ -9933,7 +10055,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v228',
+    serverVersion: 'v229',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
