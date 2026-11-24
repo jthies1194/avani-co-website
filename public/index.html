@@ -1849,7 +1849,14 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
            information that is not ours to publish. The server refuses them now
            whatever this dropdown says (/api/search returns 400), and agents reach
            them through Prospecting in the CRM, behind a sign-in. -->
-      <select id="f-status" onchange="runSearch()"><option value="">For sale (active)</option><option value="Active Under Contract">Under contract</option><option value="Pending">Pending</option><option value="Closed">Sold</option></select>
+      <!-- ⚠ And no "Sold" option, since 24 November. /api/search refuses
+           status=Closed with a 400, so leaving the option here offered a choice
+           that could only ever produce an error. An option that cannot work is
+           worse than a missing one: nobody concludes "that is not offered", they
+           conclude the site is broken. If BRMLS confirms public sold display in
+           writing, the option goes back here AND 'Closed' goes back on
+           PUBLIC_STATUSES — neither alone is enough. -->
+      <select id="f-status" onchange="runSearch()"><option value="">For sale (active)</option><option value="Active Under Contract">Under contract</option><option value="Pending">Pending</option></select>
     </div>
     <div class="f" style="max-width:260px;flex:1">
       <label for="f-subtype">Property type</label>
@@ -1931,15 +1938,53 @@ Call Jimmy · 251-229-3216
 </div>
 <div class="section-head">
 <h2>Featured listings</h2>
-<div style="display:flex; align-items:center; gap:14px;">
+<div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
 <div class="count mono" id="listing-count">— homes</div>
+<button class="save-search-btn" id="map-toggle" onclick="toggleMap()">&#9906; Map</button>
 <button class="save-search-btn" onclick="saveCurrentSearch()">☆ Save this search</button>
 </div>
+</div>
+<!-- The map. Hidden and empty until asked for: Leaflet is fetched on first open,
+     so a visitor who never opens it downloads nothing extra. -->
+<div id="map-wrap" hidden>
+  <div id="map-bar">
+    <button type="button" class="map-btn" id="map-draw" onclick="mapDrawToggle()">&#9998; Draw a shape</button>
+    <button type="button" class="map-btn" id="map-here" onclick="mapSearchHere()" hidden>Search this area</button>
+    <button type="button" class="map-btn ghost" id="map-clear" onclick="mapClearShape()" hidden>Clear shape</button>
+    <span class="map-note" id="map-note"></span>
+  </div>
+  <div id="map"></div>
+  <p class="map-hint" id="map-hint">Drag to move, scroll to zoom. Draw a shape to search inside it.</p>
 </div>
 <div class="grid" id="listing-grid"></div>
 </div>
 
 <style>
+/* ---------- map search ---------- */
+#map-wrap{margin:0 0 26px}
+#map{height:clamp(320px,56vh,560px);width:100%;border:1px solid var(--line);border-radius:3px;
+  background:#E8EEF2}
+#map-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.map-btn{background:var(--marsh);color:var(--sand-light);border:1px solid var(--marsh);
+  border-radius:2px;padding:9px 16px;font-family:'Public Sans',sans-serif;font-weight:600;
+  font-size:12px;letter-spacing:.07em;text-transform:uppercase;cursor:pointer}
+.map-btn.ghost{background:transparent;color:var(--marsh)}
+.map-btn[aria-pressed="true"]{background:var(--gold-deep);border-color:var(--gold-deep);color:#241A08}
+.map-note{font-size:13px;color:var(--driftwood)}
+/* ⚠ Reads as a warning on purpose. It is the line that says the map is showing
+   less than the whole market, and a visitor who misses it is being misled. */
+.map-note.capped{color:#A4303F;font-weight:600}
+.map-hint{font-size:12.5px;color:var(--driftwood);margin:8px 0 0}
+.map-pin{background:var(--marsh);color:#fff;border-radius:11px;padding:3px 8px;font-size:12px;
+  font-weight:700;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3);text-align:center}
+.map-pop{font-family:'Public Sans',sans-serif;min-width:180px}
+.map-pop strong{display:block;font-size:14px;margin-bottom:2px}
+.map-pop .p{font-family:'Fraunces',serif;font-size:17px;color:var(--marsh)}
+.map-pop .m{font-size:12.5px;color:var(--driftwood);margin:2px 0 6px}
+.map-pop a{font-size:12.5px;font-weight:700;color:var(--gold-deep)}
+#map.drawing{cursor:crosshair}
+@media(max-width:560px){ .map-btn{flex:1 1 auto} }
+
 /* ---------- on the coast right now ----------
    Weather and cams together, because someone deciding whether to drive down
    wants both. The reel sits under them as the emotional half. */
@@ -5915,7 +5960,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v425';
+window.BUILD = 'index-v426';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -33154,6 +33199,256 @@ function phRender(d){
       <div class="ph-blind">${escapeHtml(d.blindSpot || '')}</div>
     </div>`;
   }).join('');
+}
+</script>
+<script>
+/* ==================== MAP SEARCH (index v426) ====================
+   Measured before it was built: on the live Baldwin feed every active listing
+   sampled carried coordinates inside the county (148 of 148 — the `geo` block on
+   /api/search/fields). So pins come straight from the feed; nothing is geocoded
+   and nothing is guessed.
+
+   Leaflet is fetched on FIRST OPEN, not on page load. It is the only external
+   script this site uses, and most visitors never open the map — they should not
+   pay for it. If the fetch fails the page says so and the list keeps working;
+   a map that will not load must not take the search down with it. */
+const MAPX = {
+  map: null, layer: null, shape: null, draft: null,
+  pts: [], drawing: false, loading: false, open: false, ready: false,
+};
+/* Deliberately reachable from the console. `const` at script scope is a lexical
+   binding, not a window property, so without this there is no way to ask a live
+   page what area or shape it is actually searching — which is the first question
+   worth asking when someone reports the wrong homes on the map. */
+window.MAPX = MAPX;
+
+/* Pinned, and deliberately not "latest": an unpinned CDN URL means the site can
+   change under you with no deploy. */
+const LEAFLET_JS  = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+const LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+
+function loadLeaflet(){
+  if(window.L) return Promise.resolve(true);
+  if(MAPX._p) return MAPX._p;
+  MAPX._p = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = LEAFLET_CSS;
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = LEAFLET_JS; js.async = true;
+    js.onload = () => resolve(true);
+    js.onerror = () => reject(new Error('Leaflet did not load'));
+    document.head.appendChild(js);
+  });
+  return MAPX._p;
+}
+
+function toggleMap(){
+  const wrap = document.getElementById('map-wrap');
+  const btn  = document.getElementById('map-toggle');
+  if(!wrap) return;
+  MAPX.open = wrap.hidden;
+  wrap.hidden = !MAPX.open;
+  if(btn) btn.setAttribute('aria-pressed', MAPX.open ? 'true' : 'false');
+  if(!MAPX.open) return;
+  if(MAPX.ready){ setTimeout(() => MAPX.map.invalidateSize(), 50); return; }
+  mapBoot();
+}
+
+async function mapBoot(){
+  if(MAPX.loading) return;
+  MAPX.loading = true;
+  mapNote('Loading the map…');
+  try{
+    await loadLeaflet();
+  }catch(e){
+    MAPX.loading = false;
+    mapNote('The map could not load. The list below still works.', true);
+    return;
+  }
+  /* Baldwin County, roughly. A sensible first view matters: an empty world map
+     centred on the Atlantic is indistinguishable from a broken one. */
+  MAPX.map = L.map('map', { scrollWheelZoom: true }).setView([30.42, -87.72], 10);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    /* Required by the OpenStreetMap tile usage policy, and it is their work. */
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(MAPX.map);
+  MAPX.layer = L.layerGroup().addTo(MAPX.map);
+
+  MAPX.map.on('moveend', () => {
+    if(MAPX.drawing || MAPX.pts.length) return;
+    const b = document.getElementById('map-here');
+    if(b) b.hidden = false;
+  });
+  MAPX.map.on('click', mapClick);
+  /* dblclick would otherwise zoom while finishing a shape */
+  MAPX.map.on('dblclick', e => { if(MAPX.drawing){ L.DomEvent.stop(e); mapFinishShape(); } });
+
+  MAPX.ready = true; MAPX.loading = false;
+  setTimeout(() => MAPX.map.invalidateSize(), 50);
+  mapRefresh();
+}
+
+function mapNote(msg, warn){
+  const n = document.getElementById('map-note');
+  if(!n) return;
+  n.textContent = msg || '';
+  n.classList.toggle('capped', !!warn);
+}
+
+/* The same filters the list is using, so the pins and the rows below can never
+   describe two different searches. */
+function mapParams(){
+  const f = (typeof currentFilters === 'function') ? currentFilters() : {};
+  const p = new URLSearchParams(Object.assign({
+    ptype: (typeof CURRENT_PTYPE !== 'undefined' ? CURRENT_PTYPE : ''),
+    city: f.city || '', beds: f.beds || '', status: f.status || '',
+    min: String(f.min || '').replace(/[^0-9]/g,''),
+    max: String(f.max || '').replace(/[^0-9]/g,''),
+  }, (typeof extraFilters === 'function') ? extraFilters() : {}));
+  [...p.keys()].forEach(k => { if(!p.get(k)) p.delete(k); });
+  return p;
+}
+
+async function mapRefresh(){
+  if(!MAPX.ready) return;
+  const p = mapParams();
+  if(MAPX.pts.length >= 3){
+    p.set('poly', MAPX.pts.map(ll => ll.lng.toFixed(6) + ',' + ll.lat.toFixed(6)).join(';'));
+  }else{
+    p.set('bbox', MAPX.map.getBounds().toBBoxString());
+  }
+  mapNote('Searching…');
+  try{
+    const res = await fetch('/api/search?' + p.toString());
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || 'search failed');
+    const rows = d.value || [];
+    mapDrawPins(rows);
+
+    const m = d.map || {};
+    /* ⚠ The one message that must never be skipped. The feed returns at most 200,
+       so a busy area arrives clipped — and a clipped map looks exactly like a
+       complete one. Saying nothing here would show somebody two thirds of the
+       market and let them believe it was all of it. */
+    if(m.capped){
+      mapNote('Showing the first ' + rows.length + ' — zoom in to see them all.', true);
+    }else{
+      mapNote(rows.length === 0 ? 'No homes in this area.'
+            : rows.length + (rows.length === 1 ? ' home here' : ' homes here'));
+    }
+
+    /* Keep the list under the map in step with the pins. */
+    if(typeof normalizeListing === 'function'){
+      const mapped = rows.map(normalizeListing);
+      SEARCH_RESULTS = mapped; SEARCH_MODE = true; SEARCH_SKIP = 0;
+      SEARCH_TOTAL = d.total != null ? d.total : mapped.length;
+      mapped.forEach(r => { if(!ALL_LISTINGS.some(x => x.ListingKey === r.ListingKey)) ALL_LISTINGS.push(r); });
+      if(typeof renderListings === 'function') renderListings();
+    }
+  }catch(e){
+    console.error('[map] search failed:', e);
+    mapNote('Could not load homes for this area.', true);
+  }
+  const b = document.getElementById('map-here'); if(b) b.hidden = true;
+}
+
+function mapDrawPins(rows){
+  if(!MAPX.layer) return;
+  MAPX.layer.clearLayers();
+  const money = n => !n ? '' : (n >= 1000000 ? '$' + (n/1000000).toFixed(1) + 'M'
+                                             : '$' + Math.round(n/1000) + 'K');
+  rows.forEach(r => {
+    const la = Number(r.Latitude), ln = Number(r.Longitude);
+    if(!isFinite(la) || !isFinite(ln) || (la === 0 && ln === 0)) return;
+    const price = money(Number(r.ListPrice));
+    const icon = L.divIcon({
+      className: '', html: '<div class="map-pin">' + (price || '·') + '</div>',
+      iconSize: null, iconAnchor: [22, 10],
+    });
+    const addr = escapeHtml(r.UnparsedAddress || '');
+    const bits = [r.BedroomsTotal ? r.BedroomsTotal + ' bd' : '',
+                  r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' ba' : '',
+                  r.LivingArea ? Number(r.LivingArea).toLocaleString() + ' sq ft' : '']
+                 .filter(Boolean).join(' · ');
+    L.marker([la, ln], { icon }).addTo(MAPX.layer).bindPopup(
+      '<div class="map-pop"><strong>' + addr + '</strong>'
+      + '<div class="p">' + (price || 'Price on request') + '</div>'
+      + '<div class="m">' + escapeHtml(bits) + '</div>'
+      + '<a href="#" onclick="closeMapPopupAndOpen(\'' + String(r.ListingKey).replace(/'/g,'') + '\');return false;">See this home &rarr;</a></div>');
+  });
+}
+
+function closeMapPopupAndOpen(key){
+  try{ MAPX.map.closePopup(); }catch(e){}
+  if(typeof openDetailModal === 'function') openDetailModal(key);
+}
+
+function mapSearchHere(){ MAPX.pts = []; mapClearShapeLayers(); mapRefresh(); }
+
+function mapDrawToggle(){
+  MAPX.drawing = !MAPX.drawing;
+  const b = document.getElementById('map-draw');
+  if(b){
+    b.setAttribute('aria-pressed', MAPX.drawing ? 'true' : 'false');
+    b.innerHTML = MAPX.drawing ? '&#10003; Finish shape' : '&#9998; Draw a shape';
+  }
+  const el = document.getElementById('map');
+  if(el) el.classList.toggle('drawing', MAPX.drawing);
+  if(MAPX.drawing){
+    MAPX.pts = []; mapClearShapeLayers();
+    try{ MAPX.map.doubleClickZoom.disable(); }catch(e){}
+    mapNote('Tap the corners of the area. Tap Finish when the shape is closed.');
+  }else{
+    mapFinishShape();
+  }
+}
+
+function mapClick(e){
+  if(!MAPX.drawing) return;
+  MAPX.pts.push(e.latlng);
+  mapPaintDraft();
+  if(MAPX.pts.length >= 3) mapNote(MAPX.pts.length + ' corners — tap Finish to search inside.');
+}
+
+function mapPaintDraft(){
+  if(MAPX.draft){ MAPX.map.removeLayer(MAPX.draft); MAPX.draft = null; }
+  if(MAPX.pts.length < 2) return;
+  MAPX.draft = L.polyline(MAPX.pts, { color: '#C89B4E', weight: 2, dashArray: '5,5' })
+    .addTo(MAPX.map);
+}
+
+function mapFinishShape(){
+  MAPX.drawing = false;
+  const b = document.getElementById('map-draw');
+  if(b){ b.setAttribute('aria-pressed','false'); b.innerHTML = '&#9998; Draw a shape'; }
+  const el = document.getElementById('map'); if(el) el.classList.remove('drawing');
+  try{ MAPX.map.doubleClickZoom.enable(); }catch(e){}
+
+  if(MAPX.pts.length < 3){
+    MAPX.pts = []; mapClearShapeLayers();
+    mapNote('A shape needs at least three corners.');
+    return;
+  }
+  if(MAPX.draft){ MAPX.map.removeLayer(MAPX.draft); MAPX.draft = null; }
+  MAPX.shape = L.polygon(MAPX.pts, { color: '#C89B4E', weight: 2, fillOpacity: .08 })
+    .addTo(MAPX.map);
+  const c = document.getElementById('map-clear'); if(c) c.hidden = false;
+  const h = document.getElementById('map-here');  if(h) h.hidden = true;
+  mapRefresh();
+}
+
+function mapClearShapeLayers(){
+  if(MAPX.shape){ MAPX.map.removeLayer(MAPX.shape); MAPX.shape = null; }
+  if(MAPX.draft){ MAPX.map.removeLayer(MAPX.draft); MAPX.draft = null; }
+  const c = document.getElementById('map-clear'); if(c) c.hidden = true;
+}
+
+function mapClearShape(){
+  MAPX.pts = []; MAPX.drawing = false;
+  mapClearShapeLayers();
+  mapRefresh();
 }
 </script>
 </body>
