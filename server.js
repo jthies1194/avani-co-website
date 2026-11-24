@@ -1159,9 +1159,23 @@ app.get('/api/listing/:key', async (req, res) => {
    dropdown is not a control. Anyone who can read the page can send any query
    string they like, and /api/search has no session at all.
 
-   Four statuses are permitted in public: for sale, under contract, pending, sold.
-   Everything else is members-only and belongs behind a sign-in — see /api/prospect. */
-const PUBLIC_STATUSES = ['Active', 'Active Under Contract', 'Pending', 'Closed'];
+   Three statuses are permitted in public: for sale, under contract, pending.
+   Everything else is members-only and belongs behind a sign-in — see /api/prospect.
+
+   ⚠ 'Closed' was on this list until 24 November and is deliberately off it now.
+   Sold Price and Closed Date ARE in the authorised field list for this feed, and
+   s.18.3.12 covers off-market listings, so public sold display reads as permitted
+   — but BRMLS has never confirmed it in writing, and that question has been open
+   since 28 October. Being licensed a field is not the same as being licensed to
+   publish it: the same agreement puts automated valuation in a separate tier
+   (Exhibit B, Firm Valuation), which shows this MLS does separate its permissions.
+   Jimmy chose to take sold data off the public side entirely until they answer.
+
+   Sold data is NOT gone — it stays in full behind a sign-in, where it feeds comps,
+   CMAs, the prospecting list and the market section. If BRMLS confirms in writing,
+   putting 'Closed' back on this line is the whole change on the public search
+   side; the market section is gated separately at /api/market-stats. */
+const PUBLIC_STATUSES = ['Active', 'Active Under Contract', 'Pending'];
 
 /* ==================== SEARCHING THE WHOLE COUNTY (server v217) ====================
    The Where box only took a city or a ZIP, so there was no way to say "all of
@@ -2184,8 +2198,34 @@ app.get('/api/search/fields', async (req, res) => {
         usable: rows.length ? pct >= FIELD_USABLE_PCT : true,
       };
     }
+    /* ⚠ Whether a map search is worth building at all comes down to this number,
+       and nothing on the site reported it. A map that can plot a tenth of the
+       inventory is worse than no map — it silently hides listings, and the gaps
+       are invisible to whoever is looking at it.
+
+       This samples ACTIVE listings only, like everything else on this route, so
+       it carries no sold data and stays public. A coordinate counts only if both
+       halves are finite and actually inside Baldwin County's bounding box: a feed
+       that returns 0 for a missing value would otherwise read as 100% coverage
+       and put every one of those listings in the Gulf of Guinea. */
+    const inBaldwin = (la, ln) =>
+      Number.isFinite(la) && Number.isFinite(ln)
+      && la > 29.5 && la < 31.5 && ln > -88.5 && ln < -87.0;
+    const geoRows = rows.filter(x => inBaldwin(Number(x.Latitude), Number(x.Longitude)));
+    const anyNum = rows.filter(x => Number.isFinite(Number(x.Latitude))
+                                 && Number.isFinite(Number(x.Longitude))).length;
+    const geo = {
+      sampled: rows.length,
+      withUsableCoords: geoRows.length,
+      pct: rows.length ? Math.round((geoRows.length / rows.length) * 100) : 0,
+      /* A gap between these two means coordinates are present but wrong, which is
+         a different problem from coordinates being absent. */
+      withAnyNumericCoords: anyNum,
+      outsideCounty: anyNum - geoRows.length,
+    };
+
     const payload = {
-      fields, sampled: rows.length, threshold: FIELD_USABLE_PCT,
+      fields, sampled: rows.length, threshold: FIELD_USABLE_PCT, geo,
       sources: results.map(r => ({ id: r.src.id, ok: r.ok, status: r.status, sampled: r.rows.length })),
       at: new Date().toISOString(),
     };
@@ -3598,6 +3638,20 @@ app.get('/api/map-tiles', async (req, res) => {
 });
 
 app.get('/api/market-stats', async (req, res) => {
+  /* ⚠ Members-only since 24 November. Every number this returns is computed from
+     closed sales — median sale price, days on market, sale-to-list — so although
+     no individual property is named, the whole response is derived from sold data.
+     Jimmy's instruction was that sold data is agent-side only until BRMLS confirms
+     public display in writing, and an aggregate of restricted data is still
+     restricted. See the note on PUBLIC_STATUSES.
+
+     The session check goes ABOVE the cache. Below it, a warm cache would answer
+     anyone who asked, and the gate would hold only until the first agent loaded
+     the page — the kind of hole that tests pass straight through because the
+     first request in a test run is always a cold one. */
+  const sess = await requireSession(req, res); if (!sess) return;
+  res.set('Cache-Control', 'no-store');
+
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
   if (marketCache.data && Date.now() - marketCache.at < 30 * 60 * 1000 && !req.query.fresh) {
@@ -9879,7 +9933,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v227',
+    serverVersion: 'v228',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
