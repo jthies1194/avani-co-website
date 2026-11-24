@@ -906,7 +906,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .saved-add:hover{background:var(--gold-deep);color:#fff;border-color:var(--gold-deep)}
 
 /* anchor targets must clear the fixed strip + header, or a jump looks like nothing happened */
-#listings,#communities,#market,#guide,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
+#listings,#communities,#team,#guide,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
 @media(max-width:1080px){#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:160px}}
 
 .card-photo{position:relative;overflow:hidden}
@@ -1257,7 +1257,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   .ptype-tabs button{flex:0 0 auto;padding:9px 16px;font-size:14px}
 }
 
-#market{padding-top:40px}
+#team{padding-top:40px}
 .market-loading{text-align:center;color:var(--gray);font-size:16px;padding:30px 0}
 .mkt-top{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:30px}
 .mkt-stat{background:#fff;border:1px solid var(--line);border-top:3px solid var(--gold);
@@ -1631,7 +1631,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <a href="#coast">On the Coast</a>
   <a href="#communities">Communities</a>
   <a href="#value">Home Value</a>
-  <a href="#market">Our Agents</a>
+  <a href="#team">Our Agents</a>
   <a href="#about">About</a>
   <!-- \u26a0 Guides goes in THIS bar, not the header nav. The header already overflowed at
        full width once (index 336) and six items is what fits; a seventh puts it back
@@ -1707,7 +1707,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
     <a href="#coast">On the Coast</a>
     <a href="#communities">Communities</a>
     <a href="#value">Home Value</a>
-    <a href="#market">Our Agents</a>
+    <a href="#team">Our Agents</a>
     <a href="#about">About</a>
   </nav>
 </header>
@@ -2371,15 +2371,15 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 </div>
 
-<section class="sect-v2 wrap" id="market">
-  <div class="sec-head center rv">
-    <div class="eyebrow">The Numbers</div>
-    <span class="flourish center" role="presentation"></span>
-    <h2>Baldwin County Market</h2>
-    <p>Live from the MLS, updated continuously. What's actually on the market right now, and what it costs.</p>
-  </div>
-  <div id="market-stats" class="rv"><p class="market-loading">Loading current market data&hellip;</p></div>
-</section>
+<!-- ⚠ The public "Baldwin County Market" section was removed on 24 November.
+     Every number in it — median sale price, days on market, sale-to-list — is
+     computed from closed sales, and sold data is members-only until BRMLS confirms
+     public display in writing (see PUBLIC_STATUSES in server.js). It was not
+     hidden with CSS: /api/market-stats now requires a session, so a hidden
+     section would have sat there failing, and markup that is only invisible is
+     one stylesheet edit away from being visible again.
+     It lives in the CRM now, as the Market tab. To bring it back here, restore
+     this section and drop the session check in /api/market-stats. -->
 
 <!-- \u26a0 Twenty articles were indexed by Google and unreachable from the site. No link in
      the nav, the footer or anywhere on the homepage. That is bad for a visitor and bad
@@ -4311,6 +4311,9 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <div class="crm-sec" id="sec-resources"></div>
 <div class="crm-sec" id="sec-storage"></div>
 <div class="crm-sec" id="sec-prospect"></div>
+<!-- The market numbers. Public until 24 November; members-only now, because
+     every figure in them is computed from closed sales. -->
+<div class="crm-sec" id="sec-market"></div>
 <div class="crm-sec" id="sec-mypage"></div>
 <div class="crm-sec" id="sec-myprofile">
 <!-- ⚠ These switches save to notify:<agentId> — they are personal, not brokerage
@@ -5912,7 +5915,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v424';
+window.BUILD = 'index-v425';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -10109,6 +10112,11 @@ const CRM_SECTIONS = [
      kept away from contacting clients. */
   { id:'sec-prospect',   label:'Prospecting', icon:'prospect', color:'#C2683A', group:'daily', noAdmin:true,
     blurb:'Expired and withdrawn listings near you, and whether the house has already relisted.' },
+  /* ⚠ Moved here from the public homepage on 24 November. Sold data is
+     members-only until BRMLS confirms public display in writing. noAdmin
+     because it is a selling tool, same reasoning as Comps. */
+  { id:'sec-market',     label:'Market',      icon:'market',   color:'#1E7A8C', group:'daily', noAdmin:true,
+    blurb:'What is selling across Baldwin County — median price, days on market and sale-to-list, by town.' },
   { id:'sec-calendar',    label:'Calendar',    icon:'calendar', color:'#B4527A', group:'daily',
     blurb:'Showings, closings and anything with a date on it.' },
   { id:'sec-marketing',   label:'Marketing',   icon:'market',   color:'#1E9AA8', group:'reach',
@@ -11048,6 +11056,7 @@ function showCrmSection(id){
     if(id === 'sec-taxes' && typeof renderTaxesSection === 'function') renderTaxesSection();
     if(id === 'sec-storage' && typeof renderStorageSection === 'function') renderStorageSection();
     if(id === 'sec-prospect' && typeof renderProspectSection === 'function') renderProspectSection();
+    if(id === 'sec-market' && typeof renderMarketSection === 'function') renderMarketSection();
     if(id === 'sec-resources' && typeof renderResourcesSection === 'function'){
       (renderResourcesSection() || Promise.resolve()).catch(e =>
         console.error('[resources]', e)).then(() => {
@@ -12482,7 +12491,31 @@ function setPropertyType(t){
 </script>
 <script>
 /* Market statistics, computed from our own MLS feed rather than republished
-   from an association report. */
+   from an association report.
+
+   ⚠ Members-only since 24 November. This used to render into #market-stats on
+   the public homepage; that section is gone and /api/market-stats now requires a
+   session. The renderer takes the target element so the CRM tab and any future
+   home for it share ONE implementation — two functions computing "the market"
+   from two fetches is how the letter says 47 homes and the website says 45 on
+   the same morning, which is already called out at marketRows(). */
+async function renderMarketSection(){
+  const host = document.getElementById('sec-market');
+  if(!host) return;
+  if(!host.dataset.built){
+    host.innerHTML =
+      '<div class="sec-head"><div class="eyebrow">The Numbers</div>'
+      + '<h2>Baldwin County Market</h2>'
+      + '<p>Live from the MLS. What is selling, what it went for, and how long it took.</p>'
+      + '<p style="font-size:12.5px;color:var(--marsh);margin-top:6px">'
+      + 'Members only — these figures come from closed sales and are not shown on the public site.'
+      + '</p></div>'
+      + '<div id="market-stats"><p class="market-loading">Loading current market data&hellip;</p></div>';
+    host.dataset.built = '1';
+  }
+  return loadMarketStats();
+}
+
 async function loadMarketStats(){
   const el = document.getElementById('market-stats');
   if(!el) return;
@@ -12528,11 +12561,18 @@ async function loadMarketStats(){
         Updated ${new Date(d.generatedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}.
         Information is deemed reliable but not guaranteed.
       </p>
-      <p class="mkt-note">Want to know what your own place would sell for?
-        <a href="#contact" style="color:var(--gold-deep);text-decoration:underline;">Ask us</a> &mdash;
-        these are county-wide medians, and your street is not the county.</p>`;
+      <p class="mkt-note">County-wide medians &mdash; a single street can sit well off them.
+        Build a CMA in Comps before you quote a seller a number.</p>`;
   }catch(e){
-    el.innerHTML = '<p class="market-loading">Market data is unavailable just now. Call 251-229-3216 and we\'ll walk you through it.</p>';
+    /* ⚠ This used to tell the reader to phone the office, which was right when
+       the panel was on the public homepage and wrong now that it is a tab in an
+       agent's own CRM. An expired session is also the single most likely reason
+       this fails, and "call us" is useless advice for it. */
+    const expired = /sign in|unauthor/i.test(String(e && e.message || ''));
+    el.innerHTML = expired
+      ? '<p class="market-loading">Your session has expired \u2014 sign in again to see the market numbers.</p>'
+      : '<p class="market-loading">Market data is unavailable just now. '
+        + 'The MLS feed did not answer; it is usually back within a few minutes.</p>';
   }
 }
 function mktStat(label, value, sub){
