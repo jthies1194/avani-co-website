@@ -10088,7 +10088,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v230',
+    serverVersion: 'v231',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -12748,6 +12748,10 @@ h1{font-family:Georgia,serif;font-size:31px;line-height:1.2;font-weight:400;marg
 .cr{font-size:12.5px;color:#7A8199;margin-top:22px;padding-top:16px;
   border-top:1px solid rgba(20,26,60,.12)}
 .ft{font-size:13px;color:#5A6178;margin-top:8px;line-height:1.7}
+.sh{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:22px 0 0;padding-top:18px;border-top:1px solid rgba(20,26,60,.12)}
+.sh-h{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#5A6178;margin-right:3px}
+.sh a,.sh button{display:inline-block;font-size:13px;font-family:inherit;color:#171F63;background:#fff;border:1px solid rgba(20,26,60,.22);border-radius:3px;padding:8px 13px;text-decoration:none;cursor:pointer}
+.sh a:hover,.sh button:hover{background:#171F63;color:#fff;border-color:#171F63}
 .st{display:flex;flex-wrap:wrap;align-items:baseline;gap:9px;margin:0 0 2px}
 .chip{display:inline-block;background:#E8EEF7;color:#171F63;border-radius:3px;
   padding:3px 9px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
@@ -12774,6 +12778,57 @@ ${factRows.length ? `<dl class="facts">${factRows.map(([k, v]) =>
   `<div><dt>${e(k)}</dt><dd>${e(v)}</dd></div>`).join('')}</dl>` : ''}
 ${remarks ? `<h2>Description</h2><p class="rm">${e(remarks)}</p>` : ''}
 <a class="btn" href="${e(into)}">See the photos and more like it</a>
+<!-- ⚠ The page a shared link opens had no way to pass it on. Someone sent a
+     listing by a friend could look at it and nothing else, which breaks the
+     chain exactly where it is most likely to continue. These are plain links,
+     not script: this page is server-rendered and must work with nothing loaded. -->
+<div class="sh">
+  <span class="sh-h">Send it on</span>
+  <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canon)}" target="_blank" rel="noopener">Facebook</a>
+  <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(canon)}&text=${encodeURIComponent(addr)}" target="_blank" rel="noopener">X</a>
+  <a href="https://wa.me/?text=${encodeURIComponent(addr + ' ' + canon)}" target="_blank" rel="noopener">WhatsApp</a>
+  <a href="mailto:?subject=${encodeURIComponent(addr)}&body=${encodeURIComponent(addr + '\n\n' + canon)}">Email</a>
+  <button type="button" id="sh-copy" data-url="${e(canon)}">Copy link</button>
+</div>
+<script>
+/* Progressive: the links above already work without this. This only adds the
+   phone's own share sheet and a one-tap copy where the browser supports them. */
+(function(){
+  var b = document.getElementById('sh-copy');
+  if(!b) return;
+  var url = b.getAttribute('data-url');
+  var title = ${JSON.stringify(addr)};
+  if (navigator.share) {
+    b.textContent = 'Share…';
+    b.addEventListener('click', function(){
+      navigator.share({ title: title, text: title, url: url }).catch(function(){});
+    });
+    return;
+  }
+  b.addEventListener('click', function(){
+    /* clipboard is absent in several in-app browsers, so fall back rather than
+       throwing and doing nothing at all. */
+    function done(){ b.textContent = 'Copied'; setTimeout(function(){ b.textContent = 'Copy link'; }, 1600); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(manual); return;
+      }
+    } catch(e) {}
+    manual();
+    function manual(){
+      try {
+        var t = document.createElement('textarea');
+        t.value = url; t.setAttribute('readonly','');
+        t.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+        document.body.appendChild(t); t.select(); t.setSelectionRange(0, url.length);
+        var okc = document.execCommand('copy'); t.remove();
+        if (okc) { done(); return; }
+      } catch(e) {}
+      window.prompt('Copy this link:', url);
+    }
+  });
+})();
+</script>
 ${credit ? `<div class="cr">${e(credit)}</div>` : ''}
 <div class="ft">${e(BROKERAGE_NAME)} &middot; ${e(BROKERAGE_PHONE)}<br>
 ${/* \u26a0 This used to print DISCLAIMER_GENERAL \u2014 the *article* disclaimer, about
