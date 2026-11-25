@@ -5452,8 +5452,21 @@ try{ pickBar(); pickPaintAll(); }catch(e){}
 async function maybeAutoOpenListingFromURL(listings){
 if(window.__autoOpenedListing) return;
 const params = new URLSearchParams(location.search);
-const key = params.get('listing');
+/* ⚠ Two ways in, and both must work forever.
+   ?listing=KEY is what printed QR codes and every link shared before today
+   carry — those cannot be reprinted or reposted, so they keep working.
+   window.__OPEN_LISTING is written into the head by the server when somebody
+   opens /listing/KEY directly, which is what a shared link is now.
+   A refresh re-runs this, so the listing reopens rather than dumping the
+   visitor on the homepage. */
+const direct = (window.__OPEN_LISTING && window.__OPEN_LISTING.key) || '';
+const key = direct || params.get('listing');
 if(!key) return;
+/* Arriving ON a listing is not browsing: the person was sent this one home.
+   Counting it against the free-view limit would meet them with a registration
+   wall before they had seen a photograph, which is both hostile and the
+   opposite of why the link was sent. */
+if(direct){ try{ localStorage.setItem('accountUnlocked','true'); }catch(e){} }
 let match = listings.find(l => l.ListingKey === key);
 if(!match){
 // Not in the cached batch — pull this one listing directly (printed QR codes).
@@ -5468,6 +5481,20 @@ if(row){ match = normalizeListing(row); ALL_LISTINGS.push(match); }
 }
 if(match){
 window.__autoOpenedListing = true;
+/* ⚠ Attribution is already handled: resolveAgentFromQuery() runs on load and
+   reads ?agent= from the query string, which /listing/KEY?agent=slug carries.
+   This is only the belt-and-braces case — the slug reaching us through the
+   server's boot object but not the URL. Same endpoint, same setter, so the two
+   paths cannot drift apart. */
+try{
+  const _slug = window.__OPEN_LISTING && window.__OPEN_LISTING.agent;
+  if(_slug && !params.get('agent')){
+    fetch('/api/agent/by-slug/' + encodeURIComponent(_slug))
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if(d && d.ok && d.agent) setAgentReferral(d.agent); })
+      .catch(()=>{});
+  }
+}catch(e){}
 openListingDetail(match.ListingKey);
 }else if(typeof showToast === 'function'){
 showToast("That listing is no longer available \u2014 it may have sold or been withdrawn.");
@@ -6233,7 +6260,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v432';
+window.BUILD = 'index-v433';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
