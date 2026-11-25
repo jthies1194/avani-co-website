@@ -22,6 +22,7 @@ require('dns').setDefaultResultOrder('ipv4first');
 const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
+const fs = require('fs');   /* reads the app shell for direct listing URLs */
 const { createClient } = require('@supabase/supabase-js');
 
 /* ==================== FILE STORAGE (server v215) ====================
@@ -10093,7 +10094,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v233',
+    serverVersion: 'v234',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -12580,6 +12581,87 @@ app.delete('/api/receipt/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- the application, with one listing's tags in its head ----------
+   ⚠ A shared link has two audiences with opposite needs. A person wants the real
+   site: every photo, swipe, full screen, the map, favourites, the lot. A crawler
+   wants a small document with Open Graph tags and runs no JavaScript. Serving
+   one page to both is what produced a reduced listing for everybody.
+
+   So the app's own index.html is served, with the generic site-wide head tags
+   swapped for this listing's. Nothing is rebuilt: it IS the site, and it opens
+   the listing on arrival.
+
+   The file is read once and cached by mtime. It is 1.9MB; reading it per request
+   would be absurd, and never re-reading it would mean a deploy did not take
+   effect until a restart — the exact trap that cost a day in November. */
+let _shellCache = { mtime: 0, html: '' };
+
+function loadAppShell() {
+  const file = path.join(__dirname, 'public', 'index.html');
+  try {
+    const st = fs.statSync(file);
+    if (_shellCache.html && _shellCache.mtime === st.mtimeMs) return _shellCache.html;
+    const html = fs.readFileSync(file, 'utf8');
+    _shellCache = { mtime: st.mtimeMs, html };
+    return html;
+  } catch (e) {
+    console.error('[shell] could not read index.html:', e.message);
+    return '';
+  }
+}
+
+async function listingAppShell({ origin, key, agent, title, desc, image, canon, lite }) {
+  let html = loadAppShell();
+  if (!html) return '';
+  const e = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  /* Replace by attribute, not by position: the head changes as the site changes,
+     and a replacement keyed to line order would silently stop matching. */
+  const swap = (re, to) => { html = html.replace(re, to); };
+  swap(/<title>[\s\S]*?<\/title>/i, `<title>${e(title)}</title>`);
+  swap(/<meta name="description" content="[^"]*">/i,
+       `<meta name="description" content="${e(desc)}">`);
+  swap(/<link rel="canonical" href="[^"]*">/i, `<link rel="canonical" href="${e(canon)}">`);
+  swap(/<meta property="og:title" content="[^"]*">/i,
+       `<meta property="og:title" content="${e(title)}">`);
+  swap(/<meta property="og:description" content="[^"]*">/i,
+       `<meta property="og:description" content="${e(desc)}">`);
+  swap(/<meta property="og:url" content="[^"]*">/i,
+       `<meta property="og:url" content="${e(canon)}">`);
+  if (image) {
+    swap(/<meta property="og:image" content="[^"]*">/i,
+         `<meta property="og:image" content="${e(image)}">`);
+    swap(/<meta name="twitter:card" content="[^"]*">/i,
+         `<meta name="twitter:card" content="summary_large_image">`);
+  }
+  /* ⚠ Listings belong to the MLS and come and go; agent pages are what this site
+     wants indexed. The simplified page was noindex,follow and that does not
+     change just because the page got better. */
+  swap(/<meta name="robots" content="[^"]*">/i,
+       `<meta name="robots" content="noindex,follow">`);
+
+  /* What the app reads on arrival so it can open this listing without the
+     visitor searching for it or pressing anything. */
+  const boot = `<script>window.__OPEN_LISTING=${JSON.stringify({
+    key: String(key), agent: String(agent || ''),
+  })};</script>`;
+  html = html.replace(/<\/head>/i, boot + '</head>');
+
+  /* ⚠ With scripting off, a 1.9MB application renders nothing at all. The
+     simplified page's body goes in as the fallback, so the listing, its photo,
+     its details, the disclaimer and a way to make contact are all still there. */
+  if (lite) {
+    const body = (lite.match(/<body[^>]*>([\s\S]*?)<\/body>/i) || [])[1] || '';
+    const styles = (lite.match(/<style>([\s\S]*?)<\/style>/i) || [])[1] || '';
+    if (body) {
+      html = html.replace(/<body([^>]*)>/i,
+        `<body$1><noscript><style>${styles}</style>${body}</noscript>`);
+    }
+  }
+  return html;
+}
+
 /* ============ SHARING A LISTING (server 126, rebuilt in server v225) ============
    v225: the page a shared link opened was a stub — address, price, three facts and
    the description chopped at 900 characters mid-sentence, under the wrong
@@ -12740,7 +12822,32 @@ app.get('/listing/:key', async (req, res, next) => {
   console.log(`[listing share] ${addr} viewed${who ? ' via ' + who : ''}`);
 
   res.set('Cache-Control', 'public, max-age=600');
-  res.type('html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+
+  /* ⚠ A PERSON GETS THE REAL SITE. A CRAWLER GETS THIS PAGE.
+     Until now everyone landed on the simplified page below: eight photos, no
+     swipe, no full screen, no map, no favourites — a different, poorer listing
+     than the same home opened from the search. Nobody wants a reduced listing
+     because they arrived from Facebook.
+
+     So a person is served the application itself with this listing's Open Graph
+     tags written into the head, and it opens the listing on arrival. The page
+     below is kept for crawlers, because Facebook and friends run no JavaScript
+     and need a small, fast document to read a preview out of — and it doubles as
+     the <noscript> fallback inside the shell. One experience for people; a
+     preview document for machines. */
+  const lite = litePage();
+  if (CRAWLER_UA_PATTERN.test(req.headers['user-agent'] || '')) return res.type('html').send(lite);
+
+  const shell = await listingAppShell({
+    origin, key: r.ListingKey || key, agent: who,
+    title: `${addr} — ${price}`, desc, image: img, canon, lite,
+  });
+  if (shell) return res.type('html').send(shell);
+  /* If the shell cannot be read for any reason, the simplified page is still a
+     working listing rather than an error. */
+  return res.type('html').send(lite);
+
+  function litePage() { return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,follow">
 <title>${e(addr)} — ${e(price)}</title>
@@ -12909,7 +13016,7 @@ ${/* \u26a0 This used to print DISCLAIMER_GENERAL \u2014 the *article* disclaime
       the prescribed IDX wording and carries the MLS as the source, which
       s.18.3.7 requires. It is not trimmed; see the warning at its definition. */
   e(mlsIdxDisclaimer())}</div>
-</div></body></html>`);
+</div></body></html>`; }
 });
 
 /* ================= GRANT AND ASSISTANCE PROGRAMS (server 155) =================
