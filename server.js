@@ -2702,9 +2702,18 @@ app.get('/api/address-suggest', async (req, res) => {
     filter = `StreetNumber eq '${esc(num)}'`;
     how = 'street number';
   } else if (name.length >= 4) {
-    /* Title Case first — see the note on case sensitivity in the lookup route. */
-    const t = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-    filter = `contains(StreetName,'${esc(t)}')`;
+    /* ⚠ This used to upper-case the first letter and lower-case ALL the rest:
+       "Callaway Dr" became "Callaway dr". contains() on this feed is CASE
+       SENSITIVE, so it matched nothing, and every street name typed as more than
+       one word silently returned no suggestions — "Sunrise Drive", "E Beach
+       Blvd", "W 8th Avenue". A single word happened to work, which is why this
+       looked like it worked at all.
+
+       placeVariants() already solved exactly this for the city box: it
+       Title-Cases every word and also tries the raw, upper and lower forms.
+       Reused here rather than reinvented, so the two boxes cannot drift apart. */
+    const variants = placeVariants(name);
+    filter = '(' + variants.map(v => `contains(StreetName,'${esc(v)}')`).join(' or ') + ')';
     how = 'street name';
   } else {
     return res.json({ ok: true, how: 'too short', suggestions: [] });
@@ -3759,25 +3768,49 @@ app.get('/api/map-tiles', async (req, res) => {
   });
 });
 
-app.get('/api/market-stats', async (req, res) => {
-  /* ⚠ Members-only since 24 November. Every number this returns is computed from
-     closed sales — median sale price, days on market, sale-to-list — so although
-     no individual property is named, the whole response is derived from sold data.
-     Jimmy's instruction was that sold data is agent-side only until BRMLS confirms
-     public display in writing, and an aggregate of restricted data is still
-     restricted. See the note on PUBLIC_STATUSES.
+/* Strip the closed-sales half of the market payload for anyone not signed in.
+   Deliberately a REMOVE list rather than a keep list: a new active-inventory
+   figure added to the payload later should appear on the public page by default,
+   whereas a new sold figure must be named here to be exposed. The failure that
+   matters is a sold number leaking, so the default has to be "public unless it is
+   on this list" only for the things sold data cannot reach — hence every key
+   below is sold-derived and nothing else is touched. */
+const MARKET_SOLD_KEYS = ['sold', 'soldByCity', 'soldTotal', 'soldSampled', 'soldWindowMonths'];
 
-     The session check goes ABOVE the cache. Below it, a warm cache would answer
-     anyone who asked, and the gate would hold only until the first agent loaded
-     the page — the kind of hole that tests pass straight through because the
-     first request in a test run is always a cold one. */
-  const sess = await requireSession(req, res); if (!sess) return;
-  res.set('Cache-Control', 'no-store');
+function marketPublicView(payload, sess) {
+  if (sess) return payload;
+  const out = { ...payload };
+  for (const k of MARKET_SOLD_KEYS) delete out[k];
+  /* `basis` is prose, and it names the closed-sale count in so many words. */
+  out.basis = 'Active listings only.';
+  out.soldWithheld = true;     // so the page knows not to draw an empty sold panel
+  return out;
+}
+
+app.get('/api/market-stats', async (req, res) => {
+  /* ⚠ PUBLIC AGAIN, BUT SPLIT IN TWO (server v230).
+     On 24 November this route was put entirely behind a sign-in on the belief
+     that "every number it returns is computed from closed sales". That was simply
+     wrong: marketRows() pulls ACTIVE_ONLY, so inventory count, median LIST price,
+     price per square foot and new-this-week never touched a sale. Only the `sold`
+     and `soldByCity` blocks do — median sale price, days on market, sale-to-list.
+
+     Gating the whole response took the public market figures down for no reason
+     and cost Jimmy his best seller-lead hook. So the payload is split: everyone
+     sees the active-inventory half, and the closed-sales half needs a session,
+     until BRMLS confirms public sold display in writing.
+
+     ⚠ The filter is applied to the CACHED path as well. The cache holds the full
+     payload including sold figures, so returning it unfiltered would leak exactly
+     what this gate exists to hold back — and only after an agent had warmed it,
+     which no test starting cold would ever catch. */
+  const sess = await getSession(req);
+  res.set('Cache-Control', sess ? 'no-store' : 'public, max-age=600');
 
   if (!mlsConfigured()) return res.status(503).json({ error: 'MLS not configured.' });
 
   if (marketCache.data && Date.now() - marketCache.at < 30 * 60 * 1000 && !req.query.fresh) {
-    return res.json({ ...marketCache.data, cached: true });
+    return res.json({ ...marketPublicView(marketCache.data, sess), cached: true });
   }
 
   try {
@@ -3868,7 +3901,7 @@ app.get('/api/market-stats', async (req, res) => {
        rows and made the next letter re-pull 1,200 records for nothing. */
     marketCache.data = payload; marketCache.at = Date.now();
     console.log(`[market-stats] ${priced.length} active Baldwin listings, median ${payload.overall.median}`);
-    res.json(payload);
+    res.json(marketPublicView(payload, sess));
   } catch (e) {
     console.error('[market-stats] FAILED:', e.message);
     res.status(500).json({ error: e.message });
@@ -10055,7 +10088,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v229',
+    serverVersion: 'v230',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
