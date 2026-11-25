@@ -236,6 +236,66 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 .fav-btn{position:absolute;bottom:10px;left:10px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.92);border:none;display:flex;align-items:center;justify-content:center;}
 .fav-btn svg{width:16px;height:16px;stroke:var(--marsh);}
 .fav-btn.active svg{fill:var(--coral);stroke:var(--coral);}
+/* ⚠ The heart and the status badge were BOTH pinned to the photo's bottom-left
+   corner, so the badge sat behind the button and "ACTIVE" read as "TIVE". An
+   earlier rule had moved the heart over to the right-hand corner, but the
+   .fav-btn rule just above is further down the file and set left back to 10px,
+   quietly undoing it. Moving the heart right is not the answer either — that
+   corner belongs to the price tag. All four corners are spoken for (add, QR,
+   status, price), so the heart keeps this one and the badge steps aside by the
+   width of the button plus a gap. */
+.card-photo .status-badge{left:48px}
+/* ⚠ On a phone the listing opened as a 350px box floating on the page, which is
+   a lot of screen spent on the dimmed background behind it. It takes the whole
+   screen now. Scoped to the listing overlay by id on purpose — the sign-in and
+   save-search dialogs are short, and blowing those up to full screen would make
+   a two-field form look like an error page.
+   The close and share buttons were positioned against the box; once the box is
+   taller than the screen they scroll out of reach, so they are pinned to the
+   viewport instead and the content is padded down to clear them. */
+@media(max-width:720px){
+  #detail-modal-overlay{padding:0;align-items:stretch;justify-content:stretch}
+  #detail-modal-overlay .modal{max-width:none;width:100%;max-height:none;
+    min-height:100vh;min-height:100dvh;border-radius:0;padding:58px 16px 0}
+  #detail-modal-overlay .modal-close{position:fixed;top:9px;right:10px;
+    width:42px;height:42px;font-size:27px;color:var(--ink);
+    background:rgba(255,255,255,.96);border-radius:50%;
+    box-shadow:0 2px 10px rgba(20,26,60,.28);z-index:12}
+  #detail-modal-overlay .modal-share{position:fixed;top:14px;right:60px;z-index:12}
+  /* The photo was 220px tall on a 844px screen. Given the whole screen now, it
+     can use some of it. */
+  .detail-photo{height:46vh;min-height:230px}
+}
+/* ---------- full-screen photos ----------
+   ⚠ The photo in the listing was a 220px box with two small arrows and no way
+   to make it bigger: tapping it did nothing. Anyone who has used a property
+   site expects the picture to open. It opens now, fills the screen, and moves
+   on a swipe or an arrow. The arrows stay visible on a phone rather than
+   relying on the swipe alone — a buyer who does not know to swipe is exactly
+   the buyer this is for. */
+.detail-photo{cursor:zoom-in}
+/* ⚠ Bottom-LEFT. The "1 / 15" counter already owns the bottom-right corner,
+   and putting this there stacked the two on top of each other. */
+.gal-expand{position:absolute;left:14px;bottom:14px;z-index:4;cursor:pointer;
+  background:rgba(7,9,15,.68);color:#fff;border:0;border-radius:2px;padding:8px 12px;
+  font-family:'Public Sans',sans-serif;font-weight:600;font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;display:inline-flex;align-items:center;gap:7px}
+.gal-expand svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+#photo-lightbox{position:fixed;inset:0;z-index:9800;background:#07090F;display:none;
+  align-items:center;justify-content:center}
+#photo-lightbox.on{display:flex}
+#photo-lightbox img{max-width:100%;max-height:100%;object-fit:contain;
+  -webkit-user-drag:none;user-select:none}
+#photo-lightbox .lb-btn{position:absolute;z-index:2;border:0;cursor:pointer;color:#fff;
+  background:rgba(255,255,255,.16);border-radius:50%;line-height:1;
+  display:flex;align-items:center;justify-content:center}
+#photo-lightbox .lb-close{top:12px;right:12px;width:46px;height:46px;font-size:27px}
+#photo-lightbox .lb-nav{top:50%;transform:translateY(-50%);width:50px;height:50px;font-size:30px}
+#photo-lightbox .lb-nav.prev{left:10px}
+#photo-lightbox .lb-nav.next{right:10px}
+#photo-lightbox .lb-count{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+  color:#fff;background:rgba(0,0,0,.6);border-radius:999px;padding:7px 15px;
+  font-family:'Public Sans',sans-serif;font-size:13px;letter-spacing:.04em}
 .auth-tabs{display:flex;gap:4px;margin-bottom:16px;background:var(--sand);border-radius:999px;padding:4px;}
 .auth-tabs button{flex:1;border:none;background:transparent;padding:8px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--driftwood);}
 .auth-tabs button.active{background:var(--marsh);color:var(--sand-light);}
@@ -5640,6 +5700,11 @@ document.getElementById('detail-modal-overlay').classList.add('active');
 function closeDetailModal(){
   document.getElementById('detail-modal-overlay').classList.remove('active');
   if(typeof hideManualLink === 'function') hideManualLink();
+  /* ⚠ The photo viewer sits on <body>, not inside this window, so closing the
+     listing does not close it — it would be left covering the whole screen
+     with no listing behind it. It also locks body scrolling while open, and
+     that lock has to come off with it. */
+  if(typeof closeLightbox === 'function') closeLightbox();
 }
 
 function shareListing(platform){
@@ -9558,8 +9623,82 @@ function renderDetailGallery(listing, key){
       <button class="gal-nav prev" onclick="event.stopPropagation();galleryStep(-1)" aria-label="Previous photo">&#8249;</button>
       <button class="gal-nav next" onclick="event.stopPropagation();galleryStep(1)" aria-label="Next photo">&#8250;</button>
       <div class="gal-count" id="gallery-count">1 / ${galleryPhotos.length}</div>` : ''}
+    <button class="gal-expand" id="gal-expand" aria-label="See the photos full screen"
+            onclick="event.stopPropagation();openLightbox(galleryIndex)">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+      ${galleryPhotos.length > 1 ? galleryPhotos.length + ' photos' : 'View photo'}
+    </button>
   `;
+  box.onclick = () => openLightbox(galleryIndex);
 }
+
+/* ---------- the full-screen photo viewer ----------
+   Built the first time it is needed rather than written into the page: this
+   file is already 1.9MB, and markup nobody opens is bytes every visitor pays
+   for. It lives on <body>, not inside the listing window, so it is not clipped
+   by the window's own scrolling. */
+let lbIndex = 0, _lbEl = null;
+function lightboxEl(){
+  if(_lbEl) return _lbEl;
+  const d = document.createElement('div');
+  d.id = 'photo-lightbox';
+  d.innerHTML =
+    '<button class="lb-btn lb-close" aria-label="Close photos">&times;</button>' +
+    '<button class="lb-btn lb-nav prev" aria-label="Previous photo">&#8249;</button>' +
+    '<img id="lb-img" alt="">' +
+    '<button class="lb-btn lb-nav next" aria-label="Next photo">&#8250;</button>' +
+    '<div class="lb-count" id="lb-count"></div>';
+  d.querySelector('.lb-close').onclick = closeLightbox;
+  d.querySelector('.prev').onclick = e => { e.stopPropagation(); lightboxStep(-1); };
+  d.querySelector('.next').onclick = e => { e.stopPropagation(); lightboxStep(1); };
+  /* Tapping the backdrop closes; tapping the photo itself must not, or every
+     attempt to look closer shuts it. */
+  d.onclick = e => { if(e.target === d) closeLightbox(); };
+  let x0 = null;
+  d.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, {passive:true});
+  d.addEventListener('touchend', e => {
+    if(x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if(Math.abs(dx) > 45) lightboxStep(dx < 0 ? 1 : -1);
+  }, {passive:true});
+  document.body.appendChild(d);
+  _lbEl = d;
+  return d;
+}
+function openLightbox(i){
+  if(!galleryPhotos.length) return;
+  const d = lightboxEl();
+  lbIndex = Math.min(Math.max(i|0, 0), galleryPhotos.length - 1);
+  paintLightbox();
+  d.classList.add('on');
+  /* Stop the listing underneath from scrolling while a photo is open. */
+  try{ document.body.style.overflow = 'hidden'; }catch(e){}
+}
+function paintLightbox(){
+  const d = lightboxEl();
+  const img = d.querySelector('#lb-img'), cnt = d.querySelector('#lb-count');
+  if(img) img.src = galleryPhotos[lbIndex] || '';
+  if(cnt) cnt.textContent = galleryPhotos.length > 1
+    ? (lbIndex + 1) + ' of ' + galleryPhotos.length : '';
+  const many = galleryPhotos.length > 1;
+  d.querySelectorAll('.lb-nav').forEach(b => { b.style.display = many ? 'flex' : 'none'; });
+}
+function lightboxStep(n){
+  if(!galleryPhotos.length) return;
+  lbIndex = (lbIndex + n + galleryPhotos.length) % galleryPhotos.length;
+  paintLightbox();
+  /* Keep the small gallery behind in step, so closing lands on the same photo. */
+  galleryIndex = lbIndex;
+  const img = document.getElementById('gallery-img');
+  const cnt = document.getElementById('gallery-count');
+  if(img) img.src = galleryPhotos[galleryIndex];
+  if(cnt) cnt.textContent = (galleryIndex+1) + ' / ' + galleryPhotos.length;
+}
+function closeLightbox(){
+  if(_lbEl) _lbEl.classList.remove('on');
+  try{ document.body.style.overflow = ''; }catch(e){}
+}
+function lightboxOpen(){ return !!(_lbEl && _lbEl.classList.contains('on')); }
 function galleryStep(d){
   if(!galleryPhotos.length) return;
   galleryIndex = (galleryIndex + d + galleryPhotos.length) % galleryPhotos.length;
@@ -9569,6 +9708,15 @@ function galleryStep(d){
   if(cnt) cnt.textContent = (galleryIndex+1) + ' / ' + galleryPhotos.length;
 }
 document.addEventListener('keydown', e => {
+  /* ⚠ The viewer is checked first and returns. When a photo is open full
+     screen it owns the arrow keys and Escape — otherwise Escape would shut the
+     whole listing out from under a viewer who only meant to close the photo. */
+  if(lightboxOpen()){
+    if(e.key === 'ArrowLeft'){ lightboxStep(-1); e.preventDefault(); }
+    if(e.key === 'ArrowRight'){ lightboxStep(1); e.preventDefault(); }
+    if(e.key === 'Escape'){ closeLightbox(); e.preventDefault(); }
+    return;
+  }
   if(!document.querySelector('#detail-modal-overlay.active')) return;
   if(e.key === 'ArrowLeft') galleryStep(-1);
   if(e.key === 'ArrowRight') galleryStep(1);
