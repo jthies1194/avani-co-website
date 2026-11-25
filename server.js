@@ -10088,7 +10088,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v231',
+    serverVersion: 'v232',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -13171,6 +13171,270 @@ async function postSweep() {
    once-per-day guard above stops it sending twice. */
 setInterval(() => { postSweep().catch(() => {}); }, 6 * 60 * 60 * 1000);
 setTimeout(() => { postSweep().catch(() => {}); }, 45 * 1000);
+
+/* ==================== A LIST OF PROPERTIES (server v232) ====================
+   Pick several homes out of a search, share them as one link, and optionally keep
+   the list. Built because sending six houses meant sending six links.
+
+   The link is the product. One URL goes by text, Facebook, Gmail, WhatsApp or
+   anything else, and the page behind it is server-rendered — so a recipient with
+   nothing signed in, and a social crawler that runs no JavaScript, both see the
+   homes.
+
+   ⚠ A list is a set of KEYS, never a copy of the listings. Listings change price,
+   go under contract and come off the market, and a cached copy would quietly
+   become a lie that keeps being forwarded. The page re-reads the feed every time,
+   so a list opened in March shows March's truth, and anything that has left the
+   public statuses simply stops appearing. */
+const LIST_MAX = 24;          /* more than this is a search, not a shortlist */
+const LIST_KEY = id => 'plist:' + id;
+
+function listIdOk(v) { return /^[A-Za-z0-9_-]{6,48}$/.test(String(v || '')); }
+
+app.post('/api/lists', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const sess = await getSession(req);
+  const b = req.body || {};
+  const keys = (Array.isArray(b.keys) ? b.keys : [])
+    .map(k => String(k || '').trim())
+    .filter(k => k && k.length <= 64)
+    .slice(0, LIST_MAX);
+  if (!keys.length) return res.status(400).json({ error: 'Pick at least one property.' });
+
+  const id = 'l' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
+  const rec = {
+    id,
+    keys: [...new Set(keys)],
+    label: String(b.label || '').trim().slice(0, 80),
+    note: String(b.note || '').trim().slice(0, 400),
+    /* Who made it, so an agent's own lists can be found again and a share still
+       attributes the lead. */
+    agentId: sess ? sess.agentId : null,
+    agentName: sess ? (sess.name || '') : '',
+    agentSlug: sess ? slugify(sess.name || '') : (String(b.agent || '').slice(0, 60) || ''),
+    audience: null,            /* set when, and if, it is saved */
+    createdAt: new Date().toISOString(),
+  };
+  if (!await mustSet(res, LIST_KEY(id), rec)) return;
+
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const url = `${origin}/list/${id}` + (rec.agentSlug ? `?agent=${encodeURIComponent(rec.agentSlug)}` : '');
+  console.log(`[list] ${rec.keys.length} properties -> ${id}${sess ? ' by ' + sess.name : ' (visitor)'}`);
+  res.json({ ok: true, id, url, count: rec.keys.length, canSave: !!sess });
+});
+
+/* Keeping a list, and optionally watching for more like it. */
+app.post('/api/lists/:id/save', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!listIdOk(req.params.id)) return res.status(400).json({ error: 'Not a list.' });
+  const sess = await requireSession(req, res); if (!sess) return;
+
+  const rec = await getSetting(LIST_KEY(req.params.id));
+  if (!rec) return res.status(404).json({ error: 'That list has expired or never existed.' });
+
+  const b = req.body || {};
+  const audience = b.audience === 'agents' ? 'agents' : 'clients';
+  rec.audience = audience;
+  rec.label = String(b.label || rec.label || '').trim().slice(0, 80);
+  rec.savedAt = new Date().toISOString();
+  rec.savedBy = sess.agentId;
+  if (!await mustSet(res, LIST_KEY(rec.id), rec)) return;
+
+  /* An index per owner, so the CRM can list them without scanning the store. */
+  const idxKey = 'plistIdx:' + sess.agentId;
+  const idx = (await getSetting(idxKey)) || [];
+  const row = { id: rec.id, label: rec.label, count: rec.keys.length,
+                audience, savedAt: rec.savedAt };
+  const next = [row, ...idx.filter(x => x.id !== rec.id)].slice(0, 200);
+  await setSetting(idxKey, next);
+
+  /* ⚠ Alerts are OPTIONAL and off unless asked for. A list is a set of specific
+     houses; an alert is a standing search. Turning every saved list into a
+     standing search would mail people about homes they never asked to watch. */
+  let alert = null, alertSkipped = null;
+  if (b.alerts) {
+    const criteria = await listCriteria(rec.keys);
+    if (!criteria) alertSkipped = 'these homes are too spread out to watch as one search';
+    if (criteria) {
+      const sid = 'ss_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex');
+      /* ⚠ Do NOT rely on sess.email. A session only carries the address if it was
+         created after that field was added, so an older token silently produced
+         no alert at all — the save succeeded, the alert did not, and nothing
+         said so. Fall back to the agent record, which always has it. */
+      let dest = String(b.email || sess.email || '').trim().toLowerCase();
+      if (!dest) {
+        try {
+          const { data: a } = await supabase.from('agents')
+            .select('email').eq('id', sess.agentId).maybeSingle();
+          dest = String((a && a.email) || '').trim().toLowerCase();
+        } catch (err) { console.warn('[list] agent email lookup failed:', err.message); }
+      }
+      const srec = {
+        id: sid, agentId: sess.agentId, agentName: sess.name || '', agentEmail: dest,
+        leadId: '', name: String(b.name || sess.name || '').slice(0, 80),
+        email: dest.slice(0, 120),
+        pace: ['instant', 'daily', 'weekly'].includes(b.pace) ? b.pace : 'daily',
+        criteria,
+        source: 'list:' + rec.id,
+        consentAt: new Date().toISOString(),
+        consentIp: String(req.headers['x-forwarded-for'] || req.ip || '').slice(0, 45),
+        lastSent: new Date().toISOString(),
+        sentKeys: [...rec.keys],   /* never alert about the homes already on the list */
+        createdAt: new Date().toISOString(),
+      };
+      if (srec.email) {
+        await setSetting('savedSearch:' + sess.agentId + ':' + sid, srec);
+        await setSetting('ssTok:' + searchToken(sid),
+                         { key: 'savedSearch:' + sess.agentId + ':' + sid });
+        alert = { id: sid, label: searchLabel(criteria), pace: srec.pace };
+      } else {
+        alertSkipped = 'no email address to send alerts to';
+      }
+    }
+  }
+
+  console.log(`[list] ${rec.id} saved for ${audience}`
+    + (alert ? ' with an alert' : alertSkipped ? ` (no alert: ${alertSkipped})` : ''));
+  /* ⚠ alertSkipped is reported, not swallowed. Asking for alerts and silently
+     not getting them is the kind of failure nobody discovers until they wonder
+     why they never hear anything. */
+  res.json({ ok: true, id: rec.id, audience, alert, alertSkipped });
+});
+
+/* What the selected homes have in common, as a watchable search.
+   ⚠ Returns null rather than guessing when they have nothing in common. A
+   shortlist spanning four towns and a million dollars of spread describes no
+   search worth alerting on, and a too-wide search mails somebody the whole MLS. */
+async function listCriteria(keys) {
+  const rows = [];
+  for (const k of keys.slice(0, LIST_MAX)) {
+    try { const r = await mlsFindByKey(k); if (r) rows.push(r); } catch (e) {}
+  }
+  if (rows.length < 2) return null;
+  const cities = [...new Set(rows.map(r => String(r.City || '').trim()).filter(Boolean))];
+  if (!cities.length || cities.length > 4) return null;
+  const prices = rows.map(r => Number(r.ListPrice)).filter(n => n > 0);
+  const beds = rows.map(r => Number(r.BedroomsTotal)).filter(n => n > 0);
+  const top = prices.length ? Math.round(Math.max(...prices) * 1.1 / 1000) * 1000 : null;
+  return {
+    city: cities[0],
+    cities,
+    maxPrice: top,
+    minPrice: prices.length ? Math.round(Math.min(...prices) * 0.9 / 1000) * 1000 : null,
+    beds: beds.length ? Math.min(...beds) : null,
+    type: '', maxSqft: null, minSqft: null, acres: null,
+    yearBuilt: null, maxHoa: null,
+  };
+}
+
+/* The page a shared list opens. Same rules as a single shared listing: noindex,
+   firm-only credit, the full IDX disclaimer, and public statuses only for a
+   visitor who is not signed in. */
+app.get('/list/:id', async (req, res, next) => {
+  if (!listIdOk(req.params.id)) return next();
+  let rec = null;
+  try { rec = await getSetting(LIST_KEY(req.params.id)); }
+  catch (e) { console.error('[list] read failed:', e.message); }
+  if (!rec || !Array.isArray(rec.keys)) return res.redirect(302, '/#listings');
+
+  const sess = await getSession(req);
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const e = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const rows = [];
+  for (const k of rec.keys.slice(0, LIST_MAX)) {
+    try {
+      const r = await mlsFindByKey(k);
+      if (!r) continue;
+      if (!mlsDisplayable(r)) continue;                 // s.18.2.3 seller opt-out
+      if (!sess && !publicStatus(r.StandardStatus)) continue;
+      mlsApplyAddressOptOut(r);
+      rows.push(r);
+    } catch (err) { /* one bad key must not take the page down */ }
+  }
+
+  const gone = rec.keys.length - rows.length;
+  const canon = `${origin}/list/${rec.id}`;
+  const title = rec.label || (rows.length === 1 ? 'A home for you' : `${rows.length} homes for you`);
+  const by = rec.agentName ? ` from ${rec.agentName}` : '';
+  const desc = rows.length
+    ? rows.slice(0, 3).map(r => r.UnparsedAddress).filter(Boolean).join(' · ')
+      + (rows.length > 3 ? ` and ${rows.length - 3} more` : '')
+    : 'These homes are no longer available.';
+  const hero = rows.length ? listingPhotoUrl(rows[0], origin) : '';
+  const money = v => Number(v) > 0 ? '$' + Number(v).toLocaleString() : 'Price on request';
+
+  res.set('Cache-Control', 'no-store');
+  res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${e(title)}${e(by)} &middot; ${e(BROKERAGE_NAME)}</title>
+<meta name="robots" content="noindex,nofollow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${e(title)}${e(by)}">
+<meta property="og:description" content="${e(desc)}">
+<meta property="og:url" content="${e(canon)}">
+${hero ? `<meta property="og:image" content="${e(hero)}">` : ''}
+<meta name="twitter:card" content="${hero ? 'summary_large_image' : 'summary'}">
+<link rel="canonical" href="${e(canon)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#141A3C;--marsh:#171F63;--sand:#FBF9F5;--line:rgba(20,26,60,.14)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--sand);color:var(--ink);
+  font-family:'Public Sans',system-ui,sans-serif;line-height:1.6}
+.w{max-width:760px;margin:0 auto;padding:34px 22px 64px}
+.eb{font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:#7A8199;margin-bottom:8px}
+h1{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:31px;line-height:1.18;margin:0 0 6px}
+.sub{color:#5A6178;font-size:15px;margin:0 0 26px}
+.note{background:#fff;border-left:3px solid #C89B4E;padding:13px 16px;margin:0 0 26px;font-size:15px}
+.it{display:flex;gap:16px;background:#fff;border:1px solid var(--line);border-radius:3px;
+  padding:14px;margin:0 0 14px;text-decoration:none;color:inherit}
+.it img{width:132px;height:100px;object-fit:cover;border-radius:2px;flex:0 0 auto;background:#E8EEF2}
+.it .b{flex:1;min-width:0}
+.it h2{font-family:'Fraunces',Georgia,serif;font-weight:400;font-size:18px;margin:0 0 3px}
+.it .p{font-family:'Fraunces',Georgia,serif;font-size:20px;color:var(--marsh);margin:0 0 4px}
+.it .m{font-size:13px;color:#5A6178}
+.it .c{font-size:11.5px;color:#7A8199;margin-top:6px}
+.gone{font-size:13.5px;color:#5A6178;margin:0 0 20px}
+.btn{display:inline-block;background:var(--marsh);color:#fff;text-decoration:none;
+  padding:14px 26px;border-radius:4px;font-weight:700;font-size:15px;margin-top:8px}
+.ft{font-size:13px;color:#5A6178;margin-top:26px;padding-top:18px;
+  border-top:1px solid var(--line);line-height:1.7}
+@media(max-width:520px){.it{flex-direction:column}.it img{width:100%;height:180px}h1{font-size:25px}}
+</style></head><body><div class="w">
+<div class="eb">${e(BROKERAGE_NAME)}</div>
+<h1>${e(title)}</h1>
+<p class="sub">${rows.length ? e(`${rows.length} ${rows.length === 1 ? 'home' : 'homes'}${by}`) : 'Nothing to show'}</p>
+${rec.note ? `<div class="note">${e(rec.note)}</div>` : ''}
+${rows.map(r => {
+  const img = listingPhotoUrl(r, origin);
+  const bits = [r.BedroomsTotal ? r.BedroomsTotal + ' bd' : '',
+                r.BathroomsTotalInteger ? r.BathroomsTotalInteger + ' ba' : '',
+                r.LivingArea ? Number(r.LivingArea).toLocaleString() + ' sq ft' : '']
+               .filter(Boolean).join(' · ');
+  const cr = listingCredit(r);
+  return `<a class="it" href="${e(origin + '/listing/' + encodeURIComponent(r.ListingKey)
+      + (rec.agentSlug ? '?agent=' + encodeURIComponent(rec.agentSlug) : ''))}">
+    ${img ? `<img src="${e(img)}" alt="${e(r.UnparsedAddress || 'Listing')}" loading="lazy">` : ''}
+    <div class="b">
+      <div class="p">${e(money(r.ListPrice))}</div>
+      <h2>${e(r.UnparsedAddress || 'Address on request')}</h2>
+      <div class="m">${e([r.City, r.StandardStatus].filter(Boolean).join(' · '))}${bits ? ' · ' + e(bits) : ''}</div>
+      ${cr ? `<div class="c">${e(cr)}</div>` : ''}
+    </div></a>`;
+}).join('')}
+${/* ⚠ Said out loud. A list is re-read from the feed every time it is opened, so
+     a home that sold since it was sent simply is not here — and silently showing
+     five where six were sent makes the sender look careless. */''}
+${gone > 0 ? `<p class="gone">${gone === 1
+  ? 'One home on this list is no longer available.'
+  : `${gone} homes on this list are no longer available.`}</p>` : ''}
+<a class="btn" href="${e(origin + '/#listings')}">See everything for sale</a>
+<div class="ft">${e(BROKERAGE_NAME)} &middot; ${e(BROKERAGE_PHONE)}<br>${e(mlsIdxDisclaimer())}</div>
+</div></body></html>`);
+});
 
 /* What is coming up, for the CRM. Read-only. */
 app.get('/api/posts/upcoming', async (req, res) => {
