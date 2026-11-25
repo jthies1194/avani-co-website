@@ -292,7 +292,7 @@ html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}body{background:va
 .welcome-banner.show{display:flex;}
 .welcome-banner .msg{color:var(--sand-light);font-size:14px;}
 .welcome-banner .msg strong{font-family:'Fraunces',serif;font-weight:500;color:var(--coral);}
-.welcome-banner a.call-btn{background:var(--coral);color:var(--white);text-decoration:none;padding:11px 22px;border-radius:2px;font-weight:700;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:8px;}
+a.pill.call{display:inline-flex;align-items:center;gap:7px}.pill.call svg{width:13px;height:13px;flex:0 0 auto}.detail-actions{display:flex;gap:9px;align-items:stretch;flex-wrap:wrap;margin-top:6px;position:sticky;bottom:0;background:var(--white);padding:12px 0 2px;z-index:5;box-shadow:0 -10px 16px -12px rgba(20,26,60,.5)}.detail-actions .submit-btn{flex:1 1 200px;margin-top:0}.detail-call{flex:1 1 170px;display:inline-flex;align-items:center;justify-content:center;background:var(--marsh);color:var(--sand-light);text-decoration:none;border-radius:2px;padding:14px 18px;font-family:'Public Sans',sans-serif;font-weight:700;font-size:13px;letter-spacing:.05em;white-space:nowrap}.detail-call:hover{background:var(--gold-deep);color:#241A08}.call-btn{background:var(--coral);color:var(--white);text-decoration:none;padding:11px 22px;border-radius:2px;font-weight:700;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:8px;}
 .welcome-banner a.call-btn svg{width:15px;height:15px;}
 @keyframes pulseGlow{0%,100%{box-shadow:0 0 0 0 rgba(201,151,31,0.5);}50%{box-shadow:0 0 0 9px rgba(201,151,31,0);}}
 .topbar-client-login{background:var(--coral);color:var(--white);padding:9px 18px;border-radius:999px;font-size:11.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border:none;animation:pulseGlow 2.2s infinite;}
@@ -698,7 +698,23 @@ header.stuck{top:52px}
   .utility .u-tel{font-size:14px;flex:0 0 auto}
   .utility a.u-agent{margin-left:6px;padding-left:8px;font-size:11.5px;flex:0 0 auto}
   .utility .u-actions{margin-left:auto;flex:0 1 auto;min-width:0}
-  .utility .u-actions a.pill:not(.solid){display:none}   /* Contact Us */
+  .utility .u-actions a.pill:not(.solid){display:none}
+  /* ⚠ ...except the phone number. The rule above clears the narrow top bar
+     by hiding every outline pill, which also hid the call link — on the one
+     device that can actually place the call. A phone number is not
+     decoration to be dropped when space is tight. */
+  .utility .u-actions a.pill.call{display:inline-flex}
+  /* Tighter still on the narrowest phones, so the bar never overflows. */
+  @media(max-width:480px){
+    .utility{gap:7px;padding:0 12px}
+    .utility .u-actions{gap:7px}
+    .utility a.pill{padding:7px 10px}
+    /* The agent sign-in keeps its padlock but loses its words. Agents know where
+       their own door is; a visitor who wants to ring you does not, and the bar
+       is only so wide. */
+    .utility .u-agent span{display:none}
+    .utility .u-agent{padding-right:2px}
+  }   /* Contact Us */
   .utility .u-actions a.pill.solid{padding:7px 12px;font-size:11px;max-width:46vw;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
@@ -1559,6 +1575,19 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   .utility .wc-us .lbl .abbr{display:none}
   .utility .wc-us .lbl .full{display:inline}
 }
+@media(max-width:820px){
+  /* ⚠ The bar used to drop the phone DIGITS here and keep the clock, so from
+     720px down the one thing he asked to be always viewable was a glyph. The
+     clock is decoration; the number is not. Below 820 the clock goes instead,
+     and the digits stay all the way to 320px. 820 rather than 720 because the
+     number needs a gap between the handset icon and the digits, and those few
+     pixels pushed the bar over at 768. */
+  .utility .wc-us{display:none}
+  /* That border-left was the rule dividing the padlock from the clock. With the
+     clock gone it is a stray pipe hanging at the left edge with nothing on the
+     other side of it. */
+  .utility a.u-agent{border-left:0;margin-left:0;padding-left:0}
+}
 </style>
 
 <div class="utility">
@@ -1570,6 +1599,14 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
   <a href="#" class="u-agent" onclick="switchView('crm');return false;" title="Agent &amp; broker sign-in">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><span>Agent Login</span></a>
   <div class="u-actions">
+    <!-- ⚠ The phone number was only inside the returning-client welcome banner,
+         so most visitors never saw it at all — and once shared listings started
+         serving the real site, the number that had been on the simplified page
+         went with it. A brokerage's phone number should never be something you
+         have to go looking for. Tap-to-call on a phone, readable on a desktop. -->
+    <a href="tel:2512293216" class="pill call" id="u-call" title="Call us">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      <span id="u-call-txt">251-229-3216</span></a>
     <a href="#contact" class="pill">Contact Us</a>
     <a href="#" id="client-login-link" class="pill solid" onclick="openClientAuthOrAccount();return false;">Client Login</a>
 
@@ -4652,7 +4689,13 @@ body:not(.is-staff) #sec-setup .broker-only{display:none}
 <button class="share-btn" onclick="shareListing('copy')">Copy link</button>
 </div>
 <div id="share-manual" hidden></div>
-<button class="submit-btn" id="detail-contact-btn">Contact agent about this home</button>
+<!-- ⚠ A shared listing has to offer a phone call. Someone sent this home to
+     somebody; the next step is a conversation, and making them hunt for a number
+     loses it. -->
+<div class="detail-actions">
+  <a class="detail-call" id="detail-call" href="tel:2512293216">Call 251-229-3216</a>
+  <button class="submit-btn" id="detail-contact-btn">Contact agent about this home</button>
+</div>
 </div>
 </div>
 
@@ -5548,6 +5591,7 @@ return;
 
 markListingViewed(key);
 currentDetailListing = listing;
+try{ paintCallButtons(); }catch(e){}
 renderDetailGallery(listing, key);
 document.getElementById('detail-price').textContent = '$' + listing.ListPrice.toLocaleString();
 document.getElementById('detail-address').textContent = listing.UnparsedAddress;
@@ -5734,7 +5778,11 @@ const link = document.getElementById('client-login-link');
 if(link){
   // "My Account (Christopher)" is far longer than "Client Login" and was the
   // worst case for the narrow top bar, so the name is dropped on small screens.
-  if(!currentClient) link.textContent = 'Client Login';
+  /* ⚠ "Client Login" no longer fits beside the phone number on a narrow bar —
+     it was being clipped to "CLI...". The number earns its place there; a
+     shorter word for the same button costs nothing. */
+  const tight = window.matchMedia && window.matchMedia('(max-width:480px)').matches;
+  if(!currentClient) link.textContent = tight ? 'Log in' : 'Client Login';
   else {
     const first = String(currentClient.name || '').trim().split(/\s+/)[0] || '';
     const narrow = window.matchMedia && window.matchMedia('(max-width:620px)').matches;
@@ -13438,12 +13486,57 @@ function stampLead(lead){
 
 captureCampaign();
 
+/* One place that decides which number the call buttons offer: the agent whose
+   link brought you here, or the office. Runs on load and whenever a referral is
+   recorded, so the header and the listing can never disagree. */
+function paintCallButtons(){
+  let phone = '', who = '';
+  try{
+    const r = JSON.parse(localStorage.getItem('agentReferral') || 'null');
+    if(r && r.phone){ phone = String(r.phone); who = String(r.name || ''); }
+  }catch(e){}
+  const digits = (phone || '251-229-3216').replace(/[^0-9+]/g, '');
+  const shown = phone || '251-229-3216';
+  /* ⚠ The top bar keeps the BROKERAGE number, always — it is not re-pointed at
+     whichever agent's link happened to bring this visitor in. The referral is
+     remembered in localStorage, so re-pointing it would leave one agent's cell
+     standing as the site's main number on every page the visitor opened
+     afterwards, long after the listing they arrived on. The agent belongs on
+     the listing, which is where the referral means something. */
+  const top = document.getElementById('u-call');
+  if(top){
+    top.href = 'tel:2512293216';
+    const t = document.getElementById('u-call-txt');
+    if(t) t.textContent = '251-229-3216';
+    top.title = 'Call us';
+  }
+  const det = document.getElementById('detail-call');
+  if(det){
+    det.href = 'tel:' + digits;
+    det.textContent = who ? 'Call ' + who.split(' ')[0] + ' \u00b7 ' + shown : 'Call ' + shown;
+  }
+  /* When an agent's own link brought the visitor here, the button should name
+     them. "Contact agent about this home" is a description; "Message Jimmy" is
+     an action, and a recipient already knows who sent it. */
+  const btn = document.getElementById('detail-contact-btn');
+  if(btn) btn.textContent = who
+    ? 'Message ' + who.split(' ')[0] + ' about this home'
+    : 'Contact agent about this home';
+}
+if(document.readyState === 'loading')
+  document.addEventListener('DOMContentLoaded', () => { try{ paintCallButtons(); }catch(e){} });
+else { try{ paintCallButtons(); }catch(e){} }
+
 function setAgentReferral(a){
   try{
+    /* ⚠ The phone number is kept too. Without it the call buttons could only
+       ever offer the office, even on a listing someone's own agent had sent —
+       which is the one case where reaching THAT person is the whole point. */
     localStorage.setItem('agentReferral', JSON.stringify({
-      id: a.id, name: a.name, slug: a.slug, at: Date.now()
+      id: a.id, name: a.name, slug: a.slug, phone: a.phone || '', at: Date.now()
     }));
   }catch(e){}
+  try{ paintCallButtons(); }catch(e){}
 }
 function getAgentReferral(){
   try{
