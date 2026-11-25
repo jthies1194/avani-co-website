@@ -251,6 +251,11 @@ app.use((req, res, next) => {
 
 // Flyer PDFs run to a few megabytes, so the old 2mb ceiling rejected them.
 app.use(express.json({ limit: '14mb' }));
+/* ⚠ Needed for the contact form on a shared listing page. That page is
+   server-rendered and must work with no JavaScript at all — shared links get
+   opened in the stripped-down browsers inside Facebook and Messenger — so the
+   form posts the ordinary way and the server has to be able to read it. */
+app.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
 // ---------- Supabase (leads / agents / settings storage) ----------
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -10088,7 +10093,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v232',
+    serverVersion: 'v233',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -12706,6 +12711,27 @@ app.get('/listing/:key', async (req, res, next) => {
         { month: 'numeric', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
     : '';
 
+  /* Every photo the feed gave us, not just the first. "See the photos" was a
+     promise this page never kept. */
+  const photos = (() => {
+    const out = [];
+    const m = Array.isArray(r && r.Media) ? r.Media : [];
+    for (const item of m) {
+      if (!item) continue;
+      const u = typeof item === 'string' ? item
+        : (item.MediaURL || item.MediaUrl || item.Uri1600 || item.Uri1024
+           || item.Uri800 || item.Uri640 || item.url || '');
+      if (u && /^https?:/i.test(u) && !out.includes(u)) out.push(u);
+      if (out.length >= 9) break;
+    }
+    if (!out.length && img) out.push(img);
+    return out;
+  })();
+
+  /* Whose link was this? The share carries ?agent=<slug>, and the person who
+     sent it is the person the recipient should be able to reach. */
+  const sharedBy = await agentBySlugFull(String(req.query.agent || '').trim());
+
   const canon = `${origin}/listing/${encodeURIComponent(r.ListingKey || key)}`
     + (who ? `?agent=${encodeURIComponent(who)}` : '');
   const into = `${origin}/?listing=${encodeURIComponent(r.ListingKey || key)}`
@@ -12752,6 +12778,20 @@ h1{font-family:Georgia,serif;font-size:31px;line-height:1.2;font-weight:400;marg
 .sh-h{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#5A6178;margin-right:3px}
 .sh a,.sh button{display:inline-block;font-size:13px;font-family:inherit;color:#171F63;background:#fff;border:1px solid rgba(20,26,60,.22);border-radius:3px;padding:8px 13px;text-decoration:none;cursor:pointer}
 .sh a:hover,.sh button:hover{background:#171F63;color:#fff;border-color:#171F63}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:0 0 26px}
+.gal img{width:100%;height:120px;object-fit:cover;border-radius:2px;background:#E8EEF2}
+.ask{background:#fff;border:1px solid rgba(20,26,60,.14);border-radius:4px;padding:22px;margin:0 0 20px}
+.ask-h{font-family:Georgia,serif;font-size:21px;font-weight:400;margin:0 0 4px}
+.ask-s{font-size:14.5px;color:#5A6178;margin:0 0 16px}
+.ask-direct{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 18px}
+.ask-btn{display:inline-block;background:#171F63;color:#fff;text-decoration:none;padding:12px 20px;border-radius:3px;font-weight:700;font-size:14.5px}
+.ask-btn.ghost{background:#fff;color:#171F63;border:1px solid rgba(20,26,60,.25)}
+.ask-f{display:grid;gap:9px}
+.ask-f input,.ask-f textarea{width:100%;border:1px solid rgba(20,26,60,.2);border-radius:3px;padding:12px;font-family:inherit;font-size:15px;color:#141A3C;background:#fff}
+.ask-f textarea{resize:vertical}
+.ask-f button{background:#C89B4E;color:#241A08;border:none;border-radius:3px;padding:13px;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.hp{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}
+.btn.ghost{background:#fff;color:#171F63;border:1px solid rgba(20,26,60,.25)}
 .st{display:flex;flex-wrap:wrap;align-items:baseline;gap:9px;margin:0 0 2px}
 .chip{display:inline-block;background:#E8EEF7;color:#171F63;border-radius:3px;
   padding:3px 9px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
@@ -12777,7 +12817,39 @@ ${img ? `<img class="hero" src="${e(img)}" alt="${e(addr)}">` : ''}
 ${factRows.length ? `<dl class="facts">${factRows.map(([k, v]) =>
   `<div><dt>${e(k)}</dt><dd>${e(v)}</dd></div>`).join('')}</dl>` : ''}
 ${remarks ? `<h2>Description</h2><p class="rm">${e(remarks)}</p>` : ''}
-<a class="btn" href="${e(into)}">See the photos and more like it</a>
+${/* ⚠ The only action here used to be "See the photos and more like it",
+     pointing at the HOMEPAGE. Three things wrong with that: the wording promised
+     photos this page did not show, the destination was not the listing, and
+     getting back to it meant loading the whole app and hunting for it again —
+     slow, on a link someone was sent. The page now shows the photos itself and
+     offers the thing a recipient actually wants, which is to reach a person. */''}
+${photos.length > 1 ? `<div class="gal">${photos.slice(1, 9).map(u =>
+  `<img src="${e(u)}" alt="${e(addr)}" loading="lazy">`).join('')}</div>` : ''}
+
+<div class="ask" id="ask">
+  <h2 class="ask-h">Interested in this home?</h2>
+  <p class="ask-s">${sharedBy ? `${e(sharedBy.name)} can show it to you.` : 'Send a message and someone will be in touch.'}</p>
+  <div class="ask-direct">
+    ${sharedBy && sharedBy.phone ? `<a class="ask-btn" href="tel:${e(String(sharedBy.phone).replace(/[^0-9+]/g, ''))}">Call ${e(sharedBy.phone)}</a>`
+      : `<a class="ask-btn" href="tel:${e(BROKERAGE_PHONE.replace(/[^0-9+]/g, ''))}">Call ${e(BROKERAGE_PHONE)}</a>`}
+    ${sharedBy && sharedBy.email ? `<a class="ask-btn ghost" href="mailto:${e(sharedBy.email)}?subject=${encodeURIComponent(addr)}">Email ${e(sharedBy.name.split(' ')[0])}</a>` : ''}
+  </div>
+  ${/* A plain form. No fetch, no JavaScript — shared links get opened inside
+       Facebook and Messenger browsers, and a form that needed script would
+       quietly do nothing there. */''}
+  <form class="ask-f" method="POST" action="/api/listing-inquiry">
+    <input type="hidden" name="key" value="${e(r.ListingKey || key)}">
+    <input type="hidden" name="agent" value="${e(String(req.query.agent || ''))}">
+    <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
+    <input name="name" placeholder="Your name" required maxlength="80">
+    <input name="email" type="email" placeholder="Email" maxlength="120">
+    <input name="phone" type="tel" placeholder="Phone" maxlength="40">
+    <textarea name="message" rows="3" maxlength="1200" placeholder="When could I see it?"></textarea>
+    <button type="submit">Send</button>
+  </form>
+</div>
+
+<a class="btn ghost" href="${e(origin + '/#listings')}">Browse other homes for sale</a>
 <!-- ⚠ The page a shared link opens had no way to pass it on. Someone sent a
      listing by a friend could look at it and nothing else, which breaks the
      chain exactly where it is most likely to continue. These are plain links,
@@ -13171,6 +13243,135 @@ async function postSweep() {
    once-per-day guard above stops it sending twice. */
 setInterval(() => { postSweep().catch(() => {}); }, 6 * 60 * 60 * 1000);
 setTimeout(() => { postSweep().catch(() => {}); }, 45 * 1000);
+
+/* ---------- someone asks about a listing they were sent ----------
+   ⚠ The shared listing page had no way to reach anybody. Its only button said
+   "See the photos and more like it" and went to the HOMEPAGE, where the whole
+   app then had to load and find the listing again — slow, and it dropped the
+   person somewhere they had not asked to go. A shared listing that cannot
+   produce a phone call is a lead paid for and thrown away.
+
+   This accepts a normal form POST as well as JSON, because that page must work
+   with no JavaScript: links get opened inside Facebook and Messenger browsers,
+   and a form that needs fetch() would quietly do nothing there. */
+async function agentBySlugFull(slug) {
+  if (!supabase || !slug) return null;
+  try {
+    const { data } = await supabase.from('agents').select('id,name,email,phone,role,active');
+    const m = (data || []).find(a => a.active !== false && slugify(a.name) === slugify(slug));
+    if (!m) return null;
+    const p = (await getSetting('agentPublic:' + m.id)) || {};
+    return { id: m.id, name: m.name,
+             phone: p.publicPhone || m.phone || BROKERAGE_PHONE,
+             email: p.publicEmail || m.email || '' };
+  } catch (e) { console.warn('[inquiry] agent lookup failed:', e.message); return null; }
+}
+
+app.post('/api/listing-inquiry', async (req, res) => {
+  const b = req.body || {};
+  const wantsJson = (req.get('accept') || '').includes('application/json')
+                 || (req.get('content-type') || '').includes('application/json');
+  const fail = (msg, code) => wantsJson
+    ? res.status(code || 400).json({ error: msg })
+    : res.status(code || 400).send(inquiryPage(false, msg, b.key, b.agent));
+
+  /* An empty field no human fills in. Cheap, and it stops the dumb bots. */
+  if (String(b.website || '').trim()) return wantsJson ? res.json({ ok: true }) : res.send(inquiryPage(true, '', b.key, b.agent));
+
+  const name = String(b.name || '').trim().slice(0, 80);
+  const email = String(b.email || '').trim().slice(0, 120).toLowerCase();
+  const phone = String(b.phone || '').trim().slice(0, 40);
+  const message = String(b.message || '').trim().slice(0, 1200);
+  const key = String(b.key || '').trim().slice(0, 64);
+  if (!name) return fail('Please tell us your name.');
+  if (!email && !phone) return fail('Please leave an email address or a phone number.');
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('That email address does not look right.');
+
+  let listingLabel = '', mlsNumber = '';
+  if (key) {
+    try {
+      const r = await mlsFindByKey(key);
+      if (r) {
+        listingLabel = [r.UnparsedAddress, r.City].filter(Boolean).join(', ');
+        mlsNumber = r.ListingId || '';
+      }
+    } catch (e) {}
+  }
+
+  const who = await agentBySlugFull(String(b.agent || '').trim());
+  const lead = {
+    id: 'lead_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    name, email, phone, message,
+    source: 'listing',
+    mlsKey: key, mlsNumber, listingLabel,
+    stage: 'New', notes: '',
+    /* Attribution decides assignment, or it is decoration. Whoever's link this
+       was gets the lead. */
+    assignedAgentId: who ? who.id : '',
+    referredBy: who ? who.name : '',
+    referredById: who ? who.id : '',
+    landingPage: ('/listing/' + key).slice(0, 300),
+    createdAt: new Date().toISOString(),
+  };
+
+  const saved = await setSetting('lead:' + lead.id, lead);
+  if (!saved) {
+    console.error('[inquiry] LEAD NOT SAVED', lead.email || lead.phone, listingLabel);
+    /* ⚠ Never tell someone their message was sent when it was not. */
+    return fail('We could not record that just now. Please call ' + BROKERAGE_PHONE + '.', 503);
+  }
+  console.log(`[inquiry] ${name} on ${listingLabel || key}${who ? ' -> ' + who.name : ''}`);
+
+  /* Mail is best-effort: the lead is already safe, and a mail failure must not
+     tell the person their message vanished. */
+  try {
+    /* ⚠ resolveNotifyAddress() is the existing rule for where lead alerts go —
+       NOTIFY_EMAIL, else the broker in the agents table. Reused rather than
+       reinvented so inquiries land where every other lead alert already lands.
+       The referring agent is preferred when the link was theirs. */
+    const to = (who && who.email) || await resolveNotifyAddress();
+    if (to && mailer && mailer.sendMail) {
+      await mailer.sendMail({
+        to,
+        subject: `Listing inquiry — ${listingLabel || 'a listing'}`,
+        html: `<p><strong>${escapeHtmlSrv(name)}</strong> asked about `
+            + `${escapeHtmlSrv(listingLabel || key)}.</p>`
+            + `<p>Email: ${escapeHtmlSrv(email || '—')}<br>Phone: ${escapeHtmlSrv(phone || '—')}</p>`
+            + (message ? `<p>${escapeHtmlSrv(message)}</p>` : ''),
+      });
+    } else if (!to) {
+      console.error('[inquiry] nobody to notify — set NOTIFY_EMAIL or give the broker an email.');
+    }
+  } catch (e) { console.warn('[inquiry] notification mail failed:', e.message); }
+
+  return wantsJson ? res.json({ ok: true }) : res.send(inquiryPage(true, '', key, b.agent));
+});
+
+function escapeHtmlSrv(t) {
+  return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* The page a no-JavaScript form post lands on. */
+function inquiryPage(ok, msg, key, agent) {
+  const back = '/listing/' + encodeURIComponent(String(key || ''))
+    + (agent ? '?agent=' + encodeURIComponent(String(agent)) : '');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${ok ? 'Thank you' : 'Something went wrong'} &middot; ${escapeHtmlSrv(BROKERAGE_NAME)}</title>
+<meta name="robots" content="noindex,nofollow">
+<style>body{margin:0;background:#FBF9F5;color:#141A3C;font-family:system-ui,sans-serif;
+line-height:1.6}.w{max-width:560px;margin:0 auto;padding:72px 22px}
+h1{font-size:26px;margin:0 0 10px}p{color:#5A6178}
+a{display:inline-block;margin-top:18px;background:#171F63;color:#fff;text-decoration:none;
+padding:13px 24px;border-radius:4px;font-weight:700}</style></head><body><div class="w">
+<h1>${ok ? 'Thank you — your message is on its way.' : 'That did not go through'}</h1>
+<p>${ok ? 'Someone will be in touch shortly. If it is urgent, call '
+        + escapeHtmlSrv(BROKERAGE_PHONE) + '.'
+      : escapeHtmlSrv(msg || 'Please try again.')}</p>
+<a href="${escapeHtmlSrv(back)}">Back to the home</a>
+</div></body></html>`;
+}
 
 /* ==================== A LIST OF PROPERTIES (server v232) ====================
    Pick several homes out of a search, share them as one link, and optionally keep
