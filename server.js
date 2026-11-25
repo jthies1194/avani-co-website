@@ -258,6 +258,65 @@ app.use(express.json({ limit: '14mb' }));
    form posts the ordinary way and the server has to be able to read it. */
 app.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
+/* ==================== COMPRESSION (server v235) ====================
+   ⚠ WHY. index.html is 1.9MB and was leaving this server uncompressed, so a
+   shared listing link took about ten seconds to show a price on a weak cell
+   signal and two seconds on good 4G — measured, not estimated. Gzipped the
+   same page is roughly 0.6MB. Nothing about the page changes; there are simply
+   fewer bytes to carry.
+
+   Written against zlib rather than the `compression` package on purpose: this
+   app has two dependencies and deploys by pulling from GitHub, and a failed
+   npm install on the host would take the whole site down to save a require.
+
+   DISABLE_GZIP=1 in the hosting environment turns it off with no code change,
+   in case GoDaddy's own proxy turns out to compress as well. */
+const zlib = require('zlib');
+const GZIP_OFF = String(process.env.DISABLE_GZIP || '') === '1';
+const GZIP_MIN = 1024;              // below this the headers cost more than the saving
+const _gzCache = new Map();         // sha1 -> gzipped Buffer
+const GZ_CACHE_MAX = 12;            // ~8MB at 0.6MB a page; the host is small
+
+function gzipCached(str) {
+  /* The shell is rebuilt per listing (its title and description differ), so the
+     cache is keyed by content, not by route. Hashing 1.9MB costs a few
+     milliseconds; gzipping it costs sixty, and would otherwise be paid on
+     every single visit. */
+  const h = crypto.createHash('sha1').update(str).digest('base64');
+  const hit = _gzCache.get(h);
+  if (hit) { _gzCache.delete(h); _gzCache.set(h, hit); return hit; }   // keep recent
+  const buf = zlib.gzipSync(str, { level: 6 });
+  if (_gzCache.size >= GZ_CACHE_MAX) _gzCache.delete(_gzCache.keys().next().value);
+  _gzCache.set(h, buf);
+  return buf;
+}
+
+app.use((req, res, next) => {
+  if (GZIP_OFF) return next();
+  if (!/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) return next();
+  const send = res.send.bind(res);
+  res.send = (body) => {
+    try {
+      /* Only strings, and only ones already carrying a content type set by the
+         route — a Buffer we did not build could be an image, and re-encoding a
+         response that is already encoded would produce garbage. */
+      if (typeof body === 'string' && body.length >= GZIP_MIN
+          && !res.getHeader('Content-Encoding')) {
+        const buf = gzipCached(body);
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Vary', 'Accept-Encoding');
+        res.removeHeader('Content-Length');
+        return send(buf);
+      }
+    } catch (e) {
+      /* A failure here must never cost the visitor the page. */
+      console.warn('[gzip] falling back to uncompressed:', e.message);
+    }
+    return send(body);
+  };
+  next();
+});
+
 // ---------- Supabase (leads / agents / settings storage) ----------
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -10094,7 +10153,7 @@ app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store, must-revalidate');
   res.json({
     ok: true,
-    serverVersion: 'v234',
+    serverVersion: 'v235',
     photoHosts: [...photoHostsSeen],
     /* ⚠ Read this when the site has been quiet for a while. `lastAt` more than
        a few hours old, or `lastOk` false, means the heartbeat is not keeping the
@@ -15853,6 +15912,23 @@ ${urls.map(u => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><priority>
    index.html must be revalidated every time (it is the whole app, and it changes on
    every deploy). Everything else is fingerprinted or rarely changes, so it can be
    cached properly. */
+/* ⚠ The home page was served by express.static below, which streams the file
+   straight off disk and so never passes through res.send — meaning it was the
+   one page the compression above could not reach, and it is the biggest page
+   on the site. Serving it from the same in-memory copy the shared-listing
+   pages already use puts it back on the compressed path. The cache headers
+   are copied verbatim from the static handler's index.html branch so the
+   behaviour is identical in every respect but size.
+   The crawler branch for /?listing=... is registered earlier and still wins. */
+app.get('/', (req, res, next) => {
+  const html = loadAppShell();
+  if (!html) return next();              // fall through to static if unreadable
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.type('html').send(html);
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: true,
   lastModified: true,
@@ -16336,6 +16412,14 @@ app.post('/api/storage/migrate', async (req, res) => {
 app.get('/:slug', (req, res, next) => {
   const slug = req.params.slug || '';
   if (slug.startsWith('api') || slug.includes('.')) return next();
+  /* ⚠ sendFile streams from disk and bypasses res.send, so an agent's own link
+     was the one route still shipping 1.9MB uncompressed. Same page, same
+     headers, now through the compressed path. */
+  const html = loadAppShell();
+  if (html) {
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+    return res.type('html').send(html);
+  }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
