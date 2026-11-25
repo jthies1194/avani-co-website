@@ -906,7 +906,7 @@ header.stuck .nav-agent:hover{color:var(--gold-deep) !important}
 .saved-add:hover{background:var(--gold-deep);color:#fff;border-color:var(--gold-deep)}
 
 /* anchor targets must clear the fixed strip + header, or a jump looks like nothing happened */
-#listings,#communities,#team,#guide,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
+#listings,#communities,#market,#team,#guide,#about,#story,#careers,#value,#contact{scroll-margin-top:190px}
 @media(max-width:1080px){#listings,#communities,#about,#story,#careers,#value,#contact{scroll-margin-top:160px}}
 
 .card-photo{position:relative;overflow:hidden}
@@ -1954,7 +1954,7 @@ Call Jimmy · 251-229-3216
     <span class="map-note" id="map-note"></span>
   </div>
   <div id="map"></div>
-  <p class="map-hint" id="map-hint">Drag to move, scroll to zoom. Draw a shape to search inside it.</p>
+  <p class="map-hint" id="map-hint">Drag to move, scroll to zoom. Press <strong>Draw a shape</strong>, then draw a loop around an area &mdash; or tap its corners.</p>
 </div>
 <div class="grid" id="listing-grid"></div>
 </div>
@@ -2416,15 +2416,22 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 </div>
 
-<!-- ⚠ The public "Baldwin County Market" section was removed on 24 November.
-     Every number in it — median sale price, days on market, sale-to-list — is
-     computed from closed sales, and sold data is members-only until BRMLS confirms
-     public display in writing (see PUBLIC_STATUSES in server.js). It was not
-     hidden with CSS: /api/market-stats now requires a session, so a hidden
-     section would have sat there failing, and markup that is only invisible is
-     one stylesheet edit away from being visible again.
-     It lives in the CRM now, as the Market tab. To bring it back here, restore
-     this section and drop the session check in /api/market-stats. -->
+<!-- ⚠ Removed on 24 November, restored the same day. It was taken down on the
+     belief that every figure here came from closed sales; that was wrong —
+     marketRows() pulls ACTIVE listings, so inventory, median LIST price, price
+     per square foot and new-this-week never touch a sale. Only the "What
+     actually sold" panel does, and /api/market-stats now withholds that half
+     from anyone not signed in (see marketPublicView). mktSold() already renders
+     nothing when that data is absent, so this section needs no gate of its own. -->
+<section class="sect-v2 wrap" id="market">
+  <div class="sec-head center rv">
+    <div class="eyebrow">The Numbers</div>
+    <span class="flourish center" role="presentation"></span>
+    <h2>Baldwin County Market</h2>
+    <p>Live from the MLS, updated continuously. What's actually on the market right now, and what it costs.</p>
+  </div>
+  <div id="market-stats" class="rv"><p class="market-loading">Loading current market data&hellip;</p></div>
+</section>
 
 <!-- \u26a0 Twenty articles were indexed by Google and unreachable from the site. No link in
      the nav, the footer or anywhere on the homepage. That is bad for a visitor and bad
@@ -5341,7 +5348,16 @@ if(!currentDetailListing) return;
 const ref = (typeof getAgentReferral === 'function') ? getAgentReferral() : null;
 const url = location.origin + '/listing/' + encodeURIComponent(currentDetailListing.ListingKey)
   + (ref && ref.slug ? '?agent=' + encodeURIComponent(ref.slug) : '');
-const text = `${currentDetailListing.UnparsedAddress}, ${currentDetailListing.City} — $${currentDetailListing.ListPrice.toLocaleString()}`;
+/* ⚠ Was `ListPrice.toLocaleString()` unguarded. A listing with no list price —
+   land, and anything the server already renders as "Price on request" — threw
+   "Cannot read properties of null (reading 'toLocaleString')" on this line,
+   BEFORE any of the sharing below ran. So every share button silently did
+   nothing on those listings: no sheet, no copy, no error. Nothing on the page
+   said why, because the throw happened on the way to building a label. */
+const _p = Number(currentDetailListing.ListPrice);
+const _price = Number.isFinite(_p) && _p > 0 ? '$' + _p.toLocaleString() : 'Price on request';
+const text = [currentDetailListing.UnparsedAddress, currentDetailListing.City]
+  .filter(Boolean).join(', ') + ' — ' + _price;
 if(platform === 'native'){
   /* The phone's own share sheet: Messages, WhatsApp, Mail, Instagram, whatever
      they already use. Returns a promise; an AbortError just means they closed it. */
@@ -5960,7 +5976,7 @@ async function sendLeadNotification(lead){
   };
 })();
 
-window.BUILD = 'index-v426';
+window.BUILD = 'index-v428';
 let currentAgent = null;
 
 /* Role helpers. Declared here rather than further down: function declarations
@@ -12555,14 +12571,16 @@ async function renderMarketSection(){
       + '<p style="font-size:12.5px;color:var(--marsh);margin-top:6px">'
       + 'Members only — these figures come from closed sales and are not shown on the public site.'
       + '</p></div>'
-      + '<div id="market-stats"><p class="market-loading">Loading current market data&hellip;</p></div>';
+      + '<div id="crm-market-stats"><p class="market-loading">Loading current market data&hellip;</p></div>';
     host.dataset.built = '1';
   }
-  return loadMarketStats();
+  return loadMarketStats('crm-market-stats');
 }
 
-async function loadMarketStats(){
-  const el = document.getElementById('market-stats');
+async function loadMarketStats(hostId){
+  /* Defaults to the public section; the CRM tab passes its own host. See the
+     note on renderMarketSection for why these must not share an id. */
+  const el = document.getElementById(hostId || 'market-stats');
   if(!el) return;
   try{
     const res = await fetch('/api/market-stats');
@@ -33387,6 +33405,17 @@ function closeMapPopupAndOpen(key){
 
 function mapSearchHere(){ MAPX.pts = []; mapClearShapeLayers(); mapRefresh(); }
 
+/* ⚠ DRAWING HAS TO SURVIVE BEING DRAGGED.
+   The first version only collected corners from discrete clicks, and left the
+   map's own dragging switched on. So the instinctive gesture — press and drag a
+   loop around a neighbourhood — panned the map instead, collected nothing, and
+   ended with "a shape needs at least three corners". The feature looked broken
+   to anyone who did the natural thing, which on a phone is everyone.
+
+   Both gestures work now. Press and drag traces a freehand outline; tapping
+   drops corners one at a time. Which one you did is decided by whether the
+   pointer actually travelled, so neither has to be chosen up front, and map
+   panning is off for the duration so a drag can never be stolen by the map. */
 function mapDrawToggle(){
   MAPX.drawing = !MAPX.drawing;
   const b = document.getElementById('map-draw');
@@ -33396,35 +33425,118 @@ function mapDrawToggle(){
   }
   const el = document.getElementById('map');
   if(el) el.classList.toggle('drawing', MAPX.drawing);
+
   if(MAPX.drawing){
     MAPX.pts = []; mapClearShapeLayers();
-    try{ MAPX.map.doubleClickZoom.disable(); }catch(e){}
-    mapNote('Tap the corners of the area. Tap Finish when the shape is closed.');
+    mapGrabOff();
+    mapNote('Draw a loop around the area — or tap its corners one at a time.');
   }else{
+    mapGrabOn();
     mapFinishShape();
   }
 }
 
-function mapClick(e){
+/* While drawing, the map must not pan, zoom on double click, or scroll under the
+   finger. Every one of these steals the gesture. */
+function mapGrabOff(){
+  const m = MAPX.map; if(!m) return;
+  try{ m.dragging.disable(); }catch(e){}
+  try{ m.doubleClickZoom.disable(); }catch(e){}
+  const el = m.getContainer();
+  if(el && !MAPX._bound){
+    el.addEventListener('pointerdown', mapPointerDown);
+    el.addEventListener('pointermove', mapPointerMove);
+    el.addEventListener('pointerup', mapPointerUp);
+    el.addEventListener('pointercancel', mapPointerUp);
+    MAPX._bound = true;
+  }
+  if(el) el.style.touchAction = 'none';   // or the browser scrolls the page instead
+}
+function mapGrabOn(){
+  const m = MAPX.map; if(!m) return;
+  try{ m.dragging.enable(); }catch(e){}
+  try{ m.doubleClickZoom.enable(); }catch(e){}
+  const el = m.getContainer();
+  if(el) el.style.touchAction = '';
+}
+
+function mapXY(ev){
+  const m = MAPX.map, el = m.getContainer(), r = el.getBoundingClientRect();
+  return m.containerPointToLatLng([ev.clientX - r.left, ev.clientY - r.top]);
+}
+
+function mapPointerDown(ev){
   if(!MAPX.drawing) return;
-  MAPX.pts.push(e.latlng);
+  ev.preventDefault();
+  MAPX._down = { x: ev.clientX, y: ev.clientY, moved: false };
+  MAPX._free = [];
+  try{ ev.target.setPointerCapture && ev.target.setPointerCapture(ev.pointerId); }catch(e){}
+}
+
+function mapPointerMove(ev){
+  if(!MAPX.drawing || !MAPX._down) return;
+  const dx = ev.clientX - MAPX._down.x, dy = ev.clientY - MAPX._down.y;
+  /* A few pixels of travel is a shaky tap, not a drag. */
+  if(!MAPX._down.moved && (dx*dx + dy*dy) < 36) return;
+  MAPX._down.moved = true;
+  ev.preventDefault();
+  const ll = mapXY(ev);
+  const last = MAPX._free[MAPX._free.length - 1];
+  /* Sampled by distance. A freehand drag fires hundreds of moves and the server
+     accepts 500 points; an outline does not get better for having 900 of them. */
+  if(last && Math.abs(last.lat - ll.lat) < 1e-5 && Math.abs(last.lng - ll.lng) < 1e-5) return;
+  MAPX._free.push(ll);
+  if(MAPX._free.length > 400) MAPX._free.splice(0, MAPX._free.length - 400);
+  MAPX.pts = MAPX._free.slice();
   mapPaintDraft();
-  if(MAPX.pts.length >= 3) mapNote(MAPX.pts.length + ' corners — tap Finish to search inside.');
+}
+
+function mapPointerUp(ev){
+  if(!MAPX.drawing || !MAPX._down) return;
+  const dragged = MAPX._down.moved;
+  MAPX._down = null;
+  if(dragged){
+    /* A traced loop is a finished shape; nobody expects to press Finish after
+       letting go. */
+    if(MAPX.pts.length >= 3){ mapGrabOn(); mapDrawEnd(); mapFinishShape(); return; }
+    mapNote('That was too short to make a shape — try again.');
+    return;
+  }
+  /* Not a drag: treat it as dropping one corner. */
+  MAPX.pts.push(mapXY(ev));
+  MAPX._free = MAPX.pts.slice();
+  mapPaintDraft();
+  mapNote(MAPX.pts.length < 3
+    ? MAPX.pts.length + (MAPX.pts.length === 1 ? ' corner — keep tapping.' : ' corners — one more.')
+    : MAPX.pts.length + ' corners — tap Finish to search inside.');
+}
+
+/* Put the button back to "Draw a shape" when a traced loop ends the gesture. */
+function mapDrawEnd(){
+  MAPX.drawing = false;
+  const b = document.getElementById('map-draw');
+  if(b){ b.setAttribute('aria-pressed','false'); b.innerHTML = '&#9998; Draw a shape'; }
+  const el = document.getElementById('map'); if(el) el.classList.remove('drawing');
+}
+
+function mapClick(e){
+  /* Corner taps are handled by the pointer handlers above, which know whether
+     the gesture travelled. Leaflet's own click would double-count them. */
 }
 
 function mapPaintDraft(){
   if(MAPX.draft){ MAPX.map.removeLayer(MAPX.draft); MAPX.draft = null; }
   if(MAPX.pts.length < 2) return;
-  MAPX.draft = L.polyline(MAPX.pts, { color: '#C89B4E', weight: 2, dashArray: '5,5' })
-    .addTo(MAPX.map);
+  /* Once there are three points the outline is closed as you trace it, so the
+     area being selected is the area you can see, not one you have to imagine. */
+  MAPX.draft = MAPX.pts.length >= 3
+    ? L.polygon(MAPX.pts, { color:'#C89B4E', weight:2, dashArray:'5,5', fillOpacity:.06 }).addTo(MAPX.map)
+    : L.polyline(MAPX.pts, { color:'#C89B4E', weight:2, dashArray:'5,5' }).addTo(MAPX.map);
 }
 
 function mapFinishShape(){
-  MAPX.drawing = false;
-  const b = document.getElementById('map-draw');
-  if(b){ b.setAttribute('aria-pressed','false'); b.innerHTML = '&#9998; Draw a shape'; }
-  const el = document.getElementById('map'); if(el) el.classList.remove('drawing');
-  try{ MAPX.map.doubleClickZoom.enable(); }catch(e){}
+  mapDrawEnd();
+  mapGrabOn();
 
   if(MAPX.pts.length < 3){
     MAPX.pts = []; mapClearShapeLayers();
